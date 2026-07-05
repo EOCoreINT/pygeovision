@@ -168,9 +168,9 @@ chips/
 training_chips/
 image_chips/
 label_chips/
-dataset/
-datasets/
-data/
+# dataset/
+# datasets/
+# data/
 raw/
 downloads/
 pipeline_output/

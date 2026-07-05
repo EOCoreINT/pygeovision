@@ -40,11 +40,27 @@ from pygeovision.insar.displacement  import phase_to_displacement, displacement_
 from pygeovision.insar.interpretation import InSARInterpreter, DeformationReport
 from pygeovision.insar.visualization  import InSARViz
 
+# ── True SLC InSAR (SNAP + snapista + snaphu required) ────────────────────────
+from pygeovision.insar.slc           import (
+    SLCInSARPipeline, SLCInSARResult,
+    SNAPGraph, check_snap, check_snapista,
+    SnaphuUnwrapper, unwrap_phase,
+    slc_phase_to_displacement, los_to_vertical,
+    S1SLCProduct, parse_s1_slc_manifest,
+)
+
 __all__ = [
+    # GRD amplitude proxy (no external dependencies)
     "InSARProcessor", "InSARResult",
     "generate_interferogram", "amplitude_coherence",
     "estimate_coherence", "coherence_mask",
     "phase_to_displacement", "displacement_rate",
     "InSARInterpreter", "DeformationReport",
     "InSARViz",
+    # True SLC InSAR (SNAP + snapista + snaphu)
+    "SLCInSARPipeline", "SLCInSARResult",
+    "SNAPGraph", "check_snap", "check_snapista",
+    "SnaphuUnwrapper", "unwrap_phase",
+    "slc_phase_to_displacement", "los_to_vertical",
+    "S1SLCProduct", "parse_s1_slc_manifest",
 ]
