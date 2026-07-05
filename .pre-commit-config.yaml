@@ -1,0 +1,101 @@
+# PyGeoVision v2.0 — pre-commit hooks
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # ── Standard file hygiene ──────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: debug-statements
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, master]
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
+
+  # ── Ruff — linting + auto-fix ─────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.7
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # ── Black — code formatting ────────────────────────────────────────────────
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        args: [--line-length=100]
+        language_version: python3.11
+
+  # ── Mypy — type checking ───────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - types-pyyaml
+          - types-requests
+          - pydantic>=2.0
+        args: [--ignore-missing-imports, --no-strict-optional]
+        files: ^pygeovision/(data|preprocess|models)/
+        exclude: ^pygeovision/(cli|serving|cloud|edge)/
+
+  # ── Safety — dependency vulnerability scan ────────────────────────────────
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.7.3
+    hooks:
+      - id: pip-audit
+        args: [--skip-editable]
+        stages: [pre-push]
+
+  # ── Notebook cleaner (strip outputs before commit) ────────────────────────
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.7.1
+    hooks:
+      - id: nbstripout
+        files: "projects/.*\\.ipynb$"
+
+  # ── Local hooks ───────────────────────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: Unit tests (fast — no network, no GPU)
+        entry: python -m pytest tests/ -q --tb=short -m "not slow and not integration and not live and not gpu"
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-bridge-syntax
+        name: Check PyGeoFetch bridge syntax
+        entry: python -c "import ast; ast.parse(open('pygeovision/data/pgf_bridge.py').read()); print('pgf_bridge.py OK')"
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: check-no-plaintext-creds
+        name: Check for plaintext credentials
+        entry: python -c "
+import subprocess, sys
+patterns = ['api_key=', 'password=', 'secret=', 'token=']
+result = subprocess.run(['git', 'diff', '--cached', '-U0'], capture_output=True, text=True)
+for line in result.stdout.split('\n'):
+    if line.startswith('+') and not line.startswith('+++'):
+        for p in patterns:
+            if p in line.lower() and 'example' not in line.lower() and 'test' not in line.lower():
+                print(f'WARNING: possible credential in: {line[:80]}')
+"
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

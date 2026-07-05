@@ -1,0 +1,4229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The PyGeoVision Book — AI-Powered Geospatial Intelligence</title>
+<style>
+:root {
+    --primary: #2563eb; --primary-dark: #1d4ed8; --bg: #0f172a;
+    --surface: #1e293b; --border: #334155; --text: #e2e8f0;
+    --muted: #94a3b8; --code-bg: #0d1117; --accent: #38bdf8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Inter, system-ui, sans-serif;
+        background: var(--bg); color: var(--text); line-height: 1.7; }
+.sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 280px;
+    background: var(--surface); border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 20px; z-index: 100;
+}
+.sidebar h2 { color: var(--accent); font-size: 1rem; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+.sidebar ul { list-style: none; }
+.sidebar li { margin: 4px 0; }
+.sidebar a { color: var(--muted); text-decoration: none; font-size: 0.85rem; display: block;
+              padding: 4px 8px; border-radius: 4px; transition: all 0.15s; }
+.sidebar a:hover { color: var(--text); background: rgba(56,189,248,0.1); }
+.main { margin-left: 280px; max-width: 900px; padding: 60px 48px; }
+.book-header {
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    color: white; padding: 80px 48px; margin-left: 280px; margin-bottom: 0;
+}
+.book-header h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 12px; }
+.book-header .subtitle { font-size: 1.1rem; opacity: 0.85; }
+.book-header .meta { margin-top: 20px; font-size: 0.85rem; opacity: 0.7; }
+section { border-bottom: 1px solid var(--border); padding-bottom: 60px; margin-bottom: 60px; }
+h1 { font-size: 2rem; font-weight: 700; color: var(--accent); margin: 40px 0 20px; }
+h2 { font-size: 1.4rem; font-weight: 600; color: var(--text); margin: 36px 0 14px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+h3 { font-size: 1.1rem; font-weight: 600; color: #93c5fd; margin: 24px 0 10px; }
+h4 { font-size: 1rem; color: var(--muted); margin: 16px 0 8px; }
+p { margin: 12px 0; color: var(--text); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+       padding: 20px 24px; overflow-x: auto; margin: 16px 0; font-size: 0.875rem; }
+code { font-family: 'JetBrains Mono','Fira Code','Courier New',monospace; color: #a5f3fc; }
+pre code { color: #e2e8f0; }
+table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 0.9rem; }
+th { background: var(--surface); color: var(--accent); padding: 10px 14px; text-align: left; border: 1px solid var(--border); }
+td { padding: 8px 14px; border: 1px solid var(--border); color: var(--text); }
+tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+strong { color: white; }
+blockquote { border-left: 3px solid var(--accent); padding-left: 16px; color: var(--muted); font-style: italic; margin: 16px 0; }
+ul, ol { padding-left: 24px; margin: 12px 0; }
+li { margin: 6px 0; }
+a { color: var(--accent); }
+.chapter-num { display: inline-block; background: var(--primary); color: white;
+                border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; margin-bottom: 8px; }
+@media (max-width: 768px) {
+    .sidebar { display: none; } .main, .book-header { margin-left: 0; padding: 20px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <h2>PyGeoVision Book</h2>
+  <ul>
+  <li><a href="#01_introduction">Chapter 1: Introduction to PyGeoVision</a></li>
+<li><a href="#02_data_acquisition">Chapter 2: Satellite Data Acquisition</a></li>
+<li><a href="#03_data_preprocessing">Chapter 3: Data Preprocessing</a></li>
+<li><a href="#04_spectral_indices">Chapter 4: Spectral Indices</a></li>
+<li><a href="#05_introduction_geoai">Chapter 5: Introduction to GeoAI</a></li>
+<li><a href="#06_image_classification">Chapter 6: Image Classification</a></li>
+<li><a href="#07_object_detection">Chapter 7: Object Detection</a></li>
+<li><a href="#08_semantic_segmentation">Chapter 8: Semantic Segmentation</a></li>
+<li><a href="#09_instance_segmentation">Chapter 9: Instance Segmentation</a></li>
+<li><a href="#10_change_detection">Chapter 10: Change Detection</a></li>
+<li><a href="#11_pixel_regression">Chapter 11: Pixel-Level Regression</a></li>
+<li><a href="#12_foundation_models">Chapter 12: Foundation Models</a></li>
+<li><a href="#13_vision_language">Chapter 13: Vision-Language Models</a></li>
+<li><a href="#14_sar_processing">Chapter 14: SAR Processing</a></li>
+<li><a href="#15_insar_processing">Chapter 15: InSAR Processing</a></li>
+<li><a href="#16_timeseries">Chapter 16: Time-Series Analysis</a></li>
+<li><a href="#17_visualization">Chapter 17: Interactive Visualization</a></li>
+<li><a href="#18_insar_visualization">Chapter 18: InSAR Visualization</a></li>
+<li><a href="#19_reporting">Chapter 19: Reporting and Export</a></li>
+<li><a href="#20_yaml_pipelines">Chapter 20: YAML Pipelines</a></li>
+<li><a href="#21_geoagent">Chapter 21: The AI Agent</a></li>
+<li><a href="#22_deployment">Chapter 22: Deployment</a></li>
+<li><a href="#23_agriculture">Chapter 23: Agriculture</a></li>
+<li><a href="#24_forestry">Chapter 24: Forestry</a></li>
+<li><a href="#25_urban">Chapter 25: Urban</a></li>
+<li><a href="#26_water">Chapter 26: Water</a></li>
+<li><a href="#27_disaster">Chapter 27: Disaster</a></li>
+<li><a href="#28_climate">Chapter 28: Climate</a></li>
+<li><a href="#A_api_reference">Appendix A: API Reference</a></li>
+<li><a href="#B_cli_reference">Appendix B: CLI Reference</a></li>
+<li><a href="#C_configuration">Appendix C: Configuration</a></li>
+<li><a href="#D_troubleshooting">Appendix D: Troubleshooting</a></li>
+<li><a href="#E_contributing">Appendix E: Contributing</a></li>
+<li><a href="#F_glossary">Appendix F: Glossary</a></li>
+  </ul>
+</nav>
+
+<div class="book-header">
+  <h1>The PyGeoVision Book</h1>
+  <div class="subtitle">The Definitive Guide to AI-Powered Geospatial Intelligence</div>
+  <div class="meta">
+    Version 2.1.2 &bull; PyGeoVision Contributors &bull; Apache 2.0 &bull; 28 Chapters + 6 Appendices + 28 Notebooks
+  </div>
+</div>
+
+<div class="main">
+<section id="01_introduction">
+<h1>Chapter 1: Introduction to PyGeoVision</h1>
+<br>
+<blockquote>*"The gap between satellite data and actionable intelligence used to take weeks.</blockquote>
+<blockquote>PyGeoVision closes it in minutes."*</blockquote>
+<br>
+<h2>1.1 What is PyGeoVision?</h2>
+<br>
+<p>PyGeoVision is a production-ready Python platform that unifies satellite data</p>
+<p>acquisition and geospatial AI in one coherent API. It answers the question that</p>
+<p>every remote sensing practitioner has faced: *how do I get from a raw satellite</p>
+<p>scene to an AI-generated result without writing hundreds of lines of glue code?*</p>
+<br>
+<p>The answer is a three-layer architecture:</p>
+<br>
+<pre><code class="language-text">Layer 1 — Data         PyGeoFetch: 22+ satellite providers, unified search/download
+Layer 2 — AI           119 model architectures, Prithvi, DINOv3, ChangeFormer
+Layer 3 — Intelligence GeoAgent: natural language → complete pipeline
+</code></pre>
+<br>
+<p>You interact primarily with the top-level <code>PyGeoVision</code> client, which delegates</p>
+<p>to these layers automatically:</p>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+
+# One client — three layers
+client = pgv.PyGeoVision()
+
+# Layer 1: search 22 providers simultaneously
+results = client.search(
+    bbox=(-0.30, 5.50, -0.05, 5.70),        # Accra, Ghana
+    date_range=("2026-06-01", "2026-06-30"),
+    cloud_cover_max=20,
+)
+
+# Layer 2: preprocess + AI in one call
+ready = client.prepare_for_ai(results[0].path, model_type="foundation")
+
+# Layer 3: natural language query (no tool names needed)
+from pygeovision.agent import GeoAgent
+agent = GeoAgent(client)
+agent.set_context(bbox=(-0.30, 5.50, -0.05, 5.70), date="2026-06")
+trace = agent.run("Map flood inundation in the Odaw River Basin")
+print(trace.final_output)   # → ./results/flood_mask.geojson
+</code></pre>
+<br>
+<h2>1.2 The PyGeoVision Ecosystem</h2>
+<br>
+<p>PyGeoVision is the bridge between two exceptional open-source packages:</p>
+<br>
+<h3>PyGeoFetch — Universal Satellite Data Pipeline</h3>
+<br>
+<p>[PyGeoFetch](https://github.com/appiahkubis14/PyGeoFetch) handles everything</p>
+<p>before data touches your disk:</p>
+<br>
+<li>Authenticated search across 22+ providers (Sentinel, Landsat, Planet, Maxar,</li>
+<p>  Copernicus, USGS, NASA, JAXA, and more)</p>
+<li>Parallel downloads with checksum verification and resume support</li>
+<li>Post-processing chains: unzip → reproject → compress → Cloud Optimised GeoTIFF</li>
+<li>YAML pipeline orchestration with cron scheduling</li>
+<br>
+<p>PyGeoVision wraps PyGeoFetch behind <code>client.search()</code> and <code>client.download()</code>,</p>
+<p>adding validation, the mandatory pipeline gate (§1.4), and direct handoff to AI.</p>
+<br>
+<h3>GeoAI — Artificial Intelligence for Geospatial Data</h3>
+<br>
+<p>[GeoAI](https://opengeoai.org) (Qiusheng Wu et al., 2026) provides the</p>
+<p>complete AI inference stack: segmentation, detection, classification, change</p>
+<p>detection, foundation models, cloud masking, super-resolution, and ONNX export.</p>
+<br>
+<p>PyGeoVision exposes GeoAI as optional plugin (<code>pip install "pygeovision[geoai]"</code>).</p>
+<p>The core platform includes its own 119-model registry and does not require GeoAI</p>
+<p>for any of its standard workflows.</p>
+<br>
+<h3>PyGeoVision — The Integration Layer</h3>
+<br>
+<p>PyGeoVision adds what neither package provides alone:</p>
+<br>
+<tr><td>Feature</td><td>PyGeoFetch</td><td>GeoAI</td><td>PyGeoVision</td></tr>
+<p>|---------|-----------|-------|-------------|</p>
+<tr><td>Data search/download</td><td>✅</td><td>❌</td><td>✅ (via PyGeoFetch)</td></tr>
+<tr><td>AI inference</td><td>❌</td><td>✅</td><td>✅ (own stack + GeoAI plugin)</td></tr>
+<tr><td>End-to-end pipelines</td><td>❌</td><td>❌</td><td>✅ 10 named pipelines</td></tr>
+<tr><td>SAR preprocessing</td><td>❌</td><td>❌</td><td>✅ S0-S9 with 3 bug-fixes</td></tr>
+<tr><td>InSAR chain</td><td>❌</td><td>❌</td><td>✅ interferogram → report</td></tr>
+<tr><td>Natural language AI</td><td>❌</td><td>❌</td><td>✅ GeoAgent (heuristic + LLM)</td></tr>
+<tr><td>Interactive visualization</td><td>❌</td><td>limited</td><td>✅ Map, RasterViewer, etc.</td></tr>
+<tr><td>Enterprise (RBAC, audit)</td><td>❌</td><td>❌</td><td>✅</td></tr>
+<br>
+<h2>1.3 Why PyGeoVision?</h2>
+<br>
+<h3>The fragmentation problem</h3>
+<br>
+<p>A typical geospatial AI workflow before PyGeoVision looked like this:</p>
+<br>
+<li>Search EO Browser or Copernicus Hub manually</li>
+<li>Download and unzip a 2 GB Sentinel-2 archive</li>
+<li>Reproject with GDAL command-line tools</li>
+<li>Stack bands with rasterio</li>
+<li>Apply cloud mask with Sen2Cor</li>
+<li>Normalise values for the model</li>
+<li>Run inference with a model from three different GitHub repos</li>
+<li>Post-process with shapely + fiona</li>
+<li>Export a COG manually</li>
+<br>
+<p>Each step has its own API, its own failure modes, and its own documentation.</p>
+<br>
+<p>PyGeoVision collapses this to:</p>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+client = pgv.PyGeoVision()
+
+results   = client.search(bbox=bbox, date_range=dates, cloud_cover_max=10)
+downloads = client.download(results[:1], bands=["B02","B03","B04","B08","B11","B12"])
+ready     = client.prepare_for_ai(downloads[0].path)
+result    = client.pipeline("building_footprints", bbox=bbox, date="2026-06")
+</code></pre>
+<br>
+<h3>Comparison with alternatives</h3>
+<br>
+<tr><td>Platform</td><td>Data access</td><td>AI models</td><td>SAR</td><td>InSAR</td><td>Agent</td><td>Open source</td></tr>
+<p>|----------|------------|-----------|-----|-------|-------|-------------|</p>
+<tr><td>**PyGeoVision**</td><td>22+ providers</td><td>119</td><td>✅</td><td>✅</td><td>✅</td><td>✅ Apache 2</td></tr>
+<tr><td>TorchGeo</td><td>Limited</td><td>Many</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td></tr>
+<tr><td>TerraTorch</td><td>❌</td><td>Foundation only</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td></tr>
+<tr><td>EO-learn</td><td>Some</td><td>Few</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td></tr>
+<tr><td>GEE Python</td><td>Google only</td><td>Limited</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+<tr><td>ArcGIS Pro</td><td>Limited</td><td>Limited</td><td>Limited</td><td>❌</td><td>Limited</td><td>❌</td></tr>
+<br>
+<h2>1.4 The Mandatory Pipeline Gate</h2>
+<br>
+<p>Every PyGeoVision workflow passes through a validation gate before data</p>
+<p>touches an AI model. This prevents the most common class of errors in</p>
+<p>production geospatial AI: feeding the wrong data to a model.</p>
+<br>
+<pre><code class="language-text">Raw download
+    │
+    ▼
+validate_georeference()     ← BUG 1 fix: detects identity-transform CRS corruption
+    │
+    ▼
+check_download_complete()   ← BUG 2 fix: rejects partial downloads before AI
+    │
+    ▼
+prepare_for_ai()            ← BUG 3 fix: CRS-aware bbox before clip
+    │   stack bands
+    │   cloud mask (SCL)
+    │   normalise (scale_factor=10000)
+    │   validate shape for model type
+    │
+    ▼
+AI model
+</code></pre>
+<br>
+<p>The three bug-fixes embedded in this gate address real production failures</p>
+<p>discovered during development:</p>
+<br>
+<li>**BUG 1:** After PyGeoFetch reproject, some scenes have a pixel_width of 1.0</li>
+<p>  and an origin at (0, 0) instead of valid UTM metres — a silent CRS corruption</p>
+<p>  that causes models to silently produce incorrect results.</p>
+<br>
+<li>**BUG 2:** PyGeoFetch's chunked download can produce a syntactically valid</li>
+<p>  but spatially incomplete GeoTIFF. Without a tile-read verification, the</p>
+<p>  subsequent despeckle step on a 0-tile SAR file crashes mid-pipeline.</p>
+<br>
+<li>**BUG 3:** `rasterio.mask` requires the clip geometry to be in the raster's</li>
+<p>  CRS. Passing a WGS84 bbox to a UTM raster silently produces an empty output.</p>
+<br>
+<h2>1.5 Installation</h2>
+<br>
+<h3>Requirements</h3>
+<br>
+<li>Python 3.10 or later</li>
+<li>pip 23+</li>
+<li>4 GB RAM minimum; 16 GB for training</li>
+<br>
+<h3>Install options</h3>
+<br>
+<pre><code class="language-bash"># Minimal — search, download, basic AI
+pip install pygeovision
+
+# Recommended — full geospatial stack
+pip install "pygeovision[geo]"
+
+# With visualization
+pip install "pygeovision[geo,viz]"
+
+# With AI training (PyTorch)
+pip install "pygeovision[geo,train]"
+
+# With InSAR processing
+pip install "pygeovision[geo,insar]"
+
+# With enterprise features (RBAC, audit, compliance)
+pip install "pygeovision[enterprise]"
+
+# Everything
+pip install "pygeovision[all]"
+</code></pre>
+<br>
+<h3>Verify installation</h3>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+print(pgv.__version__)   # 2.1.2
+
+# Check available components
+client = pgv.PyGeoVision()
+print(client)
+# PyGeoVision(v2.1.2, providers=22, models=119, datasets=503)
+</code></pre>
+<br>
+<h2>1.6 Quick Start: Your First Analysis</h2>
+<br>
+<p>This five-minute workflow searches Sentinel-2 imagery over London, downloads</p>
+<p>one scene, computes NDVI, and visualises the result.</p>
+<br>
+<pre><code class="language-python"># ─── 1. Import and initialise ──────────────────────────────────────────────
+import pygeovision as pgv
+from pygeovision.viz import RasterViewer
+
+client = pgv.PyGeoVision()
+
+# ─── 2. Define study area (London, UK) ────────────────────────────────────
+BBOX       = (-0.15, 51.47, -0.10, 51.52)   # [lon_min, lat_min, lon_max, lat_max]
+DATE_RANGE = ("2026-06-01", "2026-06-30")
+BANDS      = ["B02", "B03", "B04", "B08", "B8A", "B11"]   # Sentinel-2 HLS subset
+
+# ─── 3. Search open providers (no credentials needed) ─────────────────────
+results = client.search(
+    bbox            = BBOX,
+    date_range      = DATE_RANGE,
+    providers       = ["planetary_computer"],   # Microsoft, free tier
+    cloud_cover_max = 15,
+)
+print(f"Found {len(results)} scenes")
+for r in results[:5]:
+    print(f"  {r.provider:&lt;22}  {r.datetime[:10]}  cloud={r.cloud_cover:.1f}%")
+# Found 4 scenes
+#   planetary_computer      2026-06-08  cloud=3.2%
+#   planetary_computer      2026-06-18  cloud=8.1%
+#   ...
+
+# ─── 4. Download the clearest scene ───────────────────────────────────────
+downloads = client.download(
+    results[:1],
+    output_dir   = "./data/london/",
+    bands        = BANDS,
+    post_process = ["reproject:EPSG:32630", "cog"],   # UTM 30N + COG
+)
+scene_path = downloads[0].path
+print(f"Downloaded: {scene_path}  ({downloads[0].bytes_downloaded/1e6:.1f} MB)")
+# Downloaded: ./data/london/S2_20260608_B*.tif  (156.4 MB)
+
+# ─── 5. Prepare for AI (mandatory pipeline gate) ──────────────────────────
+ready = client.prepare_for_ai(
+    scene_path,
+    stack_bands  = BANDS,
+    bbox         = BBOX,
+    bbox_crs     = "EPSG:32630",
+    normalise    = "scale_factor",
+    scale_factor = 10000.0,
+    model_type   = "segmentation",
+    output_path  = "./data/london/london_prepared.tif",
+)
+print(f"Shape: {ready['shape']}  Range: [{ready['array'].min():.3f}, {ready['array'].max():.3f}]")
+# Shape: (6, 512, 512)  Range: [0.000, 0.981]
+
+# ─── 6. Compute NDVI and visualise ────────────────────────────────────────
+import numpy as np
+
+arr  = ready["array"]   # (6, H, W) normalised float32
+nir  = arr[3]           # Band 8 (NIR)
+red  = arr[2]           # Band 4 (Red)
+ndvi = (nir - red) / (nir + red + 1e-8)
+print(f"NDVI range: {ndvi.min():.3f} to {ndvi.max():.3f}")
+print(f"Mean NDVI (parks/vegetation): {ndvi.mean():.3f}")
+# NDVI range: -0.12 to 0.73
+# Mean NDVI (parks/vegetation): 0.31
+
+rv = RasterViewer("./data/london/london_prepared.tif")
+rv.ndvi(nir_band=3, red_band=2).export("./data/london/ndvi_london.png")
+rv.rgb(red=2, green=1, blue=0).show()   # True-colour composite
+
+# ─── 7. Run a full AI pipeline with one call ──────────────────────────────
+result = client.pipeline(
+    "building_footprints",
+    bbox       = BBOX,
+    date       = "2026-06",
+    output_dir = "./data/london/",
+)
+print(f"Buildings detected: {result.stats.get('n_buildings', 'N/A')}")
+print(f"Output: {result.output_path}")
+# Buildings detected: 2,847
+# Output: ./data/london/buildings.geojson
+</code></pre>
+<br>
+<p><strong>Expected time:</strong> ~3 minutes (download-dominated).  </p>
+<p><strong>Expected output:</strong> <code>ndvi_london.png</code> and <code>buildings.geojson</code>.</p>
+<br>
+<h2>1.7 Key Concepts</h2>
+<br>
+<tr><td>Term</td><td>Meaning</td></tr>
+<p>|------|---------|</p>
+<tr><td>**bbox**</td><td>Bounding box `[lon_min, lat_min, lon_max, lat_max]` in WGS84</td></tr>
+<tr><td>**COG**</td><td>Cloud Optimised GeoTIFF — spatially indexed for web streaming</td></tr>
+<tr><td>**HLS**</td><td>Harmonised Landsat Sentinel — Prithvi's expected 6-band input format</td></tr>
+<tr><td>**LOS**</td><td>Line-of-Sight — the direction along the satellite radar beam</td></tr>
+<tr><td>**SAR**</td><td>Synthetic Aperture Radar — cloud-independent microwave imaging</td></tr>
+<tr><td>**InSAR**</td><td>Interferometric SAR — detects millimetre-scale ground deformation</td></tr>
+<tr><td>**SCL**</td><td>Scene Classification Layer (Sentinel-2) — cloud/shadow mask</td></tr>
+<tr><td>**SLC**</td><td>Single Look Complex — SAR data with phase information (InSAR input)</td></tr>
+<br>
+<h2>1.8 Chapter Summary</h2>
+<br>
+<li>PyGeoVision unifies satellite data (22+ providers) and AI (119 architectures)</li>
+<p>  behind a single Python API.</p>
+<li>The mandatory pipeline gate catches the three most common production failures</li>
+<p>  before they reach the model.</p>
+<li>The GeoAgent accepts natural-language queries and autonomously executes the</li>
+<p>  complete workflow — sensor choice, task type, and tool sequence all decided</p>
+<p>  from the problem description.</p>
+<li>Installation: `pip install "pygeovision[all]"`.</li>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Install PyGeoVision and run the London quick-start example.</li>
+<li>Change the study area to your city. What is the mean NDVI?</li>
+<li>Try `cloud_cover_max=5` — how many scenes are available for your area?</li>
+<li>Change the pipeline from `building_footprints` to `water_bodies`.</li>
+<p>   How much water area does your study area contain?</p>
+<br>
+<h2>Further Reading</h2>
+<br>
+<li>PyGeoFetch documentation: https://appiahkubis14.github.io/pygeofetch-docs/</li>
+<li>GeoAI paper: Wu (2026), *Journal of Open Source Software*. DOI: 10.21105/joss.09605</li>
+<li>Sentinel-2 product specification: ESA S2-PDGS-TAS-DI-PSD</li>
+<li>Prithvi-EO-2.0: Jakubik et al. (2023), arXiv:2310.18660</li>
+<br>
+</section>
+
+<section id="02_data_acquisition">
+<h1>Chapter 2: Satellite Data Acquisition</h1>
+<br>
+<h2>2.1 Understanding the Satellite Data Landscape</h2>
+<br>
+<p>Modern Earth observation produces more than 150 TB of new satellite data every</p>
+<p>day. Accessing that data without knowing which providers offer what products,</p>
+<p>which authentication methods they require, and how to efficiently download</p>
+<p>only the bands you need — is the first major barrier in geospatial AI.</p>
+<br>
+<p>PyGeoVision delegates all data access to PyGeoFetch, which abstracts 22+</p>
+<p>providers behind a uniform <code>search()</code> and <code>download()</code> interface.</p>
+<br>
+<h3>Provider categories</h3>
+<br>
+<tr><td>Category</td><td>Providers</td><td>Notes</td></tr>
+<p>|----------|-----------|-------|</p>
+<tr><td>**Free, open**</td><td>Planetary Computer, Copernicus CDSE, USGS, NASA</td><td>No cost</td></tr>
+<tr><td>**Commercial optical**</td><td>Planet, Maxar, Airbus</td><td>Subscription</td></tr>
+<tr><td>**SAR**</td><td>Sentinel-1 (CDSE), JAXA ALOS</td><td>Free; commercial at 1-3m</td></tr>
+<tr><td>**Multispectral stacks**</td><td>NASA HLS, USGS Landsat C2</td><td>Pre-harmonised for ML</td></tr>
+<tr><td>**Derived products**</td><td>Copernicus DEM, MODIS LST, Sentinel-5P</td><td>Ready indices</td></tr>
+<br>
+<h2>2.2 Authentication</h2>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+client = pgv.PyGeoVision()
+
+# Planetary Computer (free, optional subscription key)
+client.add_credentials("planetary_computer",
+                        subscription_key="your-pc-key")
+
+# Copernicus CDSE (free, EU login)
+client.add_credentials("copernicus_cdse",
+                        username="you@example.com",
+                        password="your-password")
+
+# Planet (commercial)
+client.add_credentials("planet", api_key="PL-API-your-key")
+
+# USGS EarthExplorer
+client.add_credentials("usgs",
+                        username="your-usgs-username",
+                        password="your-usgs-password")
+
+print(client.list_providers())
+</code></pre>
+<br>
+<h2>2.3 Searching for Imagery</h2>
+<br>
+<h3>Basic search</h3>
+<br>
+<pre><code class="language-python">results = client.search(
+    bbox            = (-0.30, 5.50, -0.05, 5.70),  # Accra, Ghana
+    date_range      = ("2026-06-01", "2026-06-30"),
+    cloud_cover_max = 20,
+)
+
+print(f"Found {len(results)} scenes")
+for r in results[:5]:
+    print(f"  {r.provider:&lt;22} {r.datetime[:10]}  cloud={r.cloud_cover:4.1f}%")
+</code></pre>
+<br>
+<h3>Filtering results</h3>
+<br>
+<pre><code class="language-python"># Specific providers and satellites
+s2 = client.search(
+    bbox            = (-0.30, 5.50, -0.05, 5.70),
+    date_range      = ("2026-01-01", "2026-12-31"),
+    providers       = ["planetary_computer"],
+    satellites      = ["Sentinel-2"],
+    cloud_cover_max = 10,
+    max_results     = 50,
+)
+s2.sort(key=lambda r: r.cloud_cover)
+print(f"Best: {s2[0].datetime[:10]}  cloud={s2[0].cloud_cover:.1f}%")
+
+# SAR search (cloud cover irrelevant)
+sar = client.search(
+    bbox         = (-0.30, 5.50, -0.05, 5.70),
+    date_range   = ("2026-06-01", "2026-06-30"),
+    satellites   = ["Sentinel-1"],
+    product_type = "GRD",
+)
+print(f"SAR acquisitions: {len(sar)}")
+</code></pre>
+<br>
+<h2>2.4 Downloading Data</h2>
+<br>
+<h3>Single scene</h3>
+<br>
+<pre><code class="language-python">downloads = client.download(
+    scenes       = results[:1],
+    output_dir   = "./data/accra/",
+    bands        = ["B02","B03","B04","B08","B8A","B11"],
+    post_process = ["reproject:EPSG:32630", "cog"],
+    max_workers  = 4,
+    resume       = True,
+)
+
+for dl in downloads:
+    if dl.success:
+        print(f"  {dl.path}  ({dl.bytes_downloaded/1e6:.1f} MB)")
+    else:
+        print(f"  FAILED: {dl.error}")
+</code></pre>
+<br>
+<h3>Time-series download</h3>
+<br>
+<pre><code class="language-python">quarters = [
+    ("2026-01-01", "2026-03-31"),
+    ("2026-04-01", "2026-06-30"),
+    ("2026-07-01", "2026-09-30"),
+    ("2026-10-01", "2026-12-31"),
+]
+
+for start, end in quarters:
+    batch = client.search(bbox=BBOX, date_range=(start, end),
+                          cloud_cover_max=15)
+    if batch:
+        client.download(batch[:1], output_dir=f"./data/{start[:7]}/",
+                        bands=BANDS)
+        print(f"Downloaded {start[:7]}")
+</code></pre>
+<br>
+<h2>2.5 Cloud Optimised GeoTIFFs (COGs)</h2>
+<br>
+<p>COGs allow partial spatial reads without downloading the full file:</p>
+<br>
+<pre><code class="language-python">import rasterio
+from rasterio.windows import from_bounds
+
+url = "https://storage.googleapis.com/pgv-demo/sentinel2_accra_cog.tif"
+
+with rasterio.open(url) as src:
+    # Read only a 500m x 500m window — no full download
+    window = from_bounds(-0.28, 5.55, -0.27, 5.56, src.transform)
+    tile   = src.read(window=window)
+    print(f"Tile shape: {tile.shape}")
+</code></pre>
+<br>
+<h2>2.6 Best Practices</h2>
+<br>
+<pre><code class="language-python"># Dynamic cloud threshold
+def find_best_scene(bbox, date_range, max_cloud=30):
+    for threshold in [5, 10, 15, 20, 30, max_cloud]:
+        r = client.search(bbox=bbox, date_range=date_range,
+                          cloud_cover_max=threshold)
+        if r:
+            print(f"Found at cloud &lt;= {threshold}%")
+            return r[0]
+    return None
+
+# Enable cache to avoid re-downloading
+import os
+os.environ["PGV_CACHE_DIR"] = "/data/pgv_cache"
+downloads = client.download(results[:3], output_dir="./data/",
+                             bands=BANDS, skip_existing=True)
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<li>PyGeoVision provides uniform search and download across 22+ providers.</li>
+<li>Planetary Computer needs no key for basic searches.</li>
+<li>Post-processing chains (reproject, COG) run automatically on download.</li>
+<li>SAR data uses the same API as optical data.</li>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Search all Sentinel-2 scenes over your city for the past year.</li>
+<p>   Plot cloud cover by month.</p>
+<li>Download two scenes from different dates and compare visually.</li>
+<li>Download a Sentinel-1 SAR scene — when was the last acquisition?</li>
+<li>Implement a function finding the cloud-free scene closest to a target date.</li>
+<br>
+</section>
+
+<section id="03_data_preprocessing">
+<h1>Chapter 3: Data Preprocessing</h1>
+<br>
+<h2>3.1 Why Preprocessing Matters</h2>
+<br>
+<p>Raw satellite data is almost never ready for an AI model. A Sentinel-2 L2A</p>
+<p>scene contains reflectance values in 12 bands at three different resolutions</p>
+<p>(10m, 20m, 60m), encoded as 16-bit integers scaled by 10,000, masked by a</p>
+<p>Scene Classification Layer. Preprocessing converts this to a normalised,</p>
+<p>validated array that any model can consume.</p>
+<br>
+<h2>3.2 The prepare_for_ai() Pipeline</h2>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+client = pgv.PyGeoVision()
+
+ready = client.prepare_for_ai(
+    input_path   = "./data/S2_20260615.tif",
+    stack_bands  = ["B02","B03","B04","B08","B8A","B11"],
+    bbox         = (-0.30, 5.50, -0.05, 5.70),
+    bbox_crs     = "EPSG:32630",       # BUG 3 fix: must match raster CRS
+    scl_path     = "./data/S2_SCL.tif",
+    scl_keep_classes = [4, 5, 6],      # vegetation, bare, water
+    normalise    = "scale_factor",
+    scale_factor = 10000.0,
+    model_type   = "segmentation",
+    output_path  = "./data/prepared.tif",
+)
+
+print("Steps:", ready["steps"])
+print("Shape:", ready["shape"])     # (6, 512, 512)
+print("Range:", ready["array"].min(), "to", ready["array"].max())
+print("Valid:", ready["report"].passed)
+</code></pre>
+<br>
+<h2>3.3 Cloud Masking</h2>
+<br>
+<pre><code class="language-python">import rasterio
+import numpy as np
+
+# SCL classes: 4=vegetation, 5=bare, 6=water, 8/9/10=clouds
+with rasterio.open("./data/S2_SCL.tif") as src:
+    scl = src.read(1)
+
+clear_mask = np.isin(scl, [4, 5, 6]).astype("uint8")
+coverage   = clear_mask.mean() * 100
+print(f"Cloud-free coverage: {coverage:.1f}%")
+
+# Apply mask
+with rasterio.open("./data/S2_bands.tif") as src:
+    data    = src.read().astype("float32")
+    profile = src.profile.copy()
+
+data[:, clear_mask == 0] = np.nan
+
+with rasterio.open("./data/cloudmasked.tif", "w", **profile) as dst:
+    dst.write(data)
+</code></pre>
+<br>
+<h2>3.4 Reprojection</h2>
+<br>
+<pre><code class="language-python">from pygeovision.preprocess import Preprocessor
+pre = Preprocessor()
+
+# Reproject to UTM
+pre.reproject(
+    input_path  = "./data/scene.tif",
+    output_path = "./data/scene_utm.tif",
+    target_crs  = "EPSG:32630",
+    resampling  = "bilinear",
+)
+</code></pre>
+<br>
+<h2>3.5 Band Stacking</h2>
+<br>
+<p>Sentinel-2 bands come at different resolutions. Stack all at 10m:</p>
+<br>
+<pre><code class="language-python">pre.stack_bands(
+    band_paths = [
+        "./data/B02_10m.tif",   # Blue  — 10m native
+        "./data/B03_10m.tif",   # Green — 10m native
+        "./data/B04_10m.tif",   # Red   — 10m native
+        "./data/B08_10m.tif",   # NIR   — 10m native
+        "./data/B8A_20m.tif",   # Red-Edge 4 — 20m, upsampled
+        "./data/B11_20m.tif",   # SWIR 1     — 20m, upsampled
+    ],
+    output_path   = "./data/S2_6band_10m.tif",
+    target_res_m  = 10,
+    resampling    = "bilinear",
+    band_names    = ["Blue","Green","Red","NIR","RedEdge4","SWIR1"],
+)
+</code></pre>
+<br>
+<h2>3.6 Mosaicking</h2>
+<br>
+<pre><code class="language-python">pre.mosaic(
+    input_paths = [
+        "./data/tile_T30PXR.tif",
+        "./data/tile_T30PXT.tif",
+    ],
+    output_path = "./data/mosaic.tif",
+    method      = "median",
+    nodata      = 0,
+)
+</code></pre>
+<br>
+<h2>3.7 Normalisation Strategies</h2>
+<br>
+<pre><code class="language-python">import numpy as np
+
+# Scale factor (Sentinel-2 standard)
+arr_norm = arr.astype("float32") / 10000.0
+
+# Percentile stretch (robust to outliers)
+out = np.zeros_like(arr, dtype="float32")
+for b in range(arr.shape[0]):
+    lo = np.percentile(arr[b], 2)
+    hi = np.percentile(arr[b], 98)
+    out[b] = np.clip((arr[b] - lo) / (hi - lo + 1e-8), 0, 1)
+
+# PyGeoVision prepare_for_ai handles all via normalise= parameter:
+# "scale_factor" | "minmax" | "percentile" | "none"
+</code></pre>
+<br>
+<h2>3.8 SAR Preprocessing</h2>
+<br>
+<p>SAR requires a specific pipeline order. Despeckle MUST happen in linear power,</p>
+<p>before dB conversion:</p>
+<br>
+<pre><code class="language-python">from pygeovision.data.processors.sar import (
+    verify_sar_downloads,
+    validate_sar_georeference,
+    despeckle_sar,
+    linear_to_db,
+    normalise_sar_for_ai,
+    clip_sar_to_bbox,
+)
+
+# Mandatory order: verify -&gt; georeference -&gt; despeckle (LINEAR!) -&gt; dB -&gt; normalise -&gt; clip
+check = verify_sar_downloads("./sar/S1_GRD.tif")
+assert check["complete"], f"Incomplete: {check['errors']}"
+
+geo   = validate_sar_georeference("./sar/S1_GRD.tif")
+src   = geo.repaired_path or "./sar/S1_GRD.tif"
+
+despeckle_sar(src,                  "./sar/S1_desp.tif")
+linear_to_db ("./sar/S1_desp.tif", "./sar/S1_db.tif")
+normalise_sar_for_ai("./sar/S1_db.tif", "./sar/S1_norm.tif")
+clip_sar_to_bbox("./sar/S1_norm.tif", "./sar/S1_clip.tif",
+                  bbox_wgs84=(-0.30, 5.50, -0.05, 5.70))
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<li>`prepare_for_ai()` runs the complete preprocessing pipeline with</li>
+<p>  three production bug-fixes embedded.</p>
+<li>SAR has a mandatory processing order: verify, georeference, despeckle</li>
+<p>  in LINEAR power, convert to dB, normalise, clip.</p>
+<li>Band stacking requires all inputs at the same resolution.</li>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Apply cloud masking to a Sentinel-2 scene. What percentage is cloud-free?</li>
+<li>Stack 6 bands at 10m. Verify shape is (6, H, W).</li>
+<li>Compare `scale_factor` vs `percentile` normalisation using `histogram()`.</li>
+<li>Run `prepare_for_ai()` on a SAR scene — what steps does it report?</li>
+<br>
+</section>
+
+<section id="04_spectral_indices">
+<h1>Chapter 4: Spectral Indices</h1>
+<br>
+<h2>4.1 What Are Spectral Indices?</h2>
+<br>
+<p>Spectral indices are mathematical combinations of satellite bands that highlight</p>
+<p>specific surface properties. They exploit characteristic reflectance signatures</p>
+<p>of different materials across the electromagnetic spectrum.</p>
+<br>
+<h2>4.2 Vegetation Indices</h2>
+<br>
+<h3>NDVI (Normalised Difference Vegetation Index)</h3>
+<br>
+<pre><code class="language-python">import numpy as np, rasterio
+
+with rasterio.open("./data/S2_prepared.tif") as src:
+    nir = src.read(4).astype("float32")
+    red = src.read(3).astype("float32")
+
+ndvi = (nir - red) / (nir + red + 1e-8)
+print(f"NDVI range: {ndvi.min():.3f} to {ndvi.max():.3f}")
+
+# Via RasterViewer
+from pygeovision.viz import RasterViewer
+rv = RasterViewer("./data/S2_prepared.tif")
+rv.ndvi(nir_band=3, red_band=2).export("ndvi.png")
+</code></pre>
+<br>
+<h3>EVI (Enhanced Vegetation Index) — better for dense canopy</h3>
+<br>
+<pre><code class="language-python">evi = 2.5 * (nir - red) / (nir + 6*red - 7.5*blue + 1 + 1e-8)
+evi = np.clip(evi, -1, 1)
+</code></pre>
+<br>
+<h3>SAVI (Soil-Adjusted) — for sparse vegetation</h3>
+<br>
+<pre><code class="language-python">L    = 0.5  # soil factor (0=dense, 1=sparse)
+savi = (1 + L) * (nir - red) / (nir + red + L + 1e-8)
+</code></pre>
+<br>
+<h2>4.3 Water Indices</h2>
+<br>
+<h3>NDWI — highlights open water</h3>
+<br>
+<pre><code class="language-python">with rasterio.open("./data/S2_prepared.tif") as src:
+    green = src.read(2).astype("float32")
+    nir   = src.read(4).astype("float32")
+
+ndwi = (green - nir) / (green + nir + 1e-8)
+water_pct = (ndwi &gt; 0).mean() * 100
+print(f"Water coverage: {water_pct:.1f}%")
+</code></pre>
+<br>
+<h3>MNDWI — better for urban water</h3>
+<br>
+<pre><code class="language-python">with rasterio.open("./data/S2_prepared.tif") as src:
+    green = src.read(2).astype("float32")
+    swir  = src.read(5).astype("float32")
+
+mndwi = (green - swir) / (green + swir + 1e-8)
+</code></pre>
+<br>
+<h2>4.4 Urban Indices</h2>
+<br>
+<h3>NDBI — highlights built-up surfaces</h3>
+<br>
+<pre><code class="language-python">with rasterio.open("./data/S2_prepared.tif") as src:
+    swir = src.read(5).astype("float32")
+    nir  = src.read(4).astype("float32")
+
+ndbi = (swir - nir) / (swir + nir + 1e-8)
+built_pct = (ndbi &gt; 0).mean() * 100
+print(f"Built-up: {built_pct:.1f}%")
+</code></pre>
+<br>
+<h2>4.5 Burn Indices</h2>
+<br>
+<pre><code class="language-python">def compute_nbr(nir, swir2):
+    return (nir - swir2) / (nir + swir2 + 1e-8)
+
+pre_nbr  = compute_nbr(nir_pre,  swir2_pre)
+post_nbr = compute_nbr(nir_post, swir2_post)
+dnbr     = pre_nbr - post_nbr  # Positive = burned
+
+# USFS 4-class severity
+severity = np.zeros_like(dnbr, dtype="uint8")
+severity[dnbr &gt; 0.66]                         = 4  # high
+severity[(dnbr &gt; 0.26) & (dnbr &lt;= 0.66)]      = 3  # moderate
+severity[(dnbr &gt; 0.10) & (dnbr &lt;= 0.26)]      = 2  # low
+severity[dnbr &lt;= 0.10]                         = 1  # unchanged
+</code></pre>
+<br>
+<h2>4.6 Snow / Ice Indices</h2>
+<br>
+<pre><code class="language-python">with rasterio.open("./data/S2_prepared.tif") as src:
+    green = src.read(2).astype("float32")
+    swir  = src.read(5).astype("float32")
+
+ndsi = (green - swir) / (green + swir + 1e-8)
+snow_mask = (ndsi &gt; 0.4).astype("uint8")
+</code></pre>
+<br>
+<h2>4.7 Tasseled Cap Transformation</h2>
+<br>
+<pre><code class="language-python">TC_COEFF = {
+    "brightness": [0.3510, 0.3813, 0.3437, 0.7196, 0.2396, 0.1949],
+    "greenness":  [-0.3599,-0.3533,-0.4734, 0.6633,-0.0059,-0.2856],
+    "wetness":    [0.2578, 0.2305, 0.0883, 0.1071,-0.7611,-0.5308],
+}
+
+def tasseled_cap(bands_6ch):
+    result = {}
+    for name, coef in TC_COEFF.items():
+        c = np.array(coef, dtype="float32")[:, None, None]
+        result[name] = (bands_6ch * c).sum(axis=0)
+    return result
+</code></pre>
+<br>
+<h2>4.8 Index-Based Classification</h2>
+<br>
+<pre><code class="language-python">land_cover = np.zeros_like(ndvi, dtype="uint8")
+land_cover[ndvi &gt; 0.3]                                         = 1  # Vegetation
+land_cover[(ndwi &gt; 0.0) & (ndvi &lt;= 0.3)]                      = 2  # Water
+land_cover[(ndbi &gt; 0.1) & (ndvi &lt;= 0.3) & (ndwi &lt;= 0.0)]     = 3  # Built-up
+land_cover[land_cover == 0]                                    = 4  # Bare soil
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<li>NDVI (NIR-Red)/(NIR+Red): vegetation density</li>
+<li>NDWI (Green-NIR)/(Green+NIR): open water</li>
+<li>NDBI (SWIR-NIR)/(SWIR+NIR): built-up surfaces</li>
+<li>dNBR: wildfire burn severity (4-class USFS scale)</li>
+<li>Tasseled Cap: brightness, greenness, wetness</li>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Compute NDVI, NDWI, NDBI side by side. Which areas are misclassified?</li>
+<li>Apply NDSI to a winter Sentinel-2 scene. Map snow extent.</li>
+<li>Compare NDWI vs MNDWI for a coastal urban area.</li>
+<li>Compute dNBR for a wildfire event from the last 2 years.</li>
+<br>
+</section>
+
+<section id="05_introduction_geoai">
+<h1>Chapter 5: Introduction to GeoAI</h1>
+<br>
+<h2>5.1 The Deep Learning Revolution in Earth Observation</h2>
+<br>
+<p>Remote sensing analysis was historically dominated by expert-designed feature extraction:</p>
+<p>normalised difference indices, object-based image analysis, and spectral mixture models.</p>
+<p>Deep learning changed everything by learning hierarchical spatial features directly from raw pixels.</p>
+<br>
+<h3>Key transformative capabilities</h3>
+<br>
+<p><strong>Spatial context:</strong> CNNs capture relationships at multiple scales simultaneously.</p>
+<p>A single network sees both rooftop texture and the overall urban grid pattern.</p>
+<br>
+<p><strong>Transfer learning:</strong> Pre-trained weights from ImageNet or EO datasets reduce</p>
+<p>the labelled data needed for new domains by 10-100x.</p>
+<br>
+<p><strong>End-to-end training:</strong> No separate feature extraction stage. The network learns</p>
+<p>representations directly optimised for the final prediction objective.</p>
+<br>
+<h2>5.2 Unique Challenges of Geospatial AI</h2>
+<br>
+<h3>Multi-spectral input</h3>
+<br>
+<p>Standard ImageNet models use 3 RGB channels. Sentinel-2 has 13 bands.</p>
+<p>Adapting a pre-trained model:</p>
+<br>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+# Replace first conv: 3ch -&gt; 6ch, copy RGB weights
+orig = model.encoder.layer0.conv1
+new  = nn.Conv2d(6, orig.out_channels, orig.kernel_size,
+                  orig.stride, orig.padding, bias=False)
+with torch.no_grad():
+    new.weight[:, :3] = orig.weight
+    new.weight[:, 3:] = orig.weight.mean(1, keepdim=True).repeat(1,3,1,1)
+model.encoder.layer0.conv1 = new
+</code></pre>
+<br>
+<h3>Class imbalance</h3>
+<br>
+<p>Damaged buildings may represent 0.1% of pixels. Use FocalDice loss:</p>
+<br>
+<pre><code class="language-python">import torch, torch.nn as nn, torch.nn.functional as F
+
+class FocalDiceLoss(nn.Module):
+    def __init__(self, gamma=2.0, focal_w=0.5, dice_w=0.5):
+        super().__init__()
+        self.gamma = gamma
+        self.fw, self.dw = focal_w, dice_w
+
+    def forward(self, logits, targets):
+        bce   = F.binary_cross_entropy_with_logits(logits, targets.float(),
+                                                     reduction='none')
+        pt    = torch.sigmoid(logits)
+        focal = ((1-pt)**self.gamma * bce).mean()
+        num   = 2*(pt*targets).sum()
+        den   = pt.sum() + targets.sum() + 1e-8
+        dice  = 1 - num/den
+        return self.fw * focal + self.dw * dice
+</code></pre>
+<br>
+<h3>Geographic distribution shift</h3>
+<br>
+<p>A model trained on European buildings fails in West Africa.</p>
+<p>Always use geographically stratified evaluation splits:</p>
+<br>
+<pre><code class="language-python">from sklearn.model_selection import GroupShuffleSplit
+
+gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+train_idx, test_idx = next(gss.split(X, y, groups=grid_cells))
+</code></pre>
+<br>
+<h2>5.3 The Model Registry</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models import list_models, get_model
+
+print(f'Total: {len(list_models())}')
+for task in ['segmentation','detection','change_detection','foundation','sar']:
+    print(f'  {task}: {len(list_models(task=task))}')
+
+# Load any model
+unet = get_model('unet', encoder_name='resnet50',
+                  encoder_weights='imagenet',
+                  in_channels=6, num_classes=5)
+print(f'Parameters: {sum(p.numel() for p in unet.parameters()):,}')
+</code></pre>
+<br>
+<h2>5.4 U-Net Family</h2>
+<br>
+<p>U-Net's encoder-decoder with skip connections is the workhorse of EO segmentation:</p>
+<br>
+<pre><code class="language-python"># Available variants
+variants = [
+    ('unet',         'resnet34',  24.4, 'Classic U-Net'),
+    ('unet',         'resnet50',  32.5, 'U-Net ResNet50'),
+    ('unetplusplus', 'resnet50',  35.1, 'U-Net++ (nested)'),
+    ('deeplabv3plus','resnet101', 59.3, 'DeepLabV3+ (ASPP)'),
+]
+for arch, enc, params, desc in variants:
+    print(f'  {desc}: {params}M parameters')
+</code></pre>
+<br>
+<h2>5.5 Vision Transformers</h2>
+<br>
+<p>SegFormer captures long-range spatial dependencies CNNs miss:</p>
+<br>
+<pre><code class="language-python"># SegFormer variants (B0-B5, increasing capacity)
+for v in ['b0','b1','b2','b3','b4','b5']:
+    m = get_model('segformer', variant=v, in_channels=6, num_classes=10)
+    n = sum(p.numel() for p in m.parameters())/1e6
+    print(f'  SegFormer-{v.upper()}: {n:.1f}M')
+# B2 is the best accuracy/speed tradeoff for most EO tasks
+</code></pre>
+<br>
+<h2>5.6 Foundation Models</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.foundation.prithvi import PrithviTasks
+
+tasks  = PrithviTasks('prithvi_eo_2_0')
+result = tasks.land_cover(ready_array, source='sentinel2')
+print(result['class_distribution'])
+# Tree cover: 23.1%, Cropland: 41.2%, Urban: 8.9%, ...
+</code></pre>
+<br>
+<h2>5.7 Transfer Learning Best Practices</h2>
+<br>
+<pre><code class="language-python"># Freeze encoder, train decoder only (data-efficient)
+for name, p in model.named_parameters():
+    p.requires_grad = 'encoder' not in name
+
+# OneCycleLR scheduler (fast convergence)
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import OneCycleLR
+
+opt = AdamW(model.parameters(), lr=3e-4, weight_decay=0.01)
+sch = OneCycleLR(opt, max_lr=3e-4, epochs=100,
+                  steps_per_epoch=len(train_loader),
+                  pct_start=0.1)
+</code></pre>
+<br>
+<h2>5.8 Model Evaluation</h2>
+<br>
+<pre><code class="language-python">import numpy as np
+from sklearn.metrics import confusion_matrix
+
+def mean_iou(true, pred, n_classes):
+    cm  = confusion_matrix(true.ravel(), pred.ravel(),
+                            labels=list(range(n_classes)))
+    ious = []
+    for i in range(n_classes):
+        tp = cm[i,i]; fp = cm[:,i].sum()-tp; fn = cm[i,:].sum()-tp
+        ious.append(tp / (tp+fp+fn+1e-8))
+    print(f'mIoU: {np.mean(ious):.4f}')
+    return float(np.mean(ious))
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<li>Deep learning outperforms handcrafted methods on most EO tasks.</li>
+<li>Use FocalDice loss for imbalanced classes; geographic splits for honest evaluation.</li>
+<li>PyGeoVision provides 119 models across 8 task categories.</li>
+<li>Foundation models (Prithvi, DINOv3) enable zero-shot inference.</li>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>List all segmentation models. Compare U-Net vs SegFormer parameter counts.</li>
+<li>Adapt a ResNet50 model to accept 12-band Sentinel-2 input.</li>
+<li>Implement geographic k-fold cross-validation using a 1-degree grid.</li>
+<li>Plot a training curve. When does the validation mIoU plateau?</li>
+<li>Run Prithvi zero-shot vs fine-tuned comparison on 50 labelled patches.</li>
+</section>
+
+<section id="06_image_classification">
+<h1>Chapter 6: Image Classification</h1>
+<br>
+<h2>6.1 Scene Classification</h2>
+<br>
+<p>Classify an entire image into a single category (urban, forest, water, etc.):</p>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+from pygeovision.models import get_model
+import torch
+
+# ResNet-based scene classifier
+classifier = get_model("resnet50_scene",
+                        in_channels=6, num_classes=20)
+
+# Inference
+with rasterio.open("./data/prepared.tif") as src:
+    patch = torch.tensor(src.read()).unsqueeze(0).float()
+
+logits = classifier(patch)
+probs  = logits.softmax(dim=1)
+top3   = probs.topk(3)
+print(f"Top class: {top3.indices[0][0].item()}")
+</code></pre>
+<br>
+<h2>6.2 Land Cover Classification</h2>
+<br>
+<p>Multi-class per-pixel classification with Prithvi:</p>
+<br>
+<pre><code class="language-python">from pygeovision.models.foundation.prithvi import PrithviTasks
+
+tasks  = PrithviTasks("prithvi_eo_2_0")
+result = tasks.land_cover(ready_array, source="sentinel2")
+classes = result["class_distribution"]
+
+print("Land cover distribution:")
+for cls, pct in classes.items():
+    print(f"  {cls:&lt;20}: {pct:.1f}%")
+</code></pre>
+<br>
+<h2>6.3 Zero-Shot with CLIP</h2>
+<br>
+<p>Classify scenes without labelled training data:</p>
+<br>
+<pre><code class="language-python">from pygeovision.models.vlm.clip_zero_shot import CLIPZeroShot
+
+clip = CLIPZeroShot()
+labels = ["flooded area", "vegetation", "urban", "bare soil", "water body"]
+
+result = clip.classify(image_path="./data/scene.tif", labels=labels)
+print(f"Predicted: {result['label']}  ({result['confidence']:.1%})")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Classify 10 Sentinel-2 patches using scene classification.</li>
+<li>Apply Prithvi land cover to your study area. Create a pie chart.</li>
+<li>Test CLIP zero-shot classification with 5 domain-specific labels.</li>
+<br>
+<h2>6.4 Multi-Label Classification</h2>
+<br>
+<p>Some scenes contain multiple land-cover types. Multi-label classification predicts</p>
+<p>a binary vector of class presence:</p>
+<br>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+class MultiLabelClassifier(nn.Module):
+    def __init__(self, backbone, num_classes):
+        super().__init__()
+        self.backbone = backbone
+        self.head     = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(backbone.out_channels, num_classes),
+        )
+
+    def forward(self, x):
+        return self.head(self.backbone(x))   # sigmoid applied at loss time
+
+# Training with BCEWithLogitsLoss
+criterion = nn.BCEWithLogitsLoss()
+logits    = model(images)
+loss      = criterion(logits, labels.float())
+
+# Threshold predictions at 0.5
+preds = (torch.sigmoid(logits) &gt; 0.5).long()
+</code></pre>
+<br>
+<h2>6.5 Training Custom Classifiers</h2>
+<br>
+<pre><code class="language-python">from pygeovision.training import GeoTrainer
+from pygeovision.training.data import GeoSegDataset, make_geo_loaders
+from pygeovision.models import get_model
+import torch
+
+# 1. Prepare dataset
+train_dl, val_dl = make_geo_loaders(
+    image_dir  = "./data/classification/train/images/",
+    mask_dir   = "./data/classification/train/labels/",
+    batch_size = 32,
+    tile_size  = 224,
+    augment    = True,
+)
+
+# 2. Load model (ResNet50 for scene classification)
+model = get_model("resnet50_scene", in_channels=6, num_classes=10)
+
+# 3. Train with one-cycle learning rate
+trainer = GeoTrainer(
+    model         = model,
+    output_dir    = "./checkpoints/scene_classifier/",
+    loss_fn       = "cross_entropy",
+    metrics       = ["accuracy", "f1_macro"],
+)
+trainer.train(
+    train_loader  = train_dl,
+    val_loader    = val_dl,
+    epochs        = 30,
+    lr            = 1e-3,
+    weight_decay  = 0.01,
+    scheduler     = "cosine",
+)
+print(f"Best val accuracy: {trainer.best_metric:.4f}")
+</code></pre>
+<br>
+<h2>6.6 Model Inference and Deployment</h2>
+<br>
+<pre><code class="language-python">import torch
+import numpy as np
+
+# Load trained model
+model = get_model("resnet50_scene", in_channels=6, num_classes=10)
+model.load_state_dict(torch.load("./checkpoints/best_model.pth"))
+model.eval()
+
+# Batch inference
+class_names = ["Forest","Cropland","Urban","Water","Desert",
+               "Wetland","Grassland","Cloud","Snow","Other"]
+
+with torch.no_grad():
+    for images, paths in dataloader:
+        logits = model(images)
+        probs  = logits.softmax(dim=1)
+        preds  = probs.argmax(dim=1)
+
+        for path, pred, prob in zip(paths, preds, probs):
+            top3  = prob.topk(3)
+            label = class_names[pred.item()]
+            conf  = prob[pred].item()
+            print(f"{path}: {label} ({conf:.1%})")
+            for idx, score in zip(top3.indices, top3.values):
+                print(f"    {class_names[idx]}: {score:.1%}")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Scene classification assigns a single category to an entire image tile.</p>
+<p>Prithvi foundation model handles zero-shot classification. CLIP extends this</p>
+<p>to arbitrary text descriptions. Custom classifiers need geographically</p>
+<p>stratified train/val splits to avoid data leakage.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Classify 50 Sentinel-2 patches using Prithvi. Which class is most common?</li>
+<li>Apply CLIP zero-shot classification with 8 custom land-cover labels.</li>
+<li>Train a ResNet50 scene classifier on the EuroSAT benchmark.</li>
+<li>Compare per-class accuracy. Which class has the lowest recall?</li>
+<br>
+</section>
+
+<section id="07_object_detection">
+<h1>Chapter 7: Object Detection</h1>
+<br>
+<h2>7.1 Building Detection</h2>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+client = pgv.PyGeoVision()
+
+result = client.pipeline(
+    "building_footprints",
+    bbox       = (-0.30, 5.50, -0.05, 5.70),
+    date       = "2026-06",
+    output_dir = "./results/",
+)
+print(f"Buildings detected: {result.stats['n_buildings']:,}")
+print(f"Total area: {result.stats['total_area_m2']/1e4:.0f} ha")
+</code></pre>
+<br>
+<h2>7.2 Ship Detection</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.detection import ShipDetector
+
+detector = ShipDetector(confidence_threshold=0.7)
+ships    = detector.detect("./data/sentinel2_sea.tif")
+
+print(f"Ships detected: {len(ships)}")
+for ship in ships:
+    print(f"  {ship['lat']:.4f}, {ship['lon']:.4f}  conf={ship['confidence']:.2f}")
+</code></pre>
+<br>
+<h2>7.3 Solar Panel Detection</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline(
+    "solar_panels",
+    bbox       = (8.5, 47.3, 8.6, 47.4),   # Zurich
+    date       = "2026-06",
+    output_dir = "./solar/",
+)
+capacity_kwp = result.stats.get("estimated_capacity_kwp", 0)
+print(f"Solar capacity: {capacity_kwp:.0f} kWp")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run building detection over a 5x5km study area.</li>
+<li>Detect ships in a Sentinel-2 scene over the Strait of Gibraltar.</li>
+<li>Compare building footprint accuracy vs OpenStreetMap ground truth.</li>
+<br>
+<h2>7.4 Custom Training for Object Detection</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models import get_model
+from pygeovision.training import GeoTrainer
+import torch
+
+# YOLO-based detector for small objects (ships, vehicles, solar panels)
+detector = get_model(
+    "yolo_v8",
+    in_channels = 3,
+    num_classes = 4,    # background, building, vehicle, ship
+    variant     = "medium",
+)
+
+# Training requires bounding box annotations in YOLO format:
+# class_id center_x center_y width height (normalised 0-1)
+trainer = GeoTrainer(
+    model         = detector,
+    output_dir    = "./checkpoints/detector/",
+    task          = "detection",
+    loss_fn       = "yolo",
+)
+trainer.train(train_loader=train_dl, val_loader=val_dl, epochs=100)
+print(f"Best mAP@50: {trainer.best_metric:.4f}")
+</code></pre>
+<br>
+<h2>7.5 Post-Processing Detections</h2>
+<br>
+<pre><code class="language-python">import numpy as np
+
+def nms(boxes, scores, iou_threshold=0.5):
+    """Non-maximum suppression — remove duplicate detections."""
+    if len(boxes) == 0:
+        return []
+    keep = []
+    order = scores.argsort()[::-1]
+    while order.size &gt; 0:
+        i = order[0]; keep.append(i)
+        if order.size == 1: break
+        xx1 = np.maximum(boxes[i,0], boxes[order[1:],0])
+        yy1 = np.maximum(boxes[i,1], boxes[order[1:],1])
+        xx2 = np.minimum(boxes[i,2], boxes[order[1:],2])
+        yy2 = np.minimum(boxes[i,3], boxes[order[1:],3])
+        inter = np.maximum(0, xx2-xx1) * np.maximum(0, yy2-yy1)
+        area  = ((boxes[:,2]-boxes[:,0]) * (boxes[:,3]-boxes[:,1]))
+        union = area[i] + area[order[1:]] - inter
+        iou   = inter / (union + 1e-8)
+        order = order[1:][iou &lt;= iou_threshold]
+    return keep
+
+# Compute mAP@50
+from sklearn.metrics import average_precision_score
+
+def compute_map(pred_boxes, true_boxes, iou_threshold=0.5):
+    aps = []
+    for class_id in range(num_classes):
+        # Match predicted and ground truth boxes
+        # Compute precision-recall curve
+        # AP = area under PR curve
+        pass  # Implementation depends on annotation format
+    return float(np.mean(aps))
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Object detection localises and classifies individual objects within a scene.</p>
+<p>PyGeoVision pipelines wrap this for common use cases (buildings, ships, solar</p>
+<p>panels). Custom detectors require bounding box annotations and YOLO-format</p>
+<p>training data.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run `client.pipeline("building_footprints")` on a dense urban area.</li>
+<li>Detect ships in a Sentinel-2 scene over a busy shipping lane.</li>
+<li>Implement NMS post-processing on raw detection outputs.</li>
+<li>Compute mAP@50 on a validation set of annotated aerial images.</li>
+<br>
+</section>
+
+<section id="08_semantic_segmentation">
+<h1>Chapter 8: Semantic Segmentation</h1>
+<br>
+<h2>8.1 Building Footprint Extraction</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models import get_model
+import torch
+
+# SegFormer-B2 (state-of-the-art semantic segmentation)
+model = get_model("segformer", variant="b2",
+                   in_channels=6, num_classes=2)
+
+# Tiled inference for large scenes
+from pygeovision.inference.tiled import TiledInference
+
+tiler = TiledInference(model=model, tile_size=512, overlap=64)
+pred  = tiler.predict("./data/prepared.tif", output_path="./pred/buildings.tif")
+</code></pre>
+<br>
+<h2>8.2 Road Network Extraction</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("road_network",
+                          bbox=BBOX, date="2026-06", output_dir="./roads/")
+print(f"Road length: {result.stats.get('total_length_km', 0):.1f} km")
+</code></pre>
+<br>
+<h2>8.3 Water Body Segmentation</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("water_bodies",
+                          bbox=BBOX, date="2026-06", output_dir="./water/")
+print(f"Water coverage: {result.stats.get('water_area_km2', 0):.2f} km2")
+</code></pre>
+<br>
+<h2>8.4 Custom Training</h2>
+<br>
+<pre><code class="language-python">from pygeovision.training.data import GeoSegDataset, make_geo_loaders
+
+train_dl, val_dl = make_geo_loaders(
+    image_dir = "./data/train/images/",
+    mask_dir  = "./data/train/masks/",
+    batch_size = 8,
+    tile_size  = 512,
+    augment    = True,
+)
+
+from pygeovision.training import GeoTrainer
+trainer = GeoTrainer(model=model, output_dir="./checkpoints/")
+trainer.train(train_dl, val_dl, epochs=100, lr=3e-4)
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run semantic segmentation on your city with SegFormer-B2.</li>
+<li>Extract the road network and compare length vs OSM data.</li>
+<li>Segment agricultural fields. Compute mean field area.</li>
+<br>
+<h2>8.5 Tiled Inference for Large Scenes</h2>
+<br>
+<p>Sentinel-2 scenes are typically 10,980 × 10,980 pixels — too large to process</p>
+<p>in a single GPU forward pass:</p>
+<br>
+<pre><code class="language-python">from pygeovision.inference.tiled import TiledInference
+
+# Auto-tile with overlap to avoid boundary artefacts
+tiler = TiledInference(
+    model     = segformer_b2,
+    tile_size = 512,
+    overlap   = 64,        # pixels of overlap to average at boundaries
+    batch_size = 4,         # tiles per GPU batch
+)
+pred = tiler.predict("./data/large_scene.tif",
+                      output_path="./pred/segmentation.tif")
+
+print(f"Processed: {pred.shape[1]:,} x {pred.shape[2]:,} pixels")
+print(f"Output:    {pred.output_path}")
+</code></pre>
+<br>
+<h2>8.6 Multi-Scale Inference (Test-Time Augmentation)</h2>
+<br>
+<pre><code class="language-python">def tta_predict(model, image, scales=(0.75, 1.0, 1.25), flips=True):
+    """Test-time augmentation for improved accuracy."""
+    import torch, torch.nn.functional as F
+
+    preds = []
+    for scale in scales:
+        h, w = image.shape[-2:]
+        img_scaled = F.interpolate(image, size=(int(h*scale), int(w*scale)),
+                                    mode="bilinear", align_corners=False)
+        with torch.no_grad():
+            pred = model(img_scaled)
+        pred = F.interpolate(pred, size=(h,w), mode="bilinear", align_corners=False)
+        preds.append(pred)
+
+        if flips:
+            # Horizontal flip
+            pred_flip = model(img_scaled.flip(-1)).flip(-1)
+            pred_flip = F.interpolate(pred_flip, size=(h,w), mode="bilinear",
+                                       align_corners=False)
+            preds.append(pred_flip)
+
+    return torch.stack(preds, 0).mean(0).argmax(1)
+</code></pre>
+<br>
+<h2>8.7 Domain Adaptation</h2>
+<br>
+<pre><code class="language-python"># When training and test domains differ (e.g. Ghana vs Ethiopia buildings)
+# Use domain adaptation to improve generalisation:
+
+class AdversarialDA(nn.Module):
+    def __init__(self, encoder, task_head, domain_head):
+        super().__init__()
+        self.encoder     = encoder
+        self.task_head   = task_head
+        self.domain_head = domain_head  # predicts: source or target?
+
+    def forward(self, x, alpha=1.0):
+        feats = self.encoder(x)
+        task_out   = self.task_head(feats)
+        # Gradient reversal: confuse domain classifier
+        domain_out = self.domain_head(GradientReversal.apply(feats, alpha))
+        return task_out, domain_out
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Semantic segmentation assigns a class to every pixel. SegFormer-B2 is the</p>
+<p>recommended baseline for most EO tasks. Use TiledInference for large scenes,</p>
+<p>FocalDice loss for imbalanced classes, and TTA for production accuracy.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run SegFormer-B2 over a full Sentinel-2 scene. How long does tiled inference take?</li>
+<li>Compare TTA vs single-pass accuracy on a validation set.</li>
+<li>Train on European cities and evaluate on an African city (domain shift).</li>
+<li>Implement connected-component post-processing to remove small noise regions.</li>
+<br>
+</section>
+
+<section id="09_instance_segmentation">
+<h1>Chapter 9: Instance Segmentation</h1>
+<br>
+<h2>9.1 Individual Building Extraction</h2>
+<br>
+<p>Instance segmentation separates individual objects (each building has its</p>
+<p>own ID and boundary), unlike semantic segmentation which labels classes.</p>
+<br>
+<pre><code class="language-python">from pygeovision.models.detection import InstanceSegmenter
+
+seg    = InstanceSegmenter(model="mask_rcnn", in_channels=3)
+result = seg.predict("./data/naip_scene.tif")
+
+print(f"Buildings found: {len(result['instances'])}")
+for inst in result['instances'][:5]:
+    print(f"  ID={inst['id']}  area={inst['area_m2']:.0f}m2  "
+          f"conf={inst['confidence']:.2f}")
+</code></pre>
+<br>
+<h2>9.2 Tree Crown Detection</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.detection import TreeCrownDetector
+
+detector = TreeCrownDetector(min_area_m2=5)
+crowns   = detector.detect("./data/lidar_chm.tif")
+
+n_trees    = len(crowns)
+mean_crown = sum(c["area_m2"] for c in crowns) / n_trees
+print(f"Trees: {n_trees:,}  Mean crown: {mean_crown:.1f} m2")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run instance segmentation on a high-resolution aerial image.</li>
+<li>Compute the building footprint distribution (area histogram).</li>
+<li>Detect tree crowns in a forest scene. Estimate stem density (trees/ha).</li>
+<br>
+<h2>9.3 Evaluation Metrics for Instance Segmentation</h2>
+<br>
+<pre><code class="language-python">import numpy as np
+
+def compute_instance_iou(pred_mask, true_mask):
+    """Compute IoU between two binary instance masks."""
+    inter = (pred_mask & true_mask).sum()
+    union = (pred_mask | true_mask).sum()
+    return inter / (union + 1e-8)
+
+def match_instances(pred_instances, true_instances, iou_threshold=0.5):
+    """Match predicted instances to ground truth using Hungarian matching."""
+    from scipy.optimize import linear_sum_assignment
+    import numpy as np
+
+    n_pred = len(pred_instances)
+    n_true = len(true_instances)
+    iou_matrix = np.zeros((n_pred, n_true))
+
+    for i, pred in enumerate(pred_instances):
+        for j, true in enumerate(true_instances):
+            iou_matrix[i, j] = compute_instance_iou(pred, true)
+
+    pred_idx, true_idx = linear_sum_assignment(-iou_matrix)
+    matched = [(pi, ti) for pi, ti in zip(pred_idx, true_idx)
+               if iou_matrix[pi, ti] &gt;= iou_threshold]
+
+    tp = len(matched)
+    fp = n_pred - tp
+    fn = n_true - tp
+    precision = tp / (tp + fp + 1e-8)
+    recall    = tp / (tp + fn + 1e-8)
+    f1        = 2*precision*recall / (precision + recall + 1e-8)
+    return {"tp":tp, "fp":fp, "fn":fn, "precision":precision,
+            "recall":recall, "f1":f1}
+</code></pre>
+<br>
+<h2>9.4 Applications</h2>
+<br>
+<h3>Individual tree crown delineation</h3>
+<br>
+<pre><code class="language-python"># Tree crowns in high-resolution imagery
+from pygeovision.models.detection import TreeCrownDetector
+
+det     = TreeCrownDetector(min_area_m2=4, nms_iou=0.3)
+crowns  = det.detect("./data/lidar_chm.tif")
+
+n_trees = len(crowns)
+ha      = sum(c["area_m2"] for c in crowns) / 1e4
+density = n_trees / (total_area_ha)
+print(f"Trees:   {n_trees:,}")
+print(f"Density: {density:.0f} trees/ha")
+print(f"Mean crown: {sum(c['area_m2'] for c in crowns)/n_trees:.1f} m2")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Instance segmentation produces individual object masks. It requires panoptic-</p>
+<p>style annotations and NMS post-processing. Useful for building footprint</p>
+<p>separation, tree crown mapping, and vessel instance tracking.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run instance segmentation on a dense urban block. Compute building count.</li>
+<li>Detect tree crowns in a forest patch. Estimate stems per hectare.</li>
+<li>Implement NMS for overlapping building predictions.</li>
+<br>
+</section>
+
+<section id="10_change_detection">
+<h1>Chapter 10: Change Detection</h1>
+<br>
+<h2>10.1 Bi-Temporal Change Detection</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.change_detection.changeformer import ChangeDetection
+
+cd = ChangeDetection(model_variant="changeformer",
+                      in_channels=6, num_classes=2)
+cd.build()
+
+result = cd.detect(
+    pre_path    = "./data/before.tif",
+    post_path   = "./data/after.tif",
+    output_path = "./change/change_mask.tif",
+)
+print(f"Changed area: {result['change_pct']:.1f}%")
+</code></pre>
+<br>
+<h2>10.2 Deforestation Detection</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("forest_monitoring",
+                          bbox=BBOX, date="2026-06", output_dir="./forest/")
+print(f"Forest loss: {result.stats.get('loss_area_km2', 0):.1f} km2")
+print(f"Loss rate:   {result.stats.get('annual_loss_pct', 0):.2f}%/year")
+</code></pre>
+<br>
+<h2>10.3 4-Class Damage Assessment</h2>
+<br>
+<pre><code class="language-python"># 4-class: 0=no damage, 1=minor, 2=moderate, 3=severe
+cd4 = ChangeDetection(model_variant="changeformer",
+                       in_channels=6, num_classes=4)
+cd4.build()
+
+damage = cd4.detect("./before.tif", "./after.tif", output_path="./damage.tif")
+
+for cls, label in enumerate(["No damage","Minor","Moderate","Severe"]):
+    pct = (damage.prediction == cls).mean() * 100
+    print(f"  {label:&lt;12}: {pct:.1f}%")
+</code></pre>
+<br>
+<h2>10.4 Urban Growth Analysis</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("urban_growth",
+                          bbox=BBOX, date="2026-06", output_dir="./urban/")
+growth_km2 = result.stats.get("new_urban_area_km2", 0)
+print(f"New urban area (last decade): {growth_km2:.1f} km2")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Compare pre/post Sentinel-2 for a major construction project.</li>
+<li>Map deforestation in a rainforest region over 5 years.</li>
+<li>Run 4-class damage assessment on earthquake imagery.</li>
+<br>
+<h2>10.5 Multi-Temporal Change Detection</h2>
+<br>
+<pre><code class="language-python">import numpy as np, rasterio
+
+paths = ["./data/ndvi_2023.tif","./data/ndvi_2024.tif","./data/ndvi_2025.tif"]
+stack = []
+for path in paths:
+    with rasterio.open(path) as src:
+        stack.append(src.read(1).astype("float32"))
+stack  = np.stack(stack, axis=0)   # (T, H, W)
+trend  = np.polyfit(range(len(paths)), stack.reshape(len(paths),-1), 1)[0]
+trend  = trend.reshape(stack.shape[1], stack.shape[2])
+print(f"Declining pixels: {(trend &lt; -0.05).mean()*100:.1f}%")
+</code></pre>
+<br>
+<h2>10.6 Accuracy Assessment</h2>
+<br>
+<pre><code class="language-python">from sklearn.metrics import confusion_matrix
+import numpy as np
+
+def change_accuracy(true, pred):
+    cm    = confusion_matrix(true.ravel(), pred.ravel(), labels=[0,1])
+    oa    = cm.diagonal().sum() / cm.sum()
+    tp,tn,fp,fn = cm[1,1],cm[0,0],cm[0,1],cm[1,0]
+    po    = oa
+    pe    = ((cm[0,:].sum()*cm[:,0].sum()) + (cm[1,:].sum()*cm[:,1].sum())) / cm.sum()**2
+    kappa = (po - pe) / (1 - pe + 1e-8)
+    f1    = 2*tp / (2*tp+fp+fn+1e-8)
+    print(f"OA={oa:.4f}  Kappa={kappa:.4f}  F1={f1:.4f}")
+    return {"oa":oa,"kappa":kappa,"f1":f1}
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Change detection compares multi-temporal imagery. Kappa coefficient is the</p>
+<p>standard metric. Multi-temporal stacking reveals gradual changes invisible</p>
+<p>in bi-temporal comparisons.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Detect deforestation in the Amazon between two Sentinel-2 dates.</li>
+<li>Map urban expansion in a fast-growing city over 10 years.</li>
+<li>Compute Kappa coefficient for your change detection results.</li>
+<br>
+</section>
+
+<section id="11_pixel_regression">
+<h1>Chapter 11: Pixel-Level Regression</h1>
+<br>
+<h2>11.1 Canopy Height Estimation</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models import get_model
+import torch
+
+# UNet regression model for canopy height
+model = get_model("unet_regressor",
+                   encoder_name="resnet50",
+                   in_channels=6,
+                   output_channels=1)
+
+with torch.no_grad():
+    x      = torch.randn(1, 6, 512, 512)
+    height = model(x)  # continuous values in metres
+
+print(f"Height range: {height.min():.1f} to {height.max():.1f} m")
+</code></pre>
+<br>
+<h2>11.2 Biomass Estimation</h2>
+<br>
+<pre><code class="language-python"># AGB (Above-Ground Biomass) from NDVI + allometric equation
+ndvi     = (nir - red) / (nir + red + 1e-8)
+evi      = 2.5 * (nir - red) / (nir + 6*red - 7.5*blue + 1)
+
+# Empirical model (pantropical)
+agb_t_ha = 90.0 * evi + 20.0   # tonnes per hectare (simplified)
+agb_t_ha = agb_t_ha * (ndvi &gt; 0.3)  # mask non-vegetation
+
+total_agb = agb_t_ha.mean() * area_ha
+print(f"Estimated AGB: {total_agb:.0f} tonnes")
+print(f"Carbon stock:  {total_agb * 0.47:.0f} tonnes C")
+</code></pre>
+<br>
+<h2>11.3 Land Surface Temperature</h2>
+<br>
+<pre><code class="language-python"># Landsat 8/9 Band 10 (thermal)
+import rasterio, numpy as np
+
+with rasterio.open("./data/LC09_B10.tif") as src:
+    toa_radiance = src.read(1).astype("float32")
+
+K1, K2 = 774.8853, 1321.0789  # Landsat 9 constants
+lst_kelvin = K2 / np.log(K1 / toa_radiance + 1)
+lst_celsius = lst_kelvin - 273.15
+
+print(f"LST range: {lst_celsius.min():.1f} to {lst_celsius.max():.1f} C")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Estimate canopy height for a forested study area.</li>
+<li>Compute carbon stock from NDVI + EVI combination.</li>
+<li>Map urban heat island intensity using LST difference (urban vs rural).</li>
+<br>
+<h2>11.4 Soil Moisture from SAR</h2>
+<br>
+<pre><code class="language-python">import numpy as np, rasterio
+
+with rasterio.open("./sar/S1_VV_db.tif") as src:
+    vv_db = src.read(1).astype("float32")
+
+vv_linear  = 10 ** (vv_db / 10)
+soil_moist = np.clip((vv_linear - 0.01) / 0.49, 0, 1) * 0.5
+print(f"Mean soil moisture: {soil_moist.mean():.3f} m3/m3")
+</code></pre>
+<br>
+<h2>11.5 Yield Prediction with LSTM</h2>
+<br>
+<pre><code class="language-python">import torch, torch.nn as nn
+
+class LSTMYield(nn.Module):
+    def __init__(self, n_feat=4, hidden=64):
+        super().__init__()
+        self.lstm = nn.LSTM(n_feat, hidden, 2, batch_first=True, dropout=0.2)
+        self.head = nn.Linear(hidden, 1)
+
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        return self.head(out[:,-1]).squeeze(-1)
+
+model    = LSTMYield(n_feat=4, hidden=128)
+optimizer= torch.optim.AdamW(model.parameters(), lr=1e-3)
+loss_fn  = nn.MSELoss()
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Pixel regression predicts continuous values (height, biomass, LST, moisture).</p>
+<p>LSTM models capture temporal crop growth for yield prediction.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Estimate canopy height for a forest patch.</li>
+<li>Predict wheat yield from 12-month NDVI time-series.</li>
+<li>Map urban heat island using Landsat LST.</li>
+<br>
+</section>
+
+<section id="12_foundation_models">
+<h1>Chapter 12: Foundation Models</h1>
+<br>
+<h2>12.1 What Are Foundation Models?</h2>
+<br>
+<p>Foundation models are pre-trained on massive datasets and adapted for</p>
+<p>downstream tasks with minimal fine-tuning. In EO, they learn general</p>
+<p>representations of the Earth's surface that transfer across scenes, seasons,</p>
+<p>and regions.</p>
+<br>
+<h2>12.2 Prithvi-EO-2.0</h2>
+<br>
+<p>NASA's Prithvi-EO-2.0 is a 600M parameter masked autoencoder pre-trained on</p>
+<p>HLS (Harmonised Landsat Sentinel) data covering the continental United States.</p>
+<br>
+<pre><code class="language-python">from pygeovision.models.foundation.prithvi import (
+    PrithviTasks, validate_prithvi_input,
+    LAND_COVER_CLASSES, CROP_CLASSES,
+)
+
+# Available task methods
+tasks = PrithviTasks("prithvi_eo_2_0")
+
+# Validate input before inference
+val = validate_prithvi_input(ready_array, source="sentinel2", n_prithvi_bands=6)
+if not val["valid"]:
+    print(f"Input error: {val}")
+
+# Land cover (9-class ESA WorldCover)
+lc = tasks.land_cover(ready_array, source="sentinel2")
+print(f"Classes: {LAND_COVER_CLASSES}")
+print(f"Distribution: {lc['class_distribution']}")
+
+# Flood detection
+fl = tasks.flood_detection(ready_array, source="sentinel2")
+print(f"Flood pixels: {fl['flood_pixels']:,}")
+
+# Crop mapping (10 crop types)
+cr = tasks.crop_mapping(ready_array, source="sentinel2")
+print(f"Crop classes: {CROP_CLASSES}")
+
+# Burn scar mapping
+bs = tasks.burn_scar(ready_array, source="sentinel2")
+print(f"Burn severity: {bs['severity_distribution']}")
+</code></pre>
+<br>
+<h2>12.3 DINOv3</h2>
+<br>
+<p>DINOv3 is trained with self-supervised learning on satellite imagery,</p>
+<p>producing strong spatial representations for unsupervised analysis:</p>
+<br>
+<pre><code class="language-python">from pygeovision.models.foundation.dinov3 import DINOv3Backbone
+
+dino     = DINOv3Backbone(variant="vitl14", satellite_type="optical")
+features = dino.extract_features(image_tensor)  # (B, 1024, H/14, W/14)
+
+# Unsupervised habitat clustering
+from sklearn.cluster import KMeans
+flat     = features.reshape(-1, 1024).numpy()
+km       = KMeans(n_clusters=8, random_state=42)
+clusters = km.fit_predict(flat)
+print(f"Found {len(set(clusters))} habitat clusters")
+</code></pre>
+<br>
+<h2>12.4 Fine-tuning Foundation Models</h2>
+<br>
+<pre><code class="language-python">from pygeovision.training import GeoTrainer
+from pygeovision.training.data import GeoSegDataset
+
+# Freeze encoder, fine-tune decoder
+for param in model.encoder.parameters():
+    param.requires_grad = False
+
+dataset = GeoSegDataset("./data/labelled/", tile_size=224)
+trainer = GeoTrainer(model=model, output_dir="./finetuned/")
+trainer.train(
+    train_loader = DataLoader(dataset, batch_size=16),
+    epochs       = 30,
+    lr           = 1e-4,
+)
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run Prithvi land cover on 3 different landscapes. Compare results.</li>
+<li>Fine-tune Prithvi on 50 labelled patches. What is the improvement?</li>
+<li>Use DINOv3 embeddings for nearest-neighbour scene retrieval.</li>
+<br>
+<h2>12.5 SAM for Interactive Segmentation</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.foundation.sam import GeoSAM
+
+sam = GeoSAM(model_type="vit_h")
+sam.set_image("./data/scene.tif")
+
+# Segment from a single point prompt
+mask = sam.predict_from_point(lat=5.62, lon=-0.22)
+print(f"Segment area: {mask.sum() * 100 / 1e6:.2f} km2")
+
+# Automatic mode
+all_masks = sam.predict_all(points_per_side=32)
+print(f"Total segments: {len(all_masks)}")
+</code></pre>
+<br>
+<h2>12.6 DINOv3 Embeddings for Retrieval</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.foundation.dinov3 import DINOv3Backbone
+import torch, numpy as np
+
+dino = DINOv3Backbone(variant="vitl14", satellite_type="optical")
+
+embeddings = []
+for path in scene_paths:
+    with rasterio.open(path) as src:
+        arr = src.read()[:6].astype("float32")
+    x   = torch.tensor(arr).unsqueeze(0)
+    with torch.no_grad():
+        emb = dino.extract_features(x).mean((-2,-1)).squeeze().numpy()
+    embeddings.append(emb)
+
+embeddings = np.stack(embeddings)  # (N, 1024)
+# Nearest-neighbour retrieval
+dists = np.linalg.norm(embeddings - embeddings[0], axis=1)
+similar = np.argsort(dists)[1:6]
+print(f"Most similar scenes: {similar}")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Prithvi, DINOv3, and SAM are the three key EO foundation models in</p>
+<p>PyGeoVision. Each requires different input preparation and serves different</p>
+<p>task types. LoRA fine-tuning adapts large models efficiently.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Use SAM to segment all buildings in an aerial image.</li>
+<li>Build a scene retrieval system from DINOv3 embeddings.</li>
+<li>Fine-tune Prithvi on 50 patches. Compare zero-shot vs fine-tuned mIoU.</li>
+<br>
+</section>
+
+<section id="13_vision_language">
+<h1>Chapter 13: Vision-Language Models</h1>
+<br>
+<h2>13.1 CLIP for Zero-Shot Analysis</h2>
+<br>
+<p>CLIP learns joint embeddings of images and text, enabling zero-shot</p>
+<p>classification without any labelled satellite data:</p>
+<br>
+<pre><code class="language-python">from pygeovision.models.vlm.clip_zero_shot import CLIPZeroShot
+
+clip = CLIPZeroShot(model="openai/clip-vit-large-patch14")
+
+# Zero-shot scene classification
+result = clip.classify(
+    image_path = "./data/scene.tif",
+    labels     = ["flooded farmland", "drought-stressed crops",
+                   "healthy dense vegetation", "bare soil",
+                   "urban expansion", "deforestation"],
+)
+print(f"Predicted: {result['label']}  ({result['confidence']:.1%})")
+
+# Batch classification
+results = clip.batch_classify(
+    image_dir = "./data/patches/",
+    labels    = ["forest", "savanna", "water", "urban", "agriculture"],
+    top_k     = 3,
+)
+</code></pre>
+<br>
+<h2>13.2 Moondream Visual Question Answering</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.vlm.moondream import MoondreamVQA
+
+vqa = MoondreamVQA()
+
+answer = vqa.ask(
+    image_path = "./data/sentinel2_crop.tif",
+    question   = "How many distinct agricultural fields can you see?",
+)
+print(f"Answer: {answer}")
+
+# Automatic captioning
+caption = vqa.caption("./data/disaster_scene.tif")
+print(f"Caption: {caption}")
+</code></pre>
+<br>
+<h2>13.3 Image-Text Retrieval</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.vlm.clip_zero_shot import CLIPZeroShot
+
+clip   = CLIPZeroShot()
+images = ["./data/flood_2024.tif", "./data/forest_ghana.tif",
+          "./data/city_accra.tif", "./data/farm_nile.tif"]
+
+# Find images matching a text query
+matches = clip.retrieve(
+    query  = "a flooded urban area with submerged buildings",
+    images = images,
+    top_k  = 2,
+)
+for img_path, score in matches:
+    print(f"  {img_path}: {score:.3f}")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Apply CLIP zero-shot classification to 20 Sentinel-2 patches.</li>
+<li>Ask Moondream to count buildings in an aerial image.</li>
+<li>Build a text-based image retrieval system for your data archive.</li>
+<br>
+<h2>13.4 Automated Caption Generation</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.vlm.moondream import MoondreamVQA
+
+vqa  = MoondreamVQA()
+
+# Caption a disaster scene
+cap  = vqa.caption("./data/flood_scene.tif")
+print(f"Auto-caption: {cap}")
+
+# Targeted question answering
+ans  = vqa.ask("./data/urban_scene.tif",
+                "Are there any visible signs of damage to the buildings?")
+print(f"Answer: {ans}")
+
+# Count objects
+count = vqa.ask("./data/parking_lot.tif",
+                 "How many vehicles are visible in the parking lot?")
+print(f"Vehicle count: {count}")
+</code></pre>
+<br>
+<h2>13.5 Building a Geospatial VQA System</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.vlm.clip_zero_shot import CLIPZeroShot
+
+clip   = CLIPZeroShot()
+LABELS = ["flooded urban area", "drought-stressed cropland",
+           "dense tropical forest", "active wildfire smoke",
+           "coastal erosion", "industrial facility"]
+
+# Process an archive of scenes
+import pathlib
+results = {}
+for path in pathlib.Path("./data/scenes/").glob("*.tif"):
+    result = clip.classify(str(path), labels=LABELS)
+    results[path.name] = result
+
+# Count by category
+from collections import Counter
+cats = Counter(v["label"] for v in results.values())
+for cat, count in cats.most_common():
+    print(f"  {cat}: {count} scenes")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Vision-language models bring natural language into geospatial analysis.</p>
+<p>CLIP enables zero-shot classification from any text description. Moondream</p>
+<p>answers questions about satellite images without any training data.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Classify 20 Sentinel-2 scenes using 8 CLIP labels.</li>
+<li>Ask Moondream to describe damage severity in disaster imagery.</li>
+<li>Build a text-based image retrieval system for your scene archive.</li>
+<li>Compare CLIP zero-shot vs Prithvi supervised for land cover accuracy.</li>
+<br>
+</section>
+
+<section id="14_sar_processing">
+<h1>Chapter 14: SAR Processing</h1>
+<br>
+<h2>14.1 Understanding SAR Data</h2>
+<br>
+<p>Synthetic Aperture Radar (SAR) transmits microwave pulses and measures backscatter.</p>
+<p>Unlike optical sensors, SAR operates independently of sunlight and clouds.</p>
+<br>
+<tr><td>Property</td><td>Optical</td><td>SAR</td></tr>
+<p>|----------|---------|-----|</p>
+<tr><td>Solar illumination</td><td>Required</td><td>Not needed</td></tr>
+<tr><td>Cloud penetration</td><td>No</td><td>Yes</td></tr>
+<tr><td>Phase info</td><td>No</td><td>Yes (SLC)</td></tr>
+<tr><td>Flood detection</td><td>Difficult in clouds</td><td>Always available</td></tr>
+<br>
+<h2>14.2 The Three Production Bug-Fixes</h2>
+<br>
+<h3>BUG 1: Identity-transform CRS corruption</h3>
+<pre><code class="language-python">from pygeovision.data.validators.georeference import validate_georeference
+
+result = validate_georeference("./sar/S1_reprojected.tif")
+working = result.get("repaired_path") or "./sar/S1_reprojected.tif"
+</code></pre>
+<br>
+<h3>BUG 2: Partial download detection</h3>
+<pre><code class="language-python">from pygeovision.data.validators.georeference import check_download_complete
+
+check = check_download_complete("./sar/S1_GRD.tif")
+if not check["complete"]:
+    raise ValueError(f"Incomplete download: {check['errors']}")
+</code></pre>
+<br>
+<h3>BUG 3: WGS84 vs UTM CRS mismatch</h3>
+<pre><code class="language-python">from pygeovision.data.validators.georeference import reproject_bbox_to_raster_crs
+
+bbox_utm = reproject_bbox_to_raster_crs((-0.30, 5.50, -0.05, 5.70), "./sar/S1.tif")
+</code></pre>
+<br>
+<h2>14.3 Complete SAR Pipeline</h2>
+<br>
+<pre><code class="language-python">from pygeovision.data.processors.sar import (
+    verify_sar_downloads, validate_sar_georeference,
+    despeckle_sar, linear_to_db, normalise_sar_for_ai, clip_sar_to_bbox,
+)
+
+# Correct order: verify -&gt; georeference -&gt; despeckle(LINEAR!) -&gt; dB -&gt; normalise -&gt; clip
+check = verify_sar_downloads("./sar/S1_GRD.tif")
+assert check["complete"]
+
+geo     = validate_sar_georeference("./sar/S1_GRD.tif")
+working = geo.repaired_path if not geo.valid else "./sar/S1_GRD.tif"
+
+despeckle_sar(working,               "./sar/S1_desp.tif", filter_type="enhanced_lee")
+linear_to_db ("./sar/S1_desp.tif",  "./sar/S1_db.tif")
+normalise_sar_for_ai("./sar/S1_db.tif", "./sar/S1_norm.tif")
+clip_sar_to_bbox("./sar/S1_norm.tif", "./sar/S1_clip.tif",
+                  bbox_wgs84=(-0.30, 5.50, -0.05, 5.70))
+</code></pre>
+<br>
+<p><strong>Critical:</strong> Despeckle MUST happen before dB conversion. Speckle follows</p>
+<p>a Gamma distribution in linear power — not in dB space.</p>
+<br>
+<h2>14.4 SAR Flood Detection</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.adapters.sar_prithvi import SARPrithviAdapter
+import rasterio, numpy as np
+
+with rasterio.open("./sar/S1_clip.tif") as src:
+    vv = src.read(1).astype("float32")[np.newaxis]
+    vh = src.read(2).astype("float32")[np.newaxis]
+
+adapter = SARPrithviAdapter(mode="zero_shot", task="flood_detection")
+result  = adapter.run(vv, vh)
+mask    = result["prediction"]
+print(f"Flooded: {mask.sum()*100/1e6:.1f} km2 at 10m resolution")
+</code></pre>
+<br>
+<h2>14.5 SAR Change Detection (Damage Assessment)</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.change_detection.changeformer import ChangeDetection
+
+cd = ChangeDetection(model_variant="changeformer", in_channels=2, num_classes=4)
+cd.build()
+damage = cd.detect("./sar/S1_pre.tif", "./sar/S1_post.tif",
+                    output_path="./sar/damage.tif")
+
+for i, cls in enumerate(["Stable","Minor","Moderate","Severe"]):
+    pct = (damage.prediction == i).mean() * 100
+    print(f"  {cls}: {pct:.1f}%")
+</code></pre>
+<br>
+<h2>14.6 Oil Spill Detection</h2>
+<br>
+<p>Oil slicks suppress SAR backscatter (specular reflection). The same dark-pixel</p>
+<p>algorithm that detects floods also detects oil spills on the sea surface.</p>
+<br>
+<pre><code class="language-python">with rasterio.open("./sar/S1_maritime.tif") as src:
+    vv = src.read(1).astype("float32")
+
+sea_bg    = float(np.nanmedian(vv))
+oil_mask  = (vv &lt; sea_bg * 0.4).astype("uint8")
+oil_area  = oil_mask.sum() * 100 / 1e6
+print(f"Oil slick: {oil_area:.2f} km2")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<li>SAR is cloud-independent and works at night — critical for disasters.</li>
+<li>Three production bug-fixes: CRS validation, download completeness, CRS-aware clip.</li>
+<li>Mandatory order: verify -> georeference -> despeckle (LINEAR!) -> dB -> normalise -> clip.</li>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Download S1 GRD and run the complete pipeline.</li>
+<li>Detect a flood from a real event.</li>
+<li>Compare Enhanced Lee vs Boxcar despeckle filters visually.</li>
+<br>
+</section>
+
+<section id="15_insar_processing">
+<h1>Chapter 15: InSAR Processing</h1>
+<br>
+<h2>15.1 What is InSAR?</h2>
+<br>
+<p>InSAR measures phase differences between two SAR acquisitions to detect</p>
+<p>centimetre-scale ground deformation — earthquakes, subsidence, volcanoes.</p>
+<br>
+<tr><td>Data</td><td>Phase</td><td>Accuracy</td><td>Mode</td></tr>
+<p>|------|-------|----------|------|</p>
+<tr><td>SLC</td><td>Yes</td><td>mm scale</td><td>`slc_phase`</td></tr>
+<tr><td>GRD</td><td>No</td><td>cm-dm</td><td>`amplitude_proxy`</td></tr>
+<br>
+<h2>15.2 Quick Start</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar import InSARProcessor
+
+proc   = InSARProcessor(output_dir="./insar/", wavelength=0.05546576)
+result = proc.full_pipeline("./sar/S1_pre.tif", "./sar/S1_post.tif",
+                              study_area="Istanbul, Turkey")
+print(result.report.summary())
+</code></pre>
+<br>
+<h2>15.3 Interferogram Generation</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.interferogram import generate_interferogram
+
+ifg = generate_interferogram("./sar/pre.tif", "./sar/post.tif",
+                              output_dir="./insar/", filter_type="goldstein")
+print(f"Mean coherence: {ifg['stats']['mean_coherence']:.3f}")
+print(f"Changed area:   {ifg['stats']['changed_pct']:.1f}%")
+</code></pre>
+<br>
+<h2>15.4 Coherence and Masking</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.coherence import estimate_coherence, coherence_mask
+
+coh  = estimate_coherence("./sar/pre.tif", "./sar/post.tif",
+                            output_path="./insar/coh.tif", window_size=7)
+mask = coherence_mask(coh, threshold=0.4)
+print(f"Reliable pixels: {mask.mean()*100:.1f}%")
+</code></pre>
+<br>
+<h2>15.5 Displacement Measurement</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.displacement import phase_to_displacement
+
+# GRD amplitude proxy
+disp = phase_to_displacement("./insar/ifg.tif", "./insar/disp.tif",
+                               mode="amplitude_proxy")
+print(f"Max subsidence: {disp.min()*100:.1f} cm")
+print(f"Max uplift:     {disp.max()*100:.1f} cm")
+</code></pre>
+<br>
+<h2>15.6 Deformation Rate</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.displacement import displacement_rate
+
+rate = displacement_rate(
+    displacement_paths = ["./disp_2023.tif","./disp_2024.tif","./disp_2025.tif"],
+    dates              = ["2023-01-01","2024-01-01","2025-01-01"],
+    output_path        = "./insar/rate_mm_yr.tif",
+)
+print(f"Mean rate: {rate.mean():.1f} mm/year")
+</code></pre>
+<br>
+<h2>15.7 Interpretation</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.interpretation import InSARInterpreter
+
+interp = InSARInterpreter(subsidence_threshold_m=-0.02, min_zone_km2=0.5)
+report = interp.interpret("./insar/disp.tif", coherence_path="./insar/coh.tif",
+                           study_area="Jakarta, Indonesia")
+print(report.summary())
+report.export("./insar/report.json")
+</code></pre>
+<br>
+<h2>15.8 Visualization</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.visualization import InSARViz
+
+viz = InSARViz()
+viz.dashboard(interferogram_path="./insar/ifg.tif",
+               coherence_path="./insar/coh.tif",
+               displacement_path="./insar/disp.tif",
+               rate_path="./insar/rate.tif").export("./insar/dashboard.png")
+</code></pre>
+<br>
+<h2>15.9 Case Study: Turkey Earthquake 2023</h2>
+<br>
+<p>The Feb 6 Mw 7.8 earthquake produced >45 cm co-seismic displacement visible</p>
+<p>in Sentinel-1:</p>
+<br>
+<pre><code class="language-python">proc   = InSARProcessor(output_dir="./turkey/")
+result = proc.full_pipeline("./sar/S1_pre_20230130.tif",
+                              "./sar/S1_post_20230211.tif",
+                              study_area="Kahramanmaras, Turkey")
+
+print(result.report.summary())
+# Max subsidence: -45.2 cm (proxy estimate)
+# Affected area:  2,150 km2
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<li>GRD amplitude proxy gives cm-dm accuracy without SNAP/ISCE2.</li>
+<li>`full_pipeline()` runs interferogram -> coherence -> displacement -> report.</li>
+<li>For mm-precision: use pyroSAR + SNAP to process SLC, then import here.</li>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run full_pipeline on pre/post SAR scenes over a known earthquake.</li>
+<li>Detect subsidence in a city with known groundwater depletion.</li>
+<li>Generate the 4-panel InSAR dashboard.</li>
+<br>
+</section>
+
+<section id="16_timeseries">
+<h1>Chapter 16: Time-Series Analysis</h1>
+<br>
+<h2>16.1 Multi-Temporal Data Acquisition</h2>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+client = pgv.PyGeoVision()
+
+# Download seasonal Sentinel-2 stack (2 years)
+stack_paths = []
+for year in [2024, 2025, 2026]:
+    for month in ["03", "06", "09", "12"]:
+        date = f"{year}-{month}"
+        results = client.search(bbox=BBOX,
+                                 date_range=(f"{date}-01", f"{date}-28"),
+                                 cloud_cover_max=20)
+        if results:
+            dl = client.download(results[:1], output_dir=f"./stack/{date}/",
+                                  bands=BANDS)
+            if dl and dl[0].success:
+                stack_paths.append(dl[0].path)
+
+print(f"Time-series: {len(stack_paths)} scenes")
+</code></pre>
+<br>
+<h2>16.2 NDVI Time-Series</h2>
+<br>
+<pre><code class="language-python">import numpy as np, rasterio
+
+ndvi_series = []
+dates       = []
+
+for path in stack_paths:
+    with rasterio.open(path) as src:
+        nir = src.read(4).astype("float32")
+        red = src.read(3).astype("float32")
+    ndvi = (nir - red) / (nir + red + 1e-8)
+    ndvi_series.append(float(ndvi.mean()))
+    dates.append(path.parent.name)
+
+# Visualise
+from pygeovision.viz import TimeSeriesViewer
+
+tsv = TimeSeriesViewer(
+    paths     = stack_paths,
+    dates     = dates,
+    colormap  = "RdYlGn",
+    band      = 0,   # will compute NDVI internally
+)
+tsv.trend(title="NDVI 2-Year Trend").export("ndvi_trend.png")
+tsv.anomaly(n_sigma=2.0).export("ndvi_anomalies.png")
+</code></pre>
+<br>
+<h2>16.3 Seasonal Decomposition</h2>
+<br>
+<pre><code class="language-python">from statsmodels.tsa.seasonal import seasonal_decompose
+import pandas as pd
+
+series = pd.Series(ndvi_series, index=pd.to_datetime(dates))
+decomp = seasonal_decompose(series, model="additive", period=4)
+
+print(f"Trend: {decomp.trend.mean():.4f}")
+print(f"Seasonal amplitude: {decomp.seasonal.std():.4f}")
+</code></pre>
+<br>
+<h2>16.4 Change Point Detection</h2>
+<br>
+<pre><code class="language-python"># Detect sudden shifts (e.g., deforestation event)
+import numpy as np
+
+def detect_changepoints(series, threshold=2.5):
+    mu    = np.mean(series)
+    sigma = np.std(series)
+    changes = []
+    for i in range(1, len(series)):
+        diff = abs(series[i] - series[i-1])
+        if diff &gt; threshold * sigma:
+            changes.append((i, series[i] - series[i-1]))
+    return changes
+
+changes = detect_changepoints(ndvi_series)
+for idx, magnitude in changes:
+    print(f"  Change at {dates[idx]}: {magnitude:+.4f}")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Download a 2-year quarterly stack. Plot NDVI time-series.</li>
+<li>Identify the seasonal pattern in your study area.</li>
+<li>Detect a deforestation or drought event using change point detection.</li>
+<br>
+<h2>16.5 Phenology Monitoring</h2>
+<br>
+<pre><code class="language-python">import numpy as np
+from scipy.signal import savgol_filter
+
+ndvi_smooth = savgol_filter(ndvi_series, window_length=5, polyorder=2)
+threshold   = ndvi_smooth.max() * 0.5
+above       = ndvi_smooth &gt; threshold
+crossings   = np.diff(above.astype(int))
+
+sos_idx = np.where(crossings == 1)[0]
+eos_idx = np.where(crossings ==-1)[0]
+
+if len(sos_idx) &gt; 0 and len(eos_idx) &gt; 0:
+    print(f"SOS: {dates[sos_idx[0]]}")
+    print(f"EOS: {dates[eos_idx[0]]}")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Time-series analysis reveals temporal dynamics invisible in single-date imagery.</p>
+<p>Use seasonal decomposition, SOS/EOS phenology, and anomaly detection.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Download a 3-year quarterly stack. Plot NDVI time-series.</li>
+<li>Find growing season start/end using SOS/EOS detection.</li>
+<li>Detect a drought event using anomaly detection.</li>
+<br>
+</section>
+
+<section id="17_visualization">
+<h1>Chapter 17: Interactive Visualization</h1>
+<br>
+<h2>17.1 Interactive Map</h2>
+<br>
+<pre><code class="language-python">from pygeovision.viz import Map
+
+# Create map centered on study area
+m = Map(center=(5.6, -0.2), zoom=12, basemap="satellite")
+
+# Add raster layer with colour mapping
+m.add_raster("./data/flood_mask.tif",
+              colormap="Blues", band=0, opacity=0.8,
+              name="Flood Extent")
+
+# Add vector overlay
+m.add_vector("./data/risk_zones.geojson",
+              fill_color="#e74c3c", fill_opacity=0.3,
+              name="Risk Zones")
+
+# Export standalone HTML (no server needed)
+m.export("./maps/flood_risk.html")
+
+# Side-by-side comparison
+split = Map.split_view("./data/before.tif", "./data/after.tif")
+split.export("./maps/before_after.html")
+</code></pre>
+<br>
+<h2>17.2 Raster Viewer</h2>
+<br>
+<pre><code class="language-python">from pygeovision.viz import RasterViewer
+
+rv = RasterViewer("./data/sentinel2.tif", figsize=(12, 10))
+
+# Composites
+rv.rgb(red=2, green=1, blue=0).show()           # True colour
+rv.false_color(nir=3, red=2, green=1).show()    # NIR false colour
+
+# Indices
+rv.ndvi(nir_band=3, red_band=2).export("ndvi.png", dpi=300)
+rv.ndwi(green_band=1, nir_band=3).show()
+
+# Analysis
+rv.histogram().show()                             # All bands
+rv.profile(start_px=(100,50), end_px=(400,300)).show()  # Transect
+</code></pre>
+<br>
+<h2>17.3 Change Viewer</h2>
+<br>
+<pre><code class="language-python">from pygeovision.viz import ChangeViewer
+
+cv = ChangeViewer("./data/before.tif", "./data/after.tif")
+
+cv.split(before_label="2023 Pre-flood",
+          after_label="2023 Post-flood").export("comparison.png")
+
+cv.difference(title="Amplitude Change").show()
+
+stats = cv.statistics("./data/flood_mask.tif")
+print(f"Flooded area: {stats.get('changed_area_km2', 0):.1f} km2")
+</code></pre>
+<br>
+<h2>17.4 Time-Series Viewer</h2>
+<br>
+<pre><code class="language-python">from pygeovision.viz import TimeSeriesViewer
+
+tsv = TimeSeriesViewer(
+    paths     = ndvi_paths,
+    dates     = ndvi_dates,
+    colormap  = "RdYlGn",
+)
+
+tsv.animate("ndvi.gif", fps=3)                   # Animated GIF
+tsv.trend(title="NDVI 3-Year Trend").show()      # Trend line
+tsv.seasonal(period=4).show()                    # Seasonal decomp
+tsv.anomaly(n_sigma=2.0).export("anomalies.png") # Anomaly detection
+tsv.mosaic(max_cols=4).export("mosaic.png")      # Overview grid
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Create an interactive map of your study area with raster and vector layers.</li>
+<li>Build a before/after split view for a recent event.</li>
+<li>Animate a 2-year NDVI time-series as GIF.</li>
+<br>
+<h2>17.5 VectorViewer</h2>
+<br>
+<pre><code class="language-python">from pygeovision.viz import VectorViewer
+import geopandas as gpd
+
+vv = VectorViewer("./data/buildings.geojson")
+vv.view(color="#3388ff", fill_opacity=0.4).show()
+vv.table(max_rows=10)
+vv.style_by_attribute("area", cmap="Reds").export("choropleth.png")
+filtered = vv.filter("area &gt; 500")
+vv.heatmap().export("heatmap.png")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>PyGeoVision's visualization layer covers interactive maps, raster indices,</p>
+<p>vector styling, change comparison, and time-series animation — all with</p>
+<p>standalone HTML export requiring no server.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Build an interactive map with flood extent and risk zones.</li>
+<li>Animate a 2-year NDVI time-series as GIF.</li>
+<li>Create a choropleth map of building area distribution.</li>
+<br>
+</section>
+
+<section id="18_insar_visualization">
+<h1>Chapter 18: InSAR Visualization</h1>
+<br>
+<h2>18.1 InSAR Product Visualization</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.visualization import InSARViz
+
+viz = InSARViz(figsize=(12, 10))
+
+# Individual products
+viz.interferogram("./insar/ifg.tif").show()     # HSV rainbow colour cycle
+viz.coherence("./insar/coh.tif").show()          # Red-Yellow-Green colour ramp
+viz.displacement("./insar/disp.tif").show()      # RdBu + histogram
+viz.deformation_rate("./insar/rate.tif").show()  # Rate map + statistics
+</code></pre>
+<br>
+<h2>18.2 Full Dashboard</h2>
+<br>
+<pre><code class="language-python">viz.dashboard(
+    interferogram_path = "./insar/ifg.tif",
+    coherence_path     = "./insar/coh.tif",
+    displacement_path  = "./insar/disp.tif",
+    rate_path          = "./insar/rate.tif",
+    title              = "InSAR Analysis - Istanbul Subsidence",
+).export("./insar/dashboard.png", dpi=300)
+</code></pre>
+<br>
+<h2>18.3 Displacement Time-Series</h2>
+<br>
+<pre><code class="language-python">viz.time_series(
+    displacement_paths = disp_paths,
+    dates              = disp_dates,
+    pixel_coords       = [(256, 256), (300, 180)],  # sample pixels
+    title              = "Displacement at Key Locations",
+).export("./insar/timeseries.png")
+</code></pre>
+<br>
+<h2>18.4 Interpretation Summary</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.interpretation import InSARInterpreter
+
+interp = InSARInterpreter()
+report = interp.interpret("./insar/disp.tif", coherence_path="./insar/coh.tif")
+
+# Print structured report
+print(report.summary())
+
+# Export
+report.export("./insar/report.json")
+report.export("./insar/report.md")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Visualise an interferogram — how many phase cycles (fringes) do you count?</li>
+<li>Create the full 4-panel dashboard for a SAR pair.</li>
+<li>Plot the displacement time-series for the most-deforming pixel.</li>
+<br>
+<h2>18.5 Interpretation Summary</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.interpretation import InSARInterpreter
+
+interp = InSARInterpreter()
+report = interp.interpret("./insar/disp.tif", study_area="Demo")
+print(report.summary())
+report.export("./insar/report.json")
+report.export("./insar/report.md")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>InSARViz provides specialised visualisation for all InSAR products. The HSV</p>
+<p>colour wheel for wrapped phase, and RdBu for displacement maps, follow InSAR</p>
+<p>community conventions.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Visualise a wrapped interferogram. How many colour cycles (fringes)?</li>
+<li>Create the 4-panel dashboard.</li>
+<li>Plot displacement time-series for the most deforming pixel.</li>
+<br>
+</section>
+
+<section id="19_reporting">
+<h1>Chapter 19: Reporting and Export</h1>
+<br>
+<h2>19.1 Export Formats</h2>
+<br>
+<h3>GeoTIFF and COG</h3>
+<br>
+<pre><code class="language-python">import rasterio
+from rasterio.enums import Resampling
+
+# Save as Cloud Optimised GeoTIFF
+with rasterio.open("./results/mask.tif") as src:
+    data    = src.read()
+    profile = src.profile.copy()
+
+profile.update(driver="GTiff",
+               compress="lzw",
+               tiled=True,
+               blockxsize=512,
+               blockysize=512)
+
+with rasterio.open("./results/mask_cog.tif", "w", **profile) as dst:
+    dst.write(data)
+</code></pre>
+<br>
+<h3>GeoJSON and GeoParquet</h3>
+<br>
+<pre><code class="language-python">import geopandas as gpd
+
+# Vectorise raster mask
+gdf = gpd.read_file("./results/buildings.geojson")
+
+# Export formats
+gdf.to_file("./results/buildings.geojson", driver="GeoJSON")
+gdf.to_file("./results/buildings.shp")
+gdf.to_parquet("./results/buildings.geoparquet")
+
+print(f"Exported {len(gdf)} features")
+</code></pre>
+<br>
+<h2>19.2 HTML Report Generation</h2>
+<br>
+<pre><code class="language-python">from pygeovision.insar.interpretation import InSARInterpreter, DeformationReport
+
+report = interp.interpret("./insar/disp.tif", study_area="Accra, Ghana")
+report.export("./outputs/insar_report.json", format="json")
+report.export("./outputs/insar_report.md",   format="md")
+</code></pre>
+<br>
+<h2>19.3 Statistics Summary</h2>
+<br>
+<pre><code class="language-python">import json
+
+def generate_analysis_report(study_area, results_dir):
+    report = {
+        "study_area":    study_area,
+        "date_generated": "2026-07-04",
+        "results": {}
+    }
+
+    # Building footprints
+    gdf = gpd.read_file(f"{results_dir}/buildings.geojson")
+    report["results"]["buildings"] = {
+        "count":        len(gdf),
+        "total_area_m2": float(gdf.area.sum()),
+        "mean_area_m2":  float(gdf.area.mean()),
+    }
+
+    with open(f"{results_dir}/analysis_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    return report
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Export your analysis results as COG + GeoJSON + GeoParquet.</li>
+<li>Generate an HTML report with embedded maps using the InSAR interpreter.</li>
+<li>Build a summary report that aggregates statistics from multiple pipelines.</li>
+<br>
+<h2>19.4 Automated Report Generation</h2>
+<br>
+<pre><code class="language-python">import json, datetime
+
+def generate_report(study_area, results):
+    report = {
+        "study_area":  study_area,
+        "generated":   datetime.datetime.utcnow().isoformat(),
+        "results":     results,
+        "data_source": "Sentinel-2 L2A / PyGeoVision v2.1.2",
+    }
+    with open("./outputs/report.json","w") as f:
+        json.dump(report, f, indent=2, default=str)
+    print(f"Report saved")
+    return report
+
+report = generate_report("Accra, Ghana", {
+    "flood_area_km2": 12.4,
+    "buildings_affected": 847,
+    "affected_population": 4200,
+})
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Export to GeoTIFF/COG, GeoJSON, GeoParquet, and structured JSON/Markdown</p>
+<p>reports. Always export with metadata (date, model version, data source).</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Export your analysis results as COG + GeoJSON.</li>
+<li>Generate a structured JSON report with flood statistics.</li>
+<li>Build an HTML report with embedded static maps.</li>
+<br>
+</section>
+
+<section id="20_yaml_pipelines">
+<h1>Chapter 20: YAML Pipelines</h1>
+<br>
+<h2>20.1 Introduction to Pipelines</h2>
+<br>
+<p>PyGeoVision pipelines define complete geospatial workflows in YAML:</p>
+<br>
+<pre><code class="language-yaml"># pipeline.yml
+pipeline:
+  name: flood_monitoring_accra
+  schedule: "0 6 * * *"   # daily at 06:00 UTC
+
+  steps:
+    - name: search
+      type: search
+      providers: [planetary_computer]
+      bbox: [-0.30, 5.50, -0.05, 5.70]
+      date_range: [today-7d, today]
+      cloud_cover_max: 20
+
+    - name: download
+      type: download
+      bands: [B02, B03, B04, B08, B8A, B11]
+      post_process: [reproject:EPSG:32630, cog]
+
+    - name: prepare
+      type: prepare_for_ai
+      model_type: foundation
+      normalise: scale_factor
+
+    - name: classify
+      type: ai_inference
+      model: prithvi_eo_2_0
+      task: flood_detection
+
+    - name: export
+      type: postprocess
+      operations: [sieve, vectorise, cog]
+      output_dir: ./outputs/
+</code></pre>
+<br>
+<h2>20.2 Running Pipelines</h2>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+
+client = pgv.PyGeoVision()
+
+# Run a YAML pipeline
+result = client.run_pipeline("./pipeline.yml")
+print(f"Status: {result.status}")
+print(f"Output: {result.output_dir}")
+</code></pre>
+<br>
+<h2>20.3 Built-in Pipelines</h2>
+<br>
+<pre><code class="language-python"># 10 named end-to-end pipelines
+PIPELINES = [
+    "building_footprints",    "change_detection",
+    "land_cover",             "water_bodies",
+    "solar_panels",           "crop_monitoring",
+    "disaster_assessment",    "deforestation",
+    "urban_growth",           "carbon_estimation",
+]
+
+for pipe in PIPELINES:
+    result = client.pipeline(pipe, bbox=BBOX, date="2026-06")
+    print(f"  {pipe}: {result.status}")
+</code></pre>
+<br>
+<h2>20.4 Scheduling and Automation</h2>
+<br>
+<pre><code class="language-python">from pygeovision.pipelines.scheduler import PipelineScheduler
+
+scheduler = PipelineScheduler()
+
+# Schedule daily flood monitoring
+scheduler.add(
+    pipeline    = "./pipelines/flood_monitoring.yml",
+    cron        = "0 6 * * *",   # every day at 06:00
+    notify_email = "alerts@org.com",
+)
+
+# Run immediately
+scheduler.run("./pipelines/flood_monitoring.yml")
+
+# List scheduled pipelines
+for job in scheduler.list():
+    print(f"  {job['name']}: {job['next_run']}")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Write a YAML pipeline for NDVI monitoring of a crop region.</li>
+<li>Schedule the pipeline to run every Monday at 08:00.</li>
+<li>Modify the pipeline to send an email alert when NDVI drops below 0.3.</li>
+<br>
+<h2>20.5 Scheduling and Monitoring</h2>
+<br>
+<pre><code class="language-python">from pygeovision.pipelines.scheduler import PipelineScheduler
+
+scheduler = PipelineScheduler()
+scheduler.add(pipeline="./pipelines/flood.yml",
+               cron="0 6 * * *",
+               notify_email="alerts@org.com")
+
+for job in scheduler.list():
+    print(f"  {job['name']}: next={job['next_run']}")
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>YAML pipelines define complete geospatial workflows declaratively.</p>
+<p>Schedule them as daily monitors or trigger on new satellite acquisitions.</p>
+<p>Ten built-in named pipelines cover the most common use cases.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Write a YAML pipeline for NDVI monitoring.</li>
+<li>Schedule it to run every Monday morning.</li>
+<li>Add email alerting when NDVI drops below threshold.</li>
+<br>
+</section>
+
+<section id="21_geoagent">
+<h1>Chapter 21: The AI Agent</h1>
+<br>
+<h2>21.1 What is the GeoAgent?</h2>
+<br>
+<p>GeoAgent converts natural-language geospatial queries into complete pipelines —</p>
+<p>sensor choice, task type, and tool sequence all decided from the problem description.</p>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+from pygeovision.agent import GeoAgent
+
+client = pgv.PyGeoVision()
+agent  = GeoAgent(client, output_dir="./results/", verbose=True)
+agent.set_context(bbox=(-0.30, 5.50, -0.05, 5.70), date="2026-06")
+
+trace = agent.run("Map current flood inundation in the Odaw River Basin")
+print(trace.final_output)  # ./results/flood_mask.geojson
+</code></pre>
+<br>
+<h2>21.2 Decision Hierarchy</h2>
+<br>
+<tr><td>Step</td><td>Decision</td><td>Signals</td></tr>
+<p>|------|----------|---------|</p>
+<tr><td>1</td><td>**Sensor**</td><td>"SAR"/"Sentinel-1"/"cloud" vs "Sentinel-2"/"optical"</td></tr>
+<tr><td>2</td><td>**Task**</td><td>14 types: flood, damage, oil_spill, land_cover, NDVI...</td></tr>
+<tr><td>3</td><td>**Approach**</td><td>Sensor x Task -> exact tool sequence</td></tr>
+<br>
+<h2>21.3 Different Problems, Different Plans</h2>
+<br>
+<pre><code class="language-python"># SAR + flood (cloud-independent)
+agent.run("Map SAR flood — cloud cover 100%")
+# Plan: sar_preprocess -&gt; sar_flood_detection -&gt; postprocess
+
+# SAR + damage (earthquake keywords win)
+agent.run("Detect building damage after earthquake using Sentinel-1")
+# Plan: sar_preprocess -&gt; change_detection(4-class) -&gt; postprocess
+
+# Optical + flood (explicit "Sentinel-2")
+agent.run("Map flood using Sentinel-2 — clear sky today")
+# Plan: search -&gt; download -&gt; prepare_for_ai -&gt; prithvi(flood) -&gt; postprocess
+
+# Optical + land cover
+agent.run("Classify land cover across Ethiopia with Prithvi")
+# Plan: search -&gt; download -&gt; prepare_for_ai -&gt; prithvi(land_cover) -&gt; postprocess
+</code></pre>
+<br>
+<h2>21.4 Streaming</h2>
+<br>
+<pre><code class="language-python">for event in agent.stream("Compute NDVI for crop monitoring"):
+    if event["type"] == "plan":
+        print(f"Plan: {event['steps']} steps")
+    elif event["type"] == "step_done":
+        print(f"  [{event['step']}] {event['tool']} ({'OK' if event['success'] else 'FAIL'})")
+    elif event["type"] == "execution_complete":
+        print(f"Output: {event['final_output']}")
+</code></pre>
+<br>
+<h2>21.5 Heuristic vs LLM Planning</h2>
+<br>
+<pre><code class="language-python"># Heuristic (no API key needed) - covers ~80% of workflows
+agent_h = GeoAgent(client, verbose=False)
+
+# LLM (set ANTHROPIC_API_KEY) - handles complex/ambiguous queries
+import os; os.environ["ANTHROPIC_API_KEY"] = "sk-ant-..."
+agent_l = GeoAgent(client)  # auto-detects key -&gt; uses claude-sonnet-4-6
+</code></pre>
+<br>
+<h2>21.6 Session Memory</h2>
+<br>
+<pre><code class="language-python">agent.set_context(bbox=BBOX, date="2026-06", output_dir="./accra/")
+agent.bind("baseline_sar", "./sar/S1_dry_season.tif")
+
+# Multi-turn
+agent.run("Map flood extent using SAR")
+agent.run("Now classify land cover for comparison")
+
+# Persist
+agent.save_session("./sessions/accra.json")
+agent.load_session("./sessions/accra.json")
+</code></pre>
+<br>
+<h2>21.7 Available Tools</h2>
+<br>
+<tr><td>Tool</td><td>Category</td><td>Function</td></tr>
+<p>|------|----------|----------|</p>
+<tr><td>search_satellite_data</td><td>data</td><td>22+ provider search</td></tr>
+<tr><td>download_satellite_data</td><td>data</td><td>Download + COG</td></tr>
+<tr><td>prepare_for_ai</td><td>preprocessing</td><td>Stack/clip/normalise</td></tr>
+<tr><td>sar_preprocess</td><td>SAR</td><td>S0-S9 pipeline</td></tr>
+<tr><td>sar_flood_detection</td><td>SAR</td><td>Prithvi VH threshold</td></tr>
+<tr><td>prithvi_inference</td><td>inference</td><td>Land cover/flood/crop/burn</td></tr>
+<tr><td>change_detection</td><td>inference</td><td>ChangeFormer</td></tr>
+<tr><td>compute_spectral_index</td><td>analysis</td><td>NDVI/NDWI/NDBI/EVI</td></tr>
+<tr><td>postprocess</td><td>postprocessing</td><td>Sieve/vectorise/COG</td></tr>
+<tr><td>run_pipeline</td><td>pipeline</td><td>Named pipelines</td></tr>
+<br>
+<h2>21.8 Custom Tools</h2>
+<br>
+<pre><code class="language-python">from pygeovision.agent.tools import GeoTool, ToolResult, TOOL_REGISTRY
+
+class PopulationRiskTool(GeoTool):
+    name        = "population_at_risk"
+    description = "Compute population at risk from flood mask + WorldPop"
+    parameters  = [{"name":"flood_path","type":"str","required":True},
+                    {"name":"pop_path",  "type":"str","required":True}]
+
+    def run(self, flood_path, pop_path, **_):
+        import rasterio, numpy as np
+        with rasterio.open(flood_path) as s: mask = s.read(1)
+        with rasterio.open(pop_path)   as s: pop  = s.read(1)
+        at_risk = float((pop * mask).sum())
+        return ToolResult(tool=self.name, success=True,
+                           output={"population_at_risk": at_risk})
+
+TOOL_REGISTRY["population_at_risk"] = PopulationRiskTool
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<li>GeoAgent: natural language -> sensor decision -> task decision -> tool sequence.</li>
+<li>Two planners: heuristic (zero dependencies) and LLM (Anthropic API key).</li>
+<li>Session memory persists spatial context across queries.</li>
+<li>Extend with custom tools by subclassing GeoTool.</li>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run the agent with 5 different queries. Verify sensor/task decisions.</li>
+<li>Implement a custom tool that computes flooded road length.</li>
+<li>Compare heuristic vs LLM plans for "assess storm damage in the coastal zone".</li>
+<br>
+</section>
+
+<section id="22_deployment">
+<h1>Chapter 22: Deployment</h1>
+<br>
+<h2>22.1 Docker Deployment</h2>
+<br>
+<pre><code class="language-bash"># Build production image
+docker build -t pygeovision:2.1.2 \
+  -f deployment/docker/Dockerfile.prod .
+
+# Run with volume mount for data persistence
+docker run -d \
+  -p 8080:8080 \
+  -v ./data:/data \
+  -v ./results:/app/results \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e PGV_LOG_LEVEL=INFO \
+  pygeovision:2.1.2
+
+# Verify
+curl http://localhost:8080/health
+</code></pre>
+<br>
+<h2>22.2 Kubernetes Deployment</h2>
+<br>
+<pre><code class="language-bash"># Apply manifests
+kubectl apply -f deployment/kubernetes/manifests/namespace.yaml
+kubectl apply -f deployment/kubernetes/manifests/deployment.yaml
+kubectl apply -f deployment/kubernetes/manifests/service.yaml
+
+# Check status
+kubectl -n pygeovision get pods
+kubectl -n pygeovision get svc
+
+# Scale
+kubectl -n pygeovision scale deployment pygeovision-api --replicas=5
+</code></pre>
+<br>
+<h2>22.3 Terraform (AWS)</h2>
+<br>
+<pre><code class="language-bash">cd deployment/terraform/aws
+
+terraform init
+terraform plan   -var="environment=production"
+terraform apply  -var="environment=production" \
+                 -var="anthropic_api_key=sk-ant-..."
+
+# Get cluster endpoint
+terraform output eks_cluster_endpoint
+terraform output kubeconfig_command
+</code></pre>
+<br>
+<h2>22.4 FastAPI Serving</h2>
+<br>
+<pre><code class="language-python">from pygeovision.serving.server import create_app
+import uvicorn
+
+app = create_app(
+    providers    = ["planetary_computer"],
+    model_cache  = "/data/model_cache/",
+    output_dir   = "/data/results/",
+    max_workers  = 4,
+)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8080, workers=4)
+</code></pre>
+<br>
+<h2>22.5 Production Best Practices</h2>
+<br>
+<pre><code class="language-python"># Environment configuration
+import os
+
+PGV_CONFIG = {
+    "log_level":    os.getenv("PGV_LOG_LEVEL", "INFO"),
+    "cache_dir":    os.getenv("PGV_CACHE_DIR", "/data/cache"),
+    "max_workers":  int(os.getenv("PGV_MAX_WORKERS", "4")),
+    "api_key":      os.getenv("ANTHROPIC_API_KEY", ""),
+}
+
+# Health check endpoint
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    import pygeovision as pgv
+    return {"status": "ok", "version": pgv.__version__}
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Deploy PyGeoVision in Docker locally. Verify the health endpoint.</li>
+<li>Deploy to Kubernetes using the provided manifests.</li>
+<li>Run the Terraform AWS plan. What resources would be created?</li>
+<li>Add a `/analyze` endpoint that accepts a bbox and returns NDVI statistics.</li>
+<br>
+<h2>22.8 Security Checklist</h2>
+<br>
+<pre><code class="language-python"># Production security configuration
+import os
+
+# Never hard-code credentials
+API_KEY     = os.getenv("ANTHROPIC_API_KEY", "")
+PC_TOKEN    = os.getenv("PLANETARY_COMPUTER_TOKEN", "")
+
+# Verify TLS in production
+import ssl
+ctx = ssl.create_default_context()
+ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+
+# Use enterprise RBAC
+from pygeovision.enterprise import RBACManager
+rbac = RBACManager()
+rbac.create_user("api_user", "api@org.com", roles=["analyst"])
+</code></pre>
+<br>
+<h2>Summary</h2>
+<br>
+<p>Complete deployment from Docker single-container to Kubernetes multi-node</p>
+<p>to Terraform-managed cloud. All infrastructure code is in <code>deployment/</code>.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Deploy PyGeoVision locally in Docker. Hit the health endpoint.</li>
+<li>Apply the Kubernetes manifests to a local kind cluster.</li>
+<li>Add Prometheus metrics to monitor inference latency.</li>
+<br>
+</section>
+
+<section id="23_agriculture">
+<h1>Chapter 23: Agriculture</h1>
+<br>
+<h2>23.1 Crop Type Mapping</h2>
+<br>
+<pre><code class="language-python">import pygeovision as pgv
+from pygeovision.models.foundation.prithvi import PrithviTasks, CROP_CLASSES
+
+client = pgv.PyGeoVision()
+
+# Download seasonal stack (key growth stages)
+seasons = [("2026-04-01","2026-04-30"), ("2026-06-01","2026-06-30")]
+stack   = []
+for start, end in seasons:
+    r  = client.search(bbox=BBOX, date_range=(start,end), cloud_cover_max=15)
+    dl = client.download(r[:1], output_dir=f"./agri/{start[:7]}/", bands=BANDS)
+    if dl and dl[0].success:
+        stack.append(dl[0].path)
+
+# Prithvi crop mapping
+ready = client.prepare_for_ai(stack[-1], model_type="foundation")
+tasks = PrithviTasks("prithvi_eo_2_0")
+crops = tasks.crop_mapping(ready["array"], source="sentinel2")
+
+print("Crop distribution:")
+for crop, pct in crops["class_distribution"].items():
+    print(f"  {crop:&lt;20}: {pct:.1f}%")
+</code></pre>
+<br>
+<h2>23.2 NDVI Time-Series for Crop Health</h2>
+<br>
+<pre><code class="language-python">from pygeovision.viz import TimeSeriesViewer
+
+# Monthly NDVI stack
+tsv = TimeSeriesViewer(paths=stack, dates=seasons,
+                         colormap="RdYlGn")
+tsv.trend(title="Crop NDVI Seasonal Pattern").export("crop_ndvi.png")
+tsv.anomaly(n_sigma=1.5).export("crop_stress.png")  # drought stress
+</code></pre>
+<br>
+<h2>23.3 Field Boundary Delineation</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("crop_monitoring",
+                          bbox=BBOX, date="2026-06", output_dir="./agri/")
+fields = gpd.read_file(result.output_path)
+print(f"Fields: {len(fields)}")
+print(f"Mean area: {fields.area.mean() / 1e4:.1f} ha")
+</code></pre>
+<br>
+<h2>23.4 Yield Prediction</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models import get_model
+import torch
+
+# Regression model: NDVI time-series -&gt; yield estimate
+yield_model = get_model("lstm_regressor",
+                          input_size=12,    # 12 monthly NDVI values
+                          hidden_size=64,
+                          output_size=1)    # tonnes/ha
+
+# Prepare sequence input
+ndvi_seq = torch.tensor(monthly_ndvi).unsqueeze(0).float()
+yield_pred = yield_model(ndvi_seq).item()
+print(f"Predicted yield: {yield_pred:.1f} t/ha")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Map crop types in the Nile Delta using Prithvi.</li>
+<li>Identify drought-stressed fields using NDVI anomaly detection.</li>
+<li>Delineate field boundaries and compute mean field size.</li>
+<br>
+<h2>23.7 Summary</h2>
+<br>
+<p>Agriculture is the largest application domain for geospatial AI.</p>
+<p>Sentinel-2 time-series + Prithvi crop mapping + NDVI anomaly detection</p>
+<p>provides a complete precision agriculture monitoring system.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Map crop types in the Nile Delta using Prithvi.</li>
+<li>Identify drought-stressed fields using NDVI anomaly (2-sigma).</li>
+<li>Detect irrigation events using SAR backscatter change.</li>
+<li>Predict yield for a test field.</li>
+<br>
+</section>
+
+<section id="24_forestry">
+<h1>Chapter 24: Forestry</h1>
+<br>
+<h2>24.1 Deforestation Detection</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("deforestation",
+                          bbox=(-55.0, -3.0, -54.5, -2.5),  # Amazon
+                          date="2026-06",
+                          output_dir="./forest/")
+
+loss = result.stats.get("forest_loss_km2", 0)
+rate = result.stats.get("annual_loss_pct", 0)
+print(f"Forest loss: {loss:.1f} km2 ({rate:.2f}%/year)")
+</code></pre>
+<br>
+<h2>24.2 Canopy Height Estimation</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models import get_model
+
+height_model = get_model("unet_regressor", encoder_name="resnet50",
+                           in_channels=6, output_channels=1)
+# Load pre-trained weights
+height_model.load_state_dict(torch.load("./models/canopy_height.pth"))
+height_model.eval()
+
+with torch.no_grad():
+    x      = torch.tensor(ready_array).unsqueeze(0).float()
+    height = height_model(x).squeeze().numpy()
+
+print(f"Mean canopy height: {height.mean():.1f} m")
+print(f"Max canopy height:  {height.max():.1f} m")
+</code></pre>
+<br>
+<h2>24.3 Biomass Estimation</h2>
+<br>
+<pre><code class="language-python"># Simple allometric model from EVI + height
+evi       = 2.5 * (nir - red) / (nir + 6*red - 7.5*blue + 1)
+agb_t_ha  = 90 * evi + 0.5 * height  # tonnes/ha (simplified)
+agb_t_ha  = agb_t_ha * (ndvi &gt; 0.3)  # vegetation mask
+
+total_agb = agb_t_ha.mean() * area_ha
+carbon    = total_agb * 0.47
+print(f"AGB: {total_agb:.0f} t  Carbon: {carbon:.0f} t C")
+</code></pre>
+<br>
+<h2>24.4 Forest Fire Detection</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("wildfire_severity",
+                          bbox=BBOX, date="2026-09", output_dir="./fire/")
+burn = result.stats
+
+for cls, label in enumerate(["Unburned","Low","Moderate","High"]):
+    pct = burn.get(f"severity_{cls}_pct", 0)
+    print(f"  {label:&lt;10}: {pct:.1f}%")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Map deforestation in the Amazon for the last 3 years.</li>
+<li>Estimate biomass for a temperate forest patch.</li>
+<li>Detect wildfire burn scars from the last fire season in your region.</li>
+<br>
+<h2>24.7 Summary</h2>
+<br>
+<p>Forestry monitoring from satellite imagery covers the complete carbon cycle:</p>
+<p>deforestation detection, canopy height, biomass estimation, and REDD+ accounting.</p>
+<p>Sentinel-1 SAR + Sentinel-2 optical fusion gives the most complete characterisation.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Detect deforestation in a tropical region 2020-2026.</li>
+<li>Estimate AGB and compare to national forest inventory.</li>
+<li>Map wildfire burn severity (4 USFS classes).</li>
+<li>Calculate REDD+ carbon credits for a protected area.</li>
+<br>
+</section>
+
+<section id="25_urban">
+<h1>Chapter 25: Urban</h1>
+<br>
+<h2>25.1 Building Footprint Extraction</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("building_footprints",
+                          bbox=(-0.30, 5.50, -0.05, 5.70),  # Accra
+                          date="2026-06",
+                          output_dir="./urban/accra/")
+
+buildings = gpd.read_file(result.output_path)
+print(f"Buildings: {len(buildings):,}")
+print(f"Total footprint: {buildings.area.sum()/1e4:.0f} ha")
+print(f"Mean area: {buildings.area.mean():.0f} m2")
+</code></pre>
+<br>
+<h2>25.2 Urban Growth Analysis</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("urban_growth",
+                          bbox=BBOX, date="2026-06", output_dir="./urban/")
+growth = result.stats
+
+print(f"New urban area (2016-2026): {growth.get('new_urban_km2', 0):.1f} km2")
+print(f"Annual growth rate: {growth.get('growth_rate_pct', 0):.2f}%/year")
+</code></pre>
+<br>
+<h2>25.3 Infrastructure Monitoring</h2>
+<br>
+<pre><code class="language-python"># Track construction progress over time
+pre_buildings  = gpd.read_file("./urban/buildings_2024.geojson")
+post_buildings = gpd.read_file("./urban/buildings_2026.geojson")
+
+new_buildings  = post_buildings[~post_buildings.geometry.within(
+    pre_buildings.unary_union.buffer(5)
+)]
+print(f"New buildings (2024-2026): {len(new_buildings):,}")
+</code></pre>
+<br>
+<h2>25.4 Road Network Extraction</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("road_network",
+                          bbox=BBOX, date="2026-06", output_dir="./roads/")
+roads = gpd.read_file(result.output_path)
+print(f"Total road length: {roads.length.sum()/1000:.0f} km")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Extract building footprints for your city centre (1x1 km).</li>
+<li>Compare building density (buildings/km2) between urban and suburban areas.</li>
+<li>Map 10-year urban growth using change detection.</li>
+<br>
+<h2>25.7 Summary</h2>
+<br>
+<p>Urban monitoring with PyGeoVision covers building extraction, growth analysis,</p>
+<p>road networks, and night-time lights. Fine resolution data (< 3m) significantly</p>
+<p>improves individual building accuracy.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Extract building footprints for a city centre (1x1 km).</li>
+<li>Compare building density between formal and informal areas.</li>
+<li>Map 10-year urban growth using change detection.</li>
+<li>Compute urban heat island for 3 districts.</li>
+<br>
+</section>
+
+<section id="26_water">
+<h1>Chapter 26: Water</h1>
+<br>
+<h2>26.1 Flood Mapping</h2>
+<br>
+<pre><code class="language-python"># SAR-based flood mapping (cloud-independent)
+from pygeovision.agent import GeoAgent
+
+agent = GeoAgent(client, output_dir="./water/floods/")
+agent.set_context(bbox=(-0.30, 5.50, -0.05, 5.70), date="2026-06")
+trace = agent.run("Map SAR flood extent — cloud cover 100%, rainy season")
+
+flood_gdf    = gpd.read_file(trace.final_output)
+flooded_km2  = flood_gdf.area.sum() / 1e6
+print(f"Flooded area: {flooded_km2:.1f} km2")
+print(f"Affected communities: {len(flood_gdf):,} flood polygons")
+</code></pre>
+<br>
+<h2>26.2 Water Quality Monitoring</h2>
+<br>
+<pre><code class="language-python"># Turbidity proxy from red band
+with rasterio.open("./data/prepared.tif") as src:
+    red   = src.read(3).astype("float32")
+    nir   = src.read(4).astype("float32")
+
+# NDWI to isolate water pixels
+ndwi       = (src.read(2).astype("float32") - nir) / (src.read(2) + nir + 1e-8)
+water_mask = ndwi &gt; 0
+
+# Turbidity index (higher red in water = more sediment)
+turbidity = red * water_mask
+clear = (turbidity &lt; 0.05).sum() / water_mask.sum() * 100
+print(f"Clear water: {clear:.1f}%")
+</code></pre>
+<br>
+<h2>26.3 Wetland Monitoring</h2>
+<br>
+<pre><code class="language-python">result = client.pipeline("water_bodies",
+                          bbox=BBOX, date="2026-06", output_dir="./water/")
+water_gdf  = gpd.read_file(result.output_path)
+print(f"Water bodies: {len(water_gdf)}")
+print(f"Total area: {water_gdf.area.sum()/1e6:.1f} km2")
+</code></pre>
+<br>
+<h2>26.4 Coastal Monitoring</h2>
+<br>
+<pre><code class="language-python"># Track shoreline change
+pre_water  = gpd.read_file("./water/shoreline_2016.geojson")
+post_water = gpd.read_file("./water/shoreline_2026.geojson")
+
+# Shoreline retreat (simplified)
+retreat_m = (pre_water.geometry.boundary.length -
+              post_water.geometry.boundary.length) / pre_water.geometry.length
+print(f"Estimated retreat: {retreat_m.mean():.1f} m over 10 years")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Map flood extent for a recent flood event in your region.</li>
+<li>Monitor water quality (turbidity) in a river before and after rainfall.</li>
+<li>Track wetland extent changes over 5 years.</li>
+<br>
+<h2>26.7 Summary</h2>
+<br>
+<p>Water monitoring from EO covers flood extent, water quality, wetland dynamics,</p>
+<p>coastal change, and ocean chlorophyll. SAR gives cloud-independent flood mapping;</p>
+<p>optical provides water quality indices.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Map flood extent for a recent flood event.</li>
+<li>Monitor turbidity in a river before/after rainfall.</li>
+<li>Track wetland extent changes over 5 years.</li>
+<li>Detect algal bloom from Sentinel-3 chlorophyll retrieval.</li>
+<br>
+</section>
+
+<section id="27_disaster">
+<h1>Chapter 27: Disaster</h1>
+<br>
+<h2>27.1 Rapid Damage Assessment</h2>
+<br>
+<pre><code class="language-python">from pygeovision.agent import GeoAgent
+
+agent = GeoAgent(client, output_dir="./disaster/")
+agent.set_context(
+    bbox = (36.0, 36.5, 38.0, 38.0),   # Kahramanmaras
+    date = "2023-02",
+)
+
+# Agent decides: SAR (earthquake + no clear sky guarantee) -&gt; damage assessment
+trace = agent.run("Detect building damage after the Kahramanmaras earthquake")
+print(f"Damage map: {trace.final_output}")
+print(f"Execution: {trace.total_duration:.1f}s")
+</code></pre>
+<br>
+<h2>27.2 4-Class Damage Mapping</h2>
+<br>
+<pre><code class="language-python">from pygeovision.models.change_detection.changeformer import ChangeDetection
+
+cd = ChangeDetection(model_variant="changeformer",
+                      in_channels=6, num_classes=4)
+cd.build()
+result = cd.detect("./sar/pre.tif", "./sar/post.tif",
+                    output_path="./disaster/damage.tif")
+
+classes = ["No damage","Minor","Moderate","Severe"]
+for i, label in enumerate(classes):
+    pct = (result.prediction == i).mean() * 100
+    print(f"  {label:&lt;12}: {pct:.1f}%")
+</code></pre>
+<br>
+<h2>27.3 Flood Early Warning</h2>
+<br>
+<pre><code class="language-python"># Real-time flood monitoring pipeline
+from pygeovision.insar import InSARProcessor
+
+proc = InSARProcessor(output_dir="./disaster/flood_monitor/")
+
+for new_scene in get_latest_sar_acquisitions():
+    result = proc.full_pipeline(
+        pre_path   = baseline_scene,
+        post_path  = new_scene,
+        study_area = "Odaw Basin, Accra",
+    )
+
+    if result.report.max_subsidence_m &lt; -0.05:
+        send_alert(f"WARNING: {result.report.subsidence_extent_km2:.0f} km2 flooded")
+</code></pre>
+<br>
+<h2>27.4 NB09: Accra Flood Intelligence Platform</h2>
+<br>
+<p>The Accra Flood Intelligence Platform (Notebook SAR-09) implements a</p>
+<p>complete flood monitoring system for the Odaw River Basin, Ghana.</p>
+<br>
+<p>Key components:</p>
+<li>Historical flood frequency composite (2019-2024)</li>
+<li>Active inundation mapping from current Sentinel-1 acquisition</li>
+<li>Prithvi-SAR flood segmentation (Sen1Floods11 adapted)</li>
+<li>4-tier risk zone classification by ward</li>
+<li>FloodWatch Ghana alert payload for 6 communities</li>
+<br>
+<pre><code class="language-python"># FloodWatch Ghana alert payload example
+payload = {
+    "alert_type":   "FLOOD_WARNING",
+    "severity":     "HIGH",
+    "communities":  ["Alajo", "Agbogbloshie", "Kaneshie"],
+    "flood_area_km2": 12.4,
+    "timestamp":    "2026-06-15T08:30:00Z",
+    "message":      "Active inundation detected. Evacuate low-lying areas.",
+    "source":       "PyGeoVision Sentinel-1 analysis",
+}
+import json, requests
+# requests.post("https://floodwatch.ghana.gov.gh/api/alerts", json=payload)
+print(json.dumps(payload, indent=2))
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run damage assessment on a pre/post earthquake image pair.</li>
+<li>Map flood extent within 24 hours of a recent flood event.</li>
+<li>Build a simple alert system that monitors daily SAR acquisitions.</li>
+<br>
+<h2>27.7 Summary</h2>
+<br>
+<p>Disaster response is the highest-impact EO AI application. The complete</p>
+<p>workflow from SAR download to damage assessment report runs in 15-30 minutes,</p>
+<p>enabling rapid response in the critical first 24h after an event.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Run 4-class damage assessment on earthquake imagery.</li>
+<li>Detect landslides using SAR + slope DEM.</li>
+<li>Build a flood early-warning pipeline.</li>
+<li>Generate a rapid damage assessment report.</li>
+<br>
+</section>
+
+<section id="28_climate">
+<h1>Chapter 28: Climate</h1>
+<br>
+<h2>28.1 Carbon Estimation</h2>
+<br>
+<pre><code class="language-python">import numpy as np, rasterio
+
+with rasterio.open("./data/prepared.tif") as src:
+    nir  = src.read(4).astype("float32")
+    red  = src.read(3).astype("float32")
+    blue = src.read(1).astype("float32")
+    res  = abs(src.transform.a)
+
+ndvi = (nir - red) / (nir + red + 1e-8)
+evi  = 2.5 * (nir - red) / (nir + 6*red - 7.5*blue + 1)
+
+# AGB allometric model (pantropical simplified)
+agb_t_ha = 90.0 * evi + 20.0
+agb_t_ha *= (ndvi &gt; 0.3)  # vegetation mask
+
+area_ha   = (ndvi &gt; 0.3).sum() * (res**2 / 1e4)
+total_agb = float(agb_t_ha.mean()) * area_ha
+carbon_t  = total_agb * 0.47  # 47% of AGB is carbon
+
+print(f"Vegetation area: {area_ha:.0f} ha")
+print(f"AGB estimate:    {total_agb:.0f} tonnes")
+print(f"Carbon stock:    {carbon_t:.0f} tonnes C")
+print(f"CO2 equivalent:  {carbon_t * 3.67:.0f} tonnes CO2")
+</code></pre>
+<br>
+<h2>28.2 Land Surface Temperature</h2>
+<br>
+<pre><code class="language-python"># Landsat 9 Band 10 thermal
+K1, K2 = 774.8853, 1321.0789
+
+with rasterio.open("./data/LC09_B10.tif") as src:
+    toa = src.read(1).astype("float32")
+
+lst_k = K2 / np.log(K1 / toa + 1)
+lst_c = lst_k - 273.15
+print(f"LST: {lst_c.min():.1f} to {lst_c.max():.1f} C")
+</code></pre>
+<br>
+<h2>28.3 Urban Heat Island</h2>
+<br>
+<pre><code class="language-python"># Urban vs rural LST comparison
+urban_mask = ndbi &gt; 0
+rural_mask = ndvi &gt; 0.3
+
+urban_lst  = lst_c[urban_mask].mean()
+rural_lst  = lst_c[rural_mask].mean()
+uhi        = urban_lst - rural_lst
+
+print(f"Urban mean LST: {urban_lst:.1f} C")
+print(f"Rural mean LST: {rural_lst:.1f} C")
+print(f"UHI intensity:  {uhi:.1f} C")
+</code></pre>
+<br>
+<h2>28.4 Multi-Year NDVI Trend</h2>
+<br>
+<pre><code class="language-python">from pygeovision.viz import TimeSeriesViewer
+from scipy.stats import linregress
+
+ndvi_means = [compute_ndvi(path).mean() for path in annual_paths]
+years      = list(range(2016, 2027))
+
+slope, intercept, r, p, se = linregress(years, ndvi_means)
+print(f"NDVI trend: {slope:+.4f}/year  (p={p:.3f})")
+if slope &lt; -0.003 and p &lt; 0.05:
+    print("WARNING: Significant vegetation decline detected")
+
+tsv = TimeSeriesViewer(paths=annual_paths, dates=[str(y) for y in years],
+                         colormap="RdYlGn")
+tsv.trend(title="10-Year NDVI Trend").export("ndvi_trend_10yr.png")
+</code></pre>
+<br>
+<h2>28.5 Climate Change Analysis Pipeline</h2>
+<br>
+<pre><code class="language-python"># Automate annual climate monitoring
+result = client.pipeline("carbon_estimation",
+                          bbox=BBOX, date="2026-06", output_dir="./climate/")
+print(f"Carbon stock: {result.stats.get('carbon_tonnes', 0):,.0f} t C")
+
+# Glacier monitoring
+result_glac = client.pipeline("glacier_monitoring",
+                               bbox=(7.8, 46.4, 8.1, 46.6),  # Aletsch
+                               date="2026-09", output_dir="./climate/glacier/")
+print(f"Glacier area: {result_glac.stats.get('glacier_km2', 0):.1f} km2")
+</code></pre>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Estimate carbon stock for a national park.</li>
+<li>Compute 10-year LST trend for your city. Is it warming?</li>
+<li>Quantify the urban heat island in a city of your choice.</li>
+<li>Compare glacier area in the Alps from 2000 to 2026.</li>
+<br>
+<h2>28.8 Summary</h2>
+<br>
+<p>Climate applications require the longest time-series and broadest coverage.</p>
+<p>PyGeoVision enables pixel-level analysis from 30-year Landsat records alongside</p>
+<p>current Sentinel-2, providing the depth needed for climate trend detection.</p>
+<br>
+<h2>Exercises</h2>
+<br>
+<li>Estimate carbon stock for a national park.</li>
+<li>Compute urban heat island for 5 cities.</li>
+<li>Track glacier area from 2000-2026.</li>
+<li>Map 30-year vegetation trend in the Sahel.</li>
+<br>
+</section>
+
+<section id="A_api_reference">
+<h1>Appendix A: API Reference</h1>
+<h2>PyGeoVision Client</h2>
+<pre><code class="language-python">import pygeovision as pgv
+client = pgv.PyGeoVision()
+
+# Data methods
+client.search(bbox, date_range, providers, satellites, cloud_cover_max, max_results)
+client.download(scenes, output_dir, bands, post_process, max_workers, resume)
+client.prepare_for_ai(path, stack_bands, bbox, bbox_crs, scl_path, normalise, model_type, output_path)
+client.pipeline(name, bbox, date, output_dir)
+client.add_credentials(provider, **credentials)
+client.list_providers()
+
+# AI methods
+client.indices.ndvi(path, output_path)
+client.indices.ndwi(path, output_path)
+client.indices.ndbi(path, output_path)
+client.postprocess.sieve_filter(path, min_pixels, output_path)
+client.postprocess.vectorise(path, output_path, target_class, min_area_m2)
+client.postprocess.to_cog(path, output_path)
+</code></pre>
+<h2>GeoAgent</h2>
+<pre><code class="language-python">from pygeovision.agent import GeoAgent
+
+agent = GeoAgent(client, output_dir, api_key, model, stop_on_failure, verbose)
+agent.set_context(**kwargs)       # bbox, date, output_dir, bands...
+agent.bind(name, value)           # name a file path for later reference
+agent.run(query, context_override)   # returns ExecutionTrace
+agent.stream(query)               # yields event dicts
+agent.tools()                     # list tool names
+agent.tool_schema(name)           # get one tool's schema
+agent.all_schemas()               # all tool schemas
+agent.history()                   # conversation history
+agent.save_session(path)          # persist to JSON
+agent.load_session(path)          # restore from JSON
+agent.reset()                     # clear history, keep context
+</code></pre>
+<h2>Visualization</h2>
+<pre><code class="language-python">from pygeovision.viz import Map, RasterViewer, VectorViewer, ChangeViewer, TimeSeriesViewer
+
+# Map
+m = Map(center, zoom, basemap, height)
+m.add_raster(path, band, colormap, vmin, vmax, opacity, name)
+m.add_vector(path_or_geojson, color, fill_color, fill_opacity, weight, name)
+m.add_basemap(basemap)
+m.remove_layer(name)
+m.export(path, format, dpi)       # "html" or "png"
+m.show()
+Map.split_view(left, right, center, zoom)
+
+# RasterViewer
+rv = RasterViewer(path, figsize)
+rv.rgb(red, green, blue)
+rv.false_color(nir, red, green)
+rv.ndvi(nir_band, red_band)
+rv.ndwi(green_band, nir_band)
+rv.ndbi(swir_band, nir_band)
+rv.single_band(band, colormap)
+rv.histogram(band, bins)
+rv.profile(start_px, end_px, bands)
+rv.export(path, dpi)
+rv.show()
+
+# ChangeViewer
+cv = ChangeViewer(before, after, band)
+cv.split(before_label, after_label)
+cv.difference()
+cv.overlay(mask_path, change_color, alpha)
+cv.statistics(mask_path, pixel_area_m2)
+cv.export(path, dpi)
+
+# TimeSeriesViewer
+tsv = TimeSeriesViewer(paths, dates, band, colormap, vmin, vmax)
+tsv.animate(output, fps)
+tsv.trend(roi, title)
+tsv.seasonal(period, title)
+tsv.anomaly(n_sigma, title)
+tsv.mosaic(max_cols, title)
+tsv.export(path, dpi)
+</code></pre>
+<h2>InSAR</h2>
+<pre><code class="language-python">from pygeovision.insar import InSARProcessor, InSARViz, InSARInterpreter
+
+# InSARProcessor
+proc = InSARProcessor(output_dir, wavelength, incidence_angle_deg, coherence_threshold)
+proc.interferogram(pre, post, multilook, filter_type)  # returns InSARResult
+proc.displacement(ifg_result, mode)
+proc.deformation_rate(paths, dates, coherence_path)
+proc.full_pipeline(pre, post, study_area)
+
+# InSARViz
+viz = InSARViz(figsize)
+viz.interferogram(path)
+viz.coherence(path)
+viz.displacement(path, vmax_cm)
+viz.deformation_rate(path)
+viz.time_series(paths, dates, pixel_coords)
+viz.dashboard(interferogram_path, coherence_path, displacement_path, rate_path)
+viz.export(path, dpi)
+
+# InSARInterpreter
+interp = InSARInterpreter(subsidence_threshold_m, uplift_threshold_m,
+                           coherence_threshold, min_zone_km2)
+report = interp.interpret(displacement_path, rate_path, coherence_path, study_area)
+report.summary()
+report.export(path, format)
+report.to_dict()
+</code></pre>
+<h2>Enterprise</h2>
+<pre><code class="language-python">from pygeovision.enterprise import RBACManager, APIKeyManager, AuditLogger, ComplianceChecker
+
+# RBAC
+rbac = RBACManager()
+rbac.create_user(user_id, email, roles)
+rbac.check_permission(user_id, permission)
+rbac.assign_role(user_id, role)
+
+# API Keys
+keys = APIKeyManager()
+keys.generate(user_id, description, ttl_days)
+keys.validate(raw_key)   # returns user_id or None
+keys.revoke(raw_key)
+
+# Audit
+audit = AuditLogger(log_path)
+audit.log_action(user_id, action, resource, outcome)
+audit.query(user_id, action, since)
+audit.export(path, format)
+
+# Compliance
+checker = ComplianceChecker()
+checker.check_all(config)
+checker.report(config)
+</code></pre>
+</section>
+
+<section id="B_cli_reference">
+<h1>Appendix B: CLI Reference</h1>
+<h2>Installation</h2>
+<pre><code class="language-bash">pip install pygeovision
+pygeovision --version   # 2.1.2
+</code></pre>
+<h2>Data Commands</h2>
+<pre><code class="language-bash"># Search satellite imagery
+pygeovision data search \
+  --bbox "-0.30 5.50 -0.05 5.70" \
+  --date-range "2026-06-01" "2026-06-30" \
+  --providers planetary_computer \
+  --cloud-max 20
+
+# Download
+pygeovision data download \
+  --scene-id S2_T30PXR_20260615 \
+  --output-dir ./data/ \
+  --bands B02 B03 B04 B08 B8A B11 \
+  --cog
+
+# Add credentials
+pygeovision data credentials add --provider copernicus_cdse \
+  --username you@example.com --password your-password
+</code></pre>
+<h2>AI Commands</h2>
+<pre><code class="language-bash"># Run a named pipeline
+pygeovision ai pipeline building_footprints \
+  --bbox "-0.30 5.50 -0.05 5.70" \
+  --date 2026-06 \
+  --output-dir ./results/
+
+# Run all 10 pipelines
+pygeovision ai pipeline --list
+
+# Model inference
+pygeovision ai infer \
+  --model prithvi_eo_2_0 \
+  --task land_cover \
+  --input ./data/prepared.tif \
+  --output ./results/land_cover.tif
+</code></pre>
+<h2>SAR Commands</h2>
+<pre><code class="language-bash"># Complete SAR preprocessing pipeline
+pygeovision sar preprocess \
+  --input ./sar/S1_GRD.tif \
+  --output-dir ./sar/processed/ \
+  --bbox "-0.30 5.50 -0.05 5.70" \
+  --filter enhanced_lee
+
+# Flood detection
+pygeovision sar flood-detect \
+  --input ./sar/processed/S1_clipped.tif \
+  --output ./sar/flood_mask.tif
+
+# Change detection
+pygeovision sar change-detect \
+  --pre ./sar/S1_pre.tif \
+  --post ./sar/S1_post.tif \
+  --output ./sar/damage.tif \
+  --num-classes 4
+</code></pre>
+<h2>InSAR Commands</h2>
+<pre><code class="language-bash"># Full InSAR pipeline
+pygeovision insar pipeline \
+  --pre ./sar/S1_pre.tif \
+  --post ./sar/S1_post.tif \
+  --output-dir ./insar/ \
+  --study-area "Istanbul, Turkey"
+
+# Individual steps
+pygeovision insar interferogram --pre pre.tif --post post.tif
+pygeovision insar coherence --pre pre.tif --post post.tif
+pygeovision insar displacement --phase ifg.tif --mode amplitude_proxy
+pygeovision insar rate --displacements d1.tif d2.tif --dates 2023-01-01 2024-01-01
+</code></pre>
+<h2>Agent Commands</h2>
+<pre><code class="language-bash"># Start interactive chat session
+pygeovision agent chat
+
+# One-shot query
+pygeovision agent run "Map flood extent in Accra using SAR" \
+  --bbox "-0.30 5.50 -0.05 5.70" \
+  --date 2026-06 \
+  --output-dir ./results/
+
+# Save and load sessions
+pygeovision agent save ./sessions/accra.json
+pygeovision agent load ./sessions/accra.json
+
+# Show available tools
+pygeovision agent tools
+</code></pre>
+<h2>Visualization Commands</h2>
+<pre><code class="language-bash"># View raster
+pygeovision viz raster --input scene.tif --composite rgb --bands 2 1 0
+
+# Export interactive map
+pygeovision viz map --raster scene.tif --vector buildings.geojson --output map.html
+
+# Before/after comparison
+pygeovision viz split --before pre.tif --after post.tif --output comparison.html
+
+# Animate time-series
+pygeovision viz animate --inputs "ndvi_*.tif" --dates dates.json --output ndvi.gif
+</code></pre>
+</section>
+
+<section id="C_configuration">
+<h1>Appendix C: Configuration</h1>
+<h2>Environment Variables</h2>
+<tr><td>Variable</td><td>Default</td><td>Description</td></tr>
+<p>|----------|---------|-------------|</p>
+<tr><td>`PGV_LOG_LEVEL`</td><td>`INFO`</td><td>Logging level (DEBUG/INFO/WARNING/ERROR)</td></tr>
+<tr><td>`PGV_CACHE_DIR`</td><td>`~/.pgv_cache`</td><td>Download cache directory</td></tr>
+<tr><td>`PGV_MAX_WORKERS`</td><td>`4`</td><td>Parallel download workers</td></tr>
+<tr><td>`ANTHROPIC_API_KEY`</td><td>(none)</td><td>Claude API key for GeoAgent LLM planning</td></tr>
+<tr><td>`PLANETARY_COMPUTER_TOKEN`</td><td>(none)</td><td>Microsoft PC subscription key</td></tr>
+<tr><td>`COPERNICUS_CDSE_USER`</td><td>(none)</td><td>Copernicus CDSE username</td></tr>
+<tr><td>`COPERNICUS_CDSE_PASS`</td><td>(none)</td><td>Copernicus CDSE password</td></tr>
+<h2>Configuration File</h2>
+<p>Create <code>~/.pygeovision/config.yml</code>:</p>
+<pre><code class="language-yaml">version: "2.1.2"
+
+data:
+  cache_dir: /data/pgv_cache
+  max_workers: 8
+  default_providers:
+    - planetary_computer
+  default_bands:
+    - B02
+    - B03
+    - B04
+    - B08
+    - B8A
+    - B11
+
+sar:
+  default_filter: enhanced_lee
+  window_size: 7
+  despeckle_before_db: true   # MUST be true — do not change
+
+insar:
+  wavelength: 0.05546576      # Sentinel-1 C-band
+  incidence_angle: 39.0
+  coherence_threshold: 0.4
+
+agent:
+  default_planner: heuristic  # heuristic | llm
+  llm_model: claude-sonnet-4-6
+  output_dir: ./agent_output/
+
+logging:
+  level: INFO
+  format: "[%(asctime)s] %(levelname)s %(name)s: %(message)s"
+  file: /var/log/pygeovision.log
+</code></pre>
+<h2>Docker Environment</h2>
+<pre><code class="language-bash"># .env file for Docker
+ANTHROPIC_API_KEY=sk-ant-...
+PLANETARY_COMPUTER_TOKEN=your-token
+PGV_CACHE_DIR=/data/cache
+PGV_LOG_LEVEL=INFO
+PGV_MAX_WORKERS=8
+</code></pre>
+<h2>Kubernetes ConfigMap</h2>
+<pre><code class="language-yaml">apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pygeovision-config
+  namespace: pygeovision
+data:
+  PGV_LOG_LEVEL: "INFO"
+  PGV_CACHE_DIR: "/data/cache"
+  PGV_MAX_WORKERS: "8"
+</code></pre>
+</section>
+
+<section id="D_troubleshooting">
+<h1>Appendix D: Troubleshooting</h1>
+<h2>Data Acquisition Issues</h2>
+<h3>"shapes do not overlap raster"</h3>
+<p><strong>Cause:</strong> Clipping WGS84 bbox to a UTM raster — BUG 3.</p>
+<p><strong>Fix:</strong></p>
+<pre><code class="language-python">from pygeovision.data.validators.georeference import reproject_bbox_to_raster_crs
+
+bbox_utm = reproject_bbox_to_raster_crs(bbox_wgs84, raster_path)
+# Or use clip_sar_to_bbox() which handles this automatically
+</code></pre>
+<h3>"Identity-transform CRS detected"</h3>
+<p><strong>Cause:</strong> Reprojection produced pixel_width=1.0, origin=(0,0) — BUG 1.</p>
+<p><strong>Fix:</strong></p>
+<pre><code class="language-python">from pygeovision.data.validators.georeference import validate_georeference
+
+result  = validate_georeference("./scene.tif")
+working = result.get("repaired_path") or "./scene.tif"
+</code></pre>
+<h3>"Incomplete download" / file is too small</h3>
+<p><strong>Cause:</strong> Chunked download interrupted — BUG 2.</p>
+<p><strong>Fix:</strong></p>
+<pre><code class="language-python">from pygeovision.data.validators.georeference import check_download_complete
+
+check = check_download_complete("./sar/S1_GRD.tif")
+if not check["complete"]:
+    # Re-download the file
+    client.download(results, output_dir="./sar/", resume=False)
+</code></pre>
+<h2>SAR Issues</h2>
+<h3>Output looks wrong after despeckle</h3>
+<p><strong>Cause:</strong> Despeckle was applied after dB conversion.</p>
+<p><strong>Fix:</strong> Always despeckle in LINEAR power:</p>
+<pre><code class="language-python">despeckle_sar(input_path, desp_path, filter_type="enhanced_lee")
+linear_to_db(desp_path, db_path)   # THEN convert to dB
+</code></pre>
+<h3>No flood pixels detected</h3>
+<p><strong>Cause:</strong> VH threshold too high, or image is dry season.</p>
+<p><strong>Fix:</strong></p>
+<pre><code class="language-python"># Check VH statistics
+import numpy as np, rasterio
+with rasterio.open("./sar/S1_norm.tif") as src:
+    vh = src.read(1)
+print(f"VH range: {vh.min():.3f} to {vh.max():.3f}")
+print(f"VH mean: {vh.mean():.3f}")
+# VH &lt; 0.15 is typically water/flood for normalised [0,1] data
+</code></pre>
+<h2>AI Inference Issues</h2>
+<h3>"Input validation failed" from Prithvi</h3>
+<p><strong>Cause:</strong> Wrong band count or normalisation range.</p>
+<p><strong>Fix:</strong></p>
+<pre><code class="language-python">from pygeovision.models.foundation.prithvi import validate_prithvi_input
+
+val = validate_prithvi_input(arr, source="sentinel2", n_prithvi_bands=6)
+print(val)   # shows which check failed
+# arr must be (6, H, W), float32, values in [0, 1]
+</code></pre>
+<h3>mIoU is very low (< 0.3)</h3>
+<p><strong>Causes and fixes:</strong></p>
+<p>1. Wrong band order — check HLS order: Blue, Green, Red, NIR, SWIR1, SWIR2</p>
+<p>2. Wrong normalisation — use scale_factor=10000 for Sentinel-2 L2A</p>
+<p>3. Label mismatch — verify class IDs match model training</p>
+<h2>Performance Issues</h2>
+<h3>Out of memory during inference</h3>
+<p><strong>Fix:</strong> Use tiled inference:</p>
+<pre><code class="language-python">from pygeovision.inference.tiled import TiledInference
+
+tiler = TiledInference(model=model, tile_size=256, overlap=32)
+pred  = tiler.predict("./data/large_scene.tif", output_path="./pred.tif")
+</code></pre>
+<h3>Slow downloads</h3>
+<p><strong>Fix:</strong> Increase workers:</p>
+<pre><code class="language-python">downloads = client.download(results, max_workers=8, skip_existing=True)
+</code></pre>
+<h2>Common Errors Reference</h2>
+<tr><td>Error</td><td>Cause</td><td>Fix</td></tr>
+<p>|-------|-------|-----|</p>
+<tr><td>`shapes do not overlap raster`</td><td>WGS84 bbox on UTM raster</td><td>BUG 3: use `clip_sar_to_bbox()`</td></tr>
+<tr><td>`identity-transform CRS`</td><td>Corrupted georeference</td><td>BUG 1: `validate_sar_georeference()`</td></tr>
+<tr><td>`source shape inconsistent`</td><td>Wrong numpy array shape</td><td>Use 2D array for single band write</td></tr>
+<tr><td>`No module named torch`</td><td>PyTorch not installed</td><td>`pip install "pygeovision[train]"`</td></tr>
+<tr><td>`API key not found`</td><td>No ANTHROPIC_API_KEY</td><td>Set env var or use heuristic planner</td></tr>
+</section>
+
+<section id="E_contributing">
+<h1>Appendix E: Contributing</h1>
+<h2>How to Contribute</h2>
+<p>PyGeoVision welcomes contributions of all kinds:</p>
+<li>Bug reports and fixes</li>
+<li>New model integrations</li>
+<li>New satellite data providers</li>
+<li>Documentation improvements</li>
+<li>New use-case notebooks</li>
+<li>Test coverage improvements</li>
+<h2>Development Setup</h2>
+<pre><code class="language-bash">git clone https://github.com/appiahkubis14/PyGeoVision
+cd PyGeoVision
+pip install -e ".[dev]"
+pre-commit install
+</code></pre>
+<h2>Code Style</h2>
+<p>PyGeoVision uses Ruff for linting:</p>
+<pre><code class="language-bash">ruff check pygeovision/
+ruff format pygeovision/
+</code></pre>
+<p>Key conventions:</p>
+<li>Type annotations required for all public functions</li>
+<li>Docstrings in NumPy format</li>
+<li>Line length: 100 characters</li>
+<li>`snake_case` for functions and variables</li>
+<li>`PascalCase` for classes</li>
+<h2>Testing</h2>
+<pre><code class="language-bash"># Run all tests (excluding live integration tests)
+pytest tests/ --ignore=tests/test_live.py -q
+
+# Run specific module tests
+pytest tests/test_viz.py tests/test_insar.py tests/test_enterprise.py -v
+
+# Run with coverage
+pytest tests/ --ignore=tests/test_live.py --cov=pygeovision --cov-report=html
+</code></pre>
+<p><strong>Target:</strong> 451+ tests passing, 0 failures.</p>
+<h2>Adding a New Model</h2>
+<p>1. Create <code>pygeovision/models/your_category/your_model.py</code></p>
+<p>2. Implement <code>forward()</code> with <code>(B, C, H, W)</code> input convention</p>
+<p>3. Register in <code>pygeovision/models/__init__.py</code></p>
+<p>4. Add tests in <code>tests/test_your_category.py</code></p>
+<p>5. Add a notebook in <code>projects/</code></p>
+<h2>Adding a New SAR Tool</h2>
+<p>Extend <code>pygeovision/agent/tools.py</code>:</p>
+<pre><code class="language-python">from pygeovision.agent.tools import GeoTool, ToolResult, TOOL_REGISTRY
+
+class MySARTool(GeoTool):
+    name        = "my_sar_analysis"
+    description = "Describe what this tool does..."
+    parameters  = [{"name":"input_path","type":"str","required":True}]
+
+    def run(self, input_path, **_):
+        # Your implementation
+        return ToolResult(tool=self.name, success=True,
+                           output={"result": "..."},
+                           output_path="./output.tif")
+
+TOOL_REGISTRY["my_sar_analysis"] = MySARTool
+</code></pre>
+<h2>Pull Request Checklist</h2>
+<li>[ ] Tests pass (`pytest tests/ --ignore=tests/test_live.py`)</li>
+<li>[ ] No syntax errors (`ruff check pygeovision/`)</li>
+<li>[ ] Docstrings added</li>
+<li>[ ] CHANGELOG.md updated</li>
+<li>[ ] No hard-coded paths</li>
+<li>[ ] No credentials in code</li>
+</section>
+
+<section id="F_glossary">
+<h1>Appendix F: Glossary</h1>
+<p><strong>AGB</strong> — Above-Ground Biomass. The total mass of living plant material above</p>
+<p>the soil surface, typically measured in tonnes per hectare.</p>
+<p><strong>AOI</strong> — Area of Interest. The geographic region being analysed.</p>
+<p><strong>bbox</strong> — Bounding box. A rectangle defined as <code>[lon_min, lat_min, lon_max, lat_max]</code></p>
+<p>in WGS84 decimal degrees.</p>
+<p><strong>COG</strong> — Cloud Optimised GeoTIFF. A GeoTIFF file structured for efficient partial</p>
+<p>reads over HTTP — no full download required for spatial subsets.</p>
+<p><strong>Coherence</strong> — In InSAR, a measure of phase stability between two SAR acquisitions</p>
+<p>(0=decorrelated, 1=fully coherent). Vegetation typically shows low coherence.</p>
+<p><strong>CRS</strong> — Coordinate Reference System. The mathematical framework that relates</p>
+<p>pixels to geographic coordinates (e.g., EPSG:4326 = WGS84, EPSG:32630 = UTM 30N).</p>
+<p><strong>dB</strong> — Decibel. A logarithmic unit: dB = 10 × log10(linear_power). SAR data is</p>
+<p>often displayed in dB but must be despeckled in linear power first.</p>
+<p><strong>dNBR</strong> — Delta Normalised Burn Ratio. The difference between pre- and post-fire</p>
+<p>NBR, used to classify wildfire burn severity.</p>
+<p><strong>DINOv3</strong> — A self-supervised vision foundation model trained on satellite imagery.</p>
+<p>Produces general-purpose spatial feature embeddings.</p>
+<p><strong>EVI</strong> — Enhanced Vegetation Index. An improved NDVI that reduces atmospheric</p>
+<p>effects and soil influence for dense canopy conditions.</p>
+<p><strong>GRD</strong> — Ground Range Detected. SAR product with only amplitude information</p>
+<p>(phase discarded). Lower processing requirements than SLC.</p>
+<p><strong>HLS</strong> — Harmonised Landsat Sentinel. A NASA product that co-registers and</p>
+<p>calibrates Landsat 8/9 and Sentinel-2 to a common grid and spectral resolution.</p>
+<p><strong>InSAR</strong> — Interferometric SAR. Measures the phase difference between two SAR</p>
+<p>acquisitions to detect millimetre-scale ground deformation.</p>
+<p><strong>IW</strong> — Interferometric Wide-swath. The standard Sentinel-1 SAR acquisition mode</p>
+<p>over land (250 km swath at 5×20 m resolution).</p>
+<p><strong>LOS</strong> — Line-of-Sight. The direction along the satellite-to-ground radar beam.</p>
+<p>InSAR displacement is measured in LOS — not purely vertical.</p>
+<p><strong>mIoU</strong> — Mean Intersection over Union. The standard segmentation metric:</p>
+<p>average of (true_positive / (true_positive + false_positive + false_negative))</p>
+<p>across all classes.</p>
+<p><strong>NDBI</strong> — Normalised Difference Built-up Index. (SWIR - NIR)/(SWIR + NIR).</p>
+<p>Positive values indicate built-up/impervious surfaces.</p>
+<p><strong>NDSI</strong> — Normalised Difference Snow Index. (Green - SWIR)/(Green + SWIR).</p>
+<p>Values > 0.4 typically indicate snow.</p>
+<p><strong>NDVI</strong> — Normalised Difference Vegetation Index. (NIR - Red)/(NIR + Red).</p>
+<p>Range −1 to +1; values > 0.3 indicate healthy vegetation.</p>
+<p><strong>NDWI</strong> — Normalised Difference Water Index. (Green - NIR)/(Green + NIR).</p>
+<p>Positive values indicate open water.</p>
+<p><strong>Prithvi-EO-2.0</strong> — NASA's 600M parameter geospatial foundation model, pre-trained</p>
+<p>on HLS satellite imagery. Supports land cover, flood, crop, and burn scar tasks.</p>
+<p><strong>SAR</strong> — Synthetic Aperture Radar. An active microwave imaging system that</p>
+<p>creates high-resolution images independent of solar illumination and clouds.</p>
+<p><strong>SCL</strong> — Scene Classification Layer. Sentinel-2 per-pixel classification:</p>
+<p>vegetation, bare soil, water, cloud shadow, cloud, snow, etc.</p>
+<p><strong>SLC</strong> — Single Look Complex. SAR data product preserving both amplitude and phase,</p>
+<p>required for true InSAR processing.</p>
+<p><strong>STAC</strong> — SpatioTemporal Asset Catalog. An open standard API for querying and</p>
+<p>accessing geospatial data. Planetary Computer and Copernicus CDSE support STAC.</p>
+<p><strong>UTM</strong> — Universal Transverse Mercator. A projected coordinate system that divides</p>
+<p>the Earth into 60 zones (EPSG:326XX for northern hemisphere). Units are metres.</p>
+<p><strong>WGS84</strong> — World Geodetic System 1984. The standard geographic coordinate system</p>
+<p>(EPSG:4326). Units are degrees of latitude and longitude.</p>
+</section>
+
+</div></body></html>

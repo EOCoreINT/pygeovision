@@ -1,0 +1,199 @@
+# PyGeoVision v2.0 — Docker Compose
+# Usage:
+#   docker-compose up -d                        # API + MLflow + Redis
+#   docker-compose --profile gpu up -d          # GPU inference
+#   docker-compose --profile monitoring up -d   # + Prometheus + Grafana
+#   docker-compose --profile notebooks up -d    # + JupyterLab
+
+name: pygeovision
+
+x-pgv-common: &pgv-common
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options: {max-size: "50m", max-file: "5"}
+
+services:
+
+  # ── CPU Inference API ──────────────────────────────────────────────────────
+  pgv-api:
+    <<: *pgv-common
+    build:
+      context: .
+      target: production
+    image: pygeovision:2.1.2
+    container_name: pgv-api
+    ports:
+      - "${PGV_PORT:-8080}:8080"
+    environment:
+      - PGV_LOG_LEVEL=${PGV_LOG_LEVEL:-INFO}
+      - PGV_WORKERS=${PGV_WORKERS:-4}
+      - PGV_MODEL_DIR=/models
+      - PGV_GPU_DEVICE=cpu
+      # PyGeoFetch credentials (optional — open providers need no auth)
+      - PYGEOFETCH_PLANET_API_KEY=${PLANET_API_KEY:-}
+      - PYGEOFETCH_COPERNICUS_USERNAME=${COPERNICUS_USERNAME:-}
+      - PYGEOFETCH_COPERNICUS_PASSWORD=${COPERNICUS_PASSWORD:-}
+      - PYGEOFETCH_USGS_USERNAME=${USGS_USERNAME:-}
+      - PYGEOFETCH_USGS_PASSWORD=${USGS_PASSWORD:-}
+      - PYGEOFETCH_NASA_EARTHDATA_USERNAME=${NASA_USERNAME:-}
+      - PYGEOFETCH_NASA_EARTHDATA_PASSWORD=${NASA_PASSWORD:-}
+      - PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+    volumes:
+      - ./models:/models:ro
+      - ./data:/data:ro
+      - pgv-results:/results
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+  # ── GPU Inference API ──────────────────────────────────────────────────────
+  pgv-api-gpu:
+    <<: *pgv-common
+    build:
+      context: .
+      target: gpu
+    image: pygeovision:2.1.2-gpu
+    container_name: pgv-api-gpu
+    ports:
+      - "${PGV_GPU_PORT:-8081}:8080"
+    environment:
+      - PGV_LOG_LEVEL=${PGV_LOG_LEVEL:-INFO}
+      - PGV_GPU_DEVICE=cuda
+      - PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+    volumes:
+      - ./models:/models:ro
+      - ./data:/data:ro
+      - pgv-results:/results
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    profiles: [gpu]
+
+  # ── MLflow Experiment Tracking ─────────────────────────────────────────────
+  mlflow:
+    <<: *pgv-common
+    image: ghcr.io/mlflow/mlflow:v2.12.1
+    container_name: pgv-mlflow
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri /mlruns
+        --artifacts-destination /mlartifacts
+    volumes:
+      - pgv-mlruns:/mlruns
+      - pgv-mlartifacts:/mlartifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Redis (pipeline result cache) ─────────────────────────────────────────
+  redis:
+    <<: *pgv-common
+    image: redis:7-alpine
+    container_name: pgv-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - pgv-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── JupyterLab (25 production notebooks) ──────────────────────────────────
+  jupyter:
+    <<: *pgv-common
+    build:
+      context: .
+      target: source
+    image: pygeovision:2.1.2
+    container_name: pgv-jupyter
+    command: >
+      jupyter lab
+        --ip=0.0.0.0
+        --port=8888
+        --no-browser
+        --NotebookApp.token=${JUPYTER_TOKEN:-pgvision}
+        --notebook-dir=/app/projects
+    ports:
+      - "8888:8888"
+    environment:
+      - PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+    volumes:
+      - ./data:/data:ro
+      - pgv-results:/results
+    profiles: [notebooks]
+
+  # ── Prometheus Monitoring ──────────────────────────────────────────────────
+  prometheus:
+    <<: *pgv-common
+    image: prom/prometheus:v2.51.0
+    container_name: pgv-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - pgv-prometheus:/prometheus
+    profiles: [monitoring]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Grafana Dashboard ──────────────────────────────────────────────────────
+  grafana:
+    <<: *pgv-common
+    image: grafana/grafana:10.4.0
+    container_name: pgv-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-pgvision}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - pgv-grafana:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    profiles: [monitoring]
+
+volumes:
+  pgv-results:
+  pgv-mlruns:
+  pgv-mlartifacts:
+  pgv-redis:
+  pgv-prometheus:
+  pgv-grafana:

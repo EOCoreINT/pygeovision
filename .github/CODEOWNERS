@@ -1,0 +1,28 @@
+# Code ownership for PyGeoVision
+# Owners are automatically requested for review on any changes.
+# More info: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: project maintainers review everything
+*                           @pygeovision/maintainers
+
+# Core package modules
+/pygeovision/               @pygeovision/core
+/pygeovision/agent/         @pygeovision/core
+/pygeovision/insar/         @pygeovision/insar
+/pygeovision/viz/           @pygeovision/viz
+
+# SAR processing (3 bug-fix modules — highest scrutiny)
+/pygeovision/data/processors/sar.py            @pygeovision/sar-reviewers
+/pygeovision/data/validators/georeference.py   @pygeovision/sar-reviewers
+/pygeovision/models/adapters/                  @pygeovision/sar-reviewers
+
+# Tests
+/tests/                     @pygeovision/qa
+
+# Documentation
+/docs/                      @pygeovision/docs
+README.md                   @pygeovision/core
+CHANGELOG.md                @pygeovision/core
+
+# CI/CD
+/.github/workflows/         @pygeovision/devops

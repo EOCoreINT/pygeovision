@@ -1,0 +1,23 @@
+# PyGeoVision — production multi-stage image
+FROM python:3.11-slim AS builder
+WORKDIR /build
+COPY pyproject.toml README.md ./
+COPY pygeovision/ pygeovision/
+RUN pip install --upgrade pip build && python -m build --wheel
+
+FROM python:3.11-slim AS runtime
+LABEL org.opencontainers.image.title="PyGeoVision" \
+      org.opencontainers.image.version="2.1.2" \
+      org.opencontainers.image.source="https://github.com/appiahkubis14/PyGeoVision"
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgdal-dev libgeos-dev libproj-dev curl && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /build/dist/*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/*.whl "pygeovision[geo]"
+RUN useradd -m -u 1000 pgv && chown -R pgv:pgv /app
+USER pgv
+HEALTHCHECK --interval=30s --timeout=10s CMD python -c "import pygeovision" || exit 1
+ENV PGV_LOG_LEVEL=INFO PGV_CACHE_DIR=/tmp/pgv_cache PYTHONUNBUFFERED=1
+EXPOSE 8080
+CMD ["python", "-m", "pygeovision.serving.server", "--host", "0.0.0.0", "--port", "8080"]

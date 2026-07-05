@@ -1,0 +1,59 @@
+replicaCount: 3
+
+image:
+  repository: ghcr.io/appiahkubis14/pygeovision
+  tag: "2.1.2"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.pygeovision.org
+  tls: true
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 4000m
+    memory: 8Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+
+persistence:
+  enabled: true
+  size: 100Gi
+  storageClass: standard
+
+secrets:
+  anthropicApiKey: ""
+  planetaryComputerToken: ""
+
+env:
+  PGV_LOG_LEVEL: INFO
+  PGV_CACHE_DIR: /data/cache
+  PYTHONUNBUFFERED: "1"
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5

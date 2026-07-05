@@ -1,0 +1,19 @@
+version: '3.9'
+services:
+  api:
+    build: {context: ../..}
+    ports: ["8080:8080"]
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PGV_LOG_LEVEL=DEBUG
+    volumes: [pgv_data:/data, ./results:/app/results]
+    restart: unless-stopped
+  jupyter:
+    image: jupyter/scipy-notebook:python-3.11
+    ports: ["8888:8888"]
+    volumes:
+      - ../../projects:/home/jovyan/work/projects
+      - pgv_data:/home/jovyan/work/data
+    command: start-notebook.sh --NotebookApp.token='pgv'
+volumes:
+  pgv_data:

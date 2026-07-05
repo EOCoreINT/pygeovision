@@ -1,0 +1,17 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'pygeovision/**', 'mkdocs.yml']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install mkdocs mkdocs-material mkdocstrings[python] mkdocs-gen-files
+      - run: mkdocs gh-deploy --force

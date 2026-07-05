@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pygeovision-pvc
+  namespace: pygeovision
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: standard
+  resources:
+    requests: {storage: 100Gi}

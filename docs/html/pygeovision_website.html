@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PyGeoVision — Geospatial AI Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════
+   TOKENS & RESET
+═══════════════════════════════════════════ */
+:root {
+  --ink:       #0A0E1A;
+  --ink-2:     #1A2035;
+  --ink-3:     #2A3350;
+  --slate:     #8896B3;
+  --fog:       #C8D0E0;
+  --paper:     #F4F6FB;
+  --white:     #FFFFFF;
+  --sat:       #0057FF;   /* satellite blue */
+  --sat-light: #3D82FF;
+  --sat-dim:   #D6E5FF;
+  --earth:     #00C896;   /* earth green */
+  --earth-dim: #C0F4E8;
+  --amber:     #FF8C00;
+  --amber-dim: #FFE5BF;
+  --violet:    #7B2FFF;
+  --violet-dim:#E8D9FF;
+  --red:       #FF3B5C;
+  --grid-line: rgba(0,87,255,0.08);
+
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 36px;
+
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+  --shadow-md: 0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06);
+  --shadow-lg: 0 24px 64px rgba(0,0,0,0.14), 0 4px 16px rgba(0,0,0,0.08);
+  --shadow-sat: 0 8px 32px rgba(0,87,255,0.22);
+
+  --f-display: 'Syne', sans-serif;
+  --f-body:    'DM Sans', sans-serif;
+  --f-code:    'DM Mono', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--f-body);
+  background: var(--ink);
+  color: var(--white);
+  line-height: 1.65;
+  font-size: 16px;
+  overflow-x: hidden;
+}
+a { color: inherit; text-decoration: none; }
+img { display: block; }
+
+/* ═══════════════════════════════════════════
+   UTILITY
+═══════════════════════════════════════════ */
+.container { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--f-code); font-size: 11px; letter-spacing: 1.2px;
+  text-transform: uppercase; padding: 4px 12px; border-radius: 20px;
+  font-weight: 500;
+}
+.tag-blue   { background: rgba(0,87,255,0.12);  color: var(--sat-light); border: 1px solid rgba(0,87,255,0.25); }
+.tag-green  { background: rgba(0,200,150,0.10); color: var(--earth);     border: 1px solid rgba(0,200,150,0.2); }
+.tag-amber  { background: rgba(255,140,0,0.10); color: var(--amber);     border: 1px solid rgba(255,140,0,0.2); }
+.tag-violet { background: rgba(123,47,255,0.10);color: var(--violet);    border: 1px solid rgba(123,47,255,0.2);}
+
+/* ═══════════════════════════════════════════
+   TOP NAV
+═══════════════════════════════════════════ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,14,26,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.nav-inner {
+  max-width: 1200px; margin: 0 auto; padding: 0 32px;
+  height: 60px; display: flex; align-items: center; gap: 40px;
+}
+.nav-logo {
+  font-family: var(--f-display); font-size: 20px; font-weight: 800;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, var(--sat-light), var(--earth));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+  white-space: nowrap;
+}
+.nav-links { display: flex; gap: 4px; margin-left: auto; }
+.nav-links a {
+  font-size: 14px; font-weight: 500; color: var(--slate); padding: 6px 14px;
+  border-radius: 6px; transition: color .2s, background .2s;
+}
+.nav-links a:hover { color: var(--white); background: rgba(255,255,255,0.06); }
+.nav-cta {
+  background: var(--sat); color: var(--white) !important;
+  padding: 7px 18px !important; border-radius: 8px !important;
+  font-weight: 600 !important; letter-spacing: -0.2px;
+  box-shadow: var(--shadow-sat); transition: transform .15s, box-shadow .15s !important;
+}
+.nav-cta:hover { transform: translateY(-1px); box-shadow: 0 12px 40px rgba(0,87,255,0.35) !important; background: var(--sat) !important; }
+
+/* ═══════════════════════════════════════════
+   HERO
+═══════════════════════════════════════════ */
+.hero {
+  min-height: 100vh; display: flex; align-items: center;
+  position: relative; overflow: hidden;
+  padding: 120px 0 80px;
+}
+.hero-bg {
+  position: absolute; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 800px 500px at 70% 40%, rgba(0,87,255,0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 600px 400px at 20% 60%, rgba(0,200,150,0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 400px 300px at 85% 80%, rgba(123,47,255,0.08) 0%, transparent 70%);
+}
+.hero-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%);
+}
+.hero-inner {
+  position: relative; z-index: 1;
+  max-width: 1200px; margin: 0 auto; padding: 0 32px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+}
+.hero-eyebrow {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 24px;
+  animation: fadeUp .6s ease both;
+}
+.hero-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--earth);
+  box-shadow: 0 0 12px var(--earth); animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.hero-eyebrow-text {
+  font-family: var(--f-code); font-size: 12px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--earth); font-weight: 500;
+}
+.hero-title {
+  font-family: var(--f-display); font-size: clamp(44px, 5.5vw, 72px);
+  font-weight: 800; line-height: 1.04; letter-spacing: -2px;
+  margin-bottom: 24px;
+  animation: fadeUp .6s .1s ease both;
+}
+.hero-title em {
+  font-style: normal;
+  background: linear-gradient(135deg, var(--sat-light) 0%, var(--earth) 60%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-sub {
+  font-size: 18px; line-height: 1.7; color: var(--slate); max-width: 480px;
+  margin-bottom: 40px;
+  animation: fadeUp .6s .2s ease both;
+}
+.hero-sub strong { color: var(--fog); font-weight: 500; }
+.hero-actions {
+  display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 56px;
+  animation: fadeUp .6s .3s ease both;
+}
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--sat); color: var(--white); padding: 14px 28px;
+  border-radius: var(--r-md); font-weight: 600; font-size: 15px;
+  box-shadow: var(--shadow-sat); transition: transform .15s, box-shadow .15s;
+  letter-spacing: -0.2px;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 48px rgba(0,87,255,0.35); }
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.06); color: var(--fog); padding: 14px 24px;
+  border-radius: var(--r-md); font-weight: 500; font-size: 15px;
+  border: 1px solid rgba(255,255,255,0.1); transition: all .15s;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.1); color: var(--white); }
+.hero-stats {
+  display: flex; gap: 32px; flex-wrap: wrap;
+  animation: fadeUp .6s .4s ease both;
+}
+.hero-stat-val {
+  font-family: var(--f-display); font-size: 28px; font-weight: 800;
+  letter-spacing: -1px; line-height: 1;
+}
+.hero-stat-label { font-size: 13px; color: var(--slate); margin-top: 3px; }
+.hero-code-panel {
+  background: var(--ink-2); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--r-xl); overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: fadeUp .6s .15s ease both;
+}
+.code-header {
+  background: rgba(255,255,255,0.04); padding: 14px 20px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.code-dot { width: 10px; height: 10px; border-radius: 50%; }
+.code-panel-inner { padding: 24px 24px 28px; }
+pre.hero-pre {
+  font-family: var(--f-code); font-size: 13.5px; line-height: 1.8;
+  color: var(--fog); white-space: pre; overflow-x: auto;
+}
+.c-kw  { color: #F472B6; }
+.c-fn  { color: #60A5FA; }
+.c-st  { color: #34D399; }
+.c-cm  { color: var(--ink-3); font-style: italic; }
+.c-nb  { color: #C084FC; }
+.c-nm  { color: #FCD34D; }
+.c-op  { color: #64748B; }
+.code-output {
+  margin-top: 16px; padding: 14px 16px;
+  background: rgba(0,200,150,0.06); border: 1px solid rgba(0,200,150,0.15);
+  border-radius: var(--r-sm);
+}
+.code-output p { font-family: var(--f-code); font-size: 12.5px; color: var(--earth); line-height: 1.7; }
+.code-output .dim { color: var(--slate); }
+@keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+
+/* ═══════════════════════════════════════════
+   INSTALL STRIP
+═══════════════════════════════════════════ */
+.install-strip {
+  background: var(--ink-2); border-top: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding: 28px 0;
+}
+.install-inner {
+  max-width: 1200px; margin: 0 auto; padding: 0 32px;
+  display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+}
+.install-label { font-size: 13px; color: var(--slate); font-weight: 500; white-space: nowrap; }
+.install-tabs { display: flex; gap: 4px; }
+.itab {
+  font-family: var(--f-code); font-size: 12px; padding: 5px 12px;
+  border-radius: 6px; cursor: pointer; color: var(--slate); border: none;
+  background: transparent; transition: all .15s;
+}
+.itab.active { background: rgba(255,255,255,0.08); color: var(--white); }
+.install-box {
+  flex: 1; display: flex; align-items: center; gap: 12px;
+  background: var(--ink); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--r-sm); padding: 10px 16px; min-width: 300px;
+}
+.install-cmd { font-family: var(--f-code); font-size: 14px; color: var(--earth); flex: 1; }
+.copy-btn {
+  font-family: var(--f-code); font-size: 11px; color: var(--slate);
+  background: none; border: none; cursor: pointer; padding: 2px 8px;
+  border-radius: 4px; transition: all .15s;
+}
+.copy-btn:hover { color: var(--white); background: rgba(255,255,255,0.08); }
+
+/* ═══════════════════════════════════════════
+   SECTION BASE
+═══════════════════════════════════════════ */
+section { padding: 100px 0; }
+.section-label {
+  font-family: var(--f-code); font-size: 11px; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--sat-light); font-weight: 500;
+  margin-bottom: 14px;
+}
+.section-title {
+  font-family: var(--f-display); font-size: clamp(32px, 3.5vw, 48px);
+  font-weight: 800; letter-spacing: -1.5px; line-height: 1.1;
+  margin-bottom: 16px;
+}
+.section-sub {
+  font-size: 17px; color: var(--slate); line-height: 1.7;
+  max-width: 540px;
+}
+.section-header { margin-bottom: 60px; }
+
+/* ═══════════════════════════════════════════
+   FEATURE PILLARS
+═══════════════════════════════════════════ */
+.pillars { background: var(--ink); }
+.pillars-grid {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 2px;
+  border: 1px solid rgba(255,255,255,0.06); border-radius: var(--r-xl);
+  overflow: hidden;
+}
+.pillar {
+  background: var(--ink-2); padding: 40px 36px;
+  transition: background .2s; position: relative;
+}
+.pillar::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, transparent 60%, rgba(0,87,255,0.04));
+  opacity: 0; transition: opacity .2s;
+}
+.pillar:hover { background: var(--ink-3); }
+.pillar:hover::after { opacity: 1; }
+.pillar-icon {
+  width: 52px; height: 52px; border-radius: var(--r-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; margin-bottom: 20px;
+}
+.pi-blue   { background: rgba(0,87,255,0.12); }
+.pi-green  { background: rgba(0,200,150,0.1); }
+.pi-amber  { background: rgba(255,140,0,0.1); }
+.pi-violet { background: rgba(123,47,255,0.1); }
+.pi-red    { background: rgba(255,59,92,0.1); }
+.pi-teal   { background: rgba(6,182,212,0.1); }
+.pillar-title {
+  font-family: var(--f-display); font-size: 19px; font-weight: 700;
+  letter-spacing: -0.4px; margin-bottom: 10px;
+}
+.pillar-body { font-size: 14px; color: var(--slate); line-height: 1.7; }
+.pillar-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.ptag {
+  font-family: var(--f-code); font-size: 10.5px; padding: 3px 8px;
+  border-radius: 4px; color: var(--slate); background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ═══════════════════════════════════════════
+   PROVIDERS MAP
+═══════════════════════════════════════════ */
+.providers-section { background: var(--ink-2); }
+.providers-header { margin-bottom: 48px; }
+.providers-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.provider-card {
+  background: var(--ink); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--r-md); padding: 18px 20px;
+  transition: border-color .2s, transform .15s;
+}
+.provider-card:hover { border-color: rgba(0,87,255,0.4); transform: translateY(-2px); }
+.pc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.pc-name { font-family: var(--f-code); font-size: 12.5px; font-weight: 500; color: var(--fog); }
+.pc-open-badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 10px;
+  font-family: var(--f-code); font-weight: 600; letter-spacing: 0.5px;
+}
+.open-yes { background: rgba(0,200,150,0.12); color: var(--earth); }
+.open-no  { background: rgba(139,148,158,0.12); color: var(--slate); }
+.pc-desc { font-size: 12px; color: var(--slate); line-height: 1.5; margin-bottom: 10px; }
+.pc-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.pc-chip {
+  font-size: 10px; padding: 1px 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.04); color: var(--slate); font-family: var(--f-code);
+}
+.pc-chip.sar    { background: rgba(123,47,255,0.1); color: #A78BFA; }
+.pc-chip.sub    { background: rgba(255,140,0,0.1);  color: var(--amber); }
+.pc-chip.stac   { background: rgba(0,87,255,0.1);   color: var(--sat-light); }
+
+/* ═══════════════════════════════════════════
+   GEOAI SUBSYSTEMS
+═══════════════════════════════════════════ */
+.geoai-section { background: var(--ink); }
+.subsystems-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.subsystem-card {
+  background: var(--ink-2); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--r-md); padding: 20px;
+  transition: border-color .2s, background .2s;
+}
+.subsystem-card:hover { border-color: rgba(123,47,255,0.4); background: rgba(123,47,255,0.04); }
+.ss-name {
+  font-family: var(--f-code); font-size: 15px; font-weight: 500;
+  color: #C084FC; margin-bottom: 6px;
+}
+.ss-geoai { font-size: 10.5px; color: var(--slate); font-family: var(--f-code); margin-bottom: 8px; }
+.ss-desc { font-size: 13px; color: var(--slate); line-height: 1.55; }
+
+/* ═══════════════════════════════════════════
+   PIPELINE FLOW
+═══════════════════════════════════════════ */
+.pipeline-section { background: var(--ink-2); }
+.pipeline-flow {
+  display: flex; align-items: stretch; gap: 0;
+  background: var(--ink); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--r-xl); overflow: hidden; margin-bottom: 40px;
+}
+.pipe-step {
+  flex: 1; padding: 32px 28px; position: relative;
+  border-right: 1px solid rgba(255,255,255,0.06); transition: background .2s;
+}
+.pipe-step:last-child { border-right: none; }
+.pipe-step:hover { background: rgba(255,255,255,0.02); }
+.ps-num {
+  font-family: var(--f-code); font-size: 11px; letter-spacing: 1px;
+  color: var(--slate); margin-bottom: 12px; font-weight: 500;
+}
+.ps-icon { font-size: 28px; margin-bottom: 12px; }
+.ps-name {
+  font-family: var(--f-display); font-size: 16px; font-weight: 700;
+  letter-spacing: -0.3px; margin-bottom: 6px;
+}
+.ps-sub { font-size: 12.5px; color: var(--slate); line-height: 1.5; }
+.pipe-arrow-col {
+  display: flex; align-items: center; padding: 0 2px;
+  color: var(--slate); font-size: 18px; flex-shrink: 0;
+}
+.pipelines-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.pl-card {
+  background: var(--ink); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--r-md); padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 8px;
+  transition: border-color .2s, transform .15s;
+}
+.pl-card:hover { border-color: rgba(0,200,150,0.35); transform: translateY(-2px); }
+.pl-name {
+  font-family: var(--f-code); font-size: 14px; font-weight: 500;
+  color: var(--earth);
+}
+.pl-desc { font-size: 13px; color: var(--slate); line-height: 1.5; }
+.pl-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.pl-tag {
+  font-family: var(--f-code); font-size: 10px; padding: 2px 7px; border-radius: 4px;
+  background: rgba(0,200,150,0.06); color: var(--slate); border: 1px solid rgba(0,200,150,0.12);
+}
+
+/* ═══════════════════════════════════════════
+   CODE EXAMPLES
+═══════════════════════════════════════════ */
+.code-section { background: var(--ink); }
+.examples-tabs { display: flex; gap: 4px; margin-bottom: 24px; flex-wrap: wrap; }
+.ex-tab {
+  font-family: var(--f-code); font-size: 12px; padding: 7px 16px;
+  border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,0.08);
+  color: var(--slate); background: transparent; transition: all .15s;
+}
+.ex-tab.active { background: var(--sat); border-color: var(--sat); color: var(--white); }
+.ex-panel { display: none; }
+.ex-panel.active { display: block; }
+.code-block {
+  background: var(--ink-2); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--r-lg); overflow: hidden;
+}
+.code-block-header {
+  background: rgba(255,255,255,0.03); padding: 12px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  display: flex; align-items: center; gap: 8px;
+}
+.cb-dots { display: flex; gap: 6px; }
+.cbd { width: 10px; height: 10px; border-radius: 50%; }
+.cb-fname { font-family: var(--f-code); font-size: 12px; color: var(--slate); margin-left: 8px; }
+.code-block pre {
+  font-family: var(--f-code); font-size: 13.5px; line-height: 1.85;
+  padding: 24px; overflow-x: auto; color: var(--fog);
+}
+
+/* ═══════════════════════════════════════════
+   CLI REFERENCE
+═══════════════════════════════════════════ */
+.cli-section { background: var(--ink-2); }
+.cli-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.cli-group { }
+.cli-group-title {
+  font-family: var(--f-code); font-size: 12px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--sat-light); font-weight: 500;
+  margin-bottom: 14px; padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.cli-cmd {
+  background: var(--ink); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--r-sm); padding: 12px 16px; margin-bottom: 8px;
+  transition: border-color .15s;
+}
+.cli-cmd:hover { border-color: rgba(0,87,255,0.3); }
+.cli-cmd-line { font-family: var(--f-code); font-size: 12.5px; color: var(--earth); margin-bottom: 3px; }
+.cli-cmd-desc { font-size: 12px; color: var(--slate); }
+
+/* ═══════════════════════════════════════════
+   MODELS TABLE
+═══════════════════════════════════════════ */
+.models-section { background: var(--ink); }
+.models-table-wrap { overflow-x: auto; border-radius: var(--r-lg); border: 1px solid rgba(255,255,255,0.07); }
+.models-table { width: 100%; border-collapse: collapse; }
+.models-table thead { background: rgba(255,255,255,0.04); }
+.models-table th {
+  text-align: left; padding: 14px 20px;
+  font-family: var(--f-code); font-size: 11px; font-weight: 600;
+  letter-spacing: 1.2px; text-transform: uppercase; color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.models-table td {
+  padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 14px;
+}
+.models-table tr:last-child td { border-bottom: none; }
+.models-table tr:hover td { background: rgba(255,255,255,0.02); }
+.mt-name { font-family: var(--f-code); color: var(--sat-light); font-size: 13px; }
+.mt-badge {
+  display: inline-block; font-family: var(--f-code); font-size: 10.5px;
+  padding: 2px 8px; border-radius: 4px;
+}
+.mb-seg  { background: rgba(0,87,255,0.1);  color: var(--sat-light); }
+.mb-det  { background: rgba(255,140,0,0.1); color: var(--amber); }
+.mb-cls  { background: rgba(0,200,150,0.1); color: var(--earth); }
+.mb-chg  { background: rgba(255,59,92,0.1); color: var(--red); }
+.mb-sr   { background: rgba(123,47,255,0.1);color: var(--violet); }
+.mt-check { color: var(--earth); font-weight: 700; }
+
+/* ═══════════════════════════════════════════
+   QUICK START
+═══════════════════════════════════════════ */
+.quickstart-section { background: var(--ink-2); }
+.steps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.step-card {
+  background: var(--ink); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--r-lg); padding: 32px; position: relative; overflow: hidden;
+}
+.step-num {
+  position: absolute; top: -10px; right: 20px;
+  font-family: var(--f-display); font-size: 80px; font-weight: 800;
+  opacity: 0.04; color: var(--white); line-height: 1; pointer-events: none;
+}
+.step-title {
+  font-family: var(--f-display); font-size: 17px; font-weight: 700;
+  letter-spacing: -0.3px; margin-bottom: 16px; position: relative; z-index: 1;
+}
+.step-code {
+  font-family: var(--f-code); font-size: 12.5px; line-height: 1.8;
+  color: var(--fog); position: relative; z-index: 1;
+}
+
+/* ═══════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════ */
+footer {
+  background: var(--ink); border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 64px 0 40px;
+}
+.footer-inner {
+  max-width: 1200px; margin: 0 auto; padding: 0 32px;
+}
+.footer-top { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 56px; }
+.footer-brand { }
+.footer-logo {
+  font-family: var(--f-display); font-size: 22px; font-weight: 800;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, var(--sat-light), var(--earth));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; margin-bottom: 14px;
+}
+.footer-desc { font-size: 14px; color: var(--slate); line-height: 1.7; margin-bottom: 20px; max-width: 280px; }
+.footer-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.fbadge {
+  font-family: var(--f-code); font-size: 10.5px; padding: 3px 10px;
+  border-radius: 20px; font-weight: 600;
+}
+.footer-col-title {
+  font-family: var(--f-display); font-size: 13px; font-weight: 700;
+  letter-spacing: -0.2px; margin-bottom: 16px; color: var(--fog);
+}
+.footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.footer-col ul li a {
+  font-size: 14px; color: var(--slate); transition: color .15s;
+}
+.footer-col ul li a:hover { color: var(--white); }
+.footer-bottom {
+  padding-top: 28px; border-top: 1px solid rgba(255,255,255,0.05);
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+}
+.footer-copy { font-size: 13px; color: var(--slate); }
+.footer-copy a { color: var(--sat-light); }
+.footer-built { font-family: var(--f-code); font-size: 12px; color: var(--ink-3); }
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════ */
+@media(max-width:1024px){
+  .hero-inner{grid-template-columns:1fr;gap:56px}
+  .hero-code-panel{max-width:560px}
+  .pillars-grid{grid-template-columns:1fr 1fr}
+  .cli-grid{grid-template-columns:1fr}
+  .steps-grid{grid-template-columns:1fr}
+  .footer-top{grid-template-columns:1fr 1fr;gap:32px}
+}
+@media(max-width:680px){
+  .pillars-grid{grid-template-columns:1fr}
+  .pipeline-flow{flex-direction:column}
+  .pipe-step{border-right:none;border-bottom:1px solid rgba(255,255,255,0.06)}
+  .footer-top{grid-template-columns:1fr}
+  .nav-links a:not(.nav-cta){display:none}
+}
+
+/* ═══════════════════════════════════════════
+   SCROLL ANIMATIONS
+═══════════════════════════════════════════ */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s, transform .6s; }
+.reveal.visible { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+
+<!-- ─── NAV ──────────────────────────────── -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo">🛰️ PyGeoVision</div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#providers">Providers</a>
+      <a href="#geoai">GeoAI</a>
+      <a href="#pipelines">Pipelines</a>
+      <a href="#cli">CLI</a>
+      <a href="#models">Models</a>
+      <a href="#quickstart">Quick Start</a>
+      <a href="#quickstart" class="nav-cta">Get Started →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ─── HERO ─────────────────────────────── -->
+<section class="hero" id="home">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div class="hero-inner">
+    <div class="hero-left">
+      <div class="hero-eyebrow">
+        <div class="hero-dot"></div>
+        <span class="hero-eyebrow-text">v1.0.0 — Production Ready</span>
+      </div>
+      <h1 class="hero-title">
+        Satellite Data<br/>meets <em>Geospatial&nbsp;AI</em>
+      </h1>
+      <p class="hero-sub">
+        <strong>PyGeoVision</strong> unifies <strong>PyGeoFetch</strong> (22+ satellite providers)
+        and <strong>GeoAI</strong> (full AI stack) into a single,
+        production-ready Python platform for Earth observation.
+      </p>
+      <div class="hero-actions">
+        <a href="#quickstart" class="btn-primary">
+          <span>🚀</span> Get Started
+        </a>
+        <a href="#features" class="btn-ghost">
+          <span>📖</span> Read Docs
+        </a>
+        <a href="https://github.com/pygeovision/pygeovision" class="btn-ghost">
+          <span>⭐</span> GitHub
+        </a>
+      </div>
+      <div class="hero-stats">
+        <div>
+          <div class="hero-stat-val" style="color:var(--sat-light)">22+</div>
+          <div class="hero-stat-label">Satellite Providers</div>
+        </div>
+        <div>
+          <div class="hero-stat-val" style="color:var(--earth)">24</div>
+          <div class="hero-stat-label">GeoAI Subsystems</div>
+        </div>
+        <div>
+          <div class="hero-stat-val" style="color:var(--amber)">10</div>
+          <div class="hero-stat-label">E2E Pipelines</div>
+        </div>
+        <div>
+          <div class="hero-stat-val" style="color:var(--violet)">208</div>
+          <div class="hero-stat-label">Tests Passing</div>
+        </div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="hero-code-panel">
+        <div class="code-header">
+          <div class="code-dot" style="background:#FF5F57"></div>
+          <div class="code-dot" style="background:#FFBD2E"></div>
+          <div class="code-dot" style="background:#28CA41"></div>
+          <span style="font-family:var(--f-code);font-size:12px;color:var(--slate);margin-left:8px">quick_start.py</span>
+        </div>
+        <div class="code-panel-inner">
+<pre class="hero-pre"><span class="c-kw">import</span> pygeovision <span class="c-kw">as</span> pgv
+
+<span class="c-nm">client</span> <span class="c-op">=</span> pgv.<span class="c-fn">PyGeoVision</span>()
+
+<span class="c-cm"># Search 22+ satellite providers</span>
+<span class="c-nm">results</span> <span class="c-op">=</span> client.<span class="c-fn">search</span>(
+    bbox<span class="c-op">=</span>(<span class="c-nm">-0.15</span>, <span class="c-nm">51.47</span>, <span class="c-nm">-0.10</span>, <span class="c-nm">51.52</span>),
+    date_range<span class="c-op">=</span>(<span class="c-st">"2024-06-01"</span>, <span class="c-st">"2024-06-30"</span>),
+    providers<span class="c-op">=</span>[<span class="c-st">"planetary_computer"</span>],
+    cloud_cover_max<span class="c-op">=</span><span class="c-nm">10</span>,
+)
+
+<span class="c-cm"># Download + post-process</span>
+<span class="c-nm">downloads</span> <span class="c-op">=</span> client.<span class="c-fn">download</span>(
+    results[:<span class="c-nm">2</span>], output_dir<span class="c-op">=</span><span class="c-st">"./data/"</span>,
+    post_process<span class="c-op">=</span>[<span class="c-st">"reproject:EPSG:4326"</span>, <span class="c-st">"cog"</span>],
+)
+
+<span class="c-cm"># GeoAI — segment buildings</span>
+client.geoai.segment.<span class="c-fn">buildings</span>(
+    downloads[<span class="c-nm">0</span>].path,
+    output_vector<span class="c-op">=</span><span class="c-st">"buildings.geojson"</span>,
+)</pre>
+          <div class="code-output">
+            <p>✓ Found <span style="color:var(--white)">2 scenes</span> from planetary_computer</p>
+            <p>✓ Downloaded <span style="color:var(--white)">2 × Sentinel-2B</span> → <span class="dim">./data/</span></p>
+            <p>✓ Segmented <span style="color:var(--white)">buildings.geojson</span> → <span class="dim">847 polygons</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── INSTALL STRIP ────────────────────── -->
+<div class="install-strip">
+  <div class="install-inner">
+    <span class="install-label">Install</span>
+    <div class="install-tabs">
+      <button class="itab active" onclick="setInstall('pip')">pip</button>
+      <button class="itab" onclick="setInstall('conda')">conda</button>
+      <button class="itab" onclick="setInstall('full')">full</button>
+    </div>
+    <div class="install-box">
+      <span class="install-cmd" id="install-cmd">pip install "pygeovision[geoai]"</span>
+      <button class="copy-btn" onclick="copyInstall()">copy</button>
+    </div>
+    <div class="tag tag-green">Apache 2.0</div>
+    <div class="tag tag-blue">Python 3.10+</div>
+  </div>
+</div>
+
+<!-- ─── FEATURE PILLARS ──────────────────── -->
+<section class="pillars" id="features">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">Core Capabilities</div>
+      <h2 class="section-title">Everything Earth Observation needs</h2>
+      <p class="section-sub">A complete platform — data acquisition, AI inference, model training, and geospatial processing unified under one API.</p>
+    </div>
+    <div class="pillars-grid reveal">
+      <div class="pillar">
+        <div class="pillar-icon pi-blue">🛰️</div>
+        <div class="pillar-title">22+ Satellite Providers</div>
+        <div class="pillar-body">Search and download from every major satellite data source — open access to commercial. PyGeoFetch handles auth, retries, caching, and post-processing.</div>
+        <div class="pillar-tags">
+          <span class="ptag">Sentinel-1/2</span><span class="ptag">Landsat</span><span class="ptag">Planet</span><span class="ptag">NAIP</span><span class="ptag">WorldView</span><span class="ptag">MODIS</span>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon pi-green">🤖</div>
+        <div class="pillar-title">GeoAI Integration</div>
+        <div class="pillar-body">24 AI subsystems — segmentation, detection, change detection, foundation models, embeddings, VLM captioning, super-resolution, and more.</div>
+        <div class="pillar-tags">
+          <span class="ptag">SAM</span><span class="ptag">Prithvi</span><span class="ptag">ChangeSTAR</span><span class="ptag">DINOv3</span><span class="ptag">RF-DETR</span>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon pi-amber">⚙️</div>
+        <div class="pillar-title">End-to-End Pipelines</div>
+        <div class="pillar-body">10 production pipelines combining PyGeoFetch data acquisition with GeoAI inference — search, download, predict, export in one call.</div>
+        <div class="pillar-tags">
+          <span class="ptag">Buildings</span><span class="ptag">Land Cover</span><span class="ptag">Change</span><span class="ptag">Water</span><span class="ptag">Deforestation</span>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon pi-violet">📡</div>
+        <div class="pillar-title">STAC 1.0 Native</div>
+        <div class="pillar-body">Full STAC 1.0 compliance throughout. Search results, download tasks, and pipeline outputs all follow the STAC standard — interoperable with any STAC tool.</div>
+        <div class="pillar-tags">
+          <span class="ptag">pystac-client</span><span class="ptag">Planetary Computer</span><span class="ptag">Earth Search</span>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon pi-red">🏋️</div>
+        <div class="pillar-title">Model Training</div>
+        <div class="pillar-body">Train segmentation, detection, classification, and regression models on satellite imagery with specialist geospatial loss functions and timm backbone support.</div>
+        <div class="pillar-tags">
+          <span class="ptag">UNet</span><span class="ptag">SegFormer</span><span class="ptag">timm</span><span class="ptag">Dice</span><span class="ptag">Focal</span><span class="ptag">ONNX</span>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="pillar-icon pi-teal">🖥️</div>
+        <div class="pillar-title">Production CLI</div>
+        <div class="pillar-body">Full-featured CLI covering all 22 providers, auth management, YAML pipeline orchestration, AI commands, and model management. Windows, macOS, Linux.</div>
+        <div class="pillar-tags">
+          <span class="ptag">search</span><span class="ptag">download</span><span class="ptag">segment</span><span class="ptag">train</span><span class="ptag">pipeline</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── PROVIDERS ────────────────────────── -->
+<section class="providers-section" id="providers">
+  <div class="container">
+    <div class="section-header providers-header reveal">
+      <div class="section-label">PyGeoFetch Integration</div>
+      <h2 class="section-title">22 Satellite Data Providers</h2>
+      <p class="section-sub">PyGeoFetch handles authentication, parallel downloads, retries, caching, and post-processing across all providers. PyGeoVision simply calls it.</p>
+    </div>
+    <div class="providers-grid reveal">
+      <!-- Open -->
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">planetary_computer</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">Microsoft's richest open STAC catalog. Sentinel-1/2, Landsat, MODIS, NAIP, COP-DEM.</div><div class="pc-chips"><span class="pc-chip stac">STAC</span><span class="pc-chip sar">SAR</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">aws_earth</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">AWS Earth Open Data. Sentinel-2 COGs, Landsat, NAIP via S3.</div><div class="pc-chips"><span class="pc-chip stac">STAC</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">element84</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">Element 84 Earth Search. Sentinel-2 and Landsat Collection 2.</div><div class="pc-chips"><span class="pc-chip stac">STAC</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">noaa_big_data</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">GOES-16/17/18 weather satellites and NEXRAD radar data.</div><div class="pc-chips"></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">esa_scihub</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">ESA SciHub public mirrors for Copernicus open data archives.</div><div class="pc-chips"><span class="pc-chip sar">SAR</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">jaxa_earth</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">JAXA ALOS 30m DSM and PALSAR-2 forest/non-forest mapping.</div><div class="pc-chips"><span class="pc-chip sar">SAR</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">isro_bhuvan</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">ISRO Bhuvan — ResourceSat-2/2A and Cartosat-1/2 Indian imagery.</div><div class="pc-chips"></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">inpe_cbers</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">Brazilian CBERS-4 and CBERS-4A via INPE catalog.</div><div class="pc-chips"></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">digitalglobe</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">DigitalGlobe Open Data program — disaster response VHR imagery.</div><div class="pc-chips"><span class="pc-chip sub">&lt;1m</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">geoserver_generic</span><span class="pc-open-badge open-yes">🌐 Open</span></div><div class="pc-desc">Generic WMS/WCS/WFS connector — any OGC-compliant service.</div><div class="pc-chips"></div></div>
+      <!-- Auth -->
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">usgs</span><span class="pc-open-badge open-no">🔐 User/Pass</span></div><div class="pc-desc">USGS Earth Explorer. Landsat 1–9, ASTER, MODIS via M2M API.</div><div class="pc-chips"></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">copernicus</span><span class="pc-open-badge open-no">🔐 OAuth2</span></div><div class="pc-desc">Copernicus CDSE. Full Sentinel-1/2/3/5P programme via CDSE.</div><div class="pc-chips"><span class="pc-chip stac">STAC</span><span class="pc-chip sar">SAR</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">nasa_earthdata</span><span class="pc-open-badge open-no">🔐 OAuth2</span></div><div class="pc-desc">NASA Earthdata CMR. MODIS, VIIRS, ICESat-2, GEDI via STAC.</div><div class="pc-chips"><span class="pc-chip stac">STAC</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">nasa_earthdata_cloud</span><span class="pc-open-badge open-no">🔐 OAuth2+S3</span></div><div class="pc-desc">Direct S3 access to cloud-hosted NASA datasets.</div><div class="pc-chips"><span class="pc-chip stac">STAC</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">planet</span><span class="pc-open-badge open-no">🔐 API Key</span></div><div class="pc-desc">Planet Labs. Daily PlanetScope 3m and SkySat 0.5m imagery.</div><div class="pc-chips"><span class="pc-chip stac">STAC</span><span class="pc-chip sub">&lt;1m</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">sentinel_hub</span><span class="pc-open-badge open-no">🔐 OAuth2</span></div><div class="pc-desc">Sentinel Hub. All Sentinels + Landsat with on-the-fly processing.</div><div class="pc-chips"><span class="pc-chip sar">SAR</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">maxar_gbdx</span><span class="pc-open-badge open-no">🔐 Token</span></div><div class="pc-desc">Maxar GBDX. WorldView constellation — 30cm resolution.</div><div class="pc-chips"><span class="pc-chip sub">&lt;1m</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">airbus_oneatlas</span><span class="pc-open-badge open-no">🔐 API Key</span></div><div class="pc-desc">Airbus OneAtlas. Pléiades 50cm and SPOT 6/7 at 1.5m.</div><div class="pc-chips"><span class="pc-chip stac">STAC</span><span class="pc-chip sub">&lt;1m</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">alaska_satellite_facility</span><span class="pc-open-badge open-no">🔐 Earthdata</span></div><div class="pc-desc">ASF. Sentinel-1 C-band and ALOS PALSAR L-band SAR.</div><div class="pc-chips"><span class="pc-chip sar">SAR</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">opentopography</span><span class="pc-open-badge open-no">🔐 API Key</span></div><div class="pc-desc">OpenTopography. SRTM, Copernicus DEM 30/90m, LiDAR.</div><div class="pc-chips"></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">google_earth_engine</span><span class="pc-open-badge open-no">🔐 Service Acct</span></div><div class="pc-desc">Google Earth Engine. Multi-petabyte catalog via GEE API.</div><div class="pc-chips"><span class="pc-chip sar">SAR</span></div></div>
+      <div class="provider-card"><div class="pc-top"><span class="pc-name">terrabotics</span><span class="pc-open-badge open-no">🔐 API Key</span></div><div class="pc-desc">TerraBotics. Commercial satellite archive + tasking platform.</div><div class="pc-chips"><span class="pc-chip sub">&lt;1m</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── GEOAI ─────────────────────────────── -->
+<section class="geoai-section" id="geoai">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">GeoAI Integration</div>
+      <h2 class="section-title">24 AI Subsystems via <code style="font-family:var(--f-code);font-size:0.85em;background:rgba(123,47,255,0.15);padding:2px 10px;border-radius:6px;color:#C084FC">client.geoai.*</code></h2>
+      <p class="section-sub">The complete GeoAI API organised into 24 lazy-loaded subsystems. GeoAI is only imported when first accessed.</p>
+    </div>
+    <div class="subsystems-grid reveal">
+      <div class="subsystem-card"><div class="ss-name">.segment</div><div class="ss-geoai">BuildingFootprintExtractor · SolarPanelDetector · AgricultureFieldDelineator · segment_water · SAM · timm · HuggingFace Hub</div><div class="ss-desc">Pixel-accurate semantic segmentation of geospatial features from satellite and aerial imagery.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.detect</div><div class="ss-geoai">CarDetector · ShipDetector · ParkingSplotDetector · GroundedSAM · rfdetr_detect · multiclass_detection</div><div class="ss-desc">Object detection — vehicles, vessels, parking, arbitrary objects via natural-language prompts.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.classify</div><div class="ss-geoai">CLIPVectorClassifier · classify_image · classify_images · train_classifier</div><div class="ss-desc">Scene and land-cover classification including CLIP zero-shot inference.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.change</div><div class="ss-geoai">changestar_detect · ChangeStarDetection · list_changestar_models</div><div class="ss-desc">Bi-temporal change detection using ChangeSTAR transformer for urban growth, deforestation, damage assessment.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.train</div><div class="ss-geoai">train_segmentation_model · train_segmentation_landcover · train_multiclass_detector · train_timm_segmentation_model · rfdetr_train · export_training_data</div><div class="ss-desc">Train segmentation, detection, and classification models with specialist geospatial losses.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.infer</div><div class="ss-geoai">predict_geotiff · semantic_segmentation</div><div class="ss-desc">Tiled inference on arbitrarily large GeoTIFFs with Gaussian blending at tile boundaries.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.embed</div><div class="ss-geoai">extract_patch_embeddings · extract_pixel_embeddings · cluster_embeddings · embedding_similarity · visualize_embeddings</div><div class="ss-desc">DINOv3 and Tessera satellite image embeddings for similarity search and clustering.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.sam</div><div class="ss-geoai">mask_generation · GroundedSAM</div><div class="ss-desc">Segment Anything Model — auto-mask generation and grounded detection with text prompts.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.prithvi</div><div class="ss-geoai">load_prithvi_model · prithvi_inference · get_available_prithvi_models</div><div class="ss-desc">NASA Prithvi HLS foundation model (100M / 300M) for multispectral remote sensing.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.cloud</div><div class="ss-geoai">predict_cloud_mask_from_raster · predict_cloud_mask_batch · calculate_cloud_statistics · create_cloud_free_mask</div><div class="ss-desc">Cloud detection, batch masking, statistics, and cloud-free composite generation.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.sr</div><div class="ss-geoai">super_resolution (ESRGAN ×2/4/8)</div><div class="ss-desc">ESRGAN super-resolution upscaling — enhance 30m Landsat to 7.5m equivalent.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.onnx</div><div class="ss-geoai">export_to_onnx · onnx_semantic_segmentation</div><div class="ss-desc">Export PyTorch models to ONNX for deployment and cross-platform inference.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.caption</div><div class="ss-geoai">moondream_caption · moondream_query · moondream_detect · moondream_caption_sliding_window</div><div class="ss-desc">Moondream VLM for satellite image captioning, visual Q&amp;A, and sliding-window analysis.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.canopy</div><div class="ss-geoai">canopy_height_estimation · list_canopy_models</div><div class="ss-desc">Forest canopy height estimation from satellite imagery for carbon and biomass studies.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.dinov3</div><div class="ss-geoai">analyze_image_patches · create_similarity_map · train_dinov3_segmentation · dinov3_segment_geotiff</div><div class="ss-desc">DINOv3 (DINOv2-based) analysis, fine-tuning, and GeoTIFF segmentation.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.tessera</div><div class="ss-geoai">tessera_download · tessera_available_years · tessera_coverage</div><div class="ss-desc">Tessera pre-computed satellite embedding datasets for large-scale geospatial analysis.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.water</div><div class="ss-geoai">segment_water + BAND_ORDER_PRESETS</div><div class="ss-desc">Water body segmentation with satellite-specific band order presets: sentinel2, naip, landsat.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.rfdetr</div><div class="ss-geoai">rfdetr_detect · rfdetr_segment · rfdetr_train · list_rfdetr_models</div><div class="ss-desc">RF-DETR real-time detection transformer — state-of-the-art object detection.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.timm</div><div class="ss-geoai">timm_semantic_segmentation · predict_raster · list_timm_models</div><div class="ss-desc">1000+ timm backbones for segmentation and pixel regression tasks.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.landcover</div><div class="ss-geoai">export_landcover_tiles · train_segmentation_landcover</div><div class="ss-desc">Land cover training with specialist losses: dice, focal, tversky, unified_focal.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.download</div><div class="ss-geoai">download_naip · download_overture_buildings · pc_stac_search · pc_stac_download · download_model_from_hf</div><div class="ss-desc">GeoAI built-in data downloads — NAIP, Overture Maps, Planetary Computer, HuggingFace Hub.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.utils</div><div class="ss-geoai">raster_to_vector · smooth_vector · regularize · mosaic_geotiffs · calc_iou · stack_bands · get_device</div><div class="ss-desc">Raster/vector processing, geospatial metrics, and device management utilities.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.map</div><div class="ss-geoai">Map (Leafmap) · view_raster · view_vector</div><div class="ss-desc">Interactive Leafmap and MapLibre visualization of raster and vector results.</div></div>
+      <div class="subsystem-card"><div class="ss-name">.pipeline</div><div class="ss-geoai">load_pipeline · Pipeline</div><div class="ss-desc">GeoAI pipeline orchestration — load, create, and run AI processing chains.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── PIPELINES ─────────────────────────── -->
+<section class="pipeline-section" id="pipelines">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">End-to-End Workflows</div>
+      <h2 class="section-title">10 Production Pipelines</h2>
+      <p class="section-sub">Each pipeline combines PyGeoFetch data acquisition with GeoAI inference — fully automated from search to output.</p>
+    </div>
+
+    <div class="pipeline-flow reveal">
+      <div class="pipe-step">
+        <div class="ps-num">01 ——</div>
+        <div class="ps-icon">🔍</div>
+        <div class="ps-name">Search</div>
+        <div class="ps-sub">PyGeoFetch queries 22+ providers with date, bbox, cloud cover filters</div>
+      </div>
+      <div class="pipe-step">
+        <div class="ps-num">02 ——</div>
+        <div class="ps-icon">⬇️</div>
+        <div class="ps-name">Download</div>
+        <div class="ps-sub">Parallel downloads with SAS tokens, retries, and post-processing</div>
+      </div>
+      <div class="pipe-step">
+        <div class="ps-num">03 ——</div>
+        <div class="ps-icon">🤖</div>
+        <div class="ps-name">AI Inference</div>
+        <div class="ps-sub">GeoAI runs the appropriate model — tiled, GPU-accelerated</div>
+      </div>
+      <div class="pipe-step">
+        <div class="ps-num">04 ——</div>
+        <div class="ps-icon">📦</div>
+        <div class="ps-name">Export</div>
+        <div class="ps-sub">GeoTIFF / GeoJSON / COG output with metadata and statistics</div>
+      </div>
+    </div>
+
+    <div class="pipelines-list reveal">
+      <div class="pl-card"><div class="pl-name">building_footprints</div><div class="pl-desc">Extract building polygons from Sentinel-2 or NAIP using BuildingFootprintExtractor.</div><div class="pl-tags"><span class="pl-tag">Sentinel-2</span><span class="pl-tag">NAIP</span><span class="pl-tag">GeoJSON</span></div></div>
+      <div class="pl-card"><div class="pl-name">change_detection</div><div class="pl-desc">ChangeSTAR bi-temporal change analysis between two date ranges.</div><div class="pl-tags"><span class="pl-tag">bi-temporal</span><span class="pl-tag">Landsat</span><span class="pl-tag">GeoTIFF</span></div></div>
+      <div class="pl-card"><div class="pl-name">land_cover</div><div class="pl-desc">11-class land cover classification using ESA WorldCover or trained GeoAI model.</div><div class="pl-tags"><span class="pl-tag">Sentinel-2</span><span class="pl-tag">WorldCover</span><span class="pl-tag">11 classes</span></div></div>
+      <div class="pl-card"><div class="pl-name">water_bodies</div><div class="pl-desc">Surface water mapping using NDWI or trained GeoAI water segmentation model.</div><div class="pl-tags"><span class="pl-tag">NDWI</span><span class="pl-tag">Sentinel-2</span><span class="pl-tag">GeoJSON</span></div></div>
+      <div class="pl-card"><div class="pl-name">solar_detection</div><div class="pl-desc">Detect solar panel installations from high-resolution aerial or Planet imagery.</div><div class="pl-tags"><span class="pl-tag">Planet</span><span class="pl-tag">NAIP</span><span class="pl-tag">GeoJSON</span></div></div>
+      <div class="pl-card"><div class="pl-name">crop_monitoring</div><div class="pl-desc">Crop type classification from Sentinel-2 time series with SegFormer-B2.</div><div class="pl-tags"><span class="pl-tag">time series</span><span class="pl-tag">Sentinel-2</span></div></div>
+      <div class="pl-card"><div class="pl-name">disaster_assessment</div><div class="pl-desc">Rapid damage assessment comparing pre/post-event VHR imagery.</div><div class="pl-tags"><span class="pl-tag">VHR</span><span class="pl-tag">bi-temporal</span><span class="pl-tag">damage</span></div></div>
+      <div class="pl-card"><div class="pl-name">deforestation</div><div class="pl-desc">Forest loss detection from Landsat multi-temporal analysis with ChangeFormer.</div><div class="pl-tags"><span class="pl-tag">Landsat</span><span class="pl-tag">PRODES</span><span class="pl-tag">GeoJSON</span></div></div>
+      <div class="pl-card"><div class="pl-name">urban_growth</div><div class="pl-desc">Urban expansion mapping from long-term Landsat time series.</div><div class="pl-tags"><span class="pl-tag">multi-temporal</span><span class="pl-tag">Landsat</span></div></div>
+      <div class="pl-card"><div class="pl-name">carbon_estimation</div><div class="pl-desc">Above-ground biomass and carbon density estimation via NDVI-based modelling.</div><div class="pl-tags"><span class="pl-tag">NDVI</span><span class="pl-tag">Sentinel-2</span><span class="pl-tag">GeoTIFF</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── CODE EXAMPLES ─────────────────────── -->
+<section class="code-section" id="examples">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">Code Examples</div>
+      <h2 class="section-title">From satellite to insight</h2>
+    </div>
+    <div class="examples-tabs reveal">
+      <button class="ex-tab active" onclick="showExample('search')">Search &amp; Download</button>
+      <button class="ex-tab" onclick="showExample('geoai')">GeoAI Inference</button>
+      <button class="ex-tab" onclick="showExample('train')">Model Training</button>
+      <button class="ex-tab" onclick="showExample('pipeline')">Data Pipeline</button>
+      <button class="ex-tab" onclick="showExample('change')">Change Detection</button>
+    </div>
+    <div class="reveal">
+      <!-- Search -->
+      <div class="ex-panel active" id="ex-search">
+        <div class="code-block">
+          <div class="code-block-header"><div class="cb-dots"><div class="cbd" style="background:#FF5F57"></div><div class="cbd" style="background:#FFBD2E"></div><div class="cbd" style="background:#28CA41"></div></div><span class="cb-fname">search_download.py</span></div>
+<pre><span class="c-kw">import</span> pygeovision <span class="c-kw">as</span> pgv
+
+client <span class="c-op">=</span> pgv.<span class="c-fn">PyGeoVision</span>()
+
+<span class="c-cm"># Add credentials (stored securely in system keyring via PyGeoFetch)</span>
+client.<span class="c-fn">add_credentials</span>(<span class="c-st">"usgs"</span>, username<span class="c-op">=</span><span class="c-st">"user"</span>, password<span class="c-op">=</span><span class="c-st">"pass"</span>)
+client.<span class="c-fn">add_credentials</span>(<span class="c-st">"planet"</span>, api_key<span class="c-op">=</span><span class="c-st">"PL_KEY"</span>)
+client.<span class="c-fn">add_credentials</span>(<span class="c-st">"copernicus"</span>, client_id<span class="c-op">=</span><span class="c-st">"id"</span>, client_secret<span class="c-op">=</span><span class="c-st">"secret"</span>)
+
+<span class="c-cm"># Search across 22+ providers — returns STAC 1.0 compliant results</span>
+results <span class="c-op">=</span> client.<span class="c-fn">search</span>(
+    bbox<span class="c-op">=</span>(<span class="c-nm">-0.15</span>, <span class="c-nm">51.47</span>, <span class="c-nm">-0.10</span>, <span class="c-nm">51.52</span>),
+    date_range<span class="c-op">=</span>(<span class="c-st">"2024-06-01"</span>, <span class="c-st">"2024-06-30"</span>),
+    providers<span class="c-op">=</span>[<span class="c-st">"planetary_computer"</span>, <span class="c-st">"copernicus"</span>, <span class="c-st">"usgs"</span>],
+    cloud_cover_max<span class="c-op">=</span><span class="c-nm">10</span>,
+    max_results<span class="c-op">=</span><span class="c-nm">20</span>,
+)
+
+<span class="c-kw">for</span> r <span class="c-kw">in</span> results:
+    <span class="c-fn">print</span>(r)  <span class="c-cm"># [planetary_computer] Sentinel-2B | 2024-06-26 | cloud=0%</span>
+
+<span class="c-cm"># Download with full post-processing chain (delegates to PyGeoFetch)</span>
+downloads <span class="c-op">=</span> client.<span class="c-fn">download</span>(
+    results[:<span class="c-nm">3</span>],
+    output_dir<span class="c-op">=</span><span class="c-st">"./data/"</span>,
+    parallel<span class="c-op">=</span><span class="c-nm">4</span>,
+    post_process<span class="c-op">=</span>[<span class="c-st">"reproject:EPSG:4326"</span>, <span class="c-st">"compress:lzw"</span>, <span class="c-st">"cog"</span>],
+    verify_checksum<span class="c-op">=</span><span class="c-nb">True</span>,
+)</pre>
+        </div>
+      </div>
+      <!-- GeoAI -->
+      <div class="ex-panel" id="ex-geoai">
+        <div class="code-block">
+          <div class="code-block-header"><div class="cb-dots"><div class="cbd" style="background:#FF5F57"></div><div class="cbd" style="background:#FFBD2E"></div><div class="cbd" style="background:#28CA41"></div></div><span class="cb-fname">geoai_inference.py</span></div>
+<pre>ga <span class="c-op">=</span> client.geoai  <span class="c-cm"># lazy-loads GeoAI on first access</span>
+
+<span class="c-cm"># ── Segmentation ──────────────────────────────────</span>
+ga.segment.<span class="c-fn">buildings</span>(<span class="c-st">"sentinel2.tif"</span>,
+    output_vector<span class="c-op">=</span><span class="c-st">"buildings.geojson"</span>, confidence_threshold<span class="c-op">=</span><span class="c-nm">0.5</span>)
+
+ga.segment.<span class="c-fn">solar_panels</span>(<span class="c-st">"aerial.tif"</span>, output_vector<span class="c-op">=</span><span class="c-st">"solar.geojson"</span>)
+ga.segment.<span class="c-fn">water</span>(<span class="c-st">"s2.tif"</span>, band_order<span class="c-op">=</span><span class="c-st">"sentinel2"</span>)
+ga.segment.<span class="c-fn">with_sam</span>(<span class="c-st">"aerial.tif"</span>)  <span class="c-cm"># SAM auto-segment</span>
+
+<span class="c-cm"># ── Detection ─────────────────────────────────────</span>
+ga.detect.<span class="c-fn">cars</span>(<span class="c-st">"aerial.tif"</span>, output_path<span class="c-op">=</span><span class="c-st">"cars.geojson"</span>)
+ga.detect.<span class="c-fn">ships</span>(<span class="c-st">"port.tif"</span>, output_path<span class="c-op">=</span><span class="c-st">"ships.geojson"</span>)
+ga.detect.<span class="c-fn">grounded</span>(<span class="c-st">"aerial.tif"</span>, <span class="c-st">"swimming pools"</span>)
+
+<span class="c-cm"># ── Cloud masking ────────────────────────────────</span>
+ga.cloud.<span class="c-fn">predict</span>(<span class="c-st">"sentinel2.tif"</span>, output_path<span class="c-op">=</span><span class="c-st">"cloud_mask.tif"</span>)
+
+<span class="c-cm"># ── Foundation models ────────────────────────────</span>
+model <span class="c-op">=</span> ga.prithvi.<span class="c-fn">load</span>(<span class="c-st">"prithvi-eo-1.0-100M"</span>)
+ga.prithvi.<span class="c-fn">infer</span>(<span class="c-st">"hls_tile.tif"</span>, model, output_path<span class="c-op">=</span><span class="c-st">"pred.tif"</span>)
+
+<span class="c-cm"># ── Captioning with Moondream VLM ────────────────</span>
+caption <span class="c-op">=</span> ga.caption.<span class="c-fn">caption</span>(<span class="c-st">"tile.tif"</span>)
+answer  <span class="c-op">=</span> ga.caption.<span class="c-fn">query</span>(<span class="c-st">"tile.tif"</span>, <span class="c-st">"How many buildings?"</span>)</pre>
+        </div>
+      </div>
+      <!-- Train -->
+      <div class="ex-panel" id="ex-train">
+        <div class="code-block">
+          <div class="code-block-header"><div class="cb-dots"><div class="cbd" style="background:#FF5F57"></div><div class="cbd" style="background:#FFBD2E"></div><div class="cbd" style="background:#28CA41"></div></div><span class="cb-fname">model_training.py</span></div>
+<pre><span class="c-cm"># Export training chips from imagery + labels</span>
+client.geoai.train.<span class="c-fn">generate_chips</span>(
+    <span class="c-st">"sentinel2.tif"</span>, <span class="c-st">"labels.tif"</span>, <span class="c-st">"./chips/"</span>,
+    chip_size<span class="c-op">=</span><span class="c-nm">256</span>, overlap<span class="c-op">=</span><span class="c-nm">32</span>,
+)
+
+<span class="c-cm"># Train semantic segmentation</span>
+client.geoai.train.<span class="c-fn">segmentation</span>(
+    <span class="c-st">"./chips/"</span>, <span class="c-st">"building_model.pth"</span>,
+    num_classes<span class="c-op">=</span><span class="c-nm">2</span>, epochs<span class="c-op">=</span><span class="c-nm">100</span>, backbone<span class="c-op">=</span><span class="c-st">"efficientnet-b4"</span>,
+)
+
+<span class="c-cm"># Land cover with unified focal loss</span>
+client.geoai.train.<span class="c-fn">segmentation_landcover</span>(
+    <span class="c-st">"./lc_chips/"</span>, <span class="c-st">"landcover.pth"</span>,
+    num_classes<span class="c-op">=</span><span class="c-nm">11</span>, loss_fn<span class="c-op">=</span><span class="c-st">"unified_focal"</span>,
+)
+
+<span class="c-cm"># timm-backbone segmentation (1000+ backbones)</span>
+client.geoai.train.<span class="c-fn">timm_segmentation</span>(
+    <span class="c-st">"./chips/"</span>, <span class="c-st">"timm_seg.pth"</span>,
+    backbone<span class="c-op">=</span><span class="c-st">"convnext_base"</span>, num_classes<span class="c-op">=</span><span class="c-nm">5</span>,
+)
+
+<span class="c-cm"># ONNX export for deployment</span>
+client.geoai.onnx.<span class="c-fn">export</span>(model, <span class="c-st">"model.onnx"</span>,
+    input_shape<span class="c-op">=</span>(<span class="c-nm">1</span>, <span class="c-nm">4</span>, <span class="c-nm">512</span>, <span class="c-nm">512</span>))</pre>
+        </div>
+      </div>
+      <!-- Pipeline -->
+      <div class="ex-panel" id="ex-pipeline">
+        <div class="code-block">
+          <div class="code-block-header"><div class="cb-dots"><div class="cbd" style="background:#FF5F57"></div><div class="cbd" style="background:#FFBD2E"></div><div class="cbd" style="background:#28CA41"></div></div><span class="cb-fname">yaml_pipeline.py</span></div>
+<pre><span class="c-cm"># Programmatic pipeline builder</span>
+pipeline <span class="c-op">=</span> (
+    client.<span class="c-fn">create_pipeline</span>(<span class="c-st">"weekly-sentinel2"</span>)
+    .<span class="c-fn">search</span>(
+        providers<span class="c-op">=</span>[<span class="c-st">"planetary_computer"</span>, <span class="c-st">"copernicus"</span>],
+        bbox<span class="c-op">=</span>(<span class="c-nm">-74.1</span>, <span class="c-nm">40.6</span>, <span class="c-nm">-73.7</span>, <span class="c-nm">40.9</span>),
+        date_range<span class="c-op">=</span><span class="c-st">"last_7_days"</span>,
+        cloud_cover<span class="c-op">=</span><span class="c-st">"0-10"</span>,
+    )
+    .<span class="c-fn">filter</span>(<span class="c-st">"data.cloud_cover &lt; 5"</span>)
+    .<span class="c-fn">download</span>(
+        parallel<span class="c-op">=</span><span class="c-nm">4</span>, output<span class="c-op">=</span><span class="c-st">"./raw/"</span>,
+        post_process<span class="c-op">=</span>[<span class="c-st">"reproject:EPSG:4326"</span>, <span class="c-st">"cog"</span>],
+    )
+    .<span class="c-fn">export</span>(destination<span class="c-op">=</span><span class="c-st">"s3://my-bucket/"</span>)
+    .<span class="c-fn">set_schedule</span>(<span class="c-st">"0 6 * * 1"</span>)  <span class="c-cm"># Every Monday 06:00 UTC</span>
+)
+pipeline.<span class="c-fn">run</span>()
+
+<span class="c-cm"># End-to-end AI pipeline (data + inference)</span>
+result <span class="c-op">=</span> client.<span class="c-fn">pipeline</span>(
+    <span class="c-st">"building_footprints"</span>,
+    bbox<span class="c-op">=</span>(<span class="c-nm">-0.15</span>, <span class="c-nm">51.47</span>, <span class="c-nm">-0.10</span>, <span class="c-nm">51.52</span>),
+    date<span class="c-op">=</span><span class="c-st">"2024-06"</span>, output_dir<span class="c-op">=</span><span class="c-st">"./results/"</span>,
+)
+<span class="c-fn">print</span>(result.output_path, result.stats)</pre>
+        </div>
+      </div>
+      <!-- Change -->
+      <div class="ex-panel" id="ex-change">
+        <div class="code-block">
+          <div class="code-block-header"><div class="cb-dots"><div class="cbd" style="background:#FF5F57"></div><div class="cbd" style="background:#FFBD2E"></div><div class="cbd" style="background:#28CA41"></div></div><span class="cb-fname">change_detection.py</span></div>
+<pre><span class="c-cm"># Bi-temporal change detection with ChangeSTAR</span>
+result <span class="c-op">=</span> client.geoai.change.<span class="c-fn">detect</span>(
+    <span class="c-st">"london_2020.tif"</span>,
+    <span class="c-st">"london_2024.tif"</span>,
+    output_path<span class="c-op">=</span><span class="c-st">"changes.tif"</span>,
+)
+
+<span class="c-cm"># Full change pipeline — search, download, detect</span>
+result <span class="c-op">=</span> client.<span class="c-fn">pipeline</span>(
+    <span class="c-st">"change_detection"</span>,
+    bbox<span class="c-op">=</span>(<span class="c-nm">-74.1</span>, <span class="c-nm">40.6</span>, <span class="c-nm">-73.7</span>, <span class="c-nm">40.9</span>),
+    date_before<span class="c-op">=</span><span class="c-st">"2020-01"</span>,
+    date_after<span class="c-op">=</span><span class="c-st">"2024-01"</span>,
+)
+
+<span class="c-cm"># Deforestation monitoring</span>
+result <span class="c-op">=</span> client.<span class="c-fn">pipeline</span>(
+    <span class="c-st">"deforestation"</span>,
+    bbox<span class="c-op">=</span>(<span class="c-nm">-60.0</span>, <span class="c-nm">-3.0</span>, <span class="c-nm">-59.5</span>, <span class="c-nm">-2.5</span>),  <span class="c-cm"># Amazon</span>
+    date_before<span class="c-op">=</span><span class="c-st">"2018-01"</span>,
+    date_after<span class="c-op">=</span><span class="c-st">"2024-01"</span>,
+    output_dir<span class="c-op">=</span><span class="c-st">"./deforestation/"</span>,
+)
+
+<span class="c-cm"># List available ChangeSTAR models</span>
+models <span class="c-op">=</span> client.geoai.change.<span class="c-fn">list_models</span>()
+<span class="c-cm"># → ['changestar-v1', 'changestar-v2']</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── CLI ──────────────────────────────── -->
+<section class="cli-section" id="cli">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">Command Line Interface</div>
+      <h2 class="section-title">Full-featured CLI</h2>
+      <p class="section-sub">Every capability available from the terminal — data acquisition, AI inference, model management, and pipeline orchestration.</p>
+    </div>
+    <div class="cli-grid reveal">
+      <div class="cli-group">
+        <div class="cli-group-title">Data — PyGeoFetch</div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision data auth add usgs --username U --password P</div><div class="cli-cmd-desc">Store credentials in system keyring via PyGeoFetch</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision data search --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --providers planetary_computer --cloud-max 10 --output results.geojson</div><div class="cli-cmd-desc">Search 22+ providers, save STAC 1.0 GeoJSON</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision data download --from-search results.geojson --output ./data/ --parallel 4 --post-process reproject:EPSG:4326,cog</div><div class="cli-cmd-desc">Download with signed URLs + post-processing chain</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision data pipeline run weekly.yaml</div><div class="cli-cmd-desc">Execute a PyGeoFetch YAML pipeline</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision data providers --open-only</div><div class="cli-cmd-desc">List all 22 providers with capabilities</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision data cache stats</div><div class="cli-cmd-desc">Show search result cache usage</div></div>
+      </div>
+      <div class="cli-group">
+        <div class="cli-group-title">AI — GeoAI</div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision ai segment buildings --input s2.tif --output buildings.tif --vector buildings.geojson</div><div class="cli-cmd-desc">Extract building footprints</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision ai detect grounded --input aerial.tif --prompt "swimming pools" --output pools.geojson</div><div class="cli-cmd-desc">GroundedSAM natural-language detection</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision ai train segmentation --data ./chips/ --output model.pth --num-classes 5 --epochs 100 --backbone efficientnet-b4</div><div class="cli-cmd-desc">Train segmentation model</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision ai cloud-mask --input sentinel2.tif --output cloud.tif</div><div class="cli-cmd-desc">Generate cloud detection mask</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision pipeline building_footprints --bbox -0.15 51.47 -0.10 51.52 --date 2024-06</div><div class="cli-cmd-desc">End-to-end data + AI pipeline</div></div>
+        <div class="cli-cmd"><div class="cli-cmd-line">pygeovision models list</div><div class="cli-cmd-desc">List all 14 registered model architectures</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MODELS ────────────────────────────── -->
+<section class="models-section" id="models">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">Model Registry</div>
+      <h2 class="section-title">14 Registered Architectures</h2>
+      <p class="section-sub">Pre-configured models with pretrained weights — load and run without configuration.</p>
+    </div>
+    <div class="models-table-wrap reveal">
+      <table class="models-table">
+        <thead>
+          <tr>
+            <th>Model Name</th>
+            <th>Task</th>
+            <th>Architecture</th>
+            <th>Pretrained</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="mt-name">unet_resnet50</span></td><td><span class="mt-badge mb-seg">Segmentation</span></td><td>UNet + ResNet-50 encoder</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">unet_efficientnet_b4</span></td><td><span class="mt-badge mb-seg">Segmentation</span></td><td>UNet + EfficientNet-B4</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">segformer_b2</span></td><td><span class="mt-badge mb-seg">Segmentation</span></td><td>SegFormer-B2 (MiT-B2)</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">segformer_b5</span></td><td><span class="mt-badge mb-seg">Segmentation</span></td><td>SegFormer-B5 (MiT-B5)</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">deeplabv3plus_resnet101</span></td><td><span class="mt-badge mb-seg">Segmentation</span></td><td>DeepLabV3+ ResNet-101</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">changeformer</span></td><td><span class="mt-badge mb-chg">Change Detection</span></td><td>ChangeFormer transformer</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">siamese_unet</span></td><td><span class="mt-badge mb-chg">Change Detection</span></td><td>Siamese UNet</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">retinanet_resnet50</span></td><td><span class="mt-badge mb-det">Detection</span></td><td>RetinaNet + ResNet-50 FPN</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">fcos_resnet50</span></td><td><span class="mt-badge mb-det">Detection</span></td><td>FCOS + ResNet-50</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">resnet50_cls</span></td><td><span class="mt-badge mb-cls">Classification</span></td><td>ResNet-50</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">efficientnet_b3_cls</span></td><td><span class="mt-badge mb-cls">Classification</span></td><td>EfficientNet-B3</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">vit_b16_cls</span></td><td><span class="mt-badge mb-cls">Classification</span></td><td>ViT-B/16</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">esrgan_geo</span></td><td><span class="mt-badge mb-sr">Super Resolution</span></td><td>ESRGAN (geospatial)</td><td><span class="mt-check">✓</span></td></tr>
+          <tr><td><span class="mt-name">srcnn</span></td><td><span class="mt-badge mb-sr">Super Resolution</span></td><td>SRCNN baseline</td><td><span class="mt-check">✓</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ─── QUICK START ───────────────────────── -->
+<section class="quickstart-section" id="quickstart">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">Get Started</div>
+      <h2 class="section-title">Up and running in minutes</h2>
+    </div>
+    <div class="steps-grid reveal">
+      <div class="step-card">
+        <div class="step-num">01</div>
+        <div class="step-title">📦 Install PyGeoVision</div>
+<pre class="step-code"><span class="c-cm"># Core + GeoAI stack</span>
+pip install <span class="c-st">"pygeovision[geoai]"</span>
+
+<span class="c-cm"># Add rasterio + geopandas</span>
+pip install <span class="c-st">"pygeovision[geo]"</span>
+
+<span class="c-cm"># Everything</span>
+pip install <span class="c-st">"pygeovision[all]"</span></pre>
+      </div>
+      <div class="step-card">
+        <div class="step-num">02</div>
+        <div class="step-title">🔐 Add Provider Credentials</div>
+<pre class="step-code"><span class="c-cm"># CLI</span>
+pygeovision data auth add usgs \
+  --username USER --password PASS
+pygeovision data auth add planet \
+  --api-key YOUR_KEY
+
+<span class="c-cm"># Python</span>
+client.<span class="c-fn">add_credentials</span>(<span class="c-st">"copernicus"</span>,
+    client_id<span class="c-op">=</span><span class="c-st">"id"</span>, client_secret<span class="c-op">=</span><span class="c-st">"s"</span>)</pre>
+      </div>
+      <div class="step-card">
+        <div class="step-num">03</div>
+        <div class="step-title">🛰️ Search &amp; Download</div>
+<pre class="step-code">pygeovision data search \
+  --bbox -0.15 51.47 -0.10 51.52 \
+  --date 2024-06 \
+  --providers planetary_computer \
+  --cloud-max 10 \
+  --output results.geojson
+
+pygeovision data download \
+  --from-search results.geojson \
+  --output ./data/ --parallel 4 \
+  --post-process reproject:EPSG:4326,cog</pre>
+      </div>
+      <div class="step-card">
+        <div class="step-num">04</div>
+        <div class="step-title">🤖 Run GeoAI</div>
+<pre class="step-code"><span class="c-cm"># Segment buildings</span>
+pygeovision ai segment buildings \
+  --input sentinel2.tif \
+  --output buildings.tif \
+  --vector buildings.geojson
+
+<span class="c-cm"># End-to-end pipeline</span>
+pygeovision pipeline building_footprints \
+  --bbox -0.15 51.47 -0.10 51.52 \
+  --date 2024-06</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── FOOTER ────────────────────────────── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <div class="footer-logo">🛰️ PyGeoVision</div>
+        <div class="footer-desc">The world-class geospatial AI platform — unifying PyGeoFetch satellite data and GeoAI intelligence into one production-ready Python package.</div>
+        <div class="footer-badges">
+          <span class="fbadge tag tag-blue">v1.0.0</span>
+          <span class="fbadge tag tag-green">Apache 2.0</span>
+          <span class="fbadge tag tag-amber">208 Tests ✓</span>
+          <span class="fbadge tag tag-violet">Python 3.10+</span>
+        </div>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-title">Data</div>
+        <ul>
+          <li><a href="#providers">22 Providers</a></li>
+          <li><a href="#examples">STAC 1.0</a></li>
+          <li><a href="#cli">CLI Reference</a></li>
+          <li><a href="#quickstart">Auth Guide</a></li>
+          <li><a href="#pipelines">YAML Pipelines</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-title">GeoAI</div>
+        <ul>
+          <li><a href="#geoai">24 Subsystems</a></li>
+          <li><a href="#models">Model Registry</a></li>
+          <li><a href="#examples">Training Guide</a></li>
+          <li><a href="#pipelines">E2E Pipelines</a></li>
+          <li><a href="#geoai">Foundation Models</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-title">Resources</div>
+        <ul>
+          <li><a href="https://github.com/appiahkubis14/PyGeoFetch">PyGeoFetch ↗</a></li>
+          <li><a href="https://opengeoai.org">GeoAI ↗</a></li>
+          <li><a href="https://github.com/pygeovision/pygeovision">GitHub ↗</a></li>
+          <li><a href="#quickstart">Quick Start</a></li>
+          <li><a href="#cli">CLI Docs</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-copy">
+        © 2025 PyGeoVision. Released under <a href="#">Apache 2.0</a>. Built on <a href="https://github.com/appiahkubis14/PyGeoFetch">PyGeoFetch</a> and <a href="https://opengeoai.org">GeoAI</a>.
+      </div>
+      <div class="footer-built">pip install "pygeovision[geoai]"</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* Install tabs */
+const cmds = {
+  pip:   'pip install "pygeovision[geoai]"',
+  conda: 'conda install -c conda-forge pygeovision',
+  full:  'pip install "pygeovision[all]"',
+};
+function setInstall(id) {
+  document.getElementById('install-cmd').textContent = cmds[id];
+  document.querySelectorAll('.itab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+}
+function copyInstall() {
+  const text = document.getElementById('install-cmd').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'copied!';
+    setTimeout(() => btn.textContent = 'copy', 2000);
+  });
+}
+
+/* Code example tabs */
+function showExample(id) {
+  document.querySelectorAll('.ex-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.ex-panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('ex-' + id).classList.add('active');
+}
+
+/* Scroll reveal */
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); } });
+}, { threshold: 0.07, rootMargin: '0px 0px -60px 0px' });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+/* Nav active link */
+const sections = document.querySelectorAll('section[id], div[id="home"]');
+window.addEventListener('scroll', () => {
+  const pos = window.scrollY + 100;
+  sections.forEach(s => {
+    if (s.offsetTop <= pos && s.offsetTop + s.offsetHeight > pos) {
+      document.querySelectorAll('.nav-links a').forEach(a => a.style.color = '');
+    }
+  });
+});
+</script>
+</body>
+</html>

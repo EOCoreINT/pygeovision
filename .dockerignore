@@ -1,0 +1,110 @@
+# PyGeoVision — .dockerignore
+# Exclude files from Docker build context to keep images small and secure.
+
+# Version control
+.git/
+.github/
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test artifacts
+.pytest_cache/
+.tox/
+.nox/
+htmlcov/
+.coverage
+coverage.xml
+test-results/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+
+# Development
+.pre-commit-config.yaml
+.env
+.env.*
+!.env.example
+secrets.yaml
+*.pem
+*.key
+
+# Large data files — never in Docker image
+*.tif
+*.tiff
+*.geotiff
+*.nc
+*.hdf
+*.zarr/
+*.laz
+*.las
+*.zip
+*.tar
+*.tar.gz
+*.SAFE/
+
+# Model weights — mount as volumes, don't bake in
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+checkpoints/
+model_cache/
+pretrained/
+weights/
+
+# Runtime data directories
+data/
+raw/
+downloads/
+results/
+predictions/
+chips/
+pipeline_output/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Docs build
+docs/_build/
+site/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Build scripts (not needed in image)
+build_*.py
+nb*.py
+
+# Logs
+*.log
+pygeovision*.log
+pygeofetch*.log

@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PyGeoVision — Full Chain Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#090E1E;--panel:#0A1628;--panel2:#0D1C34;
+  --green:#00C896;--blue:#0057FF;--amber:#FF8C00;
+  --violet:#C084FC;--red:#FF3B5C;--white:#F4F6FB;
+  --slate:#8896B3;--dim:#1A2035;
+  --f-disp:'Space Grotesk',sans-serif;
+  --f-code:'JetBrains Mono',monospace;
+  --f-body:'Inter',sans-serif;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:var(--f-body);color:var(--white);user-select:none}
+
+/* ── Progress bar ─────────────────────────────────────────── */
+#progress-bar{
+  position:fixed;top:0;left:0;height:3px;z-index:999;
+  background:linear-gradient(90deg,var(--green),var(--blue),var(--violet));
+  transition:width .4s ease;
+}
+/* ── Controls ─────────────────────────────────────────────── */
+#controls{
+  position:fixed;bottom:80px;right:32px;z-index:999;
+  display:flex;gap:10px;
+}
+.ctrl-btn{
+  width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.15);
+  background:rgba(10,22,40,.8);backdrop-filter:blur(12px);
+  color:var(--white);font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;
+}
+.ctrl-btn:hover{background:rgba(0,87,255,.3);border-color:var(--blue);}
+
+/* ── Slide counter ────────────────────────────────────────── */
+#counter{
+  position:fixed;top:20px;right:28px;z-index:999;
+  font-family:var(--f-code);font-size:12px;color:var(--slate);
+}
+/* ── Scene label ──────────────────────────────────────────── */
+#scene-label{
+  position:fixed;top:20px;left:28px;z-index:999;
+  font-family:var(--f-code);font-size:11px;color:var(--green);
+  letter-spacing:2px;text-transform:uppercase;opacity:.8;
+}
+
+/* ── Narration bar ────────────────────────────────────────── */
+#narration{
+  position:fixed;bottom:0;left:0;right:0;z-index:998;
+  background:rgba(9,14,30,.92);backdrop-filter:blur(20px);
+  border-top:1px solid rgba(0,200,150,.15);
+  padding:14px 48px;min-height:56px;
+  display:flex;align-items:center;
+  font-size:15px;line-height:1.6;color:#B8C5D8;
+}
+#narration span.hl{color:var(--white);font-weight:500;}
+#narration span.code{font-family:var(--f-code);color:var(--green);font-size:13px;
+  background:rgba(0,200,150,.08);padding:1px 6px;border-radius:4px;}
+
+/* ── Slide container ──────────────────────────────────────── */
+#stage{width:100vw;height:100vh;position:relative;overflow:hidden}
+.slide{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:64px 80px 80px;
+  opacity:0;transform:translateY(24px);
+  transition:opacity .5s ease,transform .5s ease;
+  pointer-events:none;
+}
+.slide.active{opacity:1;transform:none;pointer-events:auto;}
+.slide.exit{opacity:0;transform:translateY(-24px);}
+
+/* ── Background globe/grid ────────────────────────────────── */
+.bg-grid{
+  position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(0,87,255,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,87,255,.04) 1px,transparent 1px);
+  background-size:60px 60px;
+  mask-image:radial-gradient(ellipse 80% 70% at 50% 50%,black 30%,transparent 100%);
+}
+.bg-glow{position:absolute;inset:0;pointer-events:none}
+.glow-green{position:absolute;width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,200,150,.12) 0%,transparent 70%);
+  top:-100px;right:-100px;}
+.glow-blue{position:absolute;width:500px;height:500px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,87,255,.10) 0%,transparent 70%);
+  bottom:-100px;left:-100px;}
+
+/* ── Typography ───────────────────────────────────────────── */
+.eyebrow{
+  font-family:var(--f-code);font-size:11px;letter-spacing:2.5px;text-transform:uppercase;
+  color:var(--green);margin-bottom:16px;display:flex;align-items:center;gap:8px;
+}
+.eyebrow::before{content:'';width:20px;height:1px;background:var(--green);}
+.headline{
+  font-family:var(--f-disp);font-size:clamp(42px,5.5vw,72px);
+  font-weight:700;letter-spacing:-2px;line-height:1.05;text-align:center;
+  margin-bottom:20px;
+}
+.headline em{font-style:normal;
+  background:linear-gradient(135deg,var(--green),var(--blue));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.subline{font-size:18px;color:var(--slate);text-align:center;max-width:600px;line-height:1.7;}
+
+/* ── Terminal ─────────────────────────────────────────────── */
+.terminal{
+  background:#06090F;border:1px solid rgba(255,255,255,.1);
+  border-radius:14px;overflow:hidden;width:100%;max-width:780px;
+  box-shadow:0 24px 64px rgba(0,0,0,.5),0 0 0 1px rgba(0,200,150,.08);
+}
+.term-bar{
+  background:#0E1424;padding:12px 16px;display:flex;align-items:center;gap:8px;
+  border-bottom:1px solid rgba(255,255,255,.07);
+}
+.term-dot{width:10px;height:10px;border-radius:50%;}
+.term-title{font-family:var(--f-code);font-size:12px;color:var(--slate);margin-left:8px;}
+.term-body{padding:20px 24px 24px;font-family:var(--f-code);font-size:13.5px;
+  line-height:1.85;min-height:120px;}
+.t-prompt{color:var(--green);}
+.t-cmd{color:#E2E8F0;}
+.t-out{color:var(--slate);}
+.t-ok{color:var(--green);}
+.t-warn{color:var(--amber);}
+.t-val{color:#60A5FA;}
+.t-kw{color:#F472B6;}
+.t-str{color:var(--green);}
+.cursor{display:inline-block;width:8px;height:15px;background:var(--green);
+  vertical-align:text-bottom;animation:blink .9s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── Architecture diagram ─────────────────────────────────── */
+.arch-row{display:flex;gap:16px;align-items:stretch;justify-content:center;flex-wrap:wrap;}
+.arch-box{
+  background:var(--panel2);border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;padding:24px 28px;min-width:200px;flex:1;max-width:260px;
+  position:relative;overflow:hidden;transition:transform .2s,border-color .2s;
+}
+.arch-box:hover{transform:translateY(-4px);}
+.arch-box.green{border-color:rgba(0,200,150,.3);}
+.arch-box.blue{border-color:rgba(0,87,255,.3);}
+.arch-box.amber{border-color:rgba(255,140,0,.3);}
+.arch-box.violet{border-color:rgba(192,132,252,.3);}
+.arch-box-icon{font-size:28px;margin-bottom:10px;}
+.arch-box-title{font-family:var(--f-disp);font-size:16px;font-weight:600;margin-bottom:6px;}
+.arch-box-sub{font-size:12px;color:var(--slate);line-height:1.5;}
+.arch-arrow{
+  display:flex;align-items:center;color:var(--slate);font-size:20px;
+  align-self:center;flex-shrink:0;
+}
+
+/* ── Stat cards ───────────────────────────────────────────── */
+.stats-row{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;}
+.stat-card{
+  background:var(--panel2);border:1px solid rgba(255,255,255,.07);
+  border-radius:14px;padding:24px 32px;text-align:center;min-width:140px;
+}
+.stat-val{
+  font-family:var(--f-disp);font-size:42px;font-weight:700;
+  letter-spacing:-1px;line-height:1;
+}
+.stat-label{font-size:13px;color:var(--slate);margin-top:6px;}
+
+/* ── Pipeline flow ────────────────────────────────────────── */
+.pipe-flow{display:flex;align-items:center;gap:0;width:100%;max-width:900px;}
+.pipe-step{
+  flex:1;background:var(--panel2);border:1px solid rgba(255,255,255,.07);
+  padding:20px 18px;text-align:center;position:relative;
+  transition:background .2s;
+}
+.pipe-step:first-child{border-radius:12px 0 0 12px;}
+.pipe-step:last-child{border-radius:0 12px 12px 0;}
+.pipe-step-icon{font-size:24px;margin-bottom:8px;}
+.pipe-step-name{font-family:var(--f-disp);font-size:14px;font-weight:600;}
+.pipe-step-sub{font-size:11px;color:var(--slate);margin-top:4px;}
+.pipe-arrow{color:var(--slate);font-size:18px;padding:0 6px;flex-shrink:0;}
+
+/* ── Provider grid ────────────────────────────────────────── */
+.provider-grid{
+  display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:720px;
+}
+.prov-chip{
+  font-family:var(--f-code);font-size:11px;padding:5px 12px;
+  border-radius:20px;border:1px solid;white-space:nowrap;
+  transition:transform .1s;
+}
+.prov-chip:hover{transform:scale(1.05);}
+.prov-open{background:rgba(0,200,150,.08);border-color:rgba(0,200,150,.3);color:var(--green);}
+.prov-auth{background:rgba(0,87,255,.08);border-color:rgba(0,87,255,.3);color:#60A5FA;}
+
+/* ── Model zoo wheel ──────────────────────────────────────── */
+.zoo-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:720px;width:100%;
+}
+.zoo-card{
+  background:var(--panel2);border:1px solid rgba(255,255,255,.07);
+  border-radius:12px;padding:16px;
+  transition:border-color .2s,transform .2s;
+}
+.zoo-card:hover{border-color:rgba(192,132,252,.4);transform:translateY(-2px);}
+.zoo-card-task{font-family:var(--f-code);font-size:10px;color:var(--violet);
+  letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.zoo-card-title{font-size:14px;font-weight:600;margin-bottom:4px;}
+.zoo-card-count{font-size:12px;color:var(--slate);}
+
+/* ── Dataset table ────────────────────────────────────────── */
+.ds-list{display:flex;flex-direction:column;gap:8px;width:100%;max-width:800px;}
+.ds-row{
+  display:flex;align-items:center;gap:16px;
+  background:var(--panel2);border:1px solid rgba(255,255,255,.06);
+  border-radius:10px;padding:12px 18px;
+  transition:border-color .15s;
+}
+.ds-row:hover{border-color:rgba(0,200,150,.3);}
+.ds-name{font-family:var(--f-code);font-size:13px;color:var(--white);flex:1;}
+.ds-domain{font-size:11px;color:var(--slate);width:100px;}
+.ds-mod{font-size:11px;width:90px;}
+.ds-vol{font-family:var(--f-code);font-size:12px;color:var(--amber);width:60px;text-align:right;}
+
+/* ── Result panel ─────────────────────────────────────────── */
+.result-panel{
+  background:var(--panel2);border:1px solid rgba(0,200,150,.2);
+  border-radius:16px;padding:28px 32px;width:100%;max-width:780px;
+}
+.result-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05);
+}
+.result-row:last-child{border-bottom:none;}
+.result-key{font-size:14px;color:var(--slate);}
+.result-val{font-family:var(--f-code);font-size:14px;color:var(--green);}
+
+/* ── Before/After ─────────────────────────────────────────── */
+.ba-pair{display:flex;gap:20px;width:100%;max-width:800px;}
+.ba-card{
+  flex:1;background:var(--panel2);border:1px solid rgba(255,255,255,.07);
+  border-radius:14px;overflow:hidden;
+}
+.ba-img{width:100%;height:180px;display:flex;align-items:center;justify-content:center;
+  font-size:64px;}
+.ba-label{
+  padding:12px 16px;font-family:var(--f-code);font-size:12px;
+  display:flex;justify-content:space-between;
+}
+
+/* ── SVG Globe ────────────────────────────────────────────── */
+#globe-wrap{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  opacity:.18;z-index:0;pointer-events:none;}
+
+/* ── Animations ───────────────────────────────────────────── */
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes orbit{
+  0%  {transform:rotate(0deg) translateX(160px) rotate(0deg)}
+  100%{transform:rotate(360deg) translateX(160px) rotate(-360deg)}
+}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+@keyframes barFill{from{width:0}to{width:var(--w,100%)}}
+@keyframes countUp{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:none}}
+.anim-fadeup{animation:fadeUp .5s ease both;}
+.anim-fadeup-1{animation:fadeUp .5s .1s ease both;}
+.anim-fadeup-2{animation:fadeUp .5s .2s ease both;}
+.anim-fadeup-3{animation:fadeUp .5s .3s ease both;}
+.anim-fadeup-4{animation:fadeUp .5s .4s ease both;}
+.count-anim{animation:countUp .5s ease both;}
+
+/* ── Highlight row ────────────────────────────────────────── */
+.hl-row{
+  background:rgba(0,200,150,.07);border:1px solid rgba(0,200,150,.2);
+  border-radius:8px;padding:16px 20px;
+  font-family:var(--f-code);font-size:14px;
+  display:flex;gap:12px;align-items:center;
+}
+</style>
+</head>
+<body>
+
+<!-- Progress bar -->
+<div id="progress-bar" style="width:0%"></div>
+
+<!-- Scene label -->
+<div id="scene-label">Scene <span id="scene-num">01</span></div>
+
+<!-- Slide counter -->
+<div id="counter"><span id="cur">1</span> / <span id="tot">17</span></div>
+
+<!-- Controls -->
+<div id="controls">
+  <button class="ctrl-btn" id="btn-prev" title="Previous">‹</button>
+  <button class="ctrl-btn" id="btn-play" title="Pause">⏸</button>
+  <button class="ctrl-btn" id="btn-next" title="Next">›</button>
+</div>
+
+<!-- Narration bar -->
+<div id="narration"></div>
+
+<!-- Stage -->
+<div id="stage"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// SLIDES DATA
+// ─────────────────────────────────────────────────────────────
+const SLIDES = [
+  // 0 — HERO
+  { dur: 6000, label: "Introduction", narration: `<span class="hl">PyGeoVision</span> is the world-class geospatial AI platform — unifying <span class="code">PyGeoFetch</span> (22+ satellite providers), <span class="code">GeoAI</span> (complete AI stack), and the <span class="code">EarthNets</span> framework into a single, production-ready Python package.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="bg-glow"><div class="glow-green"></div><div class="glow-blue"></div></div>
+    <svg id="globe-wrap" width="420" height="420" viewBox="0 0 420 420" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="gg" cx="50%" cy="50%">
+          <stop offset="0%" stop-color="#00C896" stop-opacity="0.4"/>
+          <stop offset="100%" stop-color="#0057FF" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="210" cy="210" r="160" fill="none" stroke="#00C896" stroke-width="1" stroke-dasharray="4 8"/>
+      <circle cx="210" cy="210" r="120" fill="none" stroke="#0057FF" stroke-width="1" stroke-dasharray="3 12"/>
+      <circle cx="210" cy="210" r="80"  fill="none" stroke="#C084FC" stroke-width="1" stroke-dasharray="2 16"/>
+      <circle cx="210" cy="210" r="160" fill="url(#gg)" opacity="0.6"/>
+      <g style="transform-origin:210px 210px;animation:spin 20s linear infinite">
+        <circle cx="370" cy="210" r="6" fill="#00C896"/>
+      </g>
+      <g style="transform-origin:210px 210px;animation:spin 14s linear infinite reverse">
+        <circle cx="90" cy="210" r="5" fill="#0057FF"/>
+      </g>
+      <g style="transform-origin:210px 210px;animation:spin 8s linear infinite">
+        <circle cx="210" cy="50" r="4" fill="#C084FC"/>
+      </g>
+    </svg>
+    <div style="position:relative;z-index:2;text-align:center;animation:fadeUp .8s ease">
+      <div class="eyebrow">🛰️ &nbsp;Geospatial AI Platform — v2.0</div>
+      <h1 class="headline" style="font-size:clamp(52px,7vw,88px)">
+        <em>PyGeoVision</em>
+      </h1>
+      <p style="font-size:22px;color:var(--slate);max-width:580px;line-height:1.6;margin:0 auto 40px">
+        Satellite data meets geospatial intelligence.<br/>
+        The complete Earth observation platform.
+      </p>
+      <div class="stats-row" style="margin-top:0">
+        <div class="stat-card"><div class="stat-val" style="color:var(--blue)">22+</div><div class="stat-label">Providers</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:var(--green)">220+</div><div class="stat-label">Datasets</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:var(--violet)">98</div><div class="stat-label">AI Models</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:var(--amber)">26</div><div class="stat-label">Pipelines</div></div>
+      </div>
+    </div>`
+  },
+
+  // 1 — THE PROBLEM
+  { dur: 5500, label: "The Challenge", narration: `Earth observation was fragmented — researchers had to stitch together <span class="hl">dozens of tools</span>, APIs, and providers. No single platform covered search, download, AI inference, training, and deployment in one coherent workflow.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">The challenge</div>
+    <h2 class="headline anim-fadeup-1">Fragmented.<br/>Complex. <em>Slow.</em></h2>
+    <div class="arch-row anim-fadeup-2" style="margin-top:32px">
+      ${[["🗺️","Provider APIs","22+ separate auth systems"],["🤖","AI Models","No unified inference"],["📊","Datasets","No standard catalog"],["🔄","Pipelines","Manual, error-prone"]].map(([i,t,s])=>`
+      <div class="arch-box" style="border-color:rgba(255,59,92,.3)">
+        <div class="arch-box-icon">${i}</div>
+        <div class="arch-box-title">${t}</div>
+        <div class="arch-box-sub">${s}</div>
+      </div>`).join('')}
+    </div>`
+  },
+
+  // 2 — ARCHITECTURE
+  { dur: 6000, label: "Architecture", narration: `PyGeoVision solves this with three unified layers: <span class="code">PyGeoFetch</span> for satellite data, <span class="code">GeoAI</span> for AI inference, and <span class="code">EarthNets</span> for datasets and models — all behind one clean Python API.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Architecture</div>
+    <h2 class="headline anim-fadeup-1">One API. <em>Three layers.</em></h2>
+    <div style="width:100%;max-width:900px;margin-top:28px" class="anim-fadeup-2">
+      <div class="arch-row">
+        <div class="arch-box green" style="flex:2;max-width:none;background:rgba(0,200,150,.04)">
+          <div class="arch-box-icon">🛰️</div>
+          <div class="arch-box-title" style="color:var(--green)">PyGeoFetch — Data Layer</div>
+          <div class="arch-box-sub">22+ satellite providers · Parallel download · Post-processing chains · YAML pipelines · Credential management</div>
+        </div>
+      </div>
+      <div style="text-align:center;padding:10px 0;color:var(--slate);font-size:24px">↕</div>
+      <div class="arch-row">
+        <div class="arch-box violet" style="flex:2;max-width:none;background:rgba(192,132,252,.04)">
+          <div class="arch-box-icon">🤖</div>
+          <div class="arch-box-title" style="color:var(--violet)">GeoAI — AI Layer</div>
+          <div class="arch-box-sub">24 subsystems · Segmentation · Detection · Change · SAM · Prithvi · DINOv2 · Moondream · Training</div>
+        </div>
+      </div>
+      <div style="text-align:center;padding:10px 0;color:var(--slate);font-size:24px">↕</div>
+      <div class="arch-row">
+        <div class="arch-box amber" style="flex:2;max-width:none;background:rgba(255,140,0,.04)">
+          <div class="arch-box-icon">📊</div>
+          <div class="arch-box-title" style="color:var(--amber)">EarthNets — Knowledge Layer</div>
+          <div class="arch-box-sub">220+ datasets · 98 model architectures · 26 production pipelines · Benchmark builder</div>
+        </div>
+      </div>
+    </div>`
+  },
+
+  // 3 — STEP 1: INIT
+  { dur: 5000, label: "Step 1 · Initialise", narration: `The chain begins with a single import. <span class="code">PyGeoVision()</span> instantly shows which components are available — <span class="hl">pygeofetch</span> for data, <span class="hl">geoai</span> for AI, and the full EarthNets catalog.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Step 1 — Initialise</div>
+    <h2 class="headline anim-fadeup-1">One line to <em>start everything.</em></h2>
+    <div class="terminal anim-fadeup-2" style="margin-top:24px">
+      <div class="term-bar">
+        <div class="term-dot" style="background:#FF5F57"></div>
+        <div class="term-dot" style="background:#FFBD2E"></div>
+        <div class="term-dot" style="background:#28CA41"></div>
+        <span class="term-title">pygeovision_demo.py</span>
+      </div>
+      <div class="term-body">
+        <div><span class="t-kw">import</span> <span class="t-cmd">pygeovision</span> <span class="t-kw">as</span> <span class="t-cmd">pgv</span></div>
+        <div style="margin-top:10px"><span class="t-cmd">client</span> <span style="color:#64748B">=</span> <span class="t-val">pgv</span>.<span class="t-cmd">PyGeoVision</span>()</div>
+        <div><span class="t-cmd">print</span>(<span class="t-cmd">client</span>)</div>
+        <div style="margin-top:10px;color:#4B5563">▶ OUTPUT</div>
+        <div class="t-ok">PyGeoVision(v2.1.2 | pygeofetch=✓ | geoai=✓ | datasets=220 | models=98 | pipelines=26)</div>
+        <div style="margin-top:10px"><span class="t-cmd">client</span>.<span class="t-cmd">status</span>()
+        </div>
+        <div class="t-out">{'pygeofetch': {'available': True, 'version': '1.0.0', 'providers': 22},</div>
+        <div class="t-out"> 'geoai': {'available': True, 'version': '0.39.3'},</div>
+        <div class="t-out"> 'torch': {'cuda': True, 'gpu': 'RTX 4090'}}</div>
+      </div>
+    </div>`
+  },
+
+  // 4 — PROVIDERS
+  { dur: 5500, label: "Step 2 · Providers", narration: `PyGeoFetch connects to <span class="hl">22+ satellite data providers</span> — 10 fully open, 12 with credentials. From Sentinel-2 to Planet SkySat, Landsat to WorldView, all behind one unified search interface.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Step 2 — Satellite Providers</div>
+    <h2 class="headline anim-fadeup-1">22+ providers. <em>One search.</em></h2>
+    <div class="provider-grid anim-fadeup-2" style="margin-top:24px">
+      ${[
+        ["planetary_computer","open"],["aws_earth","open"],["element84","open"],
+        ["noaa_big_data","open"],["esa_scihub","open"],["jaxa_earth","open"],
+        ["isro_bhuvan","open"],["inpe_cbers","open"],["digitalglobe","open"],
+        ["geoserver_generic","open"],["usgs","auth"],["copernicus","auth"],
+        ["nasa_earthdata","auth"],["planet","auth"],["sentinel_hub","auth"],
+        ["maxar_gbdx","auth"],["airbus_oneatlas","auth"],["alaska_satellite","auth"],
+        ["opentopography","auth"],["google_earth_engine","auth"],["terrabotics","auth"],
+        ["nasa_earthdata_cloud","auth"],
+      ].map(([n,t])=>`<div class="prov-chip prov-${t}">${t==="open"?"🌐":"🔐"} ${n}</div>`).join('')}
+    </div>
+    <div style="margin-top:20px;display:flex;gap:24px;font-size:13px;color:var(--slate)" class="anim-fadeup-3">
+      <span><span class="prov-chip prov-open" style="display:inline">🌐 Open</span> 10 providers — no credentials</span>
+      <span><span class="prov-chip prov-auth" style="display:inline">🔐 Auth</span> 12 providers — API key / OAuth2</span>
+    </div>`
+  },
+
+  // 5 — SEARCH
+  { dur: 6000, label: "Step 2 · Search", narration: `A single <span class="code">client.search()</span> call fans out across all selected providers simultaneously, with bbox, date range, cloud cover filters, and CQL2 support — returning STAC 1.0-compliant <span class="hl">SearchResult</span> objects.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Step 2 — Search</div>
+    <h2 class="headline anim-fadeup-1">Search across <em>22+ providers.</em></h2>
+    <div class="terminal anim-fadeup-2" style="margin-top:20px">
+      <div class="term-bar">
+        <div class="term-dot" style="background:#FF5F57"></div>
+        <div class="term-dot" style="background:#FFBD2E"></div>
+        <div class="term-dot" style="background:#28CA41"></div>
+        <span class="term-title">02_search.py</span>
+      </div>
+      <div class="term-body">
+        <div><span class="t-cmd">results</span> <span style="color:#64748B">=</span> <span class="t-cmd">client</span>.<span class="t-val">search</span>(</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="t-kw">bbox</span><span style="color:#64748B">=</span>(<span class="t-out">-74.1</span>, <span class="t-out">40.6</span>, <span class="t-out">-73.7</span>, <span class="t-out">40.9</span>),  <span style="color:#374151"># NYC</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="t-kw">date_range</span><span style="color:#64748B">=</span>(<span class="t-str">"2024-06-01"</span>, <span class="t-str">"2025-06-30"</span>),</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="t-kw">providers</span><span style="color:#64748B">=</span>[<span class="t-str">"planetary_computer"</span>, <span class="t-str">"aws_earth"</span>],</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="t-kw">cloud_cover_max</span><span style="color:#64748B">=</span><span class="t-out">15</span>,</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="t-kw">sort_by</span><span style="color:#64748B">=</span><span class="t-str">"cloud_cover"</span>,</div>
+        <div>)</div>
+        <div style="margin-top:10px;color:#4B5563">▶ 2.4s → Found 20 scenes</div>
+        <div class="t-ok">[planetary_computer] Sentinel-2B | 2025-06-25 | cloud=2%  score=0.71</div>
+        <div class="t-ok">[planetary_computer] Landsat-8   | 2025-06-02 | cloud=5%  score=0.68</div>
+        <div class="t-out">[aws_earth]          sentinel-2b | 2025-06-25 | cloud=2%  score=0.71</div>
+        <div class="t-out">... and 17 more</div>
+      </div>
+    </div>`
+  },
+
+  // 6 — DOWNLOAD
+  { dur: 6000, label: "Step 3 · Download", narration: `<span class="code">client.download()</span> delegates to PyGeoFetch's resilient parallel downloader — SAS tokens, retries, checksums, and a full post-processing chain: reproject, compress, cloud-optimise, compute indices.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Step 3 — Download</div>
+    <h2 class="headline anim-fadeup-1">Parallel. Resilient. <em>Post-processed.</em></h2>
+    <div class="terminal anim-fadeup-2" style="margin-top:20px">
+      <div class="term-bar">
+        <div class="term-dot" style="background:#FF5F57"></div>
+        <div class="term-dot" style="background:#FFBD2E"></div>
+        <div class="term-dot" style="background:#28CA41"></div>
+        <span class="term-title">03_download.py</span>
+      </div>
+      <div class="term-body">
+        <div><span class="t-cmd">downloads</span> <span style="color:#64748B">=</span> <span class="t-cmd">client</span>.<span class="t-val">download</span>(</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="t-cmd">results</span>[:<span class="t-out">3</span>], &nbsp;output_dir<span style="color:#64748B">=</span><span class="t-str">"./data/"</span>,</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;parallel<span style="color:#64748B">=</span><span class="t-out">4</span>,&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;verify_checksum<span style="color:#64748B">=</span><span class="t-kw">True</span>,</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;post_process<span style="color:#64748B">=</span>[<span class="t-str">"reproject:EPSG:4326"</span>, <span class="t-str">"cog"</span>],</div>
+        <div>)</div>
+        <div style="margin-top:10px"><span class="t-ok">📡 Downloading 3 scenes from planetary_computer</span></div>
+        <div class="t-out">   HTTP 200 OK → Sentinel-2B SR_B4 (SAS token)</div>
+        <div class="t-out">   HTTP 200 OK → Landsat-8  SR_B4 (SAS token)</div>
+        <div class="t-out">   HTTP 200 OK → Sentinel-2C AOT   (SAS token)</div>
+        <div style="margin-top:6px"><span class="t-ok">✓ 3/3 succeeded · 2148 MB · 186s · 11.5 MB/s</span></div>
+      </div>
+    </div>`
+  },
+
+  // 7 — POST-PROCESS CHAIN
+  { dur: 5000, label: "Post-Processing", narration: `PyGeoFetch applies <span class="hl">post-processing chains</span> automatically after each download — unzip, reproject, compress, NDVI, NDWI, clip to AOI, resample, and convert to Cloud-Optimized GeoTIFF, all in one pass.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Post-processing chain</div>
+    <h2 class="headline anim-fadeup-1">From raw to <em>analysis-ready.</em></h2>
+    <div class="pipe-flow anim-fadeup-2" style="margin-top:28px">
+      ${[
+        ["⬇️","Download","Parallel SAS tokens"],
+        ["📦","Unzip","Extract archives"],
+        ["🗺️","Reproject","→ EPSG:4326"],
+        ["📐","Resample","Target resolution"],
+        ["🌿","NDVI/NDWI","Spectral indices"],
+        ["✂️","Clip","AOI geometry"],
+        ["☁️","COG","Cloud-Optimized"],
+      ].map(([i,n,s],idx,arr)=>`
+        <div class="pipe-step" style="border-color:rgba(0,200,150,${.04+idx*.04})">
+          <div class="pipe-step-icon">${i}</div>
+          <div class="pipe-step-name" style="font-size:12px">${n}</div>
+          <div class="pipe-step-sub">${s}</div>
+        </div>
+        ${idx<arr.length-1?'<div class="pipe-arrow">›</div>':''}`).join('')}
+    </div>
+    <div class="anim-fadeup-3" style="margin-top:24px">
+      <div class="hl-row">
+        <span style="color:var(--green)">📋</span>
+        <span style="color:var(--slate)">post_process=</span>
+        <span style="color:var(--green)">["unzip", "reproject:EPSG:4326", "ndvi", "compress:lzw", "cog"]</span>
+      </div>
+    </div>`
+  },
+
+  // 8 — GEOAI SUBSYSTEMS
+  { dur: 6000, label: "Step 4 · GeoAI", narration: `<span class="code">client.geoai</span> exposes <span class="hl">24 lazy-loaded subsystems</span> — GeoAI is only imported when first accessed. Each subsystem wraps one or more GeoAI modules with a clean, geospatial-first API.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Step 4 — GeoAI</div>
+    <h2 class="headline anim-fadeup-1">24 AI subsystems.<br/><em>One namespace.</em></h2>
+    <div class="zoo-grid anim-fadeup-2" style="margin-top:20px">
+      ${[
+        ["Segmentation",".segment","Buildings, solar, water, SAM, Prithvi"],
+        ["Detection",".detect","Cars, ships, GroundedSAM, RF-DETR"],
+        ["Classification",".classify","CLIP zero-shot, scene, land cover"],
+        ["Change Detection",".change","ChangeSTAR bi-temporal"],
+        ["Cloud Masking",".cloud","Detection, statistics, composites"],
+        ["Foundation",".prithvi .dinov3","NASA Prithvi, DINOv3"],
+        ["Embeddings",".embed","Tessera, patch, pixel embeddings"],
+        ["VLM Captioning",".caption","Moondream, VQA, sliding window"],
+        ["Super-Resolution",".sr","ESRGAN 2x/4x/8x"],
+        ["Model Training",".train","Segmentation, detection, HPO"],
+        ["Water",".water","NDWI, band presets, flood"],
+        ["Canopy Height",".canopy","Forest canopy regression"],
+      ].map(([t,n,d])=>`
+      <div class="zoo-card">
+        <div class="zoo-card-task">${t}</div>
+        <div class="zoo-card-title">${n}</div>
+        <div class="zoo-card-count">${d}</div>
+      </div>`).join('')}
+    </div>`
+  },
+
+  // 9 — BUILDING SEGMENTATION
+  { dur: 5500, label: "Buildings · Segment", narration: `<span class="code">client.geoai.segment.buildings()</span> runs GeoAI's <span class="hl">BuildingFootprintExtractor</span> — tiled inference on the full GeoTIFF, Gaussian blending at boundaries, vectorisation, and optional regularisation. Zero model setup required.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">GeoAI · Building Segmentation</div>
+    <h2 class="headline anim-fadeup-1">Pixels → <em>Building footprints.</em></h2>
+    <div style="display:flex;gap:24px;width:100%;max-width:900px;margin-top:20px" class="anim-fadeup-2">
+      <div style="flex:1">
+        <div class="terminal">
+          <div class="term-bar">
+            <div class="term-dot" style="background:#FF5F57"></div>
+            <div class="term-dot" style="background:#FFBD2E"></div>
+            <div class="term-dot" style="background:#28CA41"></div>
+          </div>
+          <div class="term-body" style="font-size:12.5px">
+            <div><span class="t-cmd">client</span>.<span class="t-cmd">geoai</span>.<span class="t-val">segment</span>.<span class="t-cmd">buildings</span>(</div>
+            <div>&nbsp;&nbsp;<span class="t-cmd">downloads</span>[<span class="t-out">0</span>].path,</div>
+            <div>&nbsp;&nbsp;output_vector<span style="color:#64748B">=</span><span class="t-str">"buildings.geojson"</span>,</div>
+            <div>&nbsp;&nbsp;confidence_threshold<span style="color:#64748B">=</span><span class="t-out">0.5</span>,</div>
+            <div>)</div>
+            <div style="margin-top:10px" class="t-ok">✓ Segmentation complete</div>
+            <div class="t-ok">✓ buildings.geojson saved</div>
+          </div>
+        </div>
+      </div>
+      <div class="result-panel anim-fadeup-3" style="max-width:340px;padding:20px 24px">
+        <div style="font-family:var(--f-disp);font-size:15px;font-weight:600;margin-bottom:14px;color:var(--green)">📍 Output Statistics</div>
+        ${[
+          ["Buildings detected","3,947"],
+          ["Total footprint area","48.3 ha"],
+          ["Mean building area","367 m²"],
+          ["Confidence threshold","0.50"],
+          ["Model","BuildingFootprintExtractor"],
+          ["Inference time","14.2s"],
+        ].map(([k,v])=>`<div class="result-row"><span class="result-key">${k}</span><span class="result-val">${v}</span></div>`).join('')}
+      </div>
+    </div>`
+  },
+
+  // 10 — CHANGE DETECTION
+  { dur: 6000, label: "Change Detection", narration: `<span class="code">client.geoai.change.detect()</span> runs <span class="hl">ChangeSTAR</span> — a transformer-based bi-temporal change detector trained on multiple remote sensing datasets. The full <span class="code">change_detection</span> pipeline combines search, download, and detection in one call.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">GeoAI · Change Detection</div>
+    <h2 class="headline anim-fadeup-1">Before → After → <em>Change.</em></h2>
+    <div class="ba-pair anim-fadeup-2" style="margin-top:20px">
+      <div class="ba-card">
+        <div class="ba-img" style="background:linear-gradient(135deg,#1a3a2a,#0d2010)">🌳</div>
+        <div class="ba-label"><span style="color:var(--slate);font-size:11px">BEFORE — 2018</span><span style="color:var(--green)">Dense forest</span></div>
+      </div>
+      <div class="ba-card">
+        <div class="ba-img" style="background:linear-gradient(135deg,#2a1a0d,#3a2010)">🏗️</div>
+        <div class="ba-label"><span style="color:var(--slate);font-size:11px">AFTER — 2024</span><span style="color:var(--amber)">Construction</span></div>
+      </div>
+      <div class="ba-card">
+        <div class="ba-img" style="background:linear-gradient(135deg,#0a0a0a,#1a0a0a)">🔴</div>
+        <div class="ba-label"><span style="color:var(--slate);font-size:11px">CHANGE MASK</span><span style="color:var(--red)">284 ha changed</span></div>
+      </div>
+    </div>
+    <div class="terminal anim-fadeup-3" style="margin-top:16px;max-width:700px">
+      <div class="term-body" style="padding:14px 20px">
+        <div><span class="t-kw">result</span> = <span class="t-cmd">client</span>.<span class="t-val">pipeline</span>(<span class="t-str">"deforestation"</span>, bbox=AMAZON,</div>
+        <div>&nbsp;&nbsp;date_before=<span class="t-str">"2018-01"</span>, date_after=<span class="t-str">"2024-01"</span>)</div>
+        <div style="margin-top:8px" class="t-ok">✓ Forest loss detected: 284 ha | 6.8% change</div>
+      </div>
+    </div>`
+  },
+
+  // 11 — PIPELINES
+  { dur: 6000, label: "Step 5 · Pipelines", narration: `PyGeoVision ships <span class="hl">26 end-to-end domain pipelines</span> — each combines PyGeoFetch data acquisition with GeoAI inference in one call. Agriculture, forestry, urban, water, disaster, climate, ocean — all covered.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Step 5 — Domain Pipelines</div>
+    <h2 class="headline anim-fadeup-1">26 pipelines. <em>Zero boilerplate.</em></h2>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:900px;width:100%;margin-top:20px" class="anim-fadeup-2">
+      ${[
+        ["🌾","crop_type_mapping","agriculture"],
+        ["🌿","crop_health","agriculture"],
+        ["💧","irrigation_detection","agriculture"],
+        ["🌲","canopy_height","forestry"],
+        ["🌳","tree_species","forestry"],
+        ["🔥","forest_fire","wildfire"],
+        ["🏗️","road_extraction","urban"],
+        ["🏙️","building_footprints","urban"],
+        ["🌊","flood_mapping","disaster"],
+        ["💧","water_quality","water"],
+        ["🌊","coastal_monitoring","coast"],
+        ["⛰️","landslide_detection","disaster"],
+        ["🌋","volcano_monitoring","geology"],
+        ["🌡️","land_surface_temperature","climate"],
+        ["🌿","vegetation_indices","agriculture"],
+        ["🚢","ocean_ship_detection","ocean"],
+      ].map(([emoji,name,domain])=>`
+      <div style="background:var(--panel2);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 14px;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(0,200,150,.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,.06)'">
+        <div style="font-size:18px;margin-bottom:5px">${emoji}</div>
+        <div style="font-family:var(--f-code);font-size:10.5px;color:var(--green)">${name}</div>
+        <div style="font-size:10px;color:var(--slate);margin-top:2px">${domain}</div>
+      </div>`).join('')}
+    </div>`
+  },
+
+  // 12 — EARTHNETS DATASETS
+  { dur: 5500, label: "EarthNets · Datasets", narration: `The <span class="code">dataset_registry</span> catalogs <span class="hl">220+ remote sensing datasets</span> with 9 EarthNets attributes each. Search, filter, rank by task, find similar datasets, and get paper-ready benchmark configs — all in Python.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">EarthNets · Dataset Registry</div>
+    <h2 class="headline anim-fadeup-1">220+ datasets. <em>Every task.</em></h2>
+    <div class="ds-list anim-fadeup-2" style="margin-top:16px">
+      ${[
+        ["BigEarthNet","land_cover","multispectral","590K samples","66 GB"],
+        ["LEVIR-CD","urban","rgb","637 img pairs","3.4 GB"],
+        ["DOTA-v2","urban","rgb","11.2K images","22 GB"],
+        ["SSL4EO-S12","land_cover","multimodal","250K samples","2500 GB"],
+        ["AgriFieldNet","agriculture","multispectral","4.8K images","14 GB"],
+        ["SensatUrban","urban","point_cloud","3B points","23 GB"],
+      ].map(([n,d,m,s,v])=>`
+      <div class="ds-row">
+        <span class="ds-name">${n}</span>
+        <span class="ds-domain">${d}</span>
+        <span class="ds-mod" style="color:var(--violet)">${m}</span>
+        <span style="font-size:11px;color:var(--slate);width:120px">${s}</span>
+        <span class="ds-vol">${v}</span>
+      </div>`).join('')}
+    </div>
+    <div class="anim-fadeup-3" style="margin-top:16px;display:flex;gap:20px">
+      <div class="stat-card" style="padding:14px 24px"><div class="stat-val" style="color:var(--green);font-size:28px">220+</div><div class="stat-label">Datasets</div></div>
+      <div class="stat-card" style="padding:14px 24px"><div class="stat-val" style="color:var(--amber);font-size:28px">20.6 TB</div><div class="stat-label">Total volume</div></div>
+      <div class="stat-card" style="padding:14px 24px"><div class="stat-val" style="color:var(--violet);font-size:28px">24</div><div class="stat-label">Domains</div></div>
+      <div class="stat-card" style="padding:14px 24px"><div class="stat-val" style="color:var(--blue);font-size:28px">14</div><div class="stat-label">ML tasks</div></div>
+    </div>`
+  },
+
+  // 13 — MODEL ZOO
+  { dur: 5500, label: "Model Zoo", narration: `The <span class="code">model_zoo</span> catalogs <span class="hl">98 model architectures</span> across 9 task types — from YOLOv8 and SegFormer to SAM-ViT-H, NASA Prithvi, DINOv2, and GeoChat. 21 with direct HuggingFace Hub download.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">AI Model Zoo</div>
+    <h2 class="headline anim-fadeup-1">98 architectures. <em>9 task types.</em></h2>
+    <div class="zoo-grid anim-fadeup-2" style="margin-top:20px">
+      ${[
+        ["Segmentation","17 models","UNet, SegFormer, DeepLabV3+, SAM, SAM2"],
+        ["Detection","17 models","YOLOv8, RT-DETR, RF-DETR, RetinaNet, FCOS"],
+        ["Classification","20 models","ViT, Swin, EfficientNet, CLIP, DINOv2"],
+        ["Change Detection","10 models","ChangeFormer, ChangeSTAR, BIT, SNUNet"],
+        ["Foundation","11 models","Prithvi 100M/300M, DINOv2 S/B/L, DOFA"],
+        ["VLM","7 models","CLIP, RemoteCLIP, Moondream2, GeoChat"],
+        ["3D / LiDAR","6 models","PointNet++, RandLA-Net, KPConv"],
+        ["Time Series","6 models","L-TAE, TSViT, ConvLSTM, Autoformer"],
+        ["Super-Resolution","4 models","ESRGAN-Geo, SwinIR, RCAN, SRCNN"],
+      ].map(([t,n,d])=>`
+      <div class="zoo-card">
+        <div class="zoo-card-task">${t}</div>
+        <div class="zoo-card-title">${n}</div>
+        <div class="zoo-card-count">${d}</div>
+      </div>`).join('')}
+    </div>`
+  },
+
+  // 14 — TRAINING
+  { dur: 5500, label: "Training & Deployment", narration: `<span class="code">GeoTrainer</span> wraps PyTorch training with DDP/FSDP multi-GPU, FP16/BF16 mixed precision, Optuna HPO, MLflow/W&B tracking, and automatic ONNX export. <span class="code">InferenceServer</span> delivers it via FastAPI in 4 lines.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">Phase 4 — Training & Deployment</div>
+    <h2 class="headline anim-fadeup-1">Train. Export. <em>Serve.</em></h2>
+    <div style="display:flex;gap:20px;width:100%;max-width:960px;margin-top:20px" class="anim-fadeup-2">
+      <div class="terminal" style="flex:1">
+        <div class="term-bar">
+          <div class="term-dot" style="background:#FF5F57"></div>
+          <div class="term-dot" style="background:#FFBD2E"></div>
+          <div class="term-dot" style="background:#28CA41"></div>
+          <span class="term-title">GeoTrainer</span>
+        </div>
+        <div class="term-body" style="font-size:12px">
+          <div><span class="t-kw">from</span> pygeovision.training <span class="t-kw">import</span> GeoTrainer, TrainingConfig</div>
+          <div style="margin-top:6px">cfg = <span class="t-val">TrainingConfig</span>(</div>
+          <div>&nbsp;&nbsp;max_epochs=<span class="t-out">100</span>, precision=<span class="t-str">"fp16"</span>,</div>
+          <div>&nbsp;&nbsp;strategy=<span class="t-str">"ddp"</span>, tracker=<span class="t-str">"mlflow"</span>,</div>
+          <div>&nbsp;&nbsp;export_onnx=<span class="t-kw">True</span>,</div>
+          <div>)</div>
+          <div style="margin-top:6px">trainer = <span class="t-val">GeoTrainer</span>(model, cfg)</div>
+          <div>results = trainer.<span class="t-cmd">fit</span>(train_ds, val_ds)</div>
+          <div style="margin-top:8px" class="t-ok">✓ best val_iou=0.823 | ONNX exported</div>
+        </div>
+      </div>
+      <div class="terminal" style="flex:1">
+        <div class="term-bar">
+          <div class="term-dot" style="background:#FF5F57"></div>
+          <div class="term-dot" style="background:#FFBD2E"></div>
+          <div class="term-dot" style="background:#28CA41"></div>
+          <span class="term-title">InferenceServer</span>
+        </div>
+        <div class="term-body" style="font-size:12px">
+          <div><span class="t-kw">from</span> pygeovision.serving <span class="t-kw">import</span> InferenceServer</div>
+          <div style="margin-top:6px">server = <span class="t-val">InferenceServer</span>()</div>
+          <div>server.<span class="t-cmd">register</span>(<span class="t-str">"seg_v1"</span>, <span class="t-str">"model.onnx"</span>,</div>
+          <div>&nbsp;&nbsp;task=<span class="t-str">"segmentation"</span>, num_classes=<span class="t-out">2</span>)</div>
+          <div>server.<span class="t-cmd">serve</span>(host=<span class="t-str">"0.0.0.0"</span>, port=<span class="t-out">8080</span>)</div>
+          <div style="margin-top:8px" class="t-ok">✓ API: http://localhost:8080/docs</div>
+          <div class="t-ok">✓ POST /predict · GET /health · GET /metrics</div>
+        </div>
+      </div>
+    </div>`
+  },
+
+  // 15 — FULL CHAIN SUMMARY
+  { dur: 6000, label: "Full Chain Summary", narration: `The complete PyGeoVision chain: <span class="hl">search → download → AI inference → results</span> — handled by PyGeoFetch and GeoAI, orchestrated by PyGeoVision. 22+ providers, 98 models, 26 pipelines, one API.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="eyebrow anim-fadeup">The Full Chain</div>
+    <h2 class="headline anim-fadeup-1">Search → Download → AI → <em>Results.</em></h2>
+    <div class="pipe-flow anim-fadeup-2" style="margin-top:24px;max-width:1000px">
+      ${[
+        ["🔍","Search","22+ providers\ndate · cloud · bbox"],
+        ["⬇️","Download","Parallel · SAS\npost-process"],
+        ["🤖","Infer","24 subsystems\nbuild · change · water"],
+        ["🗺️","Vectorise","GeoJSON · GPKG\nregularise"],
+        ["📊","Benchmark","mIoU · F1 · mAP\nleaderboard"],
+        ["🚀","Deploy","ONNX · FastAPI\nDocker · K8s"],
+      ].map(([i,n,s],idx,arr)=>`
+        <div class="pipe-step" style="background:rgba(0,200,150,${0.02+idx*0.015});border-color:rgba(0,200,150,${0.1+idx*0.04})">
+          <div class="pipe-step-icon">${i}</div>
+          <div class="pipe-step-name">${n}</div>
+          <div class="pipe-step-sub" style="white-space:pre-line;font-size:10px">${s}</div>
+        </div>
+        ${idx<arr.length-1?'<div class="pipe-arrow" style="color:var(--green)">›</div>':''}`).join('')}
+    </div>
+    <div class="stats-row anim-fadeup-3" style="margin-top:24px">
+      ${[["22+","Providers","var(--blue)"],["220+","Datasets","var(--green)"],["98","AI Models","var(--violet)"],["26","Pipelines","var(--amber)"],["208","Tests ✓","var(--green)"]].map(([v,l,c])=>`
+      <div class="stat-card"><div class="stat-val" style="color:${c};font-size:32px">${v}</div><div class="stat-label">${l}</div></div>`).join('')}
+    </div>`
+  },
+
+  // 16 — CALL TO ACTION
+  { dur: 7000, label: "Get Started", narration: `PyGeoVision is <span class="hl">Apache 2.0</span>, Python 3.10+, and available on PyPI today. Install the core package with GeoAI in one line, then follow the 22 tutorial notebooks to master the full platform.`,
+    html: `
+    <div class="bg-grid"></div>
+    <div class="bg-glow"><div class="glow-green" style="top:auto;bottom:-100px;left:50%;transform:translateX(-50%)"></div></div>
+    <div class="eyebrow anim-fadeup">Get started today</div>
+    <h2 class="headline anim-fadeup-1">pip install <em>"pygeovision[all]"</em></h2>
+    <div class="terminal anim-fadeup-2" style="margin-top:24px;max-width:700px">
+      <div class="term-bar">
+        <div class="term-dot" style="background:#FF5F57"></div>
+        <div class="term-dot" style="background:#FFBD2E"></div>
+        <div class="term-dot" style="background:#28CA41"></div>
+        <span class="term-title">terminal</span>
+      </div>
+      <div class="term-body">
+        <div><span class="t-prompt">$</span> <span class="t-cmd">pip install "pygeovision[geoai]"</span></div>
+        <div style="margin-top:10px"><span class="t-prompt">$</span> <span class="t-cmd">python -c "import pygeovision as pgv; print(pgv.PyGeoVision())"</span></div>
+        <div class="t-ok">PyGeoVision(v2.1.2 | pygeofetch=✓ | geoai=✓ | datasets=220 | models=98 | pipelines=26)</div>
+      </div>
+    </div>
+    <div class="stats-row anim-fadeup-3" style="margin-top:28px">
+      ${[["📓","22 Tutorial\nNotebooks"],["🚀","26 Domain\nPipelines"],["🤖","98 AI\nModels"],["📊","220+\nDatasets"]].map(([e,l])=>`
+      <div class="stat-card" style="padding:20px 28px">
+        <div style="font-size:28px;margin-bottom:8px">${e}</div>
+        <div style="font-size:13px;color:var(--slate);white-space:pre-line;line-height:1.5">${l}</div>
+      </div>`).join('')}
+    </div>
+    <div class="anim-fadeup-4" style="margin-top:20px;font-size:14px;color:var(--slate)">
+      Apache 2.0 · Python 3.10+ · PyPI · GitHub · 208 tests passing
+    </div>`
+  },
+];
+
+// ─────────────────────────────────────────────────────────────
+// ENGINE
+// ─────────────────────────────────────────────────────────────
+let cur = 0, timer = null, playing = true;
+const stage = document.getElementById("stage");
+const narr  = document.getElementById("narration");
+const bar   = document.getElementById("progress-bar");
+const sceneNum = document.getElementById("scene-num");
+const ctr   = document.getElementById("cur");
+const tot   = document.getElementById("tot");
+const btnPlay = document.getElementById("btn-play");
+
+tot.textContent = SLIDES.length;
+
+// Build all slides into DOM
+SLIDES.forEach((s, i) => {
+  const el = document.createElement("div");
+  el.className = "slide";
+  el.id = `slide-${i}`;
+  el.innerHTML = s.html;
+  stage.appendChild(el);
+});
+
+function goTo(idx, force = false) {
+  if (idx < 0 || idx >= SLIDES.length) return;
+  const prev = document.getElementById(`slide-${cur}`);
+  if (prev) { prev.classList.remove("active"); prev.classList.add("exit"); setTimeout(() => prev.classList.remove("exit"), 500); }
+  cur = idx;
+  const el = document.getElementById(`slide-${cur}`);
+  el.classList.add("active");
+  narr.innerHTML = SLIDES[cur].narration;
+  bar.style.width = `${((cur + 1) / SLIDES.length) * 100}%`;
+  ctr.textContent = cur + 1;
+  sceneNum.textContent = String(cur + 1).padStart(2, "0");
+  document.getElementById("scene-label").querySelector("span").textContent = String(cur + 1).padStart(2, "0");
+  document.getElementById("scene-label").innerHTML = `${SLIDES[cur].label || "Scene"} <span id="scene-num">${String(cur+1).padStart(2,"0")}</span>`;
+  clearTimeout(timer);
+  if (playing) timer = setTimeout(() => goTo((cur + 1) % SLIDES.length), SLIDES[cur].dur);
+}
+
+function togglePlay() {
+  playing = !playing;
+  btnPlay.textContent = playing ? "⏸" : "▶";
+  if (playing) timer = setTimeout(() => goTo((cur + 1) % SLIDES.length), SLIDES[cur].dur);
+  else clearTimeout(timer);
+}
+
+document.getElementById("btn-play").addEventListener("click", togglePlay);
+document.getElementById("btn-next").addEventListener("click", () => { clearTimeout(timer); goTo((cur + 1) % SLIDES.length); });
+document.getElementById("btn-prev").addEventListener("click", () => { clearTimeout(timer); goTo((cur - 1 + SLIDES.length) % SLIDES.length); });
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); clearTimeout(timer); goTo((cur + 1) % SLIDES.length); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); clearTimeout(timer); goTo((cur - 1 + SLIDES.length) % SLIDES.length); }
+  if (e.key === "p" || e.key === "P") togglePlay();
+});
+
+// Start
+goTo(0);
+</script>
+</body>
+</html>

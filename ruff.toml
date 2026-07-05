@@ -1,0 +1,36 @@
+# PyGeoVision v2.0 — Ruff configuration
+line-length    = 100
+target-version = "py310"
+indent-width   = 4
+extend-include = ["*.pyi"]
+
+[lint]
+select  = ["E", "F", "W", "I", "B", "C4", "UP", "N", "SIM"]
+ignore  = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults (Click)
+    "B905",   # zip without explicit strict
+    "N806",   # variable in function should be lowercase (geo vars like H, W, C)
+    "N812",   # lowercase imported as non-lowercase (rasterio conventions)
+    "SIM108", # ternary operator — readability preference
+    "SIM117", # nested with — geospatial code often has rasterio.open chains
+    "UP007",  # use X | Y for union type — requires Python 3.10+, already set
+]
+fixable   = ["ALL"]
+unfixable = []
+
+[lint.per-file-ignores]
+"tests/*"                = ["S101", "D", "ANN"]    # allow assert + no docstring
+"pygeovision/cli/*"      = ["B006", "FBT001"]      # Click defaults
+"pygeovision/data/pgf_bridge.py" = ["N803"]        # CRS/bbox uppercase arg names
+
+[lint.isort]
+known-first-party  = ["pygeovision"]
+known-third-party  = ["pygeofetch", "geoai", "rasterio", "torch", "numpy"]
+force-sort-within-sections = true
+
+[format]
+quote-style              = "double"
+indent-style             = "space"
+skip-magic-trailing-comma = false
+line-ending              = "auto"
