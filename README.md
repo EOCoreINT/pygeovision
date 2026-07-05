@@ -1,6 +1,6 @@
 # PyGeoVision: A Production-Ready Open-Source Platform for Geospatial Artificial Intelligence
 
-**Samuel Appiah Kubi**  
+<!-- **Samuel Appiah Kubi**  
 Department of Remote Sensing and Geospatial Science  
 University of Ghana, Legon, Accra, Ghana  
 Email: s.appiah-kubi@ug.edu.gh | ORCID: 0000-0000-0000-0000
@@ -9,11 +9,11 @@ Email: s.appiah-kubi@ug.edu.gh | ORCID: 0000-0000-0000-0000
 
 **Journal:** Remote Sensing (MDPI) | ISPRS Journal of Photogrammetry and Remote Sensing  
 **Submitted:** July 2026  
-**Keywords:** geospatial AI, satellite data, deep learning, foundation models, SAR, InSAR, natural language agent, Earth observation
+**Keywords:** geospatial AI, satellite data, deep learning, foundation models, SAR, InSAR, natural language agent, Earth observation -->
 
 ---
 
-## Abstract
+## Statement of Purpose
 
 Earth observation from satellite platforms generates more than 150 terabytes of imagery daily, yet converting this data into actionable intelligence remains fragmented across disconnected tools for data acquisition, preprocessing, model inference, and result delivery. Existing open-source frameworks address individual components in isolation: EODAG provides data access but no AI; TorchGeo integrates PyTorch datasets but omits data acquisition; TerraTorch supports foundation models but not end-to-end pipelines; GeoAI offers AI models but lacks SAR processing and enterprise features. We present **PyGeoVision**, a production-ready, open-source Python platform that unifies the complete Earth observation intelligence stack behind a single coherent API. PyGeoVision integrates (1) satellite data acquisition from 22+ providers via PyGeoFetch; (2) a validated preprocessing pipeline with three embedded production bug-fixes; (3) 119 AI model architectures covering classification, detection, segmentation, change detection, and pixel regression; (4) native integration of DINOv3 (12 variants) and Prithvi-EO-2.0 (600M parameters) foundation models; (5) an autonomous GeoAgent that maps natural-language queries to complete geospatial pipelines without requiring tool names; (6) a full InSAR processing chain from amplitude-proxy interferogram to interpreted deformation report; and (7) an interactive visualization layer with five specialised viewers and standalone HTML export. Evaluated on standard benchmarks, PyGeoVision achieves 68.2% top-1 accuracy on fMoW, 72.4% mAP on DIOR, and 53.9% mIoU on SEASONET — improvements of 3.7–6.7 percentage points over the nearest open-source competitor. The platform ships with 585 automated tests, a 28-chapter book, 87 Jupyter notebooks, Kubernetes/Helm deployment templates, and enterprise RBAC and compliance modules. PyGeoVision is released under the Apache 2.0 license at https://github.com/appiahkubis14/PyGeoVision.
 
