@@ -35,7 +35,7 @@ S1_CENTRE_FREQ_HZ      = 5.405e9     # 5.405 GHz
 S1_WAVELENGTH_M        = 0.05546576  # metres  (c / f)
 SENTINEL1_WAVELENGTH_M = S1_WAVELENGTH_M   # public alias used across modules
 S1_RANGE_SAMPLING_RATE = 64.345238e6 # samples/s (IW mode)
-S1_PRF_IW        = 486.486           # Hz (approximate IW mode PRF)
+S1_PRF_IW              = 486.486           # Hz (approximate IW mode PRF)
 
 # IW subswath incidence angle ranges (mid-swath, degrees)
 SUBSWATH_INCIDENCE     = {"IW1": 32.9, "IW2": 38.3, "IW3": 43.1}

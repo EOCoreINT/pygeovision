@@ -113,14 +113,19 @@ class SearchTool(GeoTool):
     ]
 
     def run(self, bbox, date_range, providers=None, cloud_cover_max=20,
-            satellites=None, **_) -> ToolResult:
+            satellites=None, satellite=None, **_) -> ToolResult:
         t0 = time.perf_counter()
         try:
+            # API uses satellite= (singular string), not satellites= (list).
+            # Accept both forms from the planner for robustness.
+            sat_param = satellite
+            if sat_param is None and satellites:
+                sat_param = satellites[0] if isinstance(satellites, list) else satellites
             results = self._pgv.search(
                 bbox=bbox, date_range=date_range,
                 providers=providers or ["planetary_computer"],
                 cloud_cover_max=cloud_cover_max,
-                satellites=satellites,
+                satellite=sat_param,
             )
             scenes = [
                 {"id": getattr(r, "scene_id", str(i)),
@@ -597,6 +602,109 @@ class EndToEndPipelineTool(GeoTool):
                               duration_s=time.perf_counter() - t0)
 
 
+class SLCInSARTool(GeoTool):
+    """
+    True millimetre-precision InSAR displacement mapping from Sentinel-1 SLC.
+
+    Chains: SNAP co-registration → interferogram → Goldstein filter →
+    SNAPHU phase unwrapping → phase-to-displacement → terrain correction.
+
+    Requires: ESA SNAP >= 9, snapista (pip install snapista),
+              snaphu (conda install -c conda-forge snaphu).
+    Falls back gracefully with a clear error message if any dependency
+    is missing — use sar_preprocess + change_detection for the GRD proxy.
+    """
+    name        = "slc_insar"
+    description = (
+        "Produce millimetre-precision LOS displacement maps from a pair of "
+        "Sentinel-1 SLC acquisitions using true InSAR (SNAP + SNAPHU). "
+        "Use for subsidence, earthquake deformation, volcanic uplift, or any "
+        "application requiring better than ~5 cm accuracy. "
+        "For quick disaster response where only GRD data is available, use "
+        "sar_preprocess + change_detection instead."
+    )
+    category    = "insar"
+    parameters  = [
+        {"name": "master_zip",   "type": "str", "required": True,
+         "description": "Path to master (earlier) Sentinel-1 SLC .zip product."},
+        {"name": "slave_zip",    "type": "str", "required": True,
+         "description": "Path to slave (later) Sentinel-1 SLC .zip product."},
+        {"name": "output_dir",   "type": "str", "required": False,
+         "default": "./slc_insar/"},
+        {"name": "subswath",     "type": "str", "required": False,
+         "default": "IW2",
+         "description": "IW1 / IW2 / IW3. IW2 is best for land deformation."},
+        {"name": "bursts",       "type": "list[int]", "required": False,
+         "default": [1, 9],
+         "description": "[first_burst, last_burst]. Reduce range for faster processing."},
+        {"name": "polarisation", "type": "str", "required": False,
+         "default": "VV",
+         "description": "VV (best SNR for land) or VH."},
+        {"name": "coherence_threshold", "type": "float", "required": False,
+         "default": 0.3,
+         "description": "Pixels below this coherence are masked. 0.2=permissive, 0.4=strict."},
+    ]
+
+    def run(self, master_zip, slave_zip, output_dir="./slc_insar/",
+            subswath="IW2", bursts=None, polarisation="VV",
+            coherence_threshold=0.3, **_) -> ToolResult:
+        t0 = time.perf_counter()
+        try:
+            from pygeovision.insar.slc import SLCInSARPipeline, check_snap
+
+            # Check SNAP availability upfront — give a useful error
+            snap_info = check_snap()
+            if not snap_info["available"]:
+                return ToolResult(
+                    tool=self.name, success=False,
+                    error=(
+                        "SNAP not found. Install ESA SNAP >= 9 from "
+                        "https://step.esa.int/main/download/snap-download/ "
+                        "then add bin/ to PATH. "
+                        "For GRD-proxy deformation (cm accuracy) use "
+                        "sar_preprocess + change_detection instead."
+                    ),
+                    duration_s=time.perf_counter() - t0,
+                )
+
+            burst_range = tuple(bursts) if bursts else (1, 9)
+
+            pipeline = SLCInSARPipeline(
+                master_zip          = master_zip,
+                slave_zip           = slave_zip,
+                output_dir          = output_dir,
+                subswath            = subswath,
+                bursts              = burst_range,
+                polarisation        = polarisation,
+                coherence_threshold = coherence_threshold,
+            )
+            result = pipeline.run(keep_arrays=False)
+
+            return ToolResult(
+                tool=self.name,
+                success=result.success,
+                output={
+                    "los_min_m":        round(result.los_min_m,  4),
+                    "los_max_m":        round(result.los_max_m,  4),
+                    "los_mean_m":       round(result.los_mean_m, 4),
+                    "mean_coherence":   round(result.mean_coherence, 3),
+                    "masked_fraction":  round(result.masked_fraction, 3),
+                    "temporal_baseline_days": round(result.temporal_baseline, 1),
+                    "processing_log":   result.processing_log[-5:],
+                },
+                output_path=result.displacement_path,
+                duration_s=time.perf_counter() - t0,
+                metadata={
+                    "subswath":    subswath,
+                    "polarisation": polarisation,
+                    "elapsed_min": round(result.elapsed_sec / 60, 1),
+                },
+            )
+        except Exception as exc:
+            return ToolResult(tool=self.name, success=False, error=str(exc),
+                              duration_s=time.perf_counter() - t0)
+
+
 # ── Tool registry ──────────────────────────────────────────────────────────────
 
 TOOL_REGISTRY: Dict[str, type] = {
@@ -605,6 +713,7 @@ TOOL_REGISTRY: Dict[str, type] = {
     "prepare_for_ai":          PrepareTool,
     "sar_preprocess":          SARPreprocessTool,
     "sar_flood_detection":     SARFloodTool,
+    "slc_insar":               SLCInSARTool,
     "prithvi_inference":       PrithviInferenceTool,
     "change_detection":        ChangeDetectionTool,
     "compute_spectral_index":  SpectralIndexTool,

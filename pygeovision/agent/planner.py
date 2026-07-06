@@ -98,8 +98,7 @@ class Plan:
 
 # ── LLM planner (Anthropic Claude) ────────────────────────────────────────────
 
-SYSTEM_PROMPT = """\
-You are GeoPlanner, the task-planning brain of PyGeoVision, a geospatial AI platform.
+SYSTEM_PROMPT = """You are GeoPlanner, the task-planning brain of PyGeoVision, a geospatial AI platform.
 
 Your role: decompose a natural-language geospatial query into an ordered sequence of
 PyGeoVision tool calls that will produce the requested output (map, GeoJSON, GeoTIFF,
@@ -107,9 +106,11 @@ statistics, etc.).
 
 Decision rules you MUST follow:
 1. SENSOR CHOICE
-   • "SAR", "Sentinel-1", "radar", "cloud cover", "night", "cloud-independent" → prefer SAR tools
+   • "SAR", "Sentinel-1", "S1C", "S1D", "radar", "cloud cover", "night",
+     "cloud-independent", "insar", "interferogram", "slc" → prefer SAR tools
    • "Sentinel-2", "Landsat", "optical", "multispectral", "clear sky" → prefer optical tools
    • When neither is specified, choose SAR for disaster/emergency and optical otherwise.
+   • Sentinel-1C and Sentinel-1D are the active constellation (2025+); treat identically to Sentinel-1.
 
 2. TASK ROUTING
    • flood / inundation + SAR → sar_preprocess then sar_flood_detection
@@ -122,15 +123,24 @@ Decision rules you MUST follow:
    • NDVI / NDWI / NDBI / spectral index → compute_spectral_index
    • building footprints / extraction → run_pipeline(building_footprints)
    • oil spill → sar_preprocess then sar_flood_detection (dark-pixel applies to oil too)
-   • subsidence / deformation → sar_preprocess then change_detection
+   • subsidence / deformation + millimetre / insar / slc / precise → slc_insar
+   • subsidence / deformation (no precision keyword, quick result needed) → sar_preprocess then change_detection
+   • InSAR / interferogram / phase unwrapping / LOS displacement / deformation rate → slc_insar
 
-3. Always end with postprocess if the user wants a map, GeoJSON, or downloadable output.
-4. Use run_pipeline for standard named tasks when a pipeline matches well.
-5. Output ONLY a valid JSON object with key "steps". No prose before or after.
-6. Each step: {{"step": int, "tool": str, "args": {{}}, "depends_on": [int], "rationale": str}}
+3. SLC InSAR rules (slc_insar tool)
+   • slc_insar needs master_zip and slave_zip: use $context_master_slc_zip and $context_slave_slc_zip
+   • slc_insar is ONE step — it produces the final displacement GeoTIFF directly
+   • Do NOT chain sar_preprocess before slc_insar — SLC processing is entirely different
+   • Emit slc_insar for: "millimetre", "mm precision", "insar", "interferogram",
+     "slc", "phase", "los displacement", "deformation rate", "coherence"
+
+4. Always end with postprocess if the user wants a map, GeoJSON, or downloadable output.
+5. Use run_pipeline for standard named tasks when a pipeline matches well.
+6. Output ONLY a valid JSON object with key "steps". No prose before or after.
+7. Each step: {{"step": int, "tool": str, "args": {{}}, "depends_on": [int], "rationale": str}}
 
 Available tools:
-{tools_schema}
+{{tools_schema}}
 """
 
 def _build_tools_schema(tool_instances: dict) -> str:
@@ -220,10 +230,17 @@ class HeuristicPlanner:
 
     # ── Sensor signal words ────────────────────────────────────────────────────
     SAR_SIGNALS = {
-        "sar", "sentinel-1", "sentinel 1", "s1", "radar",
-        "backscatter", "cloud-independent", "cloud independent",
+        "sar", "sentinel-1", "sentinel 1", "s1", "s1a", "s1b",
+        # Sentinel-1C and 1D (new constellation, active from 2025)
+        "s1c", "s1d", "sentinel-1c", "sentinel-1d",
+        "sentinel 1c", "sentinel 1d", "sentinel-1 c", "sentinel-1 d",
+        # SAR-specific terms
+        "radar", "backscatter", "cloud-independent", "cloud independent",
         "cloud cover", "cloud-free not available", "no optical",
-        "night", "microwave", "c-band", "iw mode", "grd",
+        "night", "microwave", "c-band", "iw mode", "grd", "slc",
+        # InSAR-specific — queries with these almost always want SAR
+        "insar", "interferogram", "phase unwrap", "coherence",
+        "los displacement", "line of sight", "deformation rate",
     }
     OPTICAL_SIGNALS = {
         "sentinel-2", "sentinel 2", "s2", "landsat", "optical",
@@ -257,6 +274,12 @@ class HeuristicPlanner:
                          "building detection"},
         "oil_spill":    {"oil spill", "oil slick", "hydrocarbon", "petroleum",
                          "marine pollution", "dark patch sea"},
+        "insar":        {"insar", "interferogram", "phase unwrapping",
+                         "slc interferometry", "millimetre", "mm precision",
+                         "millimeter", "deformation rate", "surface displacement",
+                         "los displacement", "line of sight displacement",
+                         "subsidence rate", "uplift rate", "coherence map",
+                         "displacement time series", "phase unwrap"},
         "subsidence":   {"subsidence", "settlement", "sinking", "deformation",
                          "ground movement", "displacement", "uplift"},
         "glacier":      {"glacier", "ice", "snow", "cryosphere", "permafrost"},
@@ -325,6 +348,12 @@ class HeuristicPlanner:
             if any(w in ql for w in ("flood", "damage", "disaster", "emergency")):
                 return "sar"
 
+        # Implicit SAR for earthquake/disaster damage — SAR is standard for rapid
+        # damage assessment because it works through clouds and at night
+        if any(w in ql for w in ("earthquake", "seismic", "tsunami", "typhoon",
+                                  "hurricane", "cyclone")) and task == "damage":
+            return "sar"
+
         # Default to optical
         return "optical"
 
@@ -355,6 +384,16 @@ class HeuristicPlanner:
         if "forest" in scores and "change" in scores:
             best = "change"  # deforestation = change detection
 
+        # insar beats subsidence when precision signals are present
+        if "insar" in scores and "subsidence" in scores:
+            best = "insar"
+
+        # Anything with millimetre/InSAR keywords → insar task
+        if any(w in ql for w in ("insar", "interferogram", "millimetre", "millimeter",
+                                  "slc", "phase unwrap", "coherence map")):
+            if "insar" in scores:
+                best = "insar"
+
         return best
 
     # ── Plan builder ───────────────────────────────────────────────────────────
@@ -368,7 +407,9 @@ class HeuristicPlanner:
 
         # ── SAR branch ─────────────────────────────────────────────────────────
         if sensor == "sar":
-            if task == "flood":
+            if task == "insar":
+                return self._plan_slc_insar(od, bbox)
+            elif task == "flood":
                 return self._plan_sar_flood(od, bbox, ctx_sar)
             elif task == "damage":
                 return self._plan_sar_damage(od, bbox, ctx_sar)
@@ -377,11 +418,19 @@ class HeuristicPlanner:
             elif task == "oil_spill":
                 return self._plan_sar_oil_spill(od, bbox, ctx_sar)
             elif task == "subsidence":
+                # Precision-aware routing:
+                # "millimetre" / "insar" / "slc" → true SLC InSAR pipeline
+                # "proxy" / "quick" / no precision keyword → GRD amplitude proxy
+                needs_precision = any(w in query for w in (
+                    "millimetre", "millimeter", "mm", "insar",
+                    "interferogram", "slc", "precise", "precision",
+                ))
+                if needs_precision:
+                    return self._plan_slc_insar(od, bbox)
                 return self._plan_sar_subsidence(od, bbox, ctx_sar)
             elif task == "ship":
                 return self._plan_sar_ship_detection(od, bbox, ctx_sar)
             else:
-                # Generic SAR: preprocess + flood (best general SAR proxy)
                 return self._plan_sar_flood(od, bbox, ctx_sar)
 
         # ── Optical branch ─────────────────────────────────────────────────────
@@ -424,6 +473,30 @@ class HeuristicPlanner:
             "BUG 1/2/3-aware SAR pipeline: verify download → validate georeference "
             "→ despeckle on LINEAR data → dB → normalise → CRS-aware clip"
         ))
+
+    def _plan_slc_insar(self, od: str, bbox: list) -> List[Step]:
+        """
+        Plan true SLC InSAR: requires pre-downloaded SLC .zip products.
+        The planner emits placeholder paths that the user must populate
+        via context before execution.
+        """
+        return [
+            Step(0, "slc_insar", {
+                "master_zip":          "$context_master_slc_zip",
+                "slave_zip":           "$context_slave_slc_zip",
+                "output_dir":          f"{od}/slc_insar/",
+                "subswath":            "IW2",
+                "bursts":              [1, 9],
+                "polarisation":        "VV",
+                "coherence_threshold": 0.3,
+            }, rationale=(
+                "True SLC InSAR: SNAP co-registration → interferogram → "
+                "Goldstein filter → SNAPHU unwrapping → phase-to-displacement → "
+                "terrain correction. Achieves millimetre-precision LOS displacement. "
+                "Supply master_zip and slave_zip via context before running. "
+                "Temporal baseline 6–24 days optimal for Sentinel-1 IW coherence."
+            )),
+        ]
 
     def _plan_sar_flood(self, od, bbox, ctx_sar) -> List[Step]:
         return [
