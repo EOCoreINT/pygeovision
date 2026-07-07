@@ -310,6 +310,59 @@ class SatelliteFetcher:
                     "pygeofetch AuthManager.add_credentials() unavailable; "
                     "using in-memory credentials store for '%s'", provider
                 )
+
+            # Also try to authenticate the engine's provider instance directly.
+            # This gives PyGeoFetch a live Bearer token so engine.download() works
+            # even when AuthManager.add_credentials() is broken.
+            if username and password:
+                try:
+                    from pygeofetch.models.user_auth import Credentials as PgfCreds
+                    import enum as _enum
+
+                    # Build a credentials object — auth type varies by version
+                    creds_kwargs = {
+                        "provider": provider,
+                        "username": username,
+                        "password": password,
+                    }
+                    # Older pygeofetch may require auth_type; try both
+                    try:
+                        pgf_creds = PgfCreds(**creds_kwargs)
+                    except TypeError:
+                        # Try with a dummy auth_type string/enum
+                        try:
+                            from pygeofetch.models.user_auth import AuthType
+                            creds_kwargs["auth_type"] = AuthType.USERNAME_PASSWORD
+                        except (ImportError, AttributeError):
+                            creds_kwargs["auth_type"] = "username_password"
+                        pgf_creds = PgfCreds(**creds_kwargs)
+
+                    # Attempt provider-level authentication
+                    # Try multiple engine attributes to find the provider
+                    authenticated = False
+                    for attr in ("_providers", "providers", "_provider_map"):
+                        pmap = getattr(self._engine, attr, None)
+                        if isinstance(pmap, dict):
+                            prov_inst = pmap.get(provider)
+                            if prov_inst and hasattr(prov_inst, "authenticate"):
+                                prov_inst.authenticate(pgf_creds)
+                                logger.info(
+                                    "Provider '%s' authenticated via engine.%s.authenticate()",
+                                    provider, attr
+                                )
+                                authenticated = True
+                                break
+
+                    if not authenticated and hasattr(self._engine, "authenticate"):
+                        self._engine.authenticate(provider, pgf_creds)
+                        logger.info("Provider '%s' authenticated via engine.authenticate()", provider)
+
+                except Exception as auth_exc:
+                    logger.debug(
+                        "Direct provider authentication failed for '%s': %s — "
+                        "download will use PyGeoVision's Bearer token fallback.",
+                        provider, auth_exc
+                    )
         # else: no CLI, no Python API — credentials kept in-memory only (above)
         logger.info("Credentials stored for '%s'", provider)
         return self
@@ -482,6 +535,28 @@ class SatelliteFetcher:
                 )
                 for sd in satellite_data_list:
                     results.append(self._satellite_data_to_result(sd))
+
+                # ── Fallback on zero results from PyGeoFetch ───────────
+                # PyGeoFetch's Copernicus provider uses the RESTO API with
+                # its own collection identifier format. When it returns 0
+                # results (rather than raising an exception) — e.g. because
+                # 'SENTINEL-1-GRD' is not a valid RESTO collection name —
+                # we fall through to the STAC-based pystac_client fallback
+                # which uses the correct STAC collection IDs.
+                if not results:
+                    logger.debug(
+                        "PyGeoFetch returned 0 results — trying pystac_client fallback"
+                    )
+                    fallback = self._search_pystac_fallback(
+                        bbox, date_range, active_providers, cloud_cover_max,
+                        max_results, collections
+                    )
+                    if fallback:
+                        logger.info(
+                            "pystac fallback found %d result(s) that PyGeoFetch missed",
+                            len(fallback)
+                        )
+                        results = fallback
             except Exception as exc:
                 logger.warning("Python API search failed: %s — trying pystac_client fallback", exc)
                 results = self._search_pystac_fallback(
@@ -542,27 +617,85 @@ class SatelliteFetcher:
             "planetary_computer": "https://planetarycomputer.microsoft.com/api/stac/v1",
             "aws_earth":          "https://earth-search.aws.element84.com/v1",
             "copernicus":         "https://catalogue.dataspace.copernicus.eu/stac",
+            "copernicus_dataspace": "https://catalogue.dataspace.copernicus.eu/stac",
         }
+        # Default collections per provider.
+        # Copernicus Data Space STAC endpoint uses lowercase collection IDs,
+        # identical to Planetary Computer format. The RESTO API (used by
+        # PyGeoFetch's native Copernicus provider) uses different identifiers,
+        # but the STAC API — which this fallback uses — accepts lowercase.
         _DEFAULT_COLLECTIONS = {
-            "planetary_computer": ["sentinel-2-l2a"],
-            "aws_earth":          ["sentinel-2-l2a"],
-            "copernicus":         ["SENTINEL-2"],
+            "planetary_computer":   ["sentinel-1-grd"],
+            "aws_earth":            ["sentinel-2-l2a"],
+            "copernicus":           ["sentinel-1-grd"],     # CDSE STAC = lowercase
+            "copernicus_dataspace": ["sentinel-1-grd"],
         }
+
+        # No normalisation needed — both PC and CDSE STAC use lowercase
+        _COLLECTION_NORMALISE: dict = {}
 
         for provider in providers:
             endpoint = _STAC_ENDPOINTS.get(provider)
             if not endpoint:
+                logger.warning(
+                    "Unknown provider '%s' — recognised providers: %s. "
+                    "Check PROVIDERS list in your notebook.",
+                    provider, list(_STAC_ENDPOINTS.keys())
+                )
                 continue
             try:
-                catalog = pystac_client.Client.open(endpoint)
-                search_cols = collections or _DEFAULT_COLLECTIONS.get(provider, ["sentinel-2-l2a"])
+                # Build open() kwargs — Planetary Computer needs modifier
+                open_kwargs = {}
+                if provider == "planetary_computer":
+                    try:
+                        import planetary_computer as pc
+                        open_kwargs["modifier"] = pc.sign_inplace
+                    except ImportError:
+                        pass
+
+                # Copernicus Data Space requires authentication.
+                # Try credentials from in-memory store.
+                if provider in ("copernicus", "copernicus_dataspace"):
+                    creds = self._credentials.get(provider) or \
+                            self._credentials.get("copernicus") or \
+                            self._credentials.get("copernicus_dataspace") or {}
+                    if creds:
+                        # Build auth header for Copernicus STAC
+                        import requests, base64
+                        user = creds.get("username", "")
+                        pwd  = creds.get("password", "")
+                        if user and pwd:
+                            # Get OAuth2 token from Copernicus Identity Service
+                            token = self._get_copernicus_token(user, pwd)
+                            if token:
+                                open_kwargs["headers"] = {"Authorization": f"Bearer {token}"}
+                    else:
+                        logger.warning(
+                            "No credentials found for '%s'. "
+                            "Call client.add_credentials('%s', username=..., password=...) "
+                            "or try provider='planetary_computer' which needs no auth.",
+                            provider, provider
+                        )
+
+                catalog = pystac_client.Client.open(endpoint, **open_kwargs)
+
+                # Both PC and CDSE STAC use lowercase collection IDs.
+                # Pass collections as-is (user's notebook already uses lowercase).
+                search_cols = collections or _DEFAULT_COLLECTIONS.get(provider, ["sentinel-1-grd"])
+
+                # Copernicus STAC does not accept eo:cloud_cover for SAR
+                is_sar = any("sentinel-1" in c.lower() or "SAR" in c.upper()
+                             for c in search_cols)
+                query_filter = {} if is_sar else {"eo:cloud_cover": {"lt": cloud_cover_max}}
+
                 search = catalog.search(
                     bbox=list(bbox),
                     datetime=f"{date_range[0]}/{date_range[1]}",
                     collections=search_cols,
                     max_items=max_results,
-                    query={"eo:cloud_cover": {"lt": cloud_cover_max}},
+                    query=query_filter if query_filter else None,
                 )
+                count = 0
                 for item in search.items():
                     dt = item.datetime.isoformat() if item.datetime else ""
                     results.append(SearchResult(
@@ -577,6 +710,8 @@ class SatelliteFetcher:
                         assets={k: {"href": v.href} for k, v in (item.assets or {}).items()},
                         properties=dict(item.properties or {}),
                     ))
+                    count += 1
+                logger.info("  %-24s %d scenes", f"[{provider}]", count)
             except Exception as exc:
                 logger.warning("%s: pystac fallback failed: %s", provider, exc)
         return results
@@ -680,93 +815,50 @@ class SatelliteFetcher:
             notify_webhook     = notify_webhook,
         )
 
-        # Extract SatelliteData objects (with band asset filtering)
-        satellite_data_list = []
+        # ── Separate native PyGeoFetch items from pystac-fallback items ──────
+        # pystac fallback items have assets (STAC hrefs) but satellite_data=None.
+        # PyGeoFetch's engine cannot download them because:
+        #   1. Asset keys are STAC-format ("PRODUCT", "vh", "vv") not
+        #      PyGeoFetch-format ("download", "data")
+        #   2. The engine may have no auth session for these reconstructed objects
+        # Solution: download pystac fallback items directly via requests/httpx
+        # using the Copernicus OAuth2 token already cached from the search step.
+
+        pgf_items   = []   # items with native PyGeoFetch satellite_data
+        stac_items  = []   # items from pystac fallback (satellite_data was None)
+
         for item in items:
-            sd = item.satellite_data
-            if sd is None:
-                logger.warning("Item %s has no satellite_data, skipping", item.id)
-                continue
-            satellite_data_list.append(sd)
+            if item.satellite_data is not None:
+                pgf_items.append(item)
+            elif item.assets:
+                stac_items.append(item)
+            else:
+                logger.warning(
+                    "Item %s has no satellite_data and no assets — cannot download. "
+                    "Re-run client.search(..., use_cache=False) and download immediately.",
+                    item.id
+                )
 
-        # If any items lack satellite_data, try to re-create them
-        if len(satellite_data_list) < len(items):
-            for item in items:
-                if item.satellite_data is None and item.assets:
-                    try:
-                        from pygeofetch.models.satellite_data import (
-                            SatelliteData, SatelliteAsset,
-                            ProcessingLevel, DataFormat,
-                        )
-                        # SatelliteAsset requires: key, href, roles, extra_fields
-                        # Our cached assets are plain dicts — build proper SatelliteAsset
-                        normalised_assets = {}
-                        for k, v in item.assets.items():
-                            if isinstance(v, dict):
-                                href  = v.get("href", "")
-                                roles = v.get("roles", [])
-                                title = v.get("title", None)
-                                mtype = v.get("media_type", v.get("type", None))
-                            else:
-                                href, roles, title, mtype = str(v), [], None, None
-                            try:
-                                normalised_assets[k] = SatelliteAsset(
-                                    key=k, href=href, roles=roles or [],
-                                    title=title, media_type=mtype, extra_fields={},
-                                )
-                            except Exception:
-                                # If SatelliteAsset validation fails, keep dict form
-                                normalised_assets[k] = {"key": k, "href": href,
-                                                         "roles": roles or []}
+        # Download pystac fallback items directly
+        direct_results: List[DownloadResult] = []
+        if stac_items:
+            logger.info(
+                "Downloading %d pystac-fallback item(s) directly (bypassing PyGeoFetch engine).",
+                len(stac_items)
+            )
+            for item in stac_items:
+                dr = self._download_stac_item_direct(
+                    item, output_dir, post_process, bandwidth_limit_mb
+                )
+                direct_results.append(dr)
 
-                        sd = SatelliteData(
-                            id               = item.id,
-                            provider         = item.provider,
-                            satellite        = item.satellite,
-                            collection       = item.collection,
-                            cloud_cover      = item.cloud_cover,
-                            bbox             = item.bbox,
-                            assets           = normalised_assets,
-                            properties       = item.properties or {},
-                            processing_level = ProcessingLevel.L2A,
-                            data_format      = DataFormat.GEOTIFF,
-                        )
-                        satellite_data_list.append(sd)
-                        item.satellite_data = sd
-                    except Exception as e:
-                        logger.warning("Could not recreate SatelliteData for %s: %s", item.id, e)
-                        # Last-resort: bypass Pydantic with __new__ + setattr
-                        try:
-                            from pygeofetch.models.satellite_data import SatelliteData
-                            sd = SatelliteData.__new__(SatelliteData)
-                            for attr, val in [
-                                ("id",           item.id),
-                                ("provider",     item.provider),
-                                ("satellite",    item.satellite),
-                                ("cloud_cover",  item.cloud_cover),
-                                ("bbox",         item.bbox),
-                                ("collection",   item.collection),
-                                ("assets",       item.assets or {}),
-                                ("properties",   item.properties or {}),
-                            ]:
-                                try:
-                                    object.__setattr__(sd, attr, val)
-                                except Exception:
-                                    pass
-                            satellite_data_list.append(sd)
-                            item.satellite_data = sd
-                            logger.info("Stub SatelliteData created for %s", item.id)
-                        except Exception as e2:
-                            logger.warning("Stub creation also failed for %s: %s", item.id, e2)
+        # Build native PyGeoFetch satellite_data list
+        satellite_data_list = [i.satellite_data for i in pgf_items]
 
-        if not satellite_data_list:
+        if not satellite_data_list and not direct_results:
             logger.error(
                 "download() got %d item(s) with no satellite_data AND no assets. "
-                "This almost always means the SearchResult objects came from the "
-                "1-hour search cache (use_cache=True, the default), which previously "
-                "dropped asset URLs on reload. Re-run client.search(..., use_cache=False) "
-                "to get fresh results, then download immediately without re-running "
-                "the search cell in between.",
+                "Re-run client.search(..., use_cache=False) and download immediately.",
                 len(items),
             )
             return [
@@ -775,17 +867,27 @@ class SatelliteFetcher:
                     success=False,
                     error=(
                         "No valid satellite data (missing satellite_data and assets). "
-                        "Likely loaded from the search cache with stale data -- re-run "
-                        "client.search(..., use_cache=False) and download immediately."
+                        "Re-run client.search(..., use_cache=False) and download immediately."
                     ),
                 )
                 for item in items
             ]
 
-        # Print download info
+        # If ALL items are pystac-fallback, skip PyGeoFetch engine entirely
+        if not satellite_data_list:
+            return direct_results + [
+                DownloadResult(
+                    scene_id=item.id, provider=item.provider, success=False,
+                    error="No satellite_data and no assets — cannot download",
+                )
+                for item in items
+                if item not in pgf_items and item not in stac_items
+            ]
+
+        # Print download info for native PyGeoFetch items
         total = len(satellite_data_list)
-        providers_used = ', '.join(set(i.provider for i in items))
-        print(f"\n  📡 Downloading {total} scenes from {providers_used}")
+        providers_used = ', '.join(set(i.provider for i in pgf_items))
+        print(f"\n  📡 Downloading {total} scene(s) via PyGeoFetch from {providers_used}")
         print(f"  📁 Output: {output_dir}")
         if post_process:
             print(f"  🔧 Post-process: {' → '.join(post_process)}")
@@ -793,12 +895,10 @@ class SatelliteFetcher:
         print()
 
         # Execute download with progress tracking
-        # Spinner — pygeofetch's engine.download() is blocking and
-        # outputs its own rich progress internally. A lightweight spinner
-        # keeps the terminal alive without trying to track byte counts
-        # that only become available after the blocking call returns.
         import threading
-        _stop = threading.Event()
+        _stop          = threading.Event()
+        lock           = threading.Lock()
+        downloaded_bytes = 0
 
         def _spinner():
             frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
@@ -826,9 +926,8 @@ class SatelliteFetcher:
             t.join(timeout=1)
         duration = time.time() - start_time
 
-        # Update final progress
+        # Tally bytes from engine results
         with lock:
-            completed = total
             for r in results:
                 downloaded_bytes += r.bytes_downloaded or 0
 
@@ -864,6 +963,66 @@ class SatelliteFetcher:
 
             pgf_result = results[idx]
             success = bool(getattr(pgf_result, "success", False))
+            pgf_error = getattr(pgf_result, "error", "") or ""
+
+            # ── Auth-failure retry via direct OData download ───────────
+            # PyGeoFetch's Copernicus engine returns "Authentication failed"
+            # when its own auth session is empty (add_credentials() bug).
+            # We have the credentials in self._credentials — use them to
+            # construct the OData download URL from the item UUID and
+            # download directly with our Bearer token.
+            if (not success
+                    and "authentication" in pgf_error.lower()
+                    and item.provider in ("copernicus", "copernicus_dataspace")):
+                logger.info(
+                    "PyGeoFetch auth failure for %s — retrying via direct OData download",
+                    item.id[:40]
+                )
+                creds = (
+                    self._credentials.get("copernicus") or
+                    self._credentials.get("copernicus_dataspace") or {}
+                )
+                if creds:
+                    token = self._get_copernicus_token(
+                        creds.get("username", ""), creds.get("password", "")
+                    )
+                    if token:
+                        auth_hdrs = {"Authorization": f"Bearer {token}"}
+                        # Use download.dataspace.copernicus.eu directly —
+                        # catalogue.dataspace.copernicus.eu redirects here and
+                        # requests drops the Authorization header on cross-domain
+                        # redirect, causing 401. Hit the final URL directly.
+                        odata_url = (
+                            f"https://download.dataspace.copernicus.eu"
+                            f"/odata/v1/Products('{item.id}')/$value"
+                        )
+                        retry_item = type("_I", (), {
+                            "id": item.id, "provider": item.provider,
+                            "assets": {"PRODUCT": {"href": odata_url}},
+                        })()
+                        dr = self._download_stac_item_direct(
+                            retry_item, output_dir, post_process, bandwidth_limit_mb
+                        )
+                        download_results.append(dr)
+                        continue
+                    else:
+                        logger.warning(
+                            "Bearer token generation failed for '%s'. "
+                            "Check your Copernicus credentials — the password "
+                            "in client.add_credentials() may be incorrect or expired.",
+                            item.provider
+                        )
+                        pgf_error += (
+                            " | OData retry failed: Bearer token not obtained. "
+                            "Update: client.add_credentials('copernicus', "
+                            "username=EMAIL, password=CURRENT_PASSWORD)"
+                        )
+                else:
+                    pgf_error += (
+                        " | No credentials found. "
+                        "Call: client.add_credentials('copernicus', "
+                        "username=..., password=...) then re-run."
+                    )
 
             # Resolve the actual output file. Try every field pygeofetch
             # might expose, then fall back to scanning output_dir for a
@@ -917,7 +1076,344 @@ class SatelliteFetcher:
                     print(f"      ✗ {r.scene_id[:50]}: {r.error[:100]}")
         print(f"  {'─' * 50}\n")
 
-        return download_results
+        # Combine native PyGeoFetch results with direct pystac download results
+        all_results = download_results + direct_results
+        return all_results
+
+    def _download_stac_item_direct(
+        self,
+        item: "SearchResult",
+        output_dir: Path,
+        post_process: Optional[List[str]],
+        bandwidth_limit_mb: Optional[float],
+    ) -> "DownloadResult":
+        """
+        Download a STAC search result directly using requests, bypassing PyGeoFetch.
+
+        Used for items that came from the pystac fallback (satellite_data=None
+        but assets populated). PyGeoFetch's engine cannot download these because:
+          1. Asset keys are STAC format ("PRODUCT", "vh", "vv") not PyGeoFetch format
+          2. Auth session not available in reconstructed SatelliteData objects
+
+        Supports:
+          - Copernicus Data Space: downloads "PRODUCT" asset with Bearer token
+          - Planetary Computer: downloads "vh" + "vv" assets (no auth needed)
+        """
+        import time as _time
+
+        t0      = _time.time()
+        item_id = item.id
+        provider = item.provider or "unknown"
+
+        # Pick the best download URL from STAC assets
+        assets = item.assets or {}
+        url, asset_key = self._pick_stac_download_url(assets, provider)
+
+        if not url:
+            return DownloadResult(
+                scene_id=item_id, provider=provider, success=False,
+                error=(
+                    f"No downloadable asset found in STAC assets. "
+                    f"Available keys: {list(assets.keys())}. "
+                    f"Expected 'PRODUCT' (Copernicus) or 'vh'/'vv' (Planetary Computer)."
+                ),
+            )
+
+        # Build output filename
+        ext = ".tif" if url.endswith(".tif") else ".zip"
+        safe_id = item_id.replace("/", "_").replace(":", "_")[:80]
+        out_file = output_dir / provider / f"{safe_id}{ext}"
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  [direct] %s  %s → %s", item_id[:55], asset_key, out_file.name)
+
+        # Build headers — Copernicus needs Bearer token, PC needs none
+        headers = {}
+        if provider in ("copernicus", "copernicus_dataspace"):
+            creds = (
+                self._credentials.get("copernicus") or
+                self._credentials.get("copernicus_dataspace") or {}
+            )
+            if creds:
+                token = self._get_copernicus_token(
+                    creds.get("username", ""), creds.get("password", "")
+                )
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+            if "Authorization" not in headers:
+                logger.warning(
+                    "No Copernicus auth token — download may fail. "
+                    "Call client.add_credentials('copernicus', username=..., password=...)"
+                )
+
+        # Stream download — use a Session so auth header survives redirects.
+        # requests.get() drops Authorization on cross-domain redirect by default,
+        # which causes 401 on Copernicus (catalogue → download subdomain).
+        try:
+            import requests
+            chunk_size = 1024 * 1024
+            bw_delay   = (1.0 / (bandwidth_limit_mb or float("inf"))) if bandwidth_limit_mb else 0
+
+            session = requests.Session()
+            session.headers.update(headers)
+            # Override rebuild_auth so the Authorization header is NOT dropped
+            # when following cross-domain redirects (e.g. catalogue → download)
+            session.rebuild_auth = lambda prepared, response: None
+
+            resp = session.get(url, stream=True, timeout=300, allow_redirects=True)
+
+            # Copernicus S3-compatible endpoint still returns 403 even with a
+            # valid Bearer token — it requires AWS4 S3 credentials, not OAuth2.
+            # Fall back to the OData download URL.
+            if resp.status_code == 403 and provider in ("copernicus", "copernicus_dataspace"):
+                logger.debug(
+                    "S3-converted URL returned 403 — trying OData download URL for %s",
+                    item_id
+                )
+                odata_url = self._get_copernicus_odata_url(item_id, headers)
+                if odata_url:
+                    url = odata_url
+                    resp = session.get(url, stream=True, timeout=300, allow_redirects=True)
+                else:
+                    logger.warning(
+                        "  ✗ %s: S3 auth failed and OData URL lookup failed. "
+                        "Try provider='planetary_computer' for free HTTPS access.",
+                        item_id[:55]
+                    )
+                    return DownloadResult(
+                        scene_id=item_id, provider=provider, success=False,
+                        error=(
+                            "Copernicus S3 endpoint requires AWS4 S3 credentials; "
+                            "OData lookup also failed. "
+                            "Switch to provider='planetary_computer' for free access."
+                        ),
+                    )
+
+            resp.raise_for_status()
+
+            bytes_written = 0
+            with open(out_file, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        f.write(chunk)
+                        bytes_written += len(chunk)
+                        if bw_delay:
+                            _time.sleep(bw_delay)
+
+            duration = _time.time() - t0
+            size_mb  = bytes_written / 1024 / 1024
+            logger.info(
+                "  ✓ %-50s  %6.0f MB  %5.1fs",
+                item_id[:50], size_mb, duration
+            )
+
+            # Run post-processing (reproject, cog, etc.)
+            final_path = out_file
+            if post_process and out_file.exists():
+                final_path = self._apply_post_process(out_file, post_process) or out_file
+
+            return DownloadResult(
+                scene_id=item_id,
+                provider=provider,
+                success=True,
+                path=final_path,
+                bytes_downloaded=bytes_written,
+                duration_seconds=duration,
+            )
+
+        except Exception as exc:
+            logger.warning("  ✗ %s: %s", item_id[:55], exc)
+            return DownloadResult(
+                scene_id=item_id, provider=provider, success=False,
+                error=str(exc),
+            )
+
+    def _get_copernicus_odata_url(
+        self,
+        product_name: str,
+        auth_headers: dict,
+    ) -> Optional[str]:
+        """
+        Query Copernicus OData API by product name to get the direct download URL.
+
+        The Copernicus STAC search returns S3 URIs for band assets which require
+        S3-style auth. The OData download URL
+        (catalogue.dataspace.copernicus.eu/odata/v1/Products('UUID')/$value)
+        works with a standard Bearer token.
+
+        Args:
+            product_name: Scene ID e.g. 'S1A_IW_GRDH_1SDV_20190727T181721...'
+            auth_headers: Dict with 'Authorization: Bearer TOKEN'
+
+        Returns:
+            Direct download URL string, or None if lookup fails.
+        """
+        import urllib.request, json as _json
+
+        # Copernicus product names end in .SAFE — try with and without
+        safe_name = product_name if product_name.endswith(".SAFE") else f"{product_name}.SAFE"
+        # Also strip _COG suffix which Copernicus STAC sometimes appends
+        base_name = safe_name.replace("_COG.SAFE", ".SAFE")
+
+        for name in [base_name, safe_name, product_name]:
+            try:
+                odata_url = (
+                    "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
+                    f"?$filter=Name eq '{name}'"
+                    "&$select=Id,Name"
+                    "&$top=1"
+                )
+                req = urllib.request.Request(
+                    odata_url,
+                    headers={
+                        "Accept": "application/json",
+                        **auth_headers,
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = _json.loads(resp.read())
+
+                products = data.get("value", [])
+                if products:
+                    product_id = products[0].get("Id")
+                    if product_id:
+                        download_url = (
+                            f"https://catalogue.dataspace.copernicus.eu"
+                            f"/odata/v1/Products('{product_id}')/$value"
+                        )
+                        logger.debug(
+                            "OData lookup: %s → UUID=%s", name[:50], product_id[:8]
+                        )
+                        return download_url
+            except Exception as exc:
+                logger.debug("OData lookup failed for %s: %s", name[:50], exc)
+
+        return None
+
+    @staticmethod
+    def _pick_stac_download_url(
+        assets: dict, provider: str
+    ) -> tuple:
+        """
+        Pick the best downloadable asset URL from a STAC assets dict.
+
+        Returns (url, asset_key) or (None, None).
+
+        Rules:
+        - NEVER return s3:// URIs — requests cannot handle them.
+          Copernicus STAC individual band assets (vh, vv) are s3:// URIs;
+          the "PRODUCT" asset is the correct HTTPS OData download URL.
+        - Copernicus: "PRODUCT" first (full SAFE.zip via OData HTTPS)
+        - Planetary Computer S1 COG: "vh" or "vv" (blob.core.windows.net HTTPS)
+        - Fallback: first asset with an https:// href that isn't a thumbnail
+        """
+        if not assets:
+            return None, None
+
+        def _href(v) -> str:
+            return v.get("href", "") if isinstance(v, dict) else str(v)
+
+        def _is_https(url: str) -> bool:
+            return url.startswith("https://") or url.startswith("http://")
+
+        # Priority 1: explicit download/product keys with HTTPS URL
+        for key in ("PRODUCT", "product", "data", "download"):
+            if key in assets:
+                url = _href(assets[key])
+                if url and _is_https(url):
+                    return url, key
+
+        # Priority 2: Planetary Computer Sentinel-1 GRD COG band assets
+        # (blob.core.windows.net — public HTTPS, no auth needed)
+        for key in ("vh", "vv", "VH", "VV"):
+            if key in assets:
+                url = _href(assets[key])
+                if url and _is_https(url):
+                    return url, key
+
+        # Priority 3: Planetary Computer Sentinel-2 bands
+        for key in ("B04", "B08", "B03", "B02", "B11", "B12", "visual", "red", "nir"):
+            if key in assets:
+                url = _href(assets[key])
+                if url and _is_https(url):
+                    return url, key
+
+        # Priority 4: any HTTPS asset that isn't a thumbnail/preview
+        skip = {"thumbnail", "preview", "rendered_preview", "tilejson",
+                "overview", "visual_preview"}
+        for key, val in assets.items():
+            if key.lower() in skip:
+                continue
+            url = _href(val)
+            if url and _is_https(url):
+                return url, key
+
+        # Priority 5: convert Copernicus S3 URIs to HTTPS as last resort.
+        # s3://eodata/path → https://eodata.dataspace.copernicus.eu/path
+        # These still require a Bearer token — same one used for PRODUCT downloads.
+        for key in ("vh", "vv", "VH", "VV", "PRODUCT", "product"):
+            if key in assets:
+                url = _href(assets[key])
+                if url and url.startswith("s3://eodata/"):
+                    https_url = "https://eodata.dataspace.copernicus.eu/" + url[len("s3://eodata/"):]
+                    return https_url, key
+
+        # All assets are unresolvable S3 or unknown — log the actual URLs for debugging
+        return None, None
+
+    def _apply_post_process(
+        self, input_path: Path, steps: List[str]
+    ) -> Optional[Path]:
+        """Apply post-processing steps (reproject, cog) to a downloaded file."""
+        current = input_path
+        try:
+            import rasterio, shutil
+            from rasterio.warp import calculate_default_transform, reproject, Resampling
+
+            for step in steps:
+                step = step.strip()
+                if step.startswith("reproject:"):
+                    target_crs = step.split(":", 1)[1].strip()
+                    out = current.with_suffix("").with_name(current.stem + "_repr.tif")
+                    with rasterio.open(str(current)) as src:
+                        if str(src.crs) == target_crs:
+                            logger.debug("Already in target CRS %s — skipping reproject", target_crs)
+                            continue
+                        transform, width, height = calculate_default_transform(
+                            src.crs, target_crs, src.width, src.height, *src.bounds
+                        )
+                        meta = src.meta.copy()
+                        meta.update(crs=target_crs, transform=transform,
+                                    width=width, height=height)
+                        with rasterio.open(str(out), "w", **meta) as dst:
+                            for i in range(1, src.count + 1):
+                                reproject(
+                                    source=rasterio.band(src, i),
+                                    destination=rasterio.band(dst, i),
+                                    src_transform=src.transform,
+                                    src_crs=src.crs,
+                                    dst_transform=transform,
+                                    dst_crs=target_crs,
+                                    resampling=Resampling.bilinear,
+                                )
+                    current = out
+
+                elif step == "cog":
+                    out = current.with_name(current.stem + "_cog.tif")
+                    import subprocess
+                    r = subprocess.run(
+                        ["gdal_translate", "-of", "COG", "-co", "COMPRESS=DEFLATE",
+                         str(current), str(out)],
+                        capture_output=True,
+                    )
+                    if r.returncode == 0:
+                        current = out
+                    else:
+                        logger.warning("COG conversion failed: %s", r.stderr.decode()[:200])
+
+        except Exception as exc:
+            logger.warning("Post-processing failed for %s: %s", input_path.name, exc)
+        return current
 
     # ------------------------------------------------------------------
     # Pipeline
@@ -1212,12 +1708,19 @@ class SatelliteFetcher:
         return results
 
     def _collection_to_satellite(self, collection: str) -> str:
-        """Map a STAC collection ID to a human-readable satellite name."""
+        """Map a STAC collection ID to a human-readable satellite name.
+
+        Handles both Planetary Computer lowercase IDs (sentinel-1-grd)
+        and Copernicus Data Space uppercase IDs (SENTINEL-1-GRD).
+        """
+        col = collection.lower()
         _MAP = {
             "sentinel-2-l2a":  "Sentinel-2",
             "sentinel-2-l1c":  "Sentinel-2",
             "sentinel-1-rtc":  "Sentinel-1",
             "sentinel-1-grd":  "Sentinel-1",
+            "sentinel-1-slc":  "Sentinel-1",
+            "sentinel-1":      "Sentinel-1",
             "landsat-c2-l2":   "Landsat",
             "landsat-c2-l1":   "Landsat",
             "landsat-8-l1tp":  "Landsat",
@@ -1227,9 +1730,140 @@ class SatelliteFetcher:
             "modis":           "MODIS",
         }
         for key, val in _MAP.items():
-            if key in collection.lower():
+            if key in col:
                 return val
         return collection
+
+    def _get_copernicus_token(self, username: str, password: str) -> Optional[str]:
+        """
+        Obtain a short-lived OAuth2 bearer token from Copernicus Identity Service.
+
+        Returns the access_token string, or None on failure.
+        """
+        import time
+        if not username or not password:
+            logger.warning(
+                "Copernicus token request skipped — username or password is empty. "
+                "Call: client.add_credentials('copernicus', username=EMAIL, password=PASSWORD)"
+            )
+            return None
+
+        # Return cached token if still valid
+        if hasattr(self, "_copernicus_token") and hasattr(self, "_copernicus_token_exp"):
+            if time.time() < self._copernicus_token_exp - 30:
+                return self._copernicus_token
+
+        import urllib.request
+        import urllib.parse
+        import json as _json
+
+        token_url = (
+            "https://identity.dataspace.copernicus.eu"
+            "/auth/realms/CDSE/protocol/openid-connect/token"
+        )
+        payload = urllib.parse.urlencode({
+            "grant_type":    "password",
+            "username":      username,
+            "password":      password,
+            "client_id":     "cdse-public",
+        }).encode()
+
+        req = urllib.request.Request(
+            token_url,
+            data=payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                token_data = _json.loads(resp.read())
+                token      = token_data.get("access_token")
+                expires_in = token_data.get("expires_in", 600)
+                if token:
+                    self._copernicus_token     = token
+                    self._copernicus_token_exp = time.time() + expires_in
+                    logger.debug(
+                        "Copernicus token obtained for %s (expires in %ds)",
+                        username, expires_in
+                    )
+                    return token
+                else:
+                    logger.warning(
+                        "Copernicus token response had no access_token. "
+                        "Response keys: %s", list(token_data.keys())
+                    )
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode()[:300]
+            except Exception:
+                pass
+            if e.code == 401:
+                logger.warning(
+                    "Copernicus authentication FAILED (401): wrong password for %s. "
+                    "Update your credentials: "
+                    "client.add_credentials('copernicus', username='%s', password='NEW_PASSWORD'). "
+                    "Response: %s",
+                    username, username, body
+                )
+            elif e.code == 400:
+                logger.warning(
+                    "Copernicus token request error (400): %s. "
+                    "Check username format (must be email address).",
+                    body
+                )
+            else:
+                logger.warning(
+                    "Copernicus token HTTP error %d: %s", e.code, body
+                )
+        except Exception as exc:
+            logger.warning(
+                "Copernicus authentication network error: %s\n"
+                "  Check your credentials at: https://dataspace.copernicus.eu",
+                exc
+            )
+        return None
+
+    def test_copernicus_auth(self) -> bool:
+        """
+        Test whether Copernicus credentials are valid and can obtain a token.
+
+        Call this to diagnose auth failures before downloading.
+
+        Returns True if a valid token was obtained.
+
+        Example::
+
+            if not client.data.test_copernicus_auth():
+                client.add_credentials('copernicus',
+                                        username='you@email.com',
+                                        password='correct_password')
+        """
+        creds = (
+            self._credentials.get("copernicus") or
+            self._credentials.get("copernicus_dataspace") or {}
+        )
+        if not creds:
+            logger.warning(
+                "No Copernicus credentials found. "
+                "Call: client.add_credentials('copernicus', username=EMAIL, password=PASSWORD)"
+            )
+            return False
+
+        username = creds.get("username", "")
+        password = creds.get("password", "")
+        logger.info("Testing Copernicus auth for: %s", username)
+
+        token = self._get_copernicus_token(username, password)
+        if token:
+            logger.info("Copernicus auth: OK — token obtained (%d chars)", len(token))
+            print(f"  ✓ Copernicus auth OK for {username}")
+            return True
+        else:
+            print(f"  ✗ Copernicus auth FAILED for {username}")
+            print(f"    → Update credentials: client.add_credentials(")
+            print(f"          'copernicus', username='{username}',")
+            print(f"          password='YOUR_CURRENT_PASSWORD')")
+            return False
 
     def _pick_best_asset(self, result: "SearchResult") -> Optional[str]:
         """Pick the best available asset key from a SearchResult.
@@ -1262,8 +1896,28 @@ class SatelliteFetcher:
 
     def _resolve_providers(self, providers, satellite, collections):
         """Resolve providers from various inputs."""
+        # Normalise common provider name aliases
+        _ALIASES = {
+            "copernicus_dataspace": "copernicus",
+            "cdse":                 "copernicus",
+            "dataspace":            "copernicus",
+            "esa":                  "copernicus",
+            "pc":                   "planetary_computer",
+            "microsoft":            "planetary_computer",
+            "aws":                  "aws_earth",
+            "element84":            "aws_earth",
+            "asf":                  "asf_vertex",
+            "alaska":               "asf_vertex",
+        }
         if providers:
-            return providers
+            normalised = []
+            for p in providers:
+                alias = _ALIASES.get(p.lower().replace("-", "_"))
+                if alias and alias not in normalised:
+                    normalised.append(alias)
+                elif p not in normalised:
+                    normalised.append(p)
+            return normalised
         if satellite:
             sl = satellite.lower().replace(" ", "-")
             for key, provs in SATELLITE_SHORTCUTS.items():

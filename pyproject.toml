@@ -29,9 +29,9 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies    = [
-    # PyGeoFetch — satellite data layer (search, download, auth)
-    "PyGeoFetch>=1.0.0",
-    # STAC fallback when PyGeoFetch unavailable
+    # pygeofetch — satellite data layer (search, download, auth)
+    "pygeofetch>=1.0.7",
+    # STAC fallback when pygeofetch unavailable
     "pystac>=1.9",
     "pystac-client>=0.7",
     "planetary-computer>=1.0",
@@ -239,7 +239,7 @@ markers      = [
     "slow: marks tests as slow (deselect with '-m not slow')",
     "gpu: marks tests requiring GPU",
     "integration: marks tests requiring network",
-    "live: marks tests requiring live PyGeoFetch credentials",
+    "live: marks tests requiring live pygeofetch credentials",
 ]
 
 [tool.coverage.run]

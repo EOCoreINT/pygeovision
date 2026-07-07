@@ -15,7 +15,7 @@ class HealthChecker:
     def check(self) -> Dict[str, Any]:
         return {
             "status": "healthy",
-            "version": "2.1.2",
+            "version": "2.1.4",
             "uptime_s": round(time.time() - _START_TIME, 1),
             "models_loaded": len(self._models) if hasattr(self._models, "__len__") else 0,
             "gpu": self._gpu_status(),

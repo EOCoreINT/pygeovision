@@ -3,7 +3,7 @@ message: "If you use PyGeoVision in your research, please cite it as below."
 type: software
 
 title: "PyGeoVision: The World-Class Standalone Geospatial AI Platform"
-version: 2.1.2
+version: 2.1.4
 date-released: "2026-06-27"
 url: "https://github.com/pygeovision/pygeovision"
 license: Apache-2.0
@@ -74,5 +74,5 @@ preferred-citation:
   type: software
   title: "PyGeoVision v2.0"
   url: "https://github.com/pygeovision/pygeovision"
-  version: "2.1.2"
+  version: "2.1.4"
   year: 2026

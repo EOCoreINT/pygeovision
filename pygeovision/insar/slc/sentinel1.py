@@ -260,7 +260,6 @@ def parse_s1_slc_manifest(path: str) -> Optional[S1SLCProduct]:
         pass_direction = pass_dir,
     )
 
-
 def _read_manifest(path: Path) -> Optional[str]:
     """Read manifest.safe from a .zip or .SAFE directory."""
     if path.suffix.lower() == ".zip":

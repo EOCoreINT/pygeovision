@@ -72,7 +72,6 @@ class Step:
             "rationale":  self.rationale,
         }
 
-
 @dataclass
 class Plan:
     """Ordered sequence of steps to fulfil a user request."""
@@ -94,7 +93,6 @@ class Plan:
         if self.notes:
             lines.append(f"\nNotes: {self.notes}")
         return "\n".join(lines)
-
 
 # ── LLM planner (Anthropic Claude) ────────────────────────────────────────────
 

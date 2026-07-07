@@ -5,7 +5,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [2.1.2] — 2026-07-03
+## [2.1.4] — 2026-07-03
 
 ### Added — GeoAgent: Autonomous Geospatial AI Agent
 
@@ -69,7 +69,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [2.1.2] — 2026-06-27
+## [2.1.4] — 2026-06-27
 
 ### ⚠️ Breaking Changes
 - **PyGeoVision is now fully standalone.** GeoAI is no longer a required dependency — it is an optional plugin (`pip install "pygeovision[geoai]"`). All v1.x `client.geoai.*` calls continue to work but require explicit installation of `geoai-py`.
@@ -279,5 +279,5 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-[2.1.2]: https://github.com/pygeovision/pygeovision/compare/v1.0.0...v2.1.2
+[2.1.4]: https://github.com/pygeovision/pygeovision/compare/v1.0.0...v2.1.4
 [1.0.0]: https://github.com/pygeovision/pygeovision/releases/tag/v1.0.0

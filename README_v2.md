@@ -1,6 +1,6 @@
 # PyGeoVision: A Production-Ready Open-Source Platform for Geospatial Artificial Intelligence
 
-**Samuel Appiah Kubi**  
+<!-- **Samuel Appiah Kubi**  
 Department of Remote Sensing and Geospatial Science  
 University of Ghana, Legon, Accra, Ghana  
 Email: s.appiah-kubi@ug.edu.gh | ORCID: 0000-0000-0000-0000
@@ -9,11 +9,11 @@ Email: s.appiah-kubi@ug.edu.gh | ORCID: 0000-0000-0000-0000
 
 **Journal:** Remote Sensing (MDPI) | ISPRS Journal of Photogrammetry and Remote Sensing  
 **Submitted:** July 2026  
-**Keywords:** geospatial AI, satellite data, deep learning, foundation models, SAR, InSAR, natural language agent, Earth observation
+**Keywords:** geospatial AI, satellite data, deep learning, foundation models, SAR, InSAR, natural language agent, Earth observation -->
 
 ---
 
-## Abstract
+## Statement of Need
 
 Earth observation from satellite platforms generates more than 150 terabytes of imagery daily, yet converting this data into actionable intelligence remains fragmented across disconnected tools for data acquisition, preprocessing, model inference, and result delivery. Existing open-source frameworks address individual components in isolation: EODAG provides data access but no AI; TorchGeo integrates PyTorch datasets but omits data acquisition; TerraTorch supports foundation models but not end-to-end pipelines; GeoAI offers AI models but lacks SAR processing and enterprise features. We present **PyGeoVision**, a production-ready, open-source Python platform that unifies the complete Earth observation intelligence stack behind a single coherent API. PyGeoVision integrates (1) satellite data acquisition from 22+ providers via PyGeoFetch; (2) a validated preprocessing pipeline with three embedded production bug-fixes; (3) 119 AI model architectures covering classification, detection, segmentation, change detection, and pixel regression; (4) native integration of DINOv3 (12 variants) and Prithvi-EO-2.0 (600M parameters) foundation models; (5) an autonomous GeoAgent that maps natural-language queries to complete geospatial pipelines without requiring tool names; (6) a full InSAR processing chain from amplitude-proxy interferogram to interpreted deformation report; and (7) an interactive visualization layer with five specialised viewers and standalone HTML export. Evaluated on standard benchmarks, PyGeoVision achieves 68.2% top-1 accuracy on fMoW, 72.4% mAP on DIOR, and 53.9% mIoU on SEASONET — improvements of 3.7–6.7 percentage points over the nearest open-source competitor. The platform ships with 585 automated tests, a 28-chapter book, 87 Jupyter notebooks, Kubernetes/Helm deployment templates, and enterprise RBAC and compliance modules. PyGeoVision is released under the Apache 2.0 license at https://github.com/appiahkubis14/PyGeoVision.
 
@@ -679,62 +679,6 @@ PyGeoVision is open-source under the Apache 2.0 licence, actively maintained, an
 **Funding.** This research received no external funding.
 
 **Conflicts of interest.** The author declares no conflict of interest.
-
----
-
-## References
-
-[1] Copernicus Programme. *Sentinel Data Policy*. European Space Agency, 2024. https://sentinel.esa.int/web/sentinel/missions/sentinel-2.
-
-[2] Xie, E., Wang, W., Yu, Z., Anandkumar, A., Alvarez, J.M., & Luo, P. SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers. *NeurIPS*, 2021.
-
-[3] Chen, H., Qi, Z., & Shi, Z. Remote Sensing Image Change Detection with Transformers. *IEEE TGRS*, 60, 1–14, 2022.
-
-[4] Jakubik, J., Roy, S., Phillips, C.E., Fraccaro, P., Godwin, D., Zadeh, B.B., Mukkavilli, D.K., Borgeaud, P., Gomes, C., Bulczak, A., Ganti, R., Blumberg, A.F., Ramachandran, R., Matsuoka, M., Freitag, B., Marroquin, V., Vashisht, M., Bhatt, S., Maheshwari, N., Olukun, C., Newman, A., Senan, R., Saeki, T., Poudel, S., & Codella, N. Foundation Models for Generalist Geospatial Artificial Intelligence. *arXiv:2310.18660*, 2023.
-
-[5] Siméoni, O., Oquab, M., Darcet, T., Moutakanni, T., Vo, N., Szafraniec, M., Khalidov, V., Fernandez, P., Haziza, F., Massa, F., El-Nouby, A., Assran, M., Ballas, N., Galvez, M.-A., Verbeek, J., Boundfaa, R., Bigos, T., Girdhar, R., Joulin, A., & Bojanowski, P. Vision Transformers Need Registers. *ICLR*, 2024. (DINOv3 successor architecture.)
-
-[6] Wu, Q. GeoAI: A Python Package for Geospatial Artificial Intelligence. *Journal of Open Source Software*, 11(120), 9605, 2026.
-
-[7] Stewart, A.J., Robinson, C., Corley, I.A., Ortiz, A., Lavista Ferres, J.M., & Banerjee, A. TorchGeo: Deep Learning with Geospatial Data. *SIGSPATIAL*, 2022.
-
-[8] Lehner, J., Bhatt, S., Fatehi, P., et al. TerraTorch: A Fine-Tuning Framework for Geospatial Foundation Models. *Remote Sensing*, 2025.
-
-[9] Valette, G., Gomes-Lima, R., Souza-Rodrigues, B., & Saunier, S. EODAG: Earth Observation Data Access Gateway. *Computers and Geosciences*, 168, 105233, 2022.
-
-[10] Appiah Kubi, S. PyGeoFetch: A Python Library for Unified Satellite Data Acquisition. *GitHub Repository*, 2025. https://github.com/appiahkubis14/PyGeoFetch.
-
-[11] Lee, J.S. Refined filtering of image noise using local statistics. *Computer Graphics and Image Processing*, 15(4), 380–389, 1981.
-
-[12] Xiong, Z., Wang, Z., Liu, Z., Zhang, H., Yao, X., Shi, J., Gu, Z., Liao, W., Ghamisi, P., & Zhu, X.X. EarthNets: Empowering AI in Earth Observation. *arXiv:2210.04936*, 2022.
-
-[13] Christie, G., Fendley, N., Wilson, J., & Mukherjee, R. Functional Map of the World. *CVPR*, 2018.
-
-[14] Sumbul, G., Charfuelan, M., Demir, B., & Markl, V. BigEarthNet: A Large-Scale Benchmark Archive For Remote Sensing Image Understanding. *IGARSS*, 2019.
-
-[15] Li, K., Wan, G., Cheng, G., Meng, L., & Han, J. Object Detection in Optical Remote Sensing Images: A Survey and A New Benchmark. *ISPRS Journal*, 159, 296–307, 2020.
-
-[16] Dumeur, I., Valero, S., & Inglada, J. SEASONET: A large-scale multi-date dataset of Sentinel-2 images for land-cover classification. *Remote Sensing*, 14(5), 1075, 2022.
-
-[17] Chen, H., Shi, Z. A Spatial-Temporal Attention-Based Method and a New Dataset for Remote Sensing Image Change Detection. *Remote Sensing*, 12(10), 1662, 2020.
-
-[18] Wang, D., Zhang, J., Du, B., Xia, G.S., & Tao, D. An Empirical Study of Remote Sensing Pretraining. *IEEE TGRS*, 61, 1–20, 2023.
-
-[19] USGS. Landsat Collection 2 Level-2 Science Product Guide. *USGS*, 2023.
-
-[20] ESA. Sentinel-2 User Handbook. *ESA*, Edition 1.4, 2022.
-
-[21] Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N., Kaiser, L., & Polosukhin, I. Attention Is All You Need. *NeurIPS*, 2017.
-
-[22] Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer, M., Heigold, G., Gelly, S., Uszkoreit, J., & Houlsby, N. An Image is Worth 16×16 Words: Transformers for Image Recognition at Scale. *ICLR*, 2021.
-
-[23] Ronneberger, O., Fischer, P., & Brox, T. U-Net: Convolutional Networks for Biomedical Image Segmentation. *MICCAI*, 2015.
-
-[24] Lin, T.Y., Goyal, P., Girshick, R., He, K., & Dollar, P. Focal Loss for Dense Object Detection. *ICCV*, 2017.
-
-[25] Kirillov, A., Mintun, E., Ravi, N., Mao, H., Rolland, C., Gustafson, L., Xiao, T., Whitehead, S., Berg, A.C., Lo, W.Y., Dollar, P., & Girshick, R. Segment Anything. *ICCV*, 2023.
-
----
 
 *Correspondence: s.appiah-kubi@ug.edu.gh*  
 *Received: July 2026 | © 2026 The Author. Published under Apache 2.0.*

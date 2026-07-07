@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/PyGeoVision-2.1.2-0d1117?style=for-the-badge&labelColor=0d1117&color=2563eb" alt="version"/>
+<img src="https://img.shields.io/badge/PyGeoVision-2.1.4-0d1117?style=for-the-badge&labelColor=0d1117&color=2563eb" alt="version"/>
 
 # PyGeoVision
 
@@ -12,7 +12,7 @@ unifying [PyGeoFetch](https://github.com/appiahkubis14/PyGeoFetch) (22+ provider
 ---
 
 [![Python](https://img.shields.io/badge/Python-3.10%20|%203.11%20|%203.12-3776ab?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/pygeovision/)
-[![PyPI](https://img.shields.io/badge/PyPI-v2.1.2-2563eb?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/pygeovision/)
+[![PyPI](https://img.shields.io/badge/PyPI-v2.1.4-2563eb?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/pygeovision/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green?style=flat-square)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-391_passing-22c55e?style=flat-square&logo=pytest&logoColor=white)](#testing)
 [![Models](https://img.shields.io/badge/Models-119_architectures-f59e0b?style=flat-square)](#model-registry)
@@ -42,7 +42,7 @@ PyGeoVision is a **production-ready geospatial AI platform** that unifies satell
 
 ## What's New in v2.0
 
-| Area | v1.0 | v2.1.2 |
+| Area | v1.0.0 | v2.1.4 |
 |------|------|---------|
 | Tests passing | 208 | **391** (+ 24 skipped when torch absent) |
 | Model architectures | 14 | **119** |
@@ -150,7 +150,7 @@ import pygeovision as pgv
 # Initialise
 client = pgv.PyGeoVision()
 print(client)
-# PyGeoVision(v2.1.2 | pygeofetch=✓ | geoai=✓ | models=119 | datasets=503)
+# PyGeoVision(v2.1.4 | pygeofetch=✓ | geoai=✓ | models=119 | datasets=503)
 
 # ── 1. Add credentials (stored securely in system keyring) ─────────────────
 client.add_credentials("usgs",      username="user", password="pass")

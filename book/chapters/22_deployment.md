@@ -4,7 +4,7 @@
 
 ```bash
 # Build production image
-docker build -t pygeovision:2.1.2 \
+docker build -t pygeovision:2.1.4 \
   -f deployment/docker/Dockerfile.prod .
 
 # Run with volume mount for data persistence
@@ -14,7 +14,7 @@ docker run -d \
   -v ./results:/app/results \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e PGV_LOG_LEVEL=INFO \
-  pygeovision:2.1.2
+  pygeovision:2.1.4
 
 # Verify
 curl http://localhost:8080/health
