@@ -2,7 +2,7 @@ replicaCount: 3
 
 image:
   repository: ghcr.io/appiahkubis14/pygeovision
-  tag: "2.1.4"
+  tag: "2.1.5"
   pullPolicy: IfNotPresent
 
 service:

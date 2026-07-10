@@ -17,7 +17,7 @@
 Create `~/.pygeovision/config.yml`:
 
 ```yaml
-version: "2.1.4"
+version: "2.1.5"
 
 data:
   cache_dir: /data/pgv_cache

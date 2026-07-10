@@ -106,7 +106,7 @@ PyGeoVision is organised into six vertical layers, each independently usable and
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        PYGEOVISION v2.1.4                          │
+│                        PYGEOVISION v2.1.5                          │
 ├─────────────────────────────────────────────────────────────────────┤
 │                       USER INTERFACES                               │
 │   Python API          CLI (pygeovision *)         Jupyter Notebooks │

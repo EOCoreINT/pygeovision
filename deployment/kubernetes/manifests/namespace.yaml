@@ -4,4 +4,4 @@ metadata:
   name: pygeovision
   labels:
     app.kubernetes.io/name: pygeovision
-    app.kubernetes.io/version: "2.1.4"
+    app.kubernetes.io/version: "2.1.5"

@@ -2,7 +2,7 @@
 
 All notable changes to PyGeoVision are documented here.
 
-## [2.1.4] — 2026-07-03
+## [2.1.5] — 2026-07-03
 
 ### Added
 - **GeoAgent** — autonomous geospatial AI agent with 10 tools, heuristic + LLM planners,
@@ -38,11 +38,11 @@ All notable changes to PyGeoVision are documented here.
 
 ### Improved
 - Heuristic planner decision matrix: 12/12 correct routes (sensor × task × approach).
-- README: GeoAgent section, 34-notebook two-tier listing, v2.1.4 badges.
+- README: GeoAgent section, 34-notebook two-tier listing, v2.1.5 badges.
 - Docs website: GeoAgent section, SAR-08/09 flagship cards, all 34 notebooks.
 - 451 tests pass / 24 skipped (torch absent) / 0 failed.
 
-## [2.1.4] — 2026-06-27
+## [2.1.5] — 2026-06-27
 
 ### Added
 - Full PyGeoVision v2 platform unifying PyGeoFetch + GeoAI.

@@ -1,78 +1,84 @@
 cff-version: 1.2.0
-message: "If you use PyGeoVision in your research, please cite it as below."
-type: software
+message: >
+  If you use pygeovision in your research or operational work, please cite it
+  using the metadata below. Citing the software helps the authors demonstrate
+  research impact and continue development.
 
-title: "PyGeoVision: The World-Class Standalone Geospatial AI Platform"
-version: 2.1.4
-date-released: "2026-06-27"
-url: "https://github.com/pygeovision/pygeovision"
-license: Apache-2.0
+type: software
+title: "pygeovision: A Unified Open-Source Python Platform for Satellite Earth Observation AI"
+version: 2.0.9
+date-released: "2026-07-10"
+license: MIT
+repository-code: "https://github.com/eocoreint/pygeovision"
+url: "https://pygeovision.readthedocs.io"
+doi: 10.5281/zenodo.XXXXXXX   # updated automatically by Zenodo on each release
 
 abstract: >
-  PyGeoVision v2.0 is a fully standalone geospatial AI platform with its own
-  119-model registry, DINOv3 (12 variants, SAT-493M pre-training), Prithvi-EO-2.0
-  (600M parameters), CLIP + RemoteCLIP + Moondream VLM stack, production GeoTrainer,
-  DataValidator (mandatory preprocessing gate), 22 spectral indices, 51 end-to-end
-  pipelines, FastAPI serving, ONNX/Jetson/AWS/Azure/GCP deployment, and 25 production
-  notebooks. Integrates with PyGeoFetch (22+ satellite providers) for data acquisition
-  and GeoAI (optional plugin) for extended AI capabilities.
-
-keywords:
-  - geospatial AI
-  - remote sensing
-  - satellite imagery
-  - deep learning
-  - earth observation
-  - foundation models
-  - DINOv3
-  - Prithvi
-  - change detection
-  - semantic segmentation
-  - SAR processing
-  - spectral indices
+  pygeovision is a unified open-source Python library for satellite Earth
+  observation analysis and geospatial AI inference. Built on pygeofetch — a
+  companion library abstracting satellite data access across 22+ providers —
+  pygeovision covers the complete EO workflow: SAR and optical preprocessing,
+  spectral index computation, cloud masking, change detection, flood mapping,
+  SAR interferometry (InSAR), and inference via foundation models including
+  Prithvi-EO-2.0 and DINOv3. A natural-language query interface (GeoAgent)
+  allows users to describe an analysis in plain English. pygeovision is designed
+  to make operational EO analysis accessible to researchers and government
+  analysts in Africa and the Global South.
 
 authors:
-  - name: "PyGeoVision Contributors"
+  - family-names: "Appiah Kubi"
+    given-names: "Samuel"
+    orcid: "https://orcid.org/0000-0000-0000-0000"   # replace with real ORCID
+    affiliation: "EOCoreINT, Accra, Ghana"
+    email: "appiahkubis14@gmail.com"
+
+keywords:
+  - earth observation
+  - remote sensing
+  - synthetic aperture radar
+  - SAR
+  - Sentinel-1
+  - Sentinel-2
+  - deep learning
+  - geospatial AI
+  - InSAR
+  - flood mapping
+  - deforestation
+  - Africa
+  - Global South
+
+# If the JOSS paper is accepted, add:
+# preferred-citation:
+#   type: article
+#   authors:
+#     - family-names: "Appiah Kubi"
+#       given-names: "Samuel"
+#   title: "pygeovision: A Unified Open-Source Python Platform for Satellite Earth Observation AI"
+#   journal: "Journal of Open Source Software"
+#   year: 2026
+#   volume: XX
+#   issue: XX
+#   doi: 10.21105/joss.XXXXX
 
 references:
   - type: software
-    title: "PyGeoFetch: Universal Satellite Data Pipeline"
-    url: "https://github.com/appiahkubis14/PyGeoFetch"
-    version: "1.0.0"
-
-  - type: software
-    title: "GeoAI: Geospatial AI Library"
-    url: "https://github.com/opengeos/geoai"
-
-  - type: article
-    title: "EarthNets: Empowering AI in Earth Observation"
+    title: "pygeofetch: Unified Satellite Data Access for Python"
     authors:
-      - family-names: "Xiong"
-        given-names: "Zhitong"
-    year: 2022
-    url: "https://arxiv.org/abs/2210.04936"
-
+      - family-names: "Appiah Kubi"
+        given-names: "Samuel"
+    repository-code: "https://github.com/eocoreint/pygeofetch"
+    version: "1.4.2"
   - type: article
-    title: "SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers"
+    title: "Prithvi-EO-2.0: A Versatile Multi-Temporal Foundation Model for Earth Observation Applications"
     authors:
-      - family-names: "Xie"
-        given-names: "Enze"
-    year: 2021
-    url: "https://arxiv.org/abs/2105.15203"
-
+      - family-names: "Jakubik"
+        given-names: "Johannes"
+    year: 2023
+    doi: 10.48550/arXiv.2310.18660
   - type: article
-    title: "ChangeFormer: A Transformer-Based Siamese Network for Change Detection"
-    year: 2022
-    url: "https://arxiv.org/abs/2201.01293"
-
-  - type: article
-    title: "Prithvi-EO-2.0: A Versatile Multi-Temporal Foundation Model for Earth Observation"
+    title: "DINOv2: Learning Robust Visual Features without Supervision"
+    authors:
+      - family-names: "Oquab"
+        given-names: "Maxime"
     year: 2024
-    url: "https://arxiv.org/abs/2412.02732"
-
-preferred-citation:
-  type: software
-  title: "PyGeoVision v2.0"
-  url: "https://github.com/pygeovision/pygeovision"
-  version: "2.1.4"
-  year: 2026
+    doi: 10.48550/arXiv.2304.07193
