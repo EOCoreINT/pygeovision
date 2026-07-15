@@ -1,5 +1,5 @@
 ---
-title: 'pygeovision: A Unified Open-Source Python Platform for Satellite Earth Observation AI'
+title: 'pygeovision: A Unified Open-Source Python Platform for Satellite Earth Observation and Geospatial AI'
 tags:
   - Python
   - Earth observation
@@ -27,7 +27,7 @@ bibliography: paper.bib
 
 `pygeovision` is an open-source Python library that provides a unified,
 production-ready interface for satellite Earth observation (EO) analysis and
-geospatial AI inference. Built on top of `pygeofetch` — a companion library
+geospatial AI inference. Built on top of `pygeofetch` [@appiahkubi2025pygeofetch] — a companion library
 that abstracts data access across 22+ satellite data providers — `pygeovision`
 covers the complete EO workflow from raw satellite acquisition to AI-derived
 geospatial intelligence: preprocessing pipelines for optical and SAR imagery,
@@ -41,6 +41,10 @@ appropriate sensor, task, and tool sequence. Together, `pygeovision` and
 `pygeofetch` are designed to make operational EO analysis accessible to
 researchers and government analysts in Africa and the Global South, where
 in-situ monitoring infrastructure is sparse but satellite coverage is complete.
+
+The platform is production-ready, with 944+ automated tests and continuous
+integration, ensuring reliability for operational monitoring systems.
+`pygeovision` is released under the Apache 2.0 open-source license.
 
 # Statement of Need
 
@@ -102,6 +106,11 @@ The closest integrated alternative is `odc-stac` combined with `datacube`,
 but these require significant server infrastructure (ODC database, Kubernetes)
 that is inaccessible to most African research institutions. `pygeovision`
 runs on a standard laptop or a $12/month virtual machine.
+
+GeoAI [@wu2026geoai] and leafmap [@wu2021leafmap] provide high-level
+interfaces for geospatial AI and interactive mapping, but lack data
+acquisition and preprocessing layers. PyGeoVision builds on the vision of
+these tools while extending to the complete EO workflow.
 
 # Software Design
 

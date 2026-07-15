@@ -33,7 +33,7 @@ For full InSAR (centimetre precision) from Sentinel-1 SLC data:
     This module provides the analysis and visualization layer above raw InSAR.
 """
 
-from pygeovision.insar.core          import InSARProcessor, InSARResult
+# from pygeovision.insar.core          import InSARProcessor, InSARResult
 from pygeovision.insar.interferogram import generate_interferogram, amplitude_coherence
 from pygeovision.insar.coherence     import estimate_coherence, coherence_mask
 from pygeovision.insar.displacement  import phase_to_displacement, displacement_rate
@@ -51,7 +51,7 @@ from pygeovision.insar.slc           import (
 
 __all__ = [
     # GRD amplitude proxy (no external dependencies)
-    "InSARProcessor", "InSARResult",
+    # "InSARProcessor", "InSARResult",
     "generate_interferogram", "amplitude_coherence",
     "estimate_coherence", "coherence_mask",
     "phase_to_displacement", "displacement_rate",

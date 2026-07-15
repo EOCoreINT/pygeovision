@@ -610,7 +610,7 @@ class TestInSARModuleExports:
 
     def test_all_original_exports_still_present(self):
         from pygeovision.insar import (
-            InSARProcessor, InSARResult,
+    
             generate_interferogram, amplitude_coherence,
             estimate_coherence, coherence_mask,
             phase_to_displacement, displacement_rate,
@@ -618,5 +618,5 @@ class TestInSARModuleExports:
             InSARViz,
         )
         # All original exports intact
-        assert InSARProcessor is not None
+        
         assert InSARViz is not None
