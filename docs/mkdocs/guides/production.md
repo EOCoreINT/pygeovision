@@ -3,8 +3,8 @@
 ## Docker Deployment
 
 ```bash
-docker build -t pygeovision:2.1.5 .
-docker run -p 8080:8080 -v ./data:/app/data pygeovision:2.1.5
+docker build -t pygeovision:2.1.6 .
+docker run -p 8080:8080 -v ./data:/app/data pygeovision:2.1.6
 ```
 
 ## Environment Variables

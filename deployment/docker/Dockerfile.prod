@@ -7,7 +7,7 @@ RUN pip install --upgrade pip build && python -m build --wheel
 
 FROM python:3.11-slim AS runtime
 LABEL org.opencontainers.image.title="PyGeoVision" \
-      org.opencontainers.image.version="2.1.5" \
+      org.opencontainers.image.version="2.1.6" \
       org.opencontainers.image.source="https://github.com/appiahkubis14/PyGeoVision"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev libgeos-dev libproj-dev curl && \

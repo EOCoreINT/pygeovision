@@ -206,12 +206,12 @@ pip install "pygeovision[all]"
 
 ```python
 import pygeovision as pgv
-print(pgv.__version__)   # 2.1.5
+print(pgv.__version__)   # 2.1.6
 
 # Check available components
 client = pgv.PyGeoVision()
 print(client)
-# PyGeoVision(v2.1.5, providers=22, models=119, datasets=503)
+# PyGeoVision(v2.1.6, providers=22, models=119, datasets=503)
 ```
 
 ## 1.6 Quick Start: Your First Analysis

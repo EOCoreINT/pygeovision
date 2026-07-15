@@ -28,7 +28,7 @@ PyGeoVision v2.0 is built on a clean layered architecture with zero dependency o
 pygeovision/
 │
 ├── __init__.py              Main client — PyGeoVision class
-├── version.py               Semantic version (2.1.5)
+├── version.py               Semantic version (2.1.6)
 │
 ├── data/                    Data acquisition layer
 │   └── fetch.py             PyGeoFetch — STAC search, 22 providers, COG download

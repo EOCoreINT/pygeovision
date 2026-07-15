@@ -48,7 +48,7 @@ With 10 built-in end-to-end pipelines covering building footprints, change detec
 
 ---
 
-## Citations
+<!-- ## Citations
 
 If you find PyGeoVision useful in your research, please consider citing the following works:
 
@@ -63,11 +63,9 @@ If you find PyGeoVision useful in your research, please consider citing the foll
   pages   = {9605},
   doi     = {10.21105/joss.09605}
 }
-```
+``` -->
 
 ---
-
-## 🚀 Key Features
 
 ### 🛰️ Satellite Data — 22 Providers via PyGeoFetch
 - Unified search and download across Sentinel, Landsat, Planet, Maxar, Airbus, USGS, Copernicus, NASA, JAXA, and more
@@ -144,7 +142,11 @@ pip install "pygeovision[all]"
 ---
 ## ⚡ Quick Start
 
+# Land Cover with Prithvi-EO-2.0
+**NB 03** | Ethiopian Highlands | Sentinel-2 | Prithvi 600M
+
 ```python
+
 import warnings; warnings.filterwarnings('ignore')
 import pathlib, json
 import numpy as np
@@ -154,10 +156,12 @@ from pygeovision.models import get_model
 from pygeovision.inference.tiled import TiledInference
 
 client = pgv.PyGeoVision()
+print(client)
 
-BBOX       = (-0.15, 51.47, -0.1, 51.52)
-51.51191,-0.23590
-DATE_RANGE = ('2024-06-01', '2024-08-31')
+from pygeovision.models.foundation.prithvi import PrithviTasks
+
+BBOX       = (38.6, 8.9, 38.95, 9.15)
+DATE_RANGE = ('2024-01-01', '2024-04-30')
 PROVIDERS  = ['planetary_computer']
 
 DATA_DIR = pathlib.Path('./results/notebook')
@@ -167,20 +171,20 @@ results = client.search(
     bbox            = BBOX,
     date_range      = DATE_RANGE,
     providers       = PROVIDERS,
-    cloud_cover_max = 10,
+    cloud_cover_max = 15,
 )
 print(f"Found {len(results)} scenes")
-for r in results[:10]:
+for r in results[:5]:
     print(f"  {r.provider:<22} {r.datetime[:10]}  cloud={r.cloud_cover:.1f}%  {r.id[:40]}")
 
 
-BANDS = ['B02', 'B03', 'B04', 'B08', 'B8A', 'B11', 'B12']
+BANDS = ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']
 
 downloads = client.download(
     results[:1],
     output_dir   = str(DATA_DIR),
     bands        = BANDS,
-    post_process = ['reproject:EPSG:32630', 'cog'],
+    post_process = ['reproject:EPSG:32637', 'cog'],
 )
 scene_path = downloads[0].path if downloads and downloads[0].success else None
 scl_cands  = list(DATA_DIR.rglob('*SCL*.tif')) + list(DATA_DIR.rglob('*scl*.tif'))
@@ -194,48 +198,29 @@ else:
     print("Download failed or scene unavailable — check provider availability")
 
 
-PREPROCESSED = DATA_DIR / 'london_preprocessed.tif'
+if scene_path:
+    raw_report = client.validator.validate(
+        str(scene_path),
+        required_bands = 6,
+        value_range    = (0, 65535),
+    )
+    print("Raw data validation:")
+    print(raw_report.summary())
+    if not raw_report.passed:
+        print("WARNING: Issues found — preprocessing will auto-fix")
 
-boundary = {
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "properties": {
-        "name": "Study Area",
-        "center_lat": 52.00669,
-        "center_lon": -1.02688
-      },
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [[
-          [-1.04188, 52.01669],
-          [-1.03488, 52.02169],
-          [-1.02188, 52.01869],
-          [-1.00888, 52.01169],
-          [-1.01488, 52.00169],
-          [-1.02388, 51.99169],
-          [-1.03488, 51.99469],
-          [-1.04488, 52.00169],
-          [-1.04188, 52.01669]
-        ]]
-      }
-    }
-  ]
-}
-# BBOX = (-0.25, 51.50, -0.20, 51.53)
+PREPROCESSED = DATA_DIR / 'ethiopia_prithvi_ready.tif'
+
 if scene_path:
     ready = client.prepare_for_ai(
-        scene_path,
+        str(scene_path),
         stack_bands  = BANDS,
-        # bbox         = BBOX,
-        bbox_crs     = 'EPSG:32630',
-        scl_path     = scl_path,
-        clip_geojson= boundary,
+        bbox         = BBOX,
+        scl_path         = scl_path,
         scl_keep_classes = [4,5,6],
         normalise    = 'scale_factor',
         scale_factor = 10000.0,
-        model_type   = 'segmentation',
+        model_type   = 'foundation',
         output_path  = str(PREPROCESSED),
     )
     print("Preprocessing steps :", ready['steps'])
@@ -250,31 +235,36 @@ else:
     ready = None
 
 
-from pathlib import Path
-from pygeovision.preprocess import Preprocessor
+# Prithvi-EO-2.0 land cover — automatically applies map_bands + normalise_hls
+PREDICTION = DATA_DIR / 'land_cover.tif'
+CLASS_NAMES = ['Tree cover','Shrubland','Grassland','Cropland',
+               'Built-up','Bare/sparse','Snow/ice','Water','Wetland']
+if PREPROCESSED.exists():
+    tasks = PrithviTasks('prithvi_eo_2_0')
+    tasks.land_cover(str(PREPROCESSED), source='sentinel2', output_path=str(PREDICTION))
+    print(f"Land cover map saved: {PREDICTION}")
 
-pre = Preprocessor()
 
-# Set your data directory
-DATA_DIR = Path("/home/mrtenkorang/pygeovision_v2/projects/results/notebook/planetary_computer")
+if PREDICTION.exists():
+    pred_report = client.validator.validate(str(PREDICTION))
+    print("Prediction validation:", "PASSED" if pred_report.passed else f"FIXED — {pred_report.errors}")
+    print(pred_report.summary())
 
-# Build full paths to band files (files are directly in DATA_DIR)
-band_files = [
-    str(DATA_DIR / "T30UXC_20240823T110621_B02_10m_EPSG_32630.tif"),
-    str(DATA_DIR / "T30UXC_20240823T110621_B03_10m_EPSG_32630.tif"),
-    str(DATA_DIR / "T30UXC_20240823T110621_B04_10m_EPSG_32630.tif"),
-    str(DATA_DIR / "T30UXC_20240823T110621_B08_10m_EPSG_32630.tif"),
-    str(DATA_DIR / "T30UXC_20240823T110621_B11_20m_EPSG_32630.tif"),
-    str(DATA_DIR / "T30UXC_20240823T110621_B12_20m_EPSG_32630.tif"),
-]
 
-# Stack the bands
-pre.stack_bands(
-    band_files,
-    output_path=str(DATA_DIR / "sentinel2_6band.tif"),
-    band_names=["Blue", "Green", "Red", "NIR", "SWIR1", "SWIR2"],
-)
-print("✅ Stacking complete!")
+SIEVED = DATA_DIR / 'lc_sieved.tif'
+COG_OUT = DATA_DIR / 'lc_cog.tif'
+if PREDICTION.exists():
+    client.postprocess.sieve_filter(str(PREDICTION), min_pixels=50, output_path=str(SIEVED))
+    stats = client.postprocess.class_statistics(str(SIEVED))
+    client.postprocess.to_cog(str(SIEVED), str(COG_OUT))
+    client.postprocess.generate_report(str(SIEVED), str(DATA_DIR/'lc_report.html'))
+    print(f"{'Cls':<4} {'Name':<22} {'Area(ha)':>10} {'Cover':>8}")
+    print('-'*48)
+    for i, name in enumerate(CLASS_NAMES):
+        inf = stats.get(i, {})
+        print(f"{i:<4} {name:<22} {inf.get('area_ha',0):>10.1f} {inf.get('pct',0):>7.1f}%")
+
+
 
 ```
 

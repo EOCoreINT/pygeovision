@@ -4,7 +4,7 @@
 
 ```bash
 pip install pygeovision
-pygeovision --version   # 2.1.5
+pygeovision --version   # 2.1.6
 ```
 
 ## Data Commands

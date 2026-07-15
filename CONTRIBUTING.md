@@ -7,7 +7,7 @@ Thank you for contributing to PyGeoVision — the world's most complete geospati
 ## Quick Start
 
 ```bash
-git clone https://github.com/pygeovision/pygeovision
+git clone https://github.com/appiahkubis14/pygeovision
 cd pygeovision
 pip install -e ".[dev,geo,train]"
 pre-commit install
