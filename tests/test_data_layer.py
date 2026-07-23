@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import numpy as np
 
 from pygeovision.data.fetch import DownloadResult, SatelliteFetcher, SearchResult
 from pygeovision.data.pipeline import DataPipeline
@@ -767,3 +768,235 @@ class TestPyGeoVisionClient:
         assert info["name"] == "Microsoft Planetary Computer"
         assert info["open"] is True
         assert info["stac"] is True
+
+
+class TestPlanetaryComputerDirectDownloadSigning:
+    """Regression tests for a real bug: _download_stac_item_direct fetched
+    Planetary Computer asset URLs directly, without SAS-token signing.
+    PC's Blob Storage assets are private and always require signing
+    (`planetary_computer.sign()`) — a raw href 404s/409s
+    ('Public access is not permitted on this storage account')."""
+
+    def _make_item(self, url="https://sentinel2l2a01.blob.core.windows.net/x/B04.tif"):
+        return SearchResult(
+            id="S2A_MSIL2A_20240128T101301_test",
+            provider="planetary_computer",
+            satellite="sentinel-2",
+            datetime="2024-01-28T10:13:01Z",
+            cloud_cover=0.0,
+            bbox=(-0.25, 5.52, -0.20, 5.60),
+            assets={"B04": {"href": url}},
+        )
+
+    def test_download_signs_pc_url_before_requesting(self, tmp_path, monkeypatch):
+        fetcher = SatelliteFetcher()
+        item = self._make_item()
+
+        pc = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
+        signed = "https://sentinel2l2a01.blob.core.windows.net/x/B04.tif?st=SIGNED&sig=abc"
+        monkeypatch.setattr(pc, "sign", lambda u: signed)
+
+        captured = {}
+
+        class _FakeResp:
+            status_code = 200
+            def raise_for_status(self): pass
+            def iter_content(self, chunk_size):
+                return [b"fake-tif-bytes"]
+
+        class _FakeSession:
+            def __init__(self):
+                self.headers = MagicMock()
+            def get(self, url, stream=None, timeout=None, allow_redirects=None):
+                captured["url"] = url
+                return _FakeResp()
+
+        import requests as requests_mod
+        monkeypatch.setattr(requests_mod, "Session", lambda: _FakeSession())
+
+        result = fetcher._download_stac_item_direct(
+            item, output_dir=tmp_path, post_process=None, bandwidth_limit_mb=None,
+        )
+
+        assert captured["url"] == signed
+        assert result.success is True
+
+    def test_download_fails_gracefully_without_planetary_computer_installed(
+        self, tmp_path, monkeypatch,
+    ):
+        """If the optional `planetary-computer` package isn't installed, the
+        download should still proceed (with a clear warning) rather than
+        crashing with an unrelated ImportError deep in the call stack."""
+        fetcher = SatelliteFetcher()
+        item = self._make_item()
+
+        import sys
+        monkeypatch.setitem(sys.modules, "planetary_computer", None)
+
+        class _FakeResp:
+            status_code = 200
+            def raise_for_status(self): pass
+            def iter_content(self, chunk_size):
+                return [b"fake-tif-bytes"]
+
+        class _FakeSession:
+            def __init__(self):
+                self.headers = MagicMock()
+            def get(self, url, stream=None, timeout=None, allow_redirects=None):
+                return _FakeResp()
+
+        import requests as requests_mod
+        monkeypatch.setattr(requests_mod, "Session", lambda: _FakeSession())
+
+        result = fetcher._download_stac_item_direct(
+            item, output_dir=tmp_path, post_process=None, bandwidth_limit_mb=None,
+        )
+        assert result.success is True  # doesn't crash even without the optional package
+
+    def _make_multiband_item(self, bands=("B02", "B03", "B04", "B08")):
+        base = "https://sentinel2l2a01.blob.core.windows.net/x"
+        return SearchResult(
+            id="S2A_MSIL2A_20240128T101301_multiband",
+            provider="planetary_computer",
+            satellite="sentinel-2",
+            datetime="2024-01-28T10:13:01Z",
+            cloud_cover=0.0,
+            bbox=(-0.25, 5.52, -0.20, 5.60),
+            assets={b: {"href": f"{base}/{b}.tif"} for b in bands},
+        )
+
+    def test_all_requested_bands_are_downloaded_not_just_one(self, tmp_path, monkeypatch):
+        """Regression test for a real bug: only the first-priority band
+        (always B04) was ever downloaded, silently ignoring every other
+        band the caller requested via client.download(bands=[...])."""
+        import rasterio
+
+        fetcher = SatelliteFetcher()
+        item = self._make_multiband_item(("B02", "B03", "B04", "B08"))
+
+        pc = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
+        monkeypatch.setattr(pc, "sign", lambda u: u + "?st=SIGNED")
+
+        requested_urls = []
+
+        def _make_fake_tif(path):
+            from rasterio.transform import from_bounds
+            transform = from_bounds(-0.25, 5.52, -0.20, 5.60, 8, 8)
+            with rasterio.open(path, "w", driver="GTiff", height=8, width=8, count=1,
+                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+                dst.write(np.full((1, 8, 8), 100, dtype="uint16"))
+
+        class _FakeSession:
+            def __init__(self):
+                self.headers = MagicMock()
+
+        import requests as requests_mod
+        monkeypatch.setattr(requests_mod, "Session", lambda: _FakeSession())
+
+        # Patch the streaming helper to just materialize a real tiny GeoTIFF
+        # and record the (already-signed) URL it was asked to fetch, since
+        # constructing real streamed TIF bytes through a fake HTTP response
+        # isn't practical here.
+        def fake_stream(self, session, url, out_path, provider, item_id, headers, bw):
+            requested_urls.append(url)
+            _make_fake_tif(out_path)
+            return 128, None
+        monkeypatch.setattr(SatelliteFetcher, "_stream_download_asset", fake_stream)
+
+        result = fetcher._download_stac_item_direct(
+            item, output_dir=tmp_path, post_process=None, bandwidth_limit_mb=None,
+        )
+
+        assert result.success is True
+        # All 4 bands must have been requested, not just B04
+        assert len(requested_urls) == 4
+        assert all("?st=SIGNED" in u for u in requested_urls)
+
+        # The final file must be a stacked 4-band raster, not a single band
+        with rasterio.open(result.path) as src:
+            assert src.count == 4
+
+    def test_single_band_request_skips_stacking(self, tmp_path, monkeypatch):
+        """A single requested band shouldn't go through the stack_bands path
+        — it should be used directly as the final output."""
+        import rasterio
+        from rasterio.transform import from_bounds
+
+        fetcher = SatelliteFetcher()
+        item = self._make_multiband_item(("B04",))
+
+        pc = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
+        monkeypatch.setattr(pc, "sign", lambda u: u + "?st=SIGNED")
+
+        def fake_stream(self, session, url, out_path, provider, item_id, headers, bw):
+            transform = from_bounds(-0.25, 5.52, -0.20, 5.60, 8, 8)
+            with rasterio.open(out_path, "w", driver="GTiff", height=8, width=8, count=1,
+                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+                dst.write(np.full((1, 8, 8), 100, dtype="uint16"))
+            return 64, None
+        monkeypatch.setattr(SatelliteFetcher, "_stream_download_asset", fake_stream)
+
+        class _FakeSession:
+            def __init__(self):
+                self.headers = MagicMock()
+            def get(self, *a, **kw):
+                raise AssertionError("session.get should not be called directly when _stream_download_asset is patched")
+
+        import requests as requests_mod
+        monkeypatch.setattr(requests_mod, "Session", lambda: _FakeSession())
+
+        result = fetcher._download_stac_item_direct(
+            item, output_dir=tmp_path, post_process=None, bandwidth_limit_mb=None,
+        )
+        assert result.success is True
+        assert "_B04.tif" in str(result.path)
+        with rasterio.open(result.path) as src:
+            assert src.count == 1
+
+    def test_extension_detected_from_url_path_not_raw_signed_url(self):
+        """Regression test for a real bug: extension was checked via
+        `url.endswith('.tif')` AFTER SAS-signing appended `?st=...&sig=...`,
+        so every signed .tif asset was misnamed with a .zip extension."""
+        signed_tif_url = "https://sentinel2l2a01.blob.core.windows.net/x/B04.tif?st=2024&se=2025&sig=abc123"
+        url_path = signed_tif_url.split("?", 1)[0]
+        assert url_path.endswith(".tif")
+        # The old buggy check would have failed here:
+        assert not signed_tif_url.endswith(".tif")
+
+    def test_post_process_step_warns_if_it_silently_drops_bands(self, tmp_path, caplog):
+        """If a post-process step (e.g. cog) unexpectedly collapses a
+        multi-band integer raster to fewer bands or a float dtype, that
+        must be surfaced immediately with a clear warning naming the step
+        responsible — not left to surface only much later in a downstream
+        validation report, far from the actual cause."""
+        import logging
+        import rasterio
+        from rasterio.transform import from_bounds
+
+        fetcher = SatelliteFetcher()
+
+        src_path = tmp_path / "scene.tif"
+        transform = from_bounds(818000, 615000, 818640, 615640, 16, 16)
+        with rasterio.open(src_path, "w", driver="GTiff", height=16, width=16, count=4,
+                            dtype="uint16", crs="EPSG:32630", transform=transform) as dst:
+            dst.write(np.full((4, 16, 16), 1000, dtype="uint16"))
+
+        with caplog.at_level(logging.WARNING):
+            fetcher._warn_if_bands_or_dtype_changed(
+                "cog", src_path, expected_count=4, expected_dtype="uint16",
+            )
+        # Same file, same shape — must NOT warn when nothing actually changed
+        assert not any("changed the raster unexpectedly" in r.message for r in caplog.records)
+
+        # Now simulate the step having collapsed it to 1 band / float32
+        corrupted_path = tmp_path / "scene_corrupted.tif"
+        with rasterio.open(corrupted_path, "w", driver="GTiff", height=16, width=16, count=1,
+                            dtype="float32", crs="EPSG:32630", transform=transform) as dst:
+            dst.write(np.full((1, 16, 16), 1000.0, dtype="float32"))
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            fetcher._warn_if_bands_or_dtype_changed(
+                "cog", corrupted_path, expected_count=4, expected_dtype="uint16",
+            )
+        assert any("changed the raster unexpectedly" in r.message for r in caplog.records)

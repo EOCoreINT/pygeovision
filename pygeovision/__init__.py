@@ -334,6 +334,96 @@ class PyGeoVision:
         return self
 
     # ------------------------------------------------------------------
+    # Study area boundary (real administrative polygon, not an assumed bbox)
+    # ------------------------------------------------------------------
+
+    def boundary(
+        self,
+        query: str,
+        output_path: str | None = None,
+        reference_area_km2: float | None = None,
+        tolerance: float = 0.35,
+        raise_on_mismatch: bool = True,
+    ):
+        """Fetch a real administrative boundary polygon for a study area by
+        name, instead of hand-typing an assumed bounding box.
+
+        Resolves `query` via OpenStreetMap Nominatim to its actual boundary
+        geometry, computes its true area in the correct local UTM zone
+        (auto-detected), and — if `reference_area_km2` is given —
+        cross-checks the result against that known value so a mis-resolved
+        query is caught rather than silently used.
+
+        Args:
+            query: Place name, e.g. "Accra Metropolitan District, Ghana".
+            output_path: If given, save the resolved boundary GeoJSON here.
+            reference_area_km2: Known reference area for validation (optional
+                but recommended — catches wrong-entity resolution).
+            tolerance: Allowed fractional deviation before treating the
+                match as suspect.
+            raise_on_mismatch: Raise on a failed reference check (default)
+                vs. return the result anyway with `.validated=False`.
+
+        Returns:
+            AdminBoundary with `.geojson`, `.bbox`, `.area_km2`, `.utm_epsg`.
+
+        Example::
+
+            aoi = client.boundary(
+                "Accra Metropolitan District, Greater Accra Region, Ghana",
+                output_path="accra_boundary.geojson",
+                reference_area_km2=60.0,
+            )
+            print(aoi.summary())
+            results = client.search(bbox=aoi.bbox, date_range=("2024-01-01", "2024-06-30"))
+        """
+        from pygeovision.data.boundary import fetch_admin_boundary
+        return fetch_admin_boundary(
+            query, output_path=output_path,
+            reference_area_km2=reference_area_km2,
+            tolerance=tolerance, raise_on_mismatch=raise_on_mismatch,
+        )
+
+    def select_covering_scenes(self, results, bbox, max_scenes: int = 4):
+        """Greedily select the fewest, lowest-cloud scenes whose combined
+        footprint covers `bbox`, instead of assuming the top-ranked single
+        scene is sufficient.
+
+        Falls back to just the first `max_scenes` results if scenes don't
+        carry footprint geometry (some providers omit it).
+
+        Args:
+            results: SearchResult list from `client.search()`, already
+                sorted by whatever priority you want (e.g. cloud cover).
+            bbox: (lon_min, lat_min, lon_max, lat_max) the selection must cover.
+            max_scenes: Safety cap on how many scenes to select.
+
+        Returns:
+            The selected subset of `results`, in the same order.
+
+        Example::
+
+            results = client.search(bbox=aoi.bbox, date_range=(...),
+                                     sort_by="cloud_cover", sort_order="asc")
+            selected = client.select_covering_scenes(results, aoi.bbox)
+            downloads = client.download(selected, output_dir="./data/", bands=BANDS)
+        """
+        from shapely.geometry import box as shp_box, shape as shp_shape
+
+        aoi_box = shp_box(*bbox)
+        selected, covered = [], None
+        for r in results:
+            geom = getattr(r, "geometry", None) or getattr(r, "footprint", None)
+            fp = shp_shape(geom) if geom else None
+            selected.append(r)
+            covered = fp if covered is None else (covered.union(fp) if fp else covered)
+            if covered is not None and covered.contains(aoi_box):
+                break
+            if len(selected) >= max_scenes:
+                break
+        return selected
+
+    # ------------------------------------------------------------------
     # Search (delegates to PyGeoFetch via self.data)
     # ------------------------------------------------------------------
 

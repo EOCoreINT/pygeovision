@@ -430,6 +430,99 @@ class Preprocessor:
                      output_path, data.shape[2], data.shape[1])
         return output_path
 
+    def mosaic(
+        self,
+        input_paths: Sequence[str],
+        output_path: str | None = None,
+        method: str = "first",
+    ) -> str:
+        """Merge multiple overlapping/adjacent rasters into a single mosaic.
+
+        Use this whenever a study area's bounding box isn't fully covered
+        by a single downloaded scene (a common case for multi-tile AOIs).
+        If only one path is given, it's returned unchanged (no-op) so
+        callers don't need a special case for the single-scene path.
+
+        Args:
+            input_paths: Paths to the source rasters (same CRS/band count).
+            output_path: Destination path. Defaults to
+                ``"<first_input>_mosaic.tif"``.
+            method: Merge strategy for overlapping pixels — 'first',
+                'last', 'min', or 'max' (see ``rasterio.merge``).
+
+        Returns:
+            Path to the mosaicked raster (or the single input path,
+            unchanged, if only one was given).
+
+        Example::
+
+            mosaic_path = pre.mosaic(
+                [d.path for d in downloads if d.success],
+                output_path="study_area_mosaic.tif",
+            )
+        """
+        input_paths = [str(p) for p in input_paths]
+        if len(input_paths) == 0:
+            raise ValueError("mosaic() requires at least one input path")
+        if len(input_paths) == 1:
+            return input_paths[0]
+
+        rasterio = _require_rasterio()
+        from rasterio.merge import merge as rio_merge
+
+        output_path = _safe_output(input_paths[0], output_path, "_mosaic")
+
+        srcs = [rasterio.open(p) for p in input_paths]
+        try:
+            band_counts = [s.count for s in srcs]
+            dtypes      = [s.dtypes[0] for s in srcs]
+            if len(set(band_counts)) > 1:
+                raise ValueError(
+                    f"mosaic(): input rasters have inconsistent band counts "
+                    f"{band_counts} (paths: {input_paths}). rasterio.merge cannot "
+                    f"reconcile this and will fail with a low-level "
+                    f"DatasetIOShapeError — raising here instead with the actual "
+                    f"cause. This usually means one or more inputs lost bands "
+                    f"earlier in the pipeline (e.g. during download, stacking, or "
+                    f"post-processing) — inspect each input individually (band "
+                    f"count, dtype) before mosaicking to find which one is wrong."
+                )
+            if len(set(dtypes)) > 1:
+                logger.warning(
+                    "mosaic(): input rasters have inconsistent dtypes %s — "
+                    "rasterio.merge may upcast the output to reconcile them "
+                    "(e.g. to float32/float64), which is likely not what you want.",
+                    dtypes,
+                )
+
+            mosaic_arr, mosaic_transform = rio_merge(srcs, method=method)
+
+            # Derive count/dtype from what rio_merge actually produced, not
+            # blindly from srcs[0].profile — those can silently disagree
+            # (e.g. if inputs had inconsistent band counts/dtypes above),
+            # and writing with a stale profile either raises a shape-mismatch
+            # error or, worse, silently produces a wrong-shaped file.
+            profile = srcs[0].profile.copy()
+            profile.update(
+                height=mosaic_arr.shape[1],
+                width=mosaic_arr.shape[2],
+                count=mosaic_arr.shape[0],
+                dtype=mosaic_arr.dtype,
+                transform=mosaic_transform,
+                compress="lzw",
+            )
+        finally:
+            for s in srcs:
+                s.close()
+
+        with rasterio.open(output_path, "w", **profile) as dst:
+            dst.write(mosaic_arr)
+
+        logger.info("Mosaicked %d rasters → %s (%dx%d px, %d band(s), %s)",
+                     len(input_paths), output_path, mosaic_arr.shape[2], mosaic_arr.shape[1],
+                     mosaic_arr.shape[0], mosaic_arr.dtype)
+        return output_path
+
     # ------------------------------------------------------------------
     # 3. Cloud Masking
     # ------------------------------------------------------------------

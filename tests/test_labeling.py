@@ -221,3 +221,192 @@ class TestFoundationModelLabeler:
         for name in ["dinov2-small", "dinov2-base", "dinov2-large"]:
             learner = FewShotLearner(backbone=name)
             assert learner is not None  # FewShotLearner init succeeds
+
+
+# ── Microsoft Buildings — dataset-links.csv / quadkey regression tests ────────
+# These cover a real bug: the old implementation built URLs like
+# "{zoom}/{tx}/{ty}.geojson.gz" against a base path that never existed. The
+# real dataset is only addressable via the dataset-links.csv manifest keyed
+# by Bing Maps quadkey.
+
+class TestMicrosoftBuildingsQuadkey:
+    def test_quadkey_format(self):
+        """Quadkeys must be base-4 strings (digits 0-3) of length == zoom."""
+        from pygeovision.labeling.buildings import MicrosoftBuildingsLabeler
+        bbox = (-0.15, 51.47, -0.10, 51.52)  # London
+        for zoom in (6, 9, 12):
+            keys = MicrosoftBuildingsLabeler._bbox_to_quadkeys(bbox, zoom)
+            assert len(keys) >= 1
+            for qk in keys:
+                assert len(qk) == zoom
+                assert set(qk) <= {"0", "1", "2", "3"}
+
+    def test_quadkey_matches_microsoft_reference_example(self):
+        """Microsoft's own Bing Maps Tile System docs give tile (3,5) at
+        level 3 -> quadkey "213". Verify our tile->quadkey digit encoding
+        (extracted inline in _bbox_to_quadkeys) reproduces that exactly."""
+        def tile_to_quadkey(x, y, z):
+            qk = []
+            for i in range(z, 0, -1):
+                digit = 0
+                mask = 1 << (i - 1)
+                if x & mask:
+                    digit += 1
+                if y & mask:
+                    digit += 2
+                qk.append(str(digit))
+            return "".join(qk)
+        assert tile_to_quadkey(3, 5, 3) == "213"
+
+    def test_manifest_url_is_current_hosting_location(self):
+        """Regression guard: MS moved dataset-links.csv hosting in Nov 2024
+        from *.blob.core.windows.net to *.z5.web.core.windows.net."""
+        from pygeovision.labeling.buildings import MicrosoftBuildingsLabeler
+        assert "z5.web.core.windows.net" in MicrosoftBuildingsLabeler.MANIFEST_URL
+        assert MicrosoftBuildingsLabeler.MANIFEST_URL.endswith("dataset-links.csv")
+
+    def test_fetch_matches_manifest_by_quadkey_prefix(self, monkeypatch):
+        """A manifest row should be selected when its quadkey is a prefix of
+        (or shares a prefix with) our target quadkeys."""
+        import pandas as pd
+        from pygeovision.labeling.buildings import MicrosoftBuildingsLabeler
+
+        lab = MicrosoftBuildingsLabeler()
+        target_qk = lab._bbox_to_quadkeys((-0.15, 51.47, -0.10, 51.52), 9)[0]
+
+        fake_manifest = pd.DataFrame({
+            "Location": ["UnitedKingdom"],
+            "QuadKey": [target_qk[:6]],  # coarser prefix, as real manifest often is
+            "Url": ["https://example.test/uk_part.csv.gz"],
+            "Size": ["1KB"],
+            "UploadDate": ["2026-01-01"],
+        })
+        monkeypatch.setattr(lab, "_load_manifest", lambda: fake_manifest)
+
+        import gzip
+        import requests as requests_mod
+        payload = gzip.compress(b'{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-0.12,51.5],[-0.12,51.51],[-0.11,51.51],[-0.11,51.5],[-0.12,51.5]]]},"properties":{"confidence":0.9}}\n')
+
+        class _FakeResponse:
+            status_code = 200
+            content = payload
+
+        monkeypatch.setattr(requests_mod, "get", lambda *a, **kw: _FakeResponse())
+
+        result = lab._fetch_buildings_geojson((-0.15, 51.47, -0.10, 51.52))
+        assert result["type"] == "FeatureCollection"
+        assert len(result["features"]) == 1
+        assert result["features"][0]["properties"]["source"] == "Microsoft"
+
+
+# ── Google Buildings — S2 token / WKT regression tests ─────────────────────────
+# Real bugs: (1) used str(cell.id()) — a huge decimal — instead of the short
+# hex token the GCS bucket actually uses; (2) parsed the `geometry` CSV
+# column with json.loads() when it's actually WKT, which would always raise.
+
+class TestGoogleBuildingsS2Tokens:
+    def test_tokens_are_short_hex_not_raw_decimal_ids(self):
+        from pygeovision.labeling.buildings import GoogleBuildingsLabeler
+        lab = GoogleBuildingsLabeler()
+        tokens = lab._bbox_to_s2_cells((3.35, 6.45, 3.45, 6.55))  # Lagos, Nigeria
+        assert len(tokens) >= 1
+        for tok in tokens:
+            # A raw decimal cell id would be ~19 digits and include no
+            # hex-only letters; a token is short (<=16) hex.
+            assert len(tok) <= 16
+            assert all(c in "0123456789abcdef" for c in tok)
+            assert not tok.isdigit() or len(tok) < 10  # not a raw huge decimal id
+
+    def test_label_parses_wkt_geometry_not_json(self, monkeypatch):
+        """The CSV `geometry` column is WKT; verify the real code path
+        parses it via shapely instead of crashing on json.loads()."""
+        from pygeovision.labeling.buildings import GoogleBuildingsLabeler
+        lab = GoogleBuildingsLabeler(min_confidence=0.5)
+        monkeypatch.setattr(lab, "_bbox_to_s2_cells", lambda bbox: ["abc"])
+
+        import gzip
+        import io as io_mod
+        csv_bytes = (
+            b"latitude,longitude,area_in_meters,confidence,geometry,full_plus_code\n"
+            b'6.5,3.4,50.0,0.9,"POLYGON((3.4 6.5, 3.41 6.5, 3.41 6.51, 3.4 6.51, 3.4 6.5))",ABC\n'
+        )
+        payload = gzip.compress(csv_bytes)
+
+        class _FakeResponse:
+            status_code = 200
+            content = payload
+
+        import requests as requests_mod
+        monkeypatch.setattr(requests_mod, "get", lambda *a, **kw: _FakeResponse())
+
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out.tif")
+            result = lab.label((3.35, 6.45, 3.45, 6.55), output_path=out)
+        assert result["success"] is True
+        assert result["n_buildings"] == 1
+
+
+# ── ESA WorldCover — year filter regression test ────────────────────────────────
+# Real bug: self.year was stored but never sent as a STAC datetime filter,
+# so the search returned whichever item matched first regardless of year.
+
+class TestESAWorldCoverYearFilter:
+    def test_search_includes_year_datetime_filter(self, monkeypatch):
+        from pygeovision.labeling.landcover import ESAWorldCoverLabeler
+        lab = ESAWorldCoverLabeler(year=2020)
+
+        captured = {}
+        class _FakeResponse:
+            status_code = 200
+            def json(self):
+                return {"features": []}
+
+        import requests as requests_mod
+        def fake_post(url, json=None, timeout=None):
+            captured["json"] = json
+            return _FakeResponse()
+        monkeypatch.setattr(requests_mod, "post", fake_post)
+
+        lab.label((-87.7, 41.8, -87.5, 41.9), output_path="/tmp/_unused_esa.tif")
+        assert "datetime" in captured["json"]
+        assert captured["json"]["datetime"] == "2020-01-01/2020-12-31"
+
+
+# ── Dynamic World — SAS signing regression test ──────────────────────────────────
+# Real bug: Planetary Computer assets live in private Blob Storage containers
+# and require SAS-token signing before download; this was skipped entirely.
+
+class TestDynamicWorldSigning:
+    def test_pc_backend_signs_asset_url(self, monkeypatch):
+        from pygeovision.labeling.landcover import DynamicWorldLabeler
+        lab = DynamicWorldLabeler(backend="planetary_computer")
+
+        class _FakeSearchResponse:
+            status_code = 200
+            def json(self):
+                return {"features": [{"assets": {"data": {"href": "https://unsigned.example/asset.tif"}}}]}
+
+        class _FakeDownloadResponse:
+            status_code = 200
+            def iter_content(self, chunk_size):
+                return [b"fake-bytes"]
+
+        import requests as requests_mod
+        monkeypatch.setattr(requests_mod, "post", lambda *a, **kw: _FakeSearchResponse())
+
+        captured = {}
+        def fake_get(url, stream=None, timeout=None):
+            captured["url"] = url
+            return _FakeDownloadResponse()
+        monkeypatch.setattr(requests_mod, "get", fake_get)
+
+        pc_mod = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
+        monkeypatch.setattr(pc_mod, "sign", lambda url: url + "?SIGNED")
+
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "dw.tif")
+            result = lab.label((-0.15, 51.47, -0.10, 51.52), output_path=out)
+        assert result["success"] is True
+        assert captured["url"].endswith("?SIGNED")

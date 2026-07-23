@@ -1219,6 +1219,53 @@ class SatelliteFetcher:
         all_results = download_results + direct_results
         return all_results
 
+    def _stream_download_asset(
+        self,
+        session,
+        url: str,
+        out_path: Path,
+        provider: str,
+        item_id: str,
+        headers: dict,
+        bandwidth_limit_mb: float | None,
+    ) -> tuple[int, str | None]:
+        """Stream one asset to disk. Returns (bytes_written, error_or_None)."""
+        import time as _time
+
+        chunk_size = 1024 * 1024
+        bw_delay   = (1.0 / (bandwidth_limit_mb or float("inf"))) if bandwidth_limit_mb else 0
+
+        resp = session.get(url, stream=True, timeout=300, allow_redirects=True)
+
+        # Copernicus S3-compatible endpoint still returns 403 even with a
+        # valid Bearer token — it requires AWS4 S3 credentials, not OAuth2.
+        # Fall back to the OData download URL.
+        if resp.status_code == 403 and provider in ("copernicus", "copernicus_dataspace"):
+            logger.debug(
+                "S3-converted URL returned 403 — trying OData download URL for %s", item_id
+            )
+            odata_url = self._get_copernicus_odata_url(item_id, headers)
+            if odata_url:
+                resp = session.get(odata_url, stream=True, timeout=300, allow_redirects=True)
+            else:
+                return 0, (
+                    "Copernicus S3 endpoint requires AWS4 S3 credentials; "
+                    "OData lookup also failed. "
+                    "Switch to provider='planetary_computer' for free access."
+                )
+
+        resp.raise_for_status()
+
+        bytes_written = 0
+        with open(out_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    f.write(chunk)
+                    bytes_written += len(chunk)
+                    if bw_delay:
+                        _time.sleep(bw_delay)
+        return bytes_written, None
+
     def _download_stac_item_direct(
         self,
         item: SearchResult,
@@ -1231,12 +1278,22 @@ class SatelliteFetcher:
 
         Used for items that came from the pystac fallback (satellite_data=None
         but assets populated). PyGeoFetch's engine cannot download these because:
-          1. Asset keys are STAC format ("PRODUCT", "vh", "vv") not PyGeoFetch format
+          1. Asset keys are STAC format ("PRODUCT", "vh", "vv", "B04", ...) not
+             PyGeoFetch format ("download", "data")
           2. Auth session not available in reconstructed SatelliteData objects
+
+        Downloads EVERY matching band asset (not just one) — `item.assets` is
+        expected to already be filtered to the caller's requested bands (see
+        PyGeoVision.download(bands=...)). Multiple downloaded bands are
+        stacked into a single multi-band GeoTIFF via
+        `Preprocessor.stack_bands()`, matching what a whole-scene product
+        (e.g. Copernicus SAFE.zip) already looks like downstream.
 
         Supports:
           - Copernicus Data Space: downloads "PRODUCT" asset with Bearer token
-          - Planetary Computer: downloads "vh" + "vv" assets (no auth needed)
+          - Planetary Computer: downloads band assets via SAS-signed URLs
+            (assets live in private Blob Storage containers — signing via
+            the `planetary-computer` package is required, not optional)
         """
         import time as _time
 
@@ -1244,29 +1301,25 @@ class SatelliteFetcher:
         item_id = item.id
         provider = item.provider or "unknown"
 
-        # Pick the best download URL from STAC assets
         assets = item.assets or {}
-        url, asset_key = self._pick_stac_download_url(assets, provider)
+        url_pairs = self._pick_stac_download_urls(assets, provider)
 
-        if not url:
+        if not url_pairs:
             return DownloadResult(
                 scene_id=item_id, provider=provider, success=False,
                 error=(
                     f"No downloadable asset found in STAC assets. "
                     f"Available keys: {list(assets.keys())}. "
-                    f"Expected 'PRODUCT' (Copernicus) or 'vh'/'vv' (Planetary Computer)."
+                    f"Expected 'PRODUCT' (Copernicus) or band key(s) (Planetary Computer)."
                 ),
             )
 
-        # Build output filename
-        ext = ".tif" if url.endswith(".tif") else ".zip"
         safe_id = item_id.replace("/", "_").replace(":", "_")[:80]
-        out_file = output_dir / provider / f"{safe_id}{ext}"
-        out_file.parent.mkdir(parents=True, exist_ok=True)
-
-        logger.info("  [direct] %s  %s → %s", item_id[:55], asset_key, out_file.name)
+        out_dir = output_dir / provider
+        out_dir.mkdir(parents=True, exist_ok=True)
 
         # Build headers — Copernicus needs Bearer token, PC needs none
+        # (PC assets are signed per-URL below instead)
         headers = {}
         if provider in ("copernicus", "copernicus_dataspace"):
             creds = (
@@ -1285,66 +1338,86 @@ class SatelliteFetcher:
                     "Call client.add_credentials('copernicus', username=..., password=...)"
                 )
 
-        # Stream download — use a Session so auth header survives redirects.
-        # requests.get() drops Authorization on cross-domain redirect by default,
-        # which causes 401 on Copernicus (catalogue → download subdomain).
         try:
             import requests
-            chunk_size = 1024 * 1024
-            bw_delay   = (1.0 / (bandwidth_limit_mb or float("inf"))) if bandwidth_limit_mb else 0
-
             session = requests.Session()
             session.headers.update(headers)
             # Override rebuild_auth so the Authorization header is NOT dropped
             # when following cross-domain redirects (e.g. catalogue → download)
             session.rebuild_auth = lambda prepared, response: None
 
-            resp = session.get(url, stream=True, timeout=300, allow_redirects=True)
+            total_bytes = 0
+            band_files: list[tuple[str, str]] = []  # (path, asset_key)
 
-            # Copernicus S3-compatible endpoint still returns 403 even with a
-            # valid Bearer token — it requires AWS4 S3 credentials, not OAuth2.
-            # Fall back to the OData download URL.
-            if resp.status_code == 403 and provider in ("copernicus", "copernicus_dataspace"):
-                logger.debug(
-                    "S3-converted URL returned 403 — trying OData download URL for %s",
-                    item_id
+            for url, asset_key in url_pairs:
+                # Planetary Computer's Blob Storage assets are private and
+                # require a SAS token before they're downloadable — a raw
+                # asset href 404s/409s.
+                band_url = url
+                if provider == "planetary_computer" and band_url:
+                    try:
+                        import planetary_computer as pc
+                        band_url = pc.sign(band_url)
+                    except ImportError:
+                        logger.warning(
+                            "  planetary_computer package not installed — download will "
+                            "likely fail with '409 Public access is not permitted'. "
+                            "pip install planetary-computer"
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "  Failed to sign Planetary Computer URL for %s: %s", item_id[:55], exc
+                        )
+
+                # Determine extension from the path, not the raw URL — a
+                # SAS-signed URL has a `?st=...&sig=...` query string
+                # appended, so `url.endswith(".tif")` is always False after
+                # signing even though the asset genuinely is a .tif.
+                url_path = band_url.split("?", 1)[0]
+                ext = ".tif" if url_path.endswith(".tif") else ".zip"
+                band_file = out_dir / f"{safe_id}_{asset_key}{ext}"
+
+                logger.info("  [direct] %s  %s → %s", item_id[:55], asset_key, band_file.name)
+
+                bytes_written, err = self._stream_download_asset(
+                    session, band_url, band_file, provider, item_id, headers, bandwidth_limit_mb,
                 )
-                odata_url = self._get_copernicus_odata_url(item_id, headers)
-                if odata_url:
-                    url = odata_url
-                    resp = session.get(url, stream=True, timeout=300, allow_redirects=True)
-                else:
-                    logger.warning(
-                        "  ✗ %s: S3 auth failed and OData URL lookup failed. "
-                        "Try provider='planetary_computer' for free HTTPS access.",
-                        item_id[:55]
-                    )
+                if err:
+                    logger.warning("  ✗ %s (%s): %s", item_id[:55], asset_key, err)
                     return DownloadResult(
-                        scene_id=item_id, provider=provider, success=False,
-                        error=(
-                            "Copernicus S3 endpoint requires AWS4 S3 credentials; "
-                            "OData lookup also failed. "
-                            "Switch to provider='planetary_computer' for free access."
-                        ),
+                        scene_id=item_id, provider=provider, success=False, error=err,
                     )
 
-            resp.raise_for_status()
-
-            bytes_written = 0
-            with open(out_file, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=chunk_size):
-                    if chunk:
-                        f.write(chunk)
-                        bytes_written += len(chunk)
-                        if bw_delay:
-                            _time.sleep(bw_delay)
+                total_bytes += bytes_written
+                band_files.append((str(band_file), asset_key))
 
             duration = _time.time() - t0
-            size_mb  = bytes_written / 1024 / 1024
+            size_mb  = total_bytes / 1024 / 1024
             logger.info(
-                "  ✓ %-50s  %6.0f MB  %5.1fs",
-                item_id[:50], size_mb, duration
+                "  ✓ %-50s  %6.0f MB  %5.1fs  (%d asset%s)",
+                item_id[:50], size_mb, duration, len(band_files),
+                "" if len(band_files) == 1 else "s",
             )
+
+            # Single asset (e.g. Copernicus SAFE.zip, or only one band was
+            # requested) — use it directly. Multiple assets — stack them
+            # into one multi-band GeoTIFF so downstream code (validator,
+            # prepare_for_ai, mosaic, ...) sees one complete raster per scene.
+            if len(band_files) == 1:
+                out_file = Path(band_files[0][0])
+            else:
+                from pygeovision.preprocess.core import Preprocessor
+                out_file = out_dir / f"{safe_id}.tif"
+                Preprocessor().stack_bands(
+                    [p for p, _ in band_files],
+                    output_path=str(out_file),
+                    band_names=[k for _, k in band_files],
+                )
+                for p, _ in band_files:
+                    try:
+                        Path(p).unlink()
+                    except OSError:
+                        pass
 
             # Run post-processing (reproject, cog, etc.)
             final_path = out_file
@@ -1356,7 +1429,7 @@ class SatelliteFetcher:
                 provider=provider,
                 success=True,
                 path=final_path,
-                bytes_downloaded=bytes_written,
+                bytes_downloaded=total_bytes,
                 duration_seconds=duration,
             )
 
@@ -1431,24 +1504,36 @@ class SatelliteFetcher:
         return None
 
     @staticmethod
-    def _pick_stac_download_url(
+    def _pick_stac_download_urls(
         assets: dict, provider: str
-    ) -> tuple:
+    ) -> list[tuple[str, str]]:
         """
-        Pick the best downloadable asset URL from a STAC assets dict.
+        Pick the downloadable asset URL(s) from a STAC assets dict.
 
-        Returns (url, asset_key) or (None, None).
+        Returns a list of (url, asset_key) pairs:
+        - A single pair for whole-scene products (e.g. Copernicus SAFE.zip,
+          where one asset genuinely represents the entire downloadable scene).
+        - One pair per matching band for band-per-asset products (e.g.
+          Planetary Computer Sentinel-1 vh/vv or Sentinel-2 B02/B03/B04/...),
+          so multi-band downloads actually fetch every requested band
+          instead of silently grabbing only the first match.
+
+        Note: `assets` is expected to already be filtered down to the
+        caller's requested bands (see PyGeoVision.download(bands=...)) —
+        this function returns *every* band-like key still present, not an
+        arbitrarily-truncated subset.
 
         Rules:
         - NEVER return s3:// URIs — requests cannot handle them.
           Copernicus STAC individual band assets (vh, vv) are s3:// URIs;
           the "PRODUCT" asset is the correct HTTPS OData download URL.
         - Copernicus: "PRODUCT" first (full SAFE.zip via OData HTTPS)
-        - Planetary Computer S1 COG: "vh" or "vv" (blob.core.windows.net HTTPS)
+        - Planetary Computer: every present band-key asset (blob.core.windows.net
+          HTTPS — private container, caller must SAS-sign before fetching)
         - Fallback: first asset with an https:// href that isn't a thumbnail
         """
         if not assets:
-            return None, None
+            return []
 
         def _href(v) -> str:
             return v.get("href", "") if isinstance(v, dict) else str(v)
@@ -1456,29 +1541,36 @@ class SatelliteFetcher:
         def _is_https(url: str) -> bool:
             return url.startswith("https://") or url.startswith("http://")
 
-        # Priority 1: explicit download/product keys with HTTPS URL
+        # Priority 1: explicit whole-scene product key — one asset IS the
+        # entire scene, so return just that one even if other keys exist.
         for key in ("PRODUCT", "product", "data", "download"):
             if key in assets:
                 url = _href(assets[key])
                 if url and _is_https(url):
-                    return url, key
+                    return [(url, key)]
 
-        # Priority 2: Planetary Computer Sentinel-1 GRD COG band assets
-        # (blob.core.windows.net — public HTTPS, no auth needed)
-        for key in ("vh", "vv", "VH", "VV"):
+        # Priority 2+3: individual band assets — collect EVERY match present,
+        # not just the first, so all requested bands actually get downloaded.
+        band_keys = (
+            "vh", "vv", "VH", "VV",
+            "B01", "B02", "B03", "B04", "B05", "B06", "B07",
+            "B08", "B8A", "B09", "B10", "B11", "B12",
+            "TCI", "visual", "red", "nir",
+        )
+        matches = []
+        seen_urls = set()
+        for key in band_keys:
             if key in assets:
                 url = _href(assets[key])
-                if url and _is_https(url):
-                    return url, key
-
-        # Priority 3: Planetary Computer Sentinel-2 bands
-        for key in ("B04", "B08", "B03", "B02", "B11", "B12", "visual", "red", "nir"):
-            if key in assets:
-                url = _href(assets[key])
-                if url and _is_https(url):
-                    return url, key
+                if url and _is_https(url) and url not in seen_urls:
+                    matches.append((url, key))
+                    seen_urls.add(url)
+        if matches:
+            return matches
 
         # Priority 4: any HTTPS asset that isn't a thumbnail/preview
+        # (best-effort single pick — we don't know which of these are
+        # "bands" vs metadata, so don't assume more than one is wanted).
         skip = {"thumbnail", "preview", "rendered_preview", "tilejson",
                 "overview", "visual_preview"}
         for key, val in assets.items():
@@ -1486,7 +1578,7 @@ class SatelliteFetcher:
                 continue
             url = _href(val)
             if url and _is_https(url):
-                return url, key
+                return [(url, key)]
 
         # Priority 5: convert Copernicus S3 URIs to HTTPS as last resort.
         # s3://eodata/path → https://eodata.dataspace.copernicus.eu/path
@@ -1496,10 +1588,44 @@ class SatelliteFetcher:
                 url = _href(assets[key])
                 if url and url.startswith("s3://eodata/"):
                     https_url = "https://eodata.dataspace.copernicus.eu/" + url[len("s3://eodata/"):]
-                    return https_url, key
+                    return [(https_url, key)]
 
-        # All assets are unresolvable S3 or unknown — log the actual URLs for debugging
-        return None, None
+        # All assets are unresolvable S3 or unknown
+        return []
+
+    def _warn_if_bands_or_dtype_changed(
+        self, step_name: str, path: Path, expected_count: int | None, expected_dtype: str | None,
+    ) -> None:
+        """Loudly warn if a post-process step unexpectedly changed the band
+        count or dtype-kind of the raster, instead of letting it surface
+        silently much later (e.g. only in a downstream validator report).
+
+        Only warns on genuinely surprising changes: an integer dtype
+        becoming float, or losing bands, since those two symptoms together
+        are what a real, previously-seen corruption looked like.
+        """
+        if expected_count is None or expected_dtype is None:
+            return
+        try:
+            import rasterio
+            with rasterio.open(str(path)) as src:
+                actual_count = src.count
+                actual_dtype = src.dtypes[0]
+        except Exception:
+            return
+
+        was_integer = "int" in str(expected_dtype)
+        is_now_float = "float" in str(actual_dtype)
+
+        if actual_count != expected_count or (was_integer and is_now_float):
+            logger.warning(
+                "%s step changed the raster unexpectedly: %d band(s)/%s → "
+                "%d band(s)/%s for %s. This step is the likely source if "
+                "downstream validation reports too few bands or an "
+                "unexpected dtype — inspect this file directly to confirm.",
+                step_name, expected_count, expected_dtype,
+                actual_count, actual_dtype, path.name,
+            )
 
     def _apply_post_process(
         self,
@@ -1528,6 +1654,13 @@ class SatelliteFetcher:
             return input_path
 
         current = input_path
+
+        try:
+            with rasterio.open(str(current)) as _src0:
+                expected_count = _src0.count
+                expected_dtype = _src0.dtypes[0]
+        except Exception:
+            expected_count = expected_dtype = None
 
         for step in steps:
             step = step.strip()
@@ -1631,6 +1764,9 @@ class SatelliteFetcher:
                         abs(out_transform.a), out_transform.c, out_transform.f,
                     )
                     current = out_path
+                    self._warn_if_bands_or_dtype_changed(
+                        "reproject", current, expected_count, expected_dtype
+                    )
                 except Exception as exc:
                     tmp_path.unlink(missing_ok=True)
                     logger.error("reproject failed: %s", exc)
@@ -1657,6 +1793,9 @@ class SatelliteFetcher:
                         shutil.move(str(tmp_path), str(out_path))
                         current = out_path
                         logger.info("cog: → %s", out_path.name)
+                        self._warn_if_bands_or_dtype_changed(
+                            "cog", current, expected_count, expected_dtype
+                        )
                     else:
                         tmp_path.unlink(missing_ok=True)
                         logger.warning(

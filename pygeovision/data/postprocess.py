@@ -478,6 +478,78 @@ class PostProcessor:
         logger.info("Regularised %d buildings → %s", len(regularised), output_path)
         return output_path
 
+    def clip_vector_to_polygon(
+        self,
+        input_path: str,
+        aoi_geojson: str | dict,
+        output_path: str,
+    ) -> dict[str, Any]:
+        """Clip a vector prediction (e.g. building footprints) to an AOI polygon.
+
+        Automatically reprojects the AOI to the input vector's CRS before
+        clipping, so this works regardless of which CRS the prediction was
+        vectorised in vs. which CRS the AOI boundary came in as (e.g. a
+        WGS84 administrative boundary from Nominatim clipping a UTM-projected
+        prediction). Use this as the final step after `vectorise()` /
+        `regularise_buildings()` to drop or trim any polygon extending past
+        the true study-area boundary — a raster-level `clip_to_polygon()`
+        earlier in the pipeline isn't enough on its own, since tiled
+        inference can still leave partial artifacts right at the boundary.
+
+        Args:
+            input_path: Source GeoJSON (e.g. regularised building footprints).
+            aoi_geojson: Path to a ``.geojson`` file, or a Python dict
+                (FeatureCollection, Feature, or Geometry) — same AOI
+                boundary used earlier in the pipeline (e.g. from
+                ``client.boundary()``).
+            output_path: Destination GeoJSON path.
+
+        Returns:
+            Dict with ``output_path``, ``n_before``, ``n_after``.
+
+        Example::
+
+            post.clip_vector_to_polygon(
+                "buildings_regularised.geojson",
+                aoi_geojson="accra_boundary.geojson",
+                output_path="accra_buildings_final.geojson",
+            )
+        """
+        gpd = _require_geopandas()
+
+        if isinstance(aoi_geojson, str):
+            with open(aoi_geojson) as f:
+                aoi_gj = json.load(f)
+        else:
+            aoi_gj = aoi_geojson
+
+        if aoi_gj.get("type") == "FeatureCollection":
+            aoi_geoms = [f["geometry"] for f in aoi_gj["features"]]
+        elif aoi_gj.get("type") == "Feature":
+            aoi_geoms = [aoi_gj["geometry"]]
+        else:
+            aoi_geoms = [aoi_gj]
+
+        geom_mod, _, _ = _require_shapely()
+        features_gdf = gpd.read_file(input_path)
+        aoi_gdf = gpd.GeoDataFrame(
+            {"geometry": [geom_mod.shape(g) for g in aoi_geoms]}, crs="EPSG:4326",
+        )
+
+        if features_gdf.crs is not None and aoi_gdf.crs != features_gdf.crs:
+            aoi_gdf = aoi_gdf.to_crs(features_gdf.crs)
+
+        n_before = len(features_gdf)
+        clipped = gpd.clip(features_gdf, aoi_gdf)
+        n_after = len(clipped)
+
+        pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        clipped.to_file(output_path, driver="GeoJSON")
+
+        logger.info("Clipped vector to AOI polygon: %d → %d features → %s",
+                     n_before, n_after, output_path)
+        return {"output_path": output_path, "n_before": n_before, "n_after": n_after}
+
     def dissolve(
         self,
         input_path: str,
