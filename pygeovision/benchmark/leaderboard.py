@@ -1,8 +1,9 @@
 """Persistent benchmark leaderboard (Phase 4.4)."""
 from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+
 from pygeovision.benchmark.evaluator import BenchmarkResult
 
 
@@ -17,9 +18,9 @@ class Leaderboard:
         lb.export_csv("leaderboard.csv")
     """
 
-    def __init__(self, path: Union[str, Path] = "pgv_leaderboard.json") -> None:
+    def __init__(self, path: str | Path = "pgv_leaderboard.json") -> None:
         self.path = Path(path)
-        self._entries: List[Dict] = []
+        self._entries: list[dict] = []
         if self.path.exists():
             with open(self.path) as f:
                 self._entries = json.load(f)
@@ -39,7 +40,7 @@ class Leaderboard:
         with open(self.path, "w") as f:
             json.dump(self._entries, f, indent=2)
 
-    def get(self, task: Optional[str] = None, dataset: Optional[str] = None) -> List[Dict]:
+    def get(self, task: str | None = None, dataset: str | None = None) -> list[dict]:
         entries = self._entries
         if task:
             entries = [e for e in entries if e.get("task") == task]
@@ -47,12 +48,12 @@ class Leaderboard:
             entries = [e for e in entries if e.get("dataset") == dataset]
         return sorted(entries, key=lambda x: x.get("primary_metric", 0.0), reverse=True)
 
-    def print(self, task: Optional[str] = None, dataset: Optional[str] = None) -> None:
+    def print(self, task: str | None = None, dataset: str | None = None) -> None:
         entries = self.get(task=task, dataset=dataset)
         if not entries:
             print("No leaderboard entries.")
             return
-        title = f"Leaderboard"
+        title = "Leaderboard"
         if dataset: title += f" | {dataset}"
         if task: title += f" | {task}"
         print(f"\n{'═'*80}")
@@ -64,7 +65,7 @@ class Leaderboard:
             print(f"  {i:<3} {e['model']:<30} {e['dataset']:<20} {e.get('primary_metric',0):>10.4f} {e.get('mean_iou',0):>8.4f}")
         print(f"{'═'*80}")
 
-    def export_csv(self, path: Union[str, Path]) -> None:
+    def export_csv(self, path: str | Path) -> None:
         import csv
         entries = self.get()
         if not entries:

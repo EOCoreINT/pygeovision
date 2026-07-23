@@ -64,8 +64,8 @@ https://github.com/cloudtostreet/Sen1Floods11
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -92,7 +92,7 @@ SAR_DB_MAX  =   5.0
 
 def sar_to_hls_6ch(
     vv: np.ndarray,
-    vh: np.ndarray,
+    vh: np.ndarray | None = None,
     mapping: str = "physics_guided",
     normalise: bool = False,
 ) -> np.ndarray:
@@ -133,6 +133,10 @@ def sar_to_hls_6ch(
         (remaining 3 channels replicated from these 3)
         Good for visual inspection; moderate for AI.
 
+    'replicate':
+        Pos 0,2,4 ← VV; Pos 1,3,5 ← VH (simple alternation, no derived bands).
+        Simplest possible baseline; useful for ablation studies.
+
     'sentinel_6ch_db':
         Physics channel mapping on dB-scaled values (not normalised [0,1]).
         Use when passing raw dB outputs (S7 step) directly to a model
@@ -151,7 +155,15 @@ def sar_to_hls_6ch(
     # Ensure (1, H, W)
     if vv.ndim == 2:
         vv = vv[np.newaxis]
-    if vh.ndim == 2:
+
+    if vh is None:
+        # No VH available — approximate it from VV. VH backscatter is
+        # typically weaker and noisier than VV over most land cover, so a
+        # damped/attenuated copy of VV is a reasonable stand-in that keeps
+        # downstream shape/range contracts intact.
+        vh = vv * 0.6
+        logger.warning("sar_to_hls_6ch: VH not provided — approximating from VV (×0.6)")
+    elif vh.ndim == 2:
         vh = vh[np.newaxis]
 
     if vv.shape != vh.shape:
@@ -182,6 +194,11 @@ def sar_to_hls_6ch(
         ratio = np.clip(vv / (vh + eps), 0.0, 10.0) / 10.0
         channels = [vv, vh, ratio, vv, vh, ratio]
 
+    elif mapping == "replicate":
+        # Simplest possible mapping: alternate VV/VH across all 6 positions.
+        # No physics-guided semantics — useful as an ablation baseline.
+        channels = [vv, vh, vv, vh, vv, vh]
+
     elif mapping == "sentinel_6ch_db":
         # dB-scale mapping (no normalisation assumed)
         mean_band = (vh + vv) / 2.0
@@ -197,7 +214,8 @@ def sar_to_hls_6ch(
     else:
         raise ValueError(
             f"Unknown mapping: '{mapping}'. "
-            f"Choose from: 'physics_guided', 'mean_repeat', 'vv_vh_ratio', 'sentinel_6ch_db'"
+            f"Choose from: 'physics_guided', 'mean_repeat', 'vv_vh_ratio', "
+            f"'replicate', 'sentinel_6ch_db'"
         )
 
     result = np.concatenate(channels, axis=0)[:6]   # (6, H, W)
@@ -214,11 +232,12 @@ def sar_to_hls_6ch(
     return result.astype("float32")
 
 
+
 def validate_sar_ai_input(
     six_ch: np.ndarray,
     model: str = "prithvi",
-    expected_range: Tuple[float, float] = (0.0, 1.0),
-) -> Dict[str, Any]:
+    expected_range: tuple[float, float] = (0.0, 1.0),
+) -> dict[str, Any]:
     """
     Validate a 6-channel SAR tensor before foundation model inference.
 
@@ -290,6 +309,12 @@ def validate_sar_ai_input(
         if np.all(np.isnan(ch)):
             result["errors"].append(f"Channel {c} ({ch_name}) is all NaN.")
             result["valid"] = False
+        elif np.any(np.isnan(ch)):
+            n_nan = int(np.isnan(ch).sum())
+            result["errors"].append(
+                f"Channel {c} ({ch_name}) contains {n_nan} NaN value(s)."
+            )
+            result["valid"] = False
         elif np.all(ch == 0):
             result["warnings"].append(
                 f"Channel {c} ({ch_name}) is all zeros — likely a band selection error."
@@ -302,17 +327,14 @@ def validate_sar_ai_input(
     return result
 
 
-def coregister_sar_pair(
+def _estimate_subpixel_shift(
     reference: np.ndarray,
     secondary: np.ndarray,
     method: str = "phase_correlation",
-) -> Tuple[np.ndarray, Dict[str, float]]:
+) -> tuple[np.ndarray, dict[str, float]]:
     """
-    Coregister a secondary SAR chip to a reference chip.
-
-    Used for multi-temporal change detection: ensures that the same
-    ground pixel falls in the same image pixel in both chips before
-    computing the difference or passing to ChangeFormer.
+    Estimate (and apply) a sub-pixel shift to align `secondary` to `reference`,
+    both (C, H, W) arrays of identical shape.
 
     Methods
     -------
@@ -324,18 +346,14 @@ def coregister_sar_pair(
 
     'cross_correlation':
         Normalised cross-correlation with subpixel refinement.
-        More robust to noise but ~3× slower. Use for very low coherence.
+        More robust to noise but ~3x slower. Use for very low coherence.
 
-    Args:
-        reference:  Reference chip (C, H, W), float32.
-        secondary:  Secondary chip (C, H, W), same shape.
-        method:     Coregistration method.
-
-    Returns:
-        (coregistered_secondary, info_dict) where info_dict contains
-        'shift_x', 'shift_y' (pixels), 'method', 'confidence'.
+    Returns
+    -------
+    (coregistered_secondary, info_dict) where info_dict contains
+    'shift_x', 'shift_y' (pixels), 'method', 'confidence'.
     """
-    from scipy.ndimage import fourier_shift, shift as ndimage_shift
+    from scipy.ndimage import shift as ndimage_shift
 
     if reference.shape != secondary.shape:
         raise ValueError(
@@ -349,7 +367,7 @@ def coregister_sar_pair(
     info = {"method": method, "shift_x": 0.0, "shift_y": 0.0, "confidence": 0.0}
 
     if method == "phase_correlation":
-        from numpy.fft import fft2, ifft2, fftshift
+        from numpy.fft import fft2, fftshift, ifft2
 
         # Cross-power spectrum
         F_ref = fft2(ref_ch)
@@ -404,9 +422,102 @@ def coregister_sar_pair(
     return coregistered.astype("float32"), info
 
 
+def coregister_sar_pair(
+    reference_path: str,
+    secondary_path: str,
+    output_dir: str,
+    method: str = "phase_correlation",
+    refine_subpixel: bool = True,
+) -> tuple[str, str]:
+    """
+    Co-register a secondary SAR raster to a reference raster's grid, writing
+    both to `output_dir`.
+
+    Used for multi-temporal change detection: ensures that the same
+    ground pixel falls in the same image pixel in both rasters before
+    computing the difference or passing to ChangeFormer.
+
+    This resamples `secondary` onto `reference`'s exact grid (CRS,
+    transform, width, height) via rasterio.warp.reproject, then optionally
+    applies a sub-pixel phase-correlation refinement (see
+    `_estimate_subpixel_shift`) to correct residual misregistration.
+
+    Args:
+        reference_path:  Path to the reference (pre-event) raster.
+        secondary_path:  Path to the secondary (post-event) raster to align.
+        output_dir:       Directory for the aligned output files.
+        method:           Sub-pixel refinement method: 'phase_correlation' |
+                          'cross_correlation'.
+        refine_subpixel:  If True, apply FFT-based sub-pixel shift refinement
+                          after grid resampling.
+
+    Returns:
+        (reference_out_path, secondary_aligned_path)
+    """
+    import os
+
+    import rasterio
+    from rasterio.warp import Resampling, reproject
+
+    os.makedirs(output_dir, exist_ok=True)
+    ref_out = os.path.join(output_dir, "reference_aligned.tif")
+    sec_out = os.path.join(output_dir, "secondary_aligned.tif")
+
+    with rasterio.open(reference_path) as ref_src:
+        ref_data = ref_src.read()
+        ref_profile = ref_src.profile.copy()
+
+    # Copy the reference through unchanged (it defines the target grid).
+    with rasterio.open(ref_out, "w", **ref_profile) as dst:
+        dst.write(ref_data)
+
+    # Resample the secondary onto the reference's exact grid.
+    with rasterio.open(secondary_path) as sec_src:
+        sec_profile = sec_src.profile.copy()
+        sec_profile.update(
+            crs=ref_profile["crs"],
+            transform=ref_profile["transform"],
+            width=ref_profile["width"],
+            height=ref_profile["height"],
+        )
+        resampled = np.zeros(
+            (sec_src.count, ref_profile["height"], ref_profile["width"]),
+            dtype=sec_src.dtypes[0],
+        )
+        for band in range(1, sec_src.count + 1):
+            reproject(
+                source=rasterio.band(sec_src, band),
+                destination=resampled[band - 1],
+                src_transform=sec_src.transform,
+                src_crs=sec_src.crs,
+                dst_transform=ref_profile["transform"],
+                dst_crs=ref_profile["crs"],
+                resampling=Resampling.bilinear,
+            )
+
+    # Optional sub-pixel refinement against the reference.
+    if refine_subpixel:
+        try:
+            resampled, shift_info = _estimate_subpixel_shift(
+                ref_data.astype("float32"), resampled.astype("float32"), method=method,
+            )
+            logger.info(
+                "coregister_sar_pair: sub-pixel refinement shift=(%.2f, %.2f) px, "
+                "confidence=%.2f",
+                shift_info["shift_x"], shift_info["shift_y"], shift_info["confidence"],
+            )
+        except Exception as exc:
+            logger.warning("coregister_sar_pair: sub-pixel refinement skipped (%s)", exc)
+
+    with rasterio.open(sec_out, "w", **sec_profile) as dst:
+        dst.write(resampled.astype(sec_profile["dtype"]))
+
+    return ref_out, sec_out
+
+
 # ── RDAnet-inspired SAR deep feature encoder ─────────────────────────────────
 
-class SAR_DCE(object):
+class SAR_DCE:
     """
     Deep Convolutional Encoder for SAR imagery.
 
@@ -560,8 +671,8 @@ class Sen1Floods11Config:
     zero-shot and fine-tuned Prithvi flood detection on SAR data.
     """
     data_root:    str       = "./data/sen1floods11"
-    sar_mean:     Tuple    = (SEN1FLOODS11_VV_MEAN, SEN1FLOODS11_VH_MEAN)
-    sar_std:      Tuple    = (SEN1FLOODS11_VV_STD,  SEN1FLOODS11_VH_STD)
+    sar_mean:     tuple    = (SEN1FLOODS11_VV_MEAN, SEN1FLOODS11_VH_MEAN)
+    sar_std:      tuple    = (SEN1FLOODS11_VV_STD,  SEN1FLOODS11_VH_STD)
     n_classes:    int       = 2     # flood / non-flood
     n_events:     int       = 11    # global flood events
     n_labelled_chips: int   = 4831  # hand-labelled chips
@@ -628,8 +739,8 @@ class SARPrithviAdapter:
         self,
         vv: np.ndarray,
         vh: np.ndarray,
-        channel_mapping: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        channel_mapping: str | None = None,
+    ) -> dict[str, Any]:
         """
         Run flood detection on VV + VH SAR bands.
 
@@ -680,6 +791,7 @@ class SARPrithviAdapter:
             # Requires PyTorch and a trained/fine-tuned Prithvi model
             try:
                 import torch
+
                 from pygeovision.models.foundation.prithvi import PrithviTasks
 
                 if self._model is None:
@@ -714,7 +826,7 @@ class SARPrithviAdapter:
         output_dir: str = "./checkpoints/prithvi_sar",
         epochs: int = 50,
         use_rdanet_encoder: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Return fine-tuning configuration for SARPrithviAdapter.
 
@@ -731,7 +843,7 @@ class SARPrithviAdapter:
         Returns:
             Configuration dict with all training parameters.
         """
-        cfg: Dict[str, Any] = {
+        cfg: dict[str, Any] = {
             "strategy":        strategy,
             "dataset":         dataset,
             "data_root":       data_root,
@@ -852,8 +964,19 @@ class SARDINOv3Adapter:
         elif self.pseudo_rgb_arrangement == "physics_rgb":
             mean  = (vv + vh) / 2
             rgb   = np.concatenate([vv, mean, vh], axis=0)
+        elif self.pseudo_rgb_arrangement == "vv_vh_diff":
+            # Normalised absolute difference — highlights polarimetric contrast
+            diff  = np.clip(np.abs(vv - vh), 0.0, 1.0)
+            rgb   = np.concatenate([vv, vh, diff], axis=0)
+        elif self.pseudo_rgb_arrangement == "vv_vh_geomean":
+            # Geometric mean of VV/VH as the third channel (both non-negative)
+            geomean = np.sqrt(np.clip(vv, 0.0, None) * np.clip(vh, 0.0, None))
+            rgb     = np.concatenate([vv, vh, np.clip(geomean, 0.0, 1.0)], axis=0)
         else:
-            rgb = np.concatenate([vv, vh, (vv + vh) / 2], axis=0)
+            raise ValueError(
+                f"Unknown pseudo-RGB arrangement: '{self.pseudo_rgb_arrangement}'. "
+                f"Choose from: 'vv_vh_ratio', 'physics_rgb', 'vv_vh_diff', 'vv_vh_geomean'"
+            )
 
         return rgb[:3].astype("float32")   # (3, H, W)
 
@@ -861,7 +984,7 @@ class SARDINOv3Adapter:
         self,
         vv: np.ndarray,
         vh: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Extract DINOv3 features from SAR imagery.
 
@@ -875,6 +998,7 @@ class SARDINOv3Adapter:
 
         try:
             import torch
+
             from pygeovision.models.foundation.dinov3 import DINOv3Backbone
 
             if self._model is None:
@@ -897,7 +1021,7 @@ class SARDINOv3Adapter:
         except Exception as e:
             logger.warning(f"DINOv3 feature extraction failed ({e}). Returning PCA proxy.")
             # Fallback: PCA-based feature proxy
-            H, W     = pseudo_rgb.shape[1], pseudo_rgb.shape[2]
+            _H, _W     = pseudo_rgb.shape[1], pseudo_rgb.shape[2]
             flat     = pseudo_rgb.reshape(3, -1).T   # (H*W, 3)
             from numpy.linalg import svd
             u, s, vt = svd(flat - flat.mean(0), full_matrices=False)
@@ -915,7 +1039,7 @@ class SARDINOv3Adapter:
         data_root: str = "./data/sen1floods11",
         output_dir: str = "./checkpoints/dinov3_sar",
         epochs: int = 50,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Return DINOv3 fine-tuning configuration for SAR flood detection."""
         return {
             "strategy":   strategy,
@@ -967,7 +1091,7 @@ class SARSpeckleAugmentation:
     range of spatial resolution/speckle tradeoffs the model might see.
     """
 
-    def __init__(self, n_looks_range: Tuple[int, int] = (2, 8)):
+    def __init__(self, n_looks_range: tuple[int, int] = (2, 8)):
         self.n_looks_min = n_looks_range[0]
         self.n_looks_max = n_looks_range[1]
 
@@ -989,7 +1113,7 @@ class SARSpeckleAugmentation:
             augmented[c] = chip[c] * speckle
         return augmented.astype("float32")
 
-    def get_pytorch_transform_config(self) -> Dict[str, Any]:
+    def get_pytorch_transform_config(self) -> dict[str, Any]:
         """Return configuration for PyTorch DataLoader integration."""
         return {
             "type":        "SARSpeckleAugmentation",

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -43,11 +43,11 @@ class InSARViz:
     displacement maps, deformation rate, and time-series.
     """
 
-    def __init__(self, figsize: Tuple[float, float] = (10, 8)) -> None:
+    def __init__(self, figsize: tuple[float, float] = (10, 8)) -> None:
         self.figsize = figsize
         self._fig    = None
 
-    def _read(self, path: str) -> Tuple[np.ndarray, Any]:
+    def _read(self, path: str) -> tuple[np.ndarray, Any]:
         try:
             import rasterio
         except ImportError:
@@ -55,14 +55,14 @@ class InSARViz:
         with rasterio.open(path) as src:
             data    = src.read(1).astype("float32")
             profile = src.profile.copy()
-            pix_m   = abs(src.transform.a)
+            abs(src.transform.a)
         data = np.where(data == -9999.0, np.nan, data)
         return data, profile
 
     # ── Interferogram ─────────────────────────────────────────────────────────
 
     def interferogram(self, path: str, title: str = "Interferogram (Wrapped Phase)",
-                       output_path: Optional[str] = None) -> "InSARViz":
+                       output_path: str | None = None) -> InSARViz:
         """
         Display wrapped phase interferogram with standard rainbow colour cycle.
         """
@@ -90,7 +90,7 @@ class InSARViz:
     # ── Coherence ─────────────────────────────────────────────────────────────
 
     def coherence(self, path: str, title: str = "Coherence Map",
-                   output_path: Optional[str] = None) -> "InSARViz":
+                   output_path: str | None = None) -> InSARViz:
         plt = _mpl()
         import matplotlib.colors as mcolors
 
@@ -121,7 +121,7 @@ class InSARViz:
 
     def displacement(self, path: str, title: str = "LOS Displacement (m)",
                       vmax_cm: float = 20.0,
-                      output_path: Optional[str] = None) -> "InSARViz":
+                      output_path: str | None = None) -> InSARViz:
         plt = _mpl()
         data, _ = self._read(path)
         vmax = vmax_cm / 100.0
@@ -161,7 +161,7 @@ class InSARViz:
     # ── Deformation rate ──────────────────────────────────────────────────────
 
     def deformation_rate(self, path: str, title: str = "Deformation Rate (mm/yr)",
-                          output_path: Optional[str] = None) -> "InSARViz":
+                          output_path: str | None = None) -> InSARViz:
         plt = _mpl()
         data, _ = self._read(path)
         vabs = max(abs(float(np.nanpercentile(data, 2))),
@@ -189,12 +189,12 @@ class InSARViz:
 
     def time_series(
         self,
-        displacement_paths: List[str],
-        dates: List[str],
-        pixel_coords: Optional[List[Tuple[int, int]]] = None,
+        displacement_paths: list[str],
+        dates: list[str],
+        pixel_coords: list[tuple[int, int]] | None = None,
         title: str = "Displacement Time-Series",
-        output_path: Optional[str] = None,
-    ) -> "InSARViz":
+        output_path: str | None = None,
+    ) -> InSARViz:
         """
         Plot displacement vs time for selected pixels or spatial mean.
 
@@ -247,16 +247,15 @@ class InSARViz:
 
     def dashboard(
         self,
-        interferogram_path: Optional[str] = None,
-        coherence_path:     Optional[str] = None,
-        displacement_path:  Optional[str] = None,
-        rate_path:          Optional[str] = None,
+        interferogram_path: str | None = None,
+        coherence_path:     str | None = None,
+        displacement_path:  str | None = None,
+        rate_path:          str | None = None,
         title: str = "InSAR Analysis Dashboard",
-        output_path: Optional[str] = None,
-    ) -> "InSARViz":
+        output_path: str | None = None,
+    ) -> InSARViz:
         """Display a 2×2 grid of the main InSAR products."""
         plt = _mpl()
-        import matplotlib.colors as mcolors
         if getattr(self, "_fig", None) is not None:
             plt.close(self._fig)
             self._fig = None
@@ -277,7 +276,7 @@ class InSARViz:
                     im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
                     plt.colorbar(im, ax=ax, fraction=0.04, label=cb_label)
                     ax.set_title(label, fontsize=12, fontweight="bold")
-                except Exception as exc:
+                except Exception:
                     ax.text(0.5, 0.5, f"{label}\n(not available)", ha="center",
                             va="center", transform=ax.transAxes, fontsize=11, color="#666")
             else:
@@ -295,7 +294,7 @@ class InSARViz:
     # ── Export ────────────────────────────────────────────────────────────────
 
     def export(self, path: str, dpi: int = 150) -> str:
-        plt = _mpl()
+        _mpl()
         if self._fig is None:
             raise RuntimeError("Nothing to export — call interferogram(), coherence(), etc. first")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -303,7 +302,7 @@ class InSARViz:
         logger.info("InSAR viz exported to %s", path)
         return path
 
-    def show(self) -> "InSARViz":
+    def show(self) -> InSARViz:
         plt = _mpl()
         if self._fig:
             plt.show()

@@ -3,7 +3,10 @@ PyGeoVision test configuration and shared fixtures.
 """
 
 from __future__ import annotations
-import sys, pathlib
+
+import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 # ---------------------------------------------------------------------------
@@ -22,14 +25,12 @@ collect_ignore = [str(pathlib.Path(__file__).parent / "test_live.py")]
 
 
 
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-
-
 
 # ---------------------------------------------------------------------------
 # Matplotlib figure cleanup
@@ -144,7 +145,6 @@ def tile_metadata(small_geotiff):
 def simple_segmentation_model():
     """A tiny segmentation model for testing (no GPU required)."""
     pytest.importorskip("torch")
-    import torch
     import torch.nn as nn
 
     class TinySegModel(nn.Module):

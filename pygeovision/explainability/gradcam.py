@@ -3,9 +3,11 @@ GradCAM and GradCAM++ for geospatial model explainability (G6).
 Produces class activation maps showing which regions influenced the prediction.
 """
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,14 +25,14 @@ class GradCAM:
         cam.visualise(image_path, saliency, "./results/gradcam_buildings.png")
     """
 
-    def __init__(self, model: Any, target_layer: Optional[str] = None,
-                 device: Optional[str] = None) -> None:
+    def __init__(self, model: Any, target_layer: str | None = None,
+                 device: str | None = None) -> None:
         self.model = model
         self.target_layer_name = target_layer
         self.device = device or self._auto_device()
-        self._gradients: Optional[Any] = None
-        self._activations: Optional[Any] = None
-        self._hooks: List = []
+        self._gradients: Any | None = None
+        self._activations: Any | None = None
+        self._hooks: list = []
 
     @staticmethod
     def _auto_device():
@@ -70,7 +72,7 @@ class GradCAM:
     def explain(
         self,
         image: Any,
-        class_idx: Optional[int] = None,
+        class_idx: int | None = None,
         normalize: bool = True,
     ) -> Any:
         """Compute GradCAM saliency map for an input image.
@@ -84,7 +86,8 @@ class GradCAM:
             Saliency map as numpy array (H, W)
         """
         try:
-            import torch, numpy as np
+            import numpy as np
+            import torch
         except ImportError:
             raise ImportError("torch required")
 
@@ -146,10 +149,12 @@ class GradCAM:
         class_idx: int = 1,
         chip_size: int = 512,
         overlap: int = 64,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Apply GradCAM across a full GeoTIFF via tiled inference."""
         try:
-            import rasterio, numpy as np, torch
+            import numpy as np
+            import rasterio
+            import torch
         except ImportError as exc:
             return {"success": False, "error": str(exc)}
 
@@ -196,9 +201,10 @@ class GradCAM:
     ) -> None:
         """Overlay GradCAM saliency on the input image and save PNG."""
         try:
-            import rasterio, numpy as np
-            import matplotlib.pyplot as plt
             import matplotlib.cm as cm
+            import matplotlib.pyplot as plt
+            import numpy as np
+            import rasterio
 
             with rasterio.open(image_path) as src:
                 bands = src.read(list(range(1, min(src.count, 4))))
@@ -229,7 +235,7 @@ class GradCAM:
 class GradCAMPlusPlus(GradCAM):
     """GradCAM++ — improved version with better localisation accuracy."""
 
-    def explain(self, image: Any, class_idx: Optional[int] = None,
+    def explain(self, image: Any, class_idx: int | None = None,
                 normalize: bool = True) -> Any:
         """Compute GradCAM++ saliency (improved gradient weighting)."""
         # GradCAM++ uses element-wise square of gradients for weighting

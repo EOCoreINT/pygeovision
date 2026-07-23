@@ -13,7 +13,7 @@ Example:
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
 
 try:
     import torch
@@ -53,9 +53,9 @@ class EnsembleInference:
 
     def __init__(
         self,
-        models: List[nn.Module],
+        models: list[nn.Module],
         strategy: str = "mean",
-        weights: Optional[Sequence[float]] = None,
+        weights: Sequence[float] | None = None,
         device: str = "cpu",
         tta: bool = False,
     ) -> None:
@@ -92,7 +92,7 @@ class EnsembleInference:
             for 'mean'/'weighted_mean', hard labels for 'vote'.
         """
         x = x.to(self.device)
-        all_preds: List[torch.Tensor] = []
+        all_preds: list[torch.Tensor] = []
 
         for model, weight in zip(self.models, self.weights):
             probs = self._predict_single(model, x)

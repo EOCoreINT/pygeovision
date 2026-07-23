@@ -1,7 +1,9 @@
 """Attention map extraction for transformer-based geospatial models (G6)."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,14 +19,13 @@ class AttentionMapExtractor:
         extractor.visualise(image_path, attn, "./results/attention.png")
     """
 
-    def __init__(self, model: Any, device: Optional[str] = None) -> None:
+    def __init__(self, model: Any, device: str | None = None) -> None:
         self.model = model
         self.device = device or ("cpu")
-        self._attention_maps: List = []
+        self._attention_maps: list = []
 
     def _register_attention_hooks(self) -> None:
         """Register hooks on all attention layers."""
-        import torch.nn as nn
         self._attention_maps = []
 
         def _hook(_, __, output):
@@ -38,10 +39,11 @@ class AttentionMapExtractor:
                 module.register_forward_hook(_hook)
 
     def extract(self, image: Any, layer_idx: int = -1,
-                head_idx: Optional[int] = None) -> Any:
+                head_idx: int | None = None) -> Any:
         """Extract attention maps for an image."""
         try:
-            import torch, numpy as np
+            import numpy as np
+            import torch
             self._register_attention_hooks()
             if isinstance(image, np.ndarray):
                 image = torch.tensor(image, dtype=torch.float32)

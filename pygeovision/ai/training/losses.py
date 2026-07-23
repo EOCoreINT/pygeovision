@@ -15,7 +15,6 @@ except ImportError:
     torch = None  # type: ignore[assignment]
     nn = None  # type: ignore[assignment]
     F = None  # type: ignore[assignment]
-from typing import Optional
 
 
 class DiceLoss(nn.Module):
@@ -153,7 +152,7 @@ class WeightedCrossEntropyLoss(nn.Module):
 
     def __init__(
         self,
-        class_weights: Optional[torch.Tensor] = None,
+        class_weights: torch.Tensor | None = None,
         ignore_index: int = -100,
     ) -> None:
         super().__init__()
@@ -197,8 +196,8 @@ class ChangeDetectionLoss(nn.Module):
         self,
         change_logits: torch.Tensor,
         change_targets: torch.Tensor,
-        semantic_logits: Optional[torch.Tensor] = None,
-        semantic_targets: Optional[torch.Tensor] = None,
+        semantic_logits: torch.Tensor | None = None,
+        semantic_targets: torch.Tensor | None = None,
     ) -> torch.Tensor:
         loss = self.bce_weight * (
             0.5 * self.focal(change_logits, change_targets)

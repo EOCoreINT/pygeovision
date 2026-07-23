@@ -1,8 +1,13 @@
 """Pipeline execution engine with dependency management and retry logic."""
 from __future__ import annotations
-import logging, time
+
+import builtins
+import logging
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -10,11 +15,11 @@ logger = logging.getLogger(__name__)
 class PipelineResult:
     pipeline_name: str
     success: bool
-    steps_completed: List[str]
-    steps_failed: List[str]
+    steps_completed: list[str]
+    steps_failed: list[str]
     duration_s: float
-    outputs: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[str] = None
+    outputs: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
 
 
 class Pipeline:
@@ -33,18 +38,18 @@ class Pipeline:
     def __init__(self, name: str, description: str = "") -> None:
         self.name = name
         self.description = description
-        self._steps: List[Any] = []
-        self._hooks: Dict[str, List[Callable]] = {"before_step": [], "after_step": [], "on_error": []}
+        self._steps: list[Any] = []
+        self._hooks: dict[str, list[Callable]] = {"before_step": [], "after_step": [], "on_error": []}
 
-    def add(self, step: Any) -> "Pipeline":
+    def add(self, step: Any) -> Pipeline:
         self._steps.append(step)
         return self
 
-    def on(self, event: str, fn: Callable) -> "Pipeline":
+    def on(self, event: str, fn: Callable) -> Pipeline:
         self._hooks.setdefault(event, []).append(fn)
         return self
 
-    def run(self, context: Optional[Dict] = None, dry_run: bool = False) -> PipelineResult:
+    def run(self, context: dict | None = None, dry_run: bool = False) -> PipelineResult:
         """Execute the pipeline."""
         ctx = context or {}
         completed, failed = [], []
@@ -114,7 +119,7 @@ class Pipeline:
             outputs=ctx,
         )
 
-    def _topo_sort(self) -> List[Any]:
+    def _topo_sort(self) -> list[Any]:
         """Topological sort by dependency order."""
         name_to_step = {(s.name if hasattr(s, "name") else str(i)): s
                         for i, s in enumerate(self._steps)}
@@ -134,10 +139,15 @@ class Pipeline:
         return order
 
     @classmethod
-    def from_config(cls, config: Dict) -> "Pipeline":
+    def from_config(cls, config: dict) -> Pipeline:
         """Build a Pipeline from a parsed YAML config dict."""
-        from pygeovision.pipelines.steps import (Step, SearchStep, DownloadStep,
-                                                   InferStep, ExportStep)
+        from pygeovision.pipelines.steps import (
+            DownloadStep,
+            ExportStep,
+            InferStep,
+            SearchStep,
+            Step,
+        )
         ACTION_MAP = {
             "search": SearchStep, "download": DownloadStep,
             "infer": InferStep, "export": ExportStep,
@@ -157,7 +167,7 @@ class Pipeline:
         return p
 
     @classmethod
-    def from_yaml(cls, path: str) -> "Pipeline":
+    def from_yaml(cls, path: str) -> Pipeline:
         from pygeovision.pipelines.yaml_parser import PipelineYAMLParser
         config = PipelineYAMLParser().load(path)
         return cls.from_config(config)
@@ -178,24 +188,24 @@ class PipelineOrchestrator:
 
     def __init__(self, client: Any = None) -> None:
         self.client = client
-        self._pipelines: Dict[str, Pipeline] = {}
+        self._pipelines: dict[str, Pipeline] = {}
 
-    def register(self, name: str, pipeline: Pipeline) -> "PipelineOrchestrator":
+    def register(self, name: str, pipeline: Pipeline) -> PipelineOrchestrator:
         self._pipelines[name] = pipeline
         return self
 
-    def register_yaml(self, path: str) -> "PipelineOrchestrator":
+    def register_yaml(self, path: str) -> PipelineOrchestrator:
         p = Pipeline.from_yaml(path)
         return self.register(p.name, p)
 
-    def run(self, name: str, context: Optional[Dict] = None,
+    def run(self, name: str, context: dict | None = None,
              dry_run: bool = False) -> PipelineResult:
         if name not in self._pipelines:
             raise KeyError(f"Pipeline '{name}' not registered. Available: {list(self._pipelines)}")
         ctx = {"client": self.client, **(context or {})}
         return self._pipelines[name].run(ctx, dry_run=dry_run)
 
-    def list(self) -> List[str]:
+    def list(self) -> builtins.list[str]:
         return list(self._pipelines.keys())
 
     def __repr__(self) -> str:

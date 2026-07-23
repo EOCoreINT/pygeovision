@@ -19,7 +19,7 @@ import logging
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class CachedModel:
     local_path: Path
     source_url: str = ""
     checksum: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ModelHub:
@@ -61,11 +61,11 @@ class ModelHub:
         >>> hub.clear_cache(model_name="unet_resnet50")
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None) -> None:
+    def __init__(self, cache_dir: Path | None = None) -> None:
         self.cache_dir = cache_dir or Path.home() / ".pygeovision" / "models"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._manifest_path = self.cache_dir / "manifest.json"
-        self._manifest: Dict[str, Dict[str, Any]] = self._load_manifest()
+        self._manifest: dict[str, dict[str, Any]] = self._load_manifest()
 
     # ------------------------------------------------------------------
     # Public API
@@ -74,7 +74,7 @@ class ModelHub:
     def load(
         self,
         model_name: str,
-        checkpoint: Optional[str] = None,
+        checkpoint: str | None = None,
         device: str = "cpu",
         **model_kwargs: Any,
     ) -> Any:
@@ -95,8 +95,9 @@ class ModelHub:
             >>> model = hub.load("segformer_b2", num_classes=10, in_channels=6)
             >>> model = hub.load("unet_resnet50", checkpoint="/path/to/best.pth")
         """
-        from pygeovision.ai.models.registry import registry
         import torch
+
+        from pygeovision.ai.models.registry import registry
 
         logger.info("Building model: %s", model_name)
         model = registry.build(model_name, **model_kwargs)
@@ -127,7 +128,7 @@ class ModelHub:
         self,
         model: Any,
         model_name: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Path:
         """Save a model's state dict to the hub cache.
 
@@ -158,7 +159,7 @@ class ModelHub:
         logger.info("Saved model '%s' to %s", model_name, out_path)
         return out_path
 
-    def list_cached(self) -> List[CachedModel]:
+    def list_cached(self) -> list[CachedModel]:
         """List all locally cached model checkpoints.
 
         Returns:
@@ -182,7 +183,7 @@ class ModelHub:
         from pygeovision.ai.models.registry import registry
         print(registry.summary())
 
-    def clear_cache(self, model_name: Optional[str] = None) -> None:
+    def clear_cache(self, model_name: str | None = None) -> None:
         """Remove cached model checkpoints.
 
         Args:
@@ -315,7 +316,7 @@ class ModelHub:
         logger.info("Checkpoint saved to %s", local_path)
         return local_path
 
-    def _load_manifest(self) -> Dict[str, Any]:
+    def _load_manifest(self) -> dict[str, Any]:
         """Load the local model manifest JSON."""
         if self._manifest_path.exists():
             try:

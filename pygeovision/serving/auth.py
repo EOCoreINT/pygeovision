@@ -1,7 +1,12 @@
 """Authentication — API key and JWT for the inference server."""
 from __future__ import annotations
-import hashlib, hmac, logging, os, time
-from typing import Any, Dict, Optional
+
+import hashlib
+import logging
+import os
+import time
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,9 +20,9 @@ class APIKeyAuth:
             # authorised
     """
 
-    def __init__(self, keys: Optional[Dict[str, str]] = None,
+    def __init__(self, keys: dict[str, str] | None = None,
                  env_var: str = "PGV_API_KEYS") -> None:
-        self._keys: Dict[str, str] = {}
+        self._keys: dict[str, str] = {}
         if keys:
             for user, key in keys.items():
                 self.add_key(user, key)
@@ -34,7 +39,7 @@ class APIKeyAuth:
     def _hash(self, key: str) -> str:
         return hashlib.sha256(key.encode()).hexdigest()
 
-    def verify(self, api_key: str) -> Optional[str]:
+    def verify(self, api_key: str) -> str | None:
         """Verify API key. Returns username on success, None on failure."""
         return self._keys.get(self._hash(api_key))
 
@@ -56,13 +61,13 @@ class JWTAuth:
         payload = auth.verify_token(token)
     """
 
-    def __init__(self, secret: Optional[str] = None, algorithm: str = "HS256",
+    def __init__(self, secret: str | None = None, algorithm: str = "HS256",
                  expiry_hours: int = 24) -> None:
         self.secret = secret or os.environ.get("PGV_JWT_SECRET", "pgv-default-secret-change-me")
         self.algorithm = algorithm
         self.expiry_hours = expiry_hours
 
-    def create_token(self, payload: Dict[str, Any]) -> str:
+    def create_token(self, payload: dict[str, Any]) -> str:
         try:
             import jwt
             payload = {**payload, "exp": time.time() + self.expiry_hours * 3600,
@@ -71,7 +76,7 @@ class JWTAuth:
         except ImportError:
             raise ImportError("pip install PyJWT")
 
-    def verify_token(self, token: str) -> Optional[Dict]:
+    def verify_token(self, token: str) -> dict | None:
         try:
             import jwt
             return jwt.decode(token, self.secret, algorithms=[self.algorithm])

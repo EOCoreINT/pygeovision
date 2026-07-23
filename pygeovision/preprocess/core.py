@@ -45,7 +45,7 @@ import os
 import pathlib
 import re
 import tempfile
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -74,13 +74,13 @@ def _require_rasterio():
 
 def _require_shapely():
     try:
-        from shapely.geometry import shape, box, mapping
+        from shapely.geometry import box, mapping, shape
         return shape, box, mapping
     except ImportError:
         raise ImportError("pip install shapely") from None
 
 
-def _safe_output(input_path: str, output_path: Optional[str], suffix: str) -> str:
+def _safe_output(input_path: str, output_path: str | None, suffix: str) -> str:
     """Return output_path, or derive it from input_path + suffix."""
     if output_path:
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -129,9 +129,9 @@ class Preprocessor:
 
     def stack_bands(
         self,
-        band_paths: Union[List[str], Dict[str, str]],
+        band_paths: list[str] | dict[str, str],
         output_path: str,
-        band_names: Optional[List[str]] = None,
+        band_names: list[str] | None = None,
     ) -> str:
         """Stack individual single-band GeoTIFFs into one multi-band raster.
 
@@ -168,11 +168,9 @@ class Preprocessor:
         # Read the first band to get spatial metadata
         with rasterio.open(band_paths[0]) as src0:
             profile = src0.profile.copy()
-            crs       = src0.crs
-            transform = src0.transform
             width     = src0.width
             height    = src0.height
-            dtype     = src0.dtypes[0]
+            src0.dtypes[0]
 
         profile.update(count=len(band_paths), compress="lzw")
 
@@ -199,7 +197,7 @@ class Preprocessor:
     def stack_from_dir(
         self,
         scene_dir: str,
-        band_names: List[str],
+        band_names: list[str],
         output_path: str,
         pattern: str = "*.tif",
         sensor: str = "auto",
@@ -241,7 +239,7 @@ class Preprocessor:
             )
 
         # Build a name→path lookup
-        name_to_path: Dict[str, pathlib.Path] = {}
+        name_to_path: dict[str, pathlib.Path] = {}
         for p in candidates:
             fname = p.name.upper()
             for bn in band_names:
@@ -278,8 +276,8 @@ class Preprocessor:
     def clip_to_bbox(
         self,
         input_path: str,
-        bbox: Tuple[float, float, float, float],
-        output_path: Optional[str] = None,
+        bbox: tuple[float, float, float, float],
+        output_path: str | None = None,
         bbox_crs: str = "EPSG:4326",
         all_touched: bool = False,
     ) -> str:
@@ -309,9 +307,9 @@ class Preprocessor:
             )
         """
         rasterio = _require_rasterio()
-        from rasterio.mask import mask as rio_mask
-        from rasterio.crs import CRS
         import rasterio.warp as warp
+        from rasterio.crs import CRS
+        from rasterio.mask import mask as rio_mask
 
         output_path = _safe_output(input_path, output_path, "_clipped")
         _shape, _box, _mapping = _require_shapely()
@@ -357,11 +355,11 @@ class Preprocessor:
     def clip_to_polygon(
         self,
         input_path: str,
-        geojson: Union[str, dict],
-        output_path: Optional[str] = None,
+        geojson: str | dict,
+        output_path: str | None = None,
         crop: bool = True,
         all_touched: bool = False,
-        nodata: Optional[float] = None,
+        nodata: float | None = None,
     ) -> str:
         """Clip a raster to one or more GeoJSON polygons.
 
@@ -440,7 +438,7 @@ class Preprocessor:
         self,
         input_path: str,
         mask_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         nodata: float = 0.0,
         invert: bool = False,
     ) -> str:
@@ -496,7 +494,7 @@ class Preprocessor:
         self,
         input_path: str,
         scl_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         keep_classes: Sequence[int] = (4, 5, 6),
         nodata: float = 0.0,
     ) -> str:
@@ -571,7 +569,7 @@ class Preprocessor:
     def normalise(
         self,
         input_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         method: str = "minmax",
         scale_factor: float = 10000.0,
         percentile: float = 2.0,
@@ -691,7 +689,7 @@ class Preprocessor:
         self,
         input_path: str,
         resolution_m: float,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         resampling: str = "bilinear",
     ) -> str:
         """Resample a raster to a target ground sampling distance.
@@ -715,7 +713,6 @@ class Preprocessor:
         """
         rasterio = _require_rasterio()
         from rasterio.enums import Resampling as _R
-        import rasterio.transform as rt
 
         _ALG = {
             "nearest":  _R.nearest,
@@ -776,29 +773,29 @@ class Preprocessor:
         output_path: str,
         *,
         # stacking
-        stack_bands: Optional[List[str]] = None,
-        stack_dir: Optional[str] = None,
+        stack_bands: list[str] | None = None,
+        stack_dir: str | None = None,
         sensor: str = "auto",
         # spatial
-        bbox: Optional[Tuple[float, float, float, float]] = None,
+        bbox: tuple[float, float, float, float] | None = None,
         bbox_crs: str = "EPSG:4326",
-        clip_geojson: Optional[Union[str, dict]] = None,
+        clip_geojson: str | dict | None = None,
         # cloud masking
-        cloud_mask_path: Optional[str] = None,
-        scl_path: Optional[str] = None,
+        cloud_mask_path: str | None = None,
+        scl_path: str | None = None,
         scl_keep_classes: Sequence[int] = (4, 5, 6),
         nodata: float = 0.0,
         # normalisation
-        normalise: Optional[str] = None,
+        normalise: str | None = None,
         scale_factor: float = 10000.0,
         percentile: float = 2.0,
         # resampling
-        resample_m: Optional[float] = None,
+        resample_m: float | None = None,
         resampling: str = "bilinear",
         # output
         out_dtype: str = "float32",
         keep_intermediates: bool = False,
-    ) -> Dict:
+    ) -> dict:
         """Run a full preprocessing pipeline in the correct order.
 
         Pipeline order (each step is skipped when its argument is None):
@@ -863,8 +860,8 @@ class Preprocessor:
         """
         tmpdir = tempfile.mkdtemp(prefix="pgv_preprocess_")
         tmp    = pathlib.Path(tmpdir)
-        intermediates: List[str] = []
-        steps_applied: List[str] = []
+        intermediates: list[str] = []
+        steps_applied: list[str] = []
 
         def _tmp(suffix: str) -> str:
             return str(tmp / f"step_{len(steps_applied):02d}_{suffix}.tif")
@@ -984,7 +981,7 @@ class Preprocessor:
     # 7. Convenience helpers
     # ------------------------------------------------------------------
 
-    def info(self, path: str) -> Dict:
+    def info(self, path: str) -> dict:
         """Return a summary dict for a GeoTIFF.
 
         Useful for quick inspection before and after preprocessing.
@@ -1015,7 +1012,7 @@ class Preprocessor:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _raster_shape(path: str) -> Tuple[int, int]:
+def _raster_shape(path: str) -> tuple[int, int]:
     rasterio = _require_rasterio()
     with rasterio.open(path) as src:
         return src.height, src.width

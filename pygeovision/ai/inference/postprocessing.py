@@ -17,9 +17,9 @@ Example:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -113,7 +113,7 @@ class PostProcessor:
 
     def _cleanup_binary(self, binary: np.ndarray, ndimage: Any) -> np.ndarray:
         """Apply cleanup to a single binary channel."""
-        from scipy.ndimage import binary_fill_holes, binary_closing, label
+        from scipy.ndimage import binary_closing, binary_fill_holes, label
 
         if self.config.morphological_closing:
             struct = np.ones((self.config.kernel_size, self.config.kernel_size))
@@ -136,9 +136,9 @@ class PostProcessor:
         mask: np.ndarray,
         transform: Any,
         crs: str,
-        class_names: Optional[List[str]] = None,
-        output_path: Optional[Path] = None,
-    ) -> Dict[str, Any]:
+        class_names: list[str] | None = None,
+        output_path: Path | None = None,
+    ) -> dict[str, Any]:
         """Vectorize a label mask to GeoJSON FeatureCollection.
 
         Args:
@@ -156,7 +156,7 @@ class PostProcessor:
         """
         try:
             from rasterio.features import shapes
-            from shapely.geometry import shape, mapping
+            from shapely.geometry import mapping, shape
             from shapely.ops import unary_union
         except ImportError as exc:
             raise ImportError(

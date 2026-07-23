@@ -27,7 +27,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 _TASK_TYPES = ("segmentation", "bbox_detection", "polygon", "classification")
 
 # Default Label Studio config templates per task type
-_LS_CONFIGS: Dict[str, str] = {
+_LS_CONFIGS: dict[str, str] = {
     "segmentation": """
 <View>
   <Image name="image" value="$image"/>
@@ -96,11 +96,11 @@ class LabelStudioConfig:
 
     url: str = "http://localhost:8080"
     api_key: str = ""
-    project_id: Optional[int] = None
+    project_id: int | None = None
     task_type: str = "segmentation"
-    class_names: List[str] = field(default_factory=lambda: ["background", "foreground"])
+    class_names: list[str] = field(default_factory=lambda: ["background", "foreground"])
     export_format: str = "JSON"
-    tile_export_dir: Optional[Path] = None
+    tile_export_dir: Path | None = None
     image_format: str = "PNG"
     poll_interval: float = 30.0
     completion_threshold: float = 1.0
@@ -147,10 +147,10 @@ class LabelStudioLabeler(BaseLabeler):
         self,
         url: str = "http://localhost:8080",
         api_key: str = "",
-        project_id: Optional[int] = None,
+        project_id: int | None = None,
         task_type: str = "segmentation",
-        class_names: Optional[List[str]] = None,
-        tile_export_dir: Optional[Path] = None,
+        class_names: list[str] | None = None,
+        tile_export_dir: Path | None = None,
         num_workers: int = 4,
         skip_existing: bool = True,
     ) -> None:
@@ -179,7 +179,7 @@ class LabelStudioLabeler(BaseLabeler):
             or Path.home() / ".pygeovision" / "cache" / "label_studio_tiles",
         )
         self.config.tile_export_dir.mkdir(parents=True, exist_ok=True)
-        self._session: Optional[Any] = None
+        self._session: Any | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -187,7 +187,7 @@ class LabelStudioLabeler(BaseLabeler):
 
     def export_tiles(
         self,
-        tiles: List[Any],
+        tiles: list[Any],
         project_title: str = "PyGeoVision Annotation",
         wait_for_completion: bool = False,
     ) -> int:
@@ -204,7 +204,6 @@ class LabelStudioLabeler(BaseLabeler):
         Returns:
             Label Studio project ID.
         """
-        import requests
 
         # Ensure project exists
         if self.config.project_id is None:
@@ -466,7 +465,7 @@ class LabelStudioLabeler(BaseLabeler):
         Image.fromarray(rgb).save(out_path, format="PNG")
         return out_path
 
-    def _upload_task(self, img_path: Path, tile_path: Path) -> Optional[int]:
+    def _upload_task(self, img_path: Path, tile_path: Path) -> int | None:
         """Upload an image as a Label Studio task.
 
         Args:
@@ -490,7 +489,7 @@ class LabelStudioLabeler(BaseLabeler):
             logger.warning("Failed to upload task for %s: %s", img_path.name, exc)
         return None
 
-    def _find_task_for_tile(self, tile_path: Path) -> Optional[Dict[str, Any]]:
+    def _find_task_for_tile(self, tile_path: Path) -> dict[str, Any] | None:
         """Find the Label Studio task associated with a tile path.
 
         Args:
@@ -523,7 +522,7 @@ class LabelStudioLabeler(BaseLabeler):
 
     def _annotation_to_mask(
         self,
-        annotation: Dict[str, Any],
+        annotation: dict[str, Any],
         height: int,
         width: int,
         task_type: str,
@@ -571,14 +570,14 @@ class LabelStudioLabeler(BaseLabeler):
     def _parse_brush_label(
         self,
         mask: np.ndarray,
-        value: Dict[str, Any],
-        class_map: Dict[str, int],
+        value: dict[str, Any],
+        class_map: dict[str, int],
     ) -> np.ndarray:
         """Parse a brush (segmentation) annotation."""
         import base64
         import zlib
+
         from PIL import Image
-        import io
 
         labels = value.get("brushlabels", [])
         class_id = class_map.get(labels[0], 1) if labels else 1
@@ -603,8 +602,8 @@ class LabelStudioLabeler(BaseLabeler):
     def _parse_bbox_label(
         self,
         mask: np.ndarray,
-        value: Dict[str, Any],
-        class_map: Dict[str, int],
+        value: dict[str, Any],
+        class_map: dict[str, int],
         height: int,
         width: int,
     ) -> np.ndarray:
@@ -626,14 +625,15 @@ class LabelStudioLabeler(BaseLabeler):
     def _parse_polygon_label(
         self,
         mask: np.ndarray,
-        value: Dict[str, Any],
-        class_map: Dict[str, int],
+        value: dict[str, Any],
+        class_map: dict[str, int],
         height: int,
         width: int,
     ) -> np.ndarray:
         """Parse a polygon annotation."""
         try:
-            from PIL import ImageDraw, Image as PILImage
+            from PIL import Image as PILImage
+            from PIL import ImageDraw
         except ImportError:
             return mask
 

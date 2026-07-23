@@ -39,7 +39,7 @@ import dataclasses
 import logging
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -55,7 +55,7 @@ class ValidationIssue:
     severity: str           # "error" | "warning" | "info"
     check:    str           # which check detected it
     message:  str
-    fix:      Optional[str] = None   # applied fix, if any
+    fix:      str | None = None   # applied fix, if any
 
     def __str__(self) -> str:
         icon = {"error": "✗", "warning": "⚠", "info": "ℹ"}.get(self.severity, "?")
@@ -68,14 +68,14 @@ class ValidationReport:
     """Complete validation report for a dataset."""
     source:        str
     passed:        bool
-    issues:        List[ValidationIssue]  = dataclasses.field(default_factory=list)
-    stats:         Dict[str, Any]         = dataclasses.field(default_factory=dict)
+    issues:        list[ValidationIssue]  = dataclasses.field(default_factory=list)
+    stats:         dict[str, Any]         = dataclasses.field(default_factory=dict)
     auto_fixed:    bool = False
 
     @property
-    def errors(self)   -> List[ValidationIssue]: return [i for i in self.issues if i.severity == "error"]
+    def errors(self)   -> list[ValidationIssue]: return [i for i in self.issues if i.severity == "error"]
     @property
-    def warnings(self) -> List[ValidationIssue]: return [i for i in self.issues if i.severity == "warning"]
+    def warnings(self) -> list[ValidationIssue]: return [i for i in self.issues if i.severity == "warning"]
 
     def summary(self) -> str:
         lines = [
@@ -132,13 +132,13 @@ class DataValidator:
 
     def validate(
         self,
-        data: Union[str, "np.ndarray"],
+        data: str | np.ndarray,
         *,
-        expected_dtype: Optional[str] = None,
-        expected_shape: Optional[Tuple[int, ...]] = None,
-        required_bands: Optional[int] = None,
-        value_range: Optional[Tuple[float, float]] = None,
-        target_crs: Optional[str] = None,
+        expected_dtype: str | None = None,
+        expected_shape: tuple[int, ...] | None = None,
+        required_bands: int | None = None,
+        value_range: tuple[float, float] | None = None,
+        target_crs: str | None = None,
         auto_fix: bool = True,
     ) -> ValidationReport:
         """Run all validation checks on a GeoTIFF path or numpy array.
@@ -165,10 +165,10 @@ class DataValidator:
             report.raise_if_failed()
         """
         source = str(data) if isinstance(data, str) else f"array{getattr(data, 'shape', '')}"
-        issues: List[ValidationIssue] = []
-        stats:  Dict[str, Any] = {}
-        arr:    Optional[np.ndarray] = None
-        profile: Dict = {}
+        issues: list[ValidationIssue] = []
+        stats:  dict[str, Any] = {}
+        arr:    np.ndarray | None = None
+        profile: dict = {}
 
         # --- Load if path ---
         if isinstance(data, (str, Path)):
@@ -239,7 +239,7 @@ class DataValidator:
         self,
         arr: np.ndarray,
         auto_fix: bool = True,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Check for NaN and Inf values; replace with 0 when auto_fix=True."""
         issues = []
         nan_count = int(np.isnan(arr).sum())
@@ -274,9 +274,9 @@ class DataValidator:
     def check_dtype(
         self,
         arr: np.ndarray,
-        expected_dtype: Optional[str] = None,
+        expected_dtype: str | None = None,
         auto_fix: bool = True,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Verify array dtype; cast to expected_dtype when auto_fix=True."""
         issues = []
         if expected_dtype is None:
@@ -298,7 +298,7 @@ class DataValidator:
         self,
         actual_crs: Any,
         target_crs: str,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Check that the raster CRS matches target_crs."""
         issues = []
         if actual_crs is None:
@@ -323,9 +323,9 @@ class DataValidator:
     def check_bounds(
         self,
         arr: np.ndarray,
-        value_range: Optional[Tuple[float, float]] = None,
+        value_range: tuple[float, float] | None = None,
         auto_fix: bool = True,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Check that all values are within [min, max]; clip if auto_fix."""
         issues = []
         if value_range is None:
@@ -349,8 +349,8 @@ class DataValidator:
     def check_shape(
         self,
         arr: np.ndarray,
-        expected_shape: Optional[Tuple[int, ...]] = None,
-    ) -> List[ValidationIssue]:
+        expected_shape: tuple[int, ...] | None = None,
+    ) -> list[ValidationIssue]:
         """Check that arr.shape matches expected_shape."""
         issues = []
         if expected_shape is None:
@@ -367,15 +367,15 @@ class DataValidator:
     def check_bands(
         self,
         arr: np.ndarray,
-        required_bands: Optional[int] = None,
-    ) -> List[ValidationIssue]:
+        required_bands: int | None = None,
+    ) -> list[ValidationIssue]:
         """Check that the array has at least required_bands channels."""
         issues = []
         if required_bands is None:
             return issues
 
         C = arr.shape[0] if arr.ndim >= 3 else 1
-        if C < required_bands:
+        if required_bands > C:
             issues.append(ValidationIssue(
                 "error", "check_bands",
                 f"Too few bands: have {C}, need ≥ {required_bands}",
@@ -386,8 +386,8 @@ class DataValidator:
     def check_nodata(
         self,
         arr: np.ndarray,
-        nodata_val: Optional[float] = None,
-    ) -> List[ValidationIssue]:
+        nodata_val: float | None = None,
+    ) -> list[ValidationIssue]:
         """Check for excessive no-data coverage."""
         issues = []
         if nodata_val is None:
@@ -406,7 +406,7 @@ class DataValidator:
         self,
         arr: np.ndarray,
         auto_fix: bool = True,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Detect and optionally clip statistical outliers (per-band z-score)."""
         issues = []
         sigma = self.outlier_sigma
@@ -437,7 +437,7 @@ class DataValidator:
     # Model-type specific validation
     # ------------------------------------------------------------------
 
-    _MODEL_REQUIREMENTS: Dict[str, Dict] = {
+    _MODEL_REQUIREMENTS: dict[str, dict] = {
         "segmentation": {
             "min_bands":   1,
             "dtype":       "float32",
@@ -472,7 +472,7 @@ class DataValidator:
 
     def validate_for_inference(
         self,
-        data: Union[str, np.ndarray],
+        data: str | np.ndarray,
         model_type: str = "segmentation",
         auto_normalise: bool = True,
     ) -> np.ndarray:
@@ -553,10 +553,10 @@ class DataValidator:
 
     def validate_for_training(
         self,
-        images: Union[str, np.ndarray, list],
-        labels: Optional[Union[str, np.ndarray]] = None,
-        num_classes: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        images: str | np.ndarray | list,
+        labels: str | np.ndarray | None = None,
+        num_classes: int | None = None,
+    ) -> dict[str, Any]:
         """Validate a training batch (images + optional labels).
 
         Returns:
@@ -572,7 +572,7 @@ class DataValidator:
             )
             print(result["report"].summary())
         """
-        issues: List[ValidationIssue] = []
+        issues: list[ValidationIssue] = []
 
         # Load images
         if isinstance(images, (str, Path)):
@@ -637,7 +637,7 @@ class DataValidator:
 
     def generate_report(
         self,
-        data: Union[str, np.ndarray],
+        data: str | np.ndarray,
         output_path: str,
         fmt: str = "html",
     ) -> str:
@@ -711,7 +711,7 @@ th{{background:#f1f5f9;}}h1{{font-size:1.4rem;}}
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _load_raster(self, path: str) -> Tuple[np.ndarray, Dict]:
+    def _load_raster(self, path: str) -> tuple[np.ndarray, dict]:
         """Load a GeoTIFF into a ``(C, H, W)`` float32 array + profile."""
         try:
             import rasterio

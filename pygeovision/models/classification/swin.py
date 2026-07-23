@@ -1,6 +1,7 @@
 """Swin Transformer for geospatial classification."""
 from typing import Any
 
+
 def build_swin(variant: str = "t", num_classes: int = 10, in_channels: int = 4,
                 pretrained: bool = True, **kwargs) -> Any:
     """Build Swin Transformer (Tiny/Base/Large) for satellite classification.

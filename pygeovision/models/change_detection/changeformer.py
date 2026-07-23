@@ -1,7 +1,9 @@
 """ChangeFormer for bi-temporal satellite change detection."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,7 +20,7 @@ class ChangeFormer:
     """
 
     def __init__(self, num_classes: int = 2, in_channels: int = 4,
-                 backbone: str = "mit-b0", device: Optional[str] = None) -> None:
+                 backbone: str = "mit-b0", device: str | None = None) -> None:
         self.num_classes = num_classes
         self.in_channels = in_channels
         self.backbone = backbone
@@ -34,7 +36,8 @@ class ChangeFormer:
     def build(self) -> Any:
         """Build the ChangeFormer model architecture."""
         try:
-            import torch, torch.nn as nn
+            import torch
+            import torch.nn as nn
         except ImportError:
             raise ImportError("torch required")
 
@@ -98,7 +101,9 @@ class ChangeFormer:
             self.build()
 
         try:
-            import torch, numpy as np, rasterio
+            import numpy as np
+            import rasterio
+            import torch
         except ImportError as exc:
             return {"error": str(exc)}
 
@@ -109,7 +114,7 @@ class ChangeFormer:
         with rasterio.open(after_path) as s2:
             after = s2.read().astype(np.float32)
 
-        def _fix_channels(arr: "np.ndarray", target_c: int) -> "np.ndarray":
+        def _fix_channels(arr: np.ndarray, target_c: int) -> np.ndarray:
             """Return arr with exactly target_c channels (C, H, W)."""
             c = arr.shape[0]
             if c == target_c:

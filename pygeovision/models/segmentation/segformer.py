@@ -1,5 +1,5 @@
 """SegFormer for geospatial semantic segmentation."""
-from typing import Any, Optional
+from typing import Any
 
 
 def build_segformer(variant: str = "b2", num_classes: int = 2, in_channels: int = 4,
@@ -21,8 +21,9 @@ def build_segformer(variant: str = "b2", num_classes: int = 2, in_channels: int 
         "b4": "nvidia/mit-b4", "b5": "nvidia/mit-b5",
     }
     try:
+        import torch
+        import torch.nn as nn
         from transformers import SegformerConfig, SegformerForSemanticSegmentation
-        import torch.nn as nn, torch
 
         hf_id = HF_IDS.get(variant, HF_IDS["b2"])
         config = SegformerConfig.from_pretrained(hf_id)

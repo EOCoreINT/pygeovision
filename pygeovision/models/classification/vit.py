@@ -1,6 +1,7 @@
 """Vision Transformer for geospatial classification."""
 from __future__ import annotations
-from typing import Any, Optional
+
+from typing import Any
 
 
 def build_vit(variant: str = "b16", num_classes: int = 10, in_channels: int = 4,
@@ -23,7 +24,7 @@ def build_vit(variant: str = "b16", num_classes: int = 10, in_channels: int = 4,
         "h14": "google/vit-huge-patch14-224-in21k",
     }
     try:
-        from transformers import ViTForImageClassification, ViTConfig
+        from transformers import ViTConfig, ViTForImageClassification
         config = ViTConfig.from_pretrained(HF_IDS.get(variant, HF_IDS["b16"]))
         config.num_labels = num_classes
         config.num_channels = in_channels

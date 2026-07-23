@@ -16,11 +16,12 @@ Example:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
+
 try:
     import torch
     import torch.nn as nn
@@ -51,7 +52,7 @@ class TiledInferenceConfig:
     device: str = "cpu"
     mixed_precision: bool = True
     num_classes: int = 2
-    activation: Optional[str] = "softmax"
+    activation: str | None = "softmax"
     blend_mode: str = "gaussian"
 
 
@@ -83,9 +84,9 @@ class TiledInference:
         tile_size: int = 512,
         overlap: int = 64,
         batch_size: int = 8,
-        device: Optional[str] = None,
+        device: str | None = None,
         mixed_precision: bool = True,
-        activation: Optional[str] = "softmax",
+        activation: str | None = "softmax",
         blend_mode: str = "gaussian",
     ) -> None:
         self.config = TiledInferenceConfig(
@@ -109,8 +110,8 @@ class TiledInference:
         input_path: str | Path,
         output_path: str | Path,
         num_classes: int = 2,
-        band_indices: Optional[list] = None,
-        preprocessing_fn: Optional[Callable] = None,
+        band_indices: list | None = None,
+        preprocessing_fn: Callable | None = None,
     ) -> np.ndarray:
         """Run tiled inference on a GeoTIFF and write a georeferenced output.
 
@@ -138,7 +139,7 @@ class TiledInference:
         with rasterio.open(input_path) as src:
             height, width = src.height, src.width
             band_count = src.count
-            profile = src.profile.copy()
+            src.profile.copy()
             crs = src.crs
             transform = src.transform
 

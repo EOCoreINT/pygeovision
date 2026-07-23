@@ -6,7 +6,7 @@ t-SNE/UMAP clustering, radar charts — all from the 500+ catalog.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,32 +36,32 @@ class DatasetAnalyzer:
         self._datasets = registry.all()
 
     # ── 5.1 Volume trend ──────────────────────────────────────────────
-    def volume_trend(self, show: bool = True) -> Dict[int, float]:
+    def volume_trend(self, show: bool = True) -> dict[int, float]:
         """Cumulative storage volume added per year (GB → TB)."""
-        year_vol: Dict[int, float] = {}
+        year_vol: dict[int, float] = {}
         for d in self._datasets:
             year_vol[d.year] = year_vol.get(d.year, 0.0) + d.volume_gb
         # Cumulative
         sorted_years = sorted(year_vol.keys())
-        cumulative: Dict[int, float] = {}
+        cumulative: dict[int, float] = {}
         total = 0.0
         for y in sorted_years:
             total += year_vol[y]
             cumulative[y] = round(total / 1024, 2)   # GB → TB
 
         if show:
-            print(f"\nVolume trend (cumulative TB by year):")
+            print("\nVolume trend (cumulative TB by year):")
             for y, tb in sorted(cumulative.items()):
                 bar = "█" * min(int(tb * 2), 60)
                 print(f"  {y}: {bar} {tb:.1f} TB")
         return cumulative
 
     # ── Resolution distribution ───────────────────────────────────────
-    def resolution_distribution(self, bins: Optional[List[float]] = None, show: bool = True) -> Dict[str, int]:
+    def resolution_distribution(self, bins: list[float] | None = None, show: bool = True) -> dict[str, int]:
         """Histogram of spatial resolution (GSD) values."""
         bins = bins or [0.0, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 100.0, float("inf")]
         labels = ["<0.1m","0.1-0.5m","0.5-1m","1-5m","5-10m","10-30m","30-100m",">100m"]
-        counts = {l: 0 for l in labels}
+        counts = dict.fromkeys(labels, 0)
         for d in self._datasets:
             r = d.resolution_m
             for i in range(len(bins) - 1):
@@ -69,16 +69,16 @@ class DatasetAnalyzer:
                     counts[labels[i]] += 1
                     break
         if show:
-            print(f"\nSpatial resolution distribution:")
+            print("\nSpatial resolution distribution:")
             for label, count in counts.items():
                 bar = "█" * count
                 print(f"  {label:>10}: {bar} ({count})")
         return counts
 
     # ── Domain distribution ───────────────────────────────────────────
-    def domain_distribution(self, show: bool = True) -> Dict[str, int]:
+    def domain_distribution(self, show: bool = True) -> dict[str, int]:
         """Count datasets per research domain."""
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for d in self._datasets:
             counts[d.domain] = counts.get(d.domain, 0) + 1
         if show:
@@ -89,13 +89,13 @@ class DatasetAnalyzer:
         return counts
 
     # ── Modality distribution ─────────────────────────────────────────
-    def modality_distribution(self, show: bool = True) -> Dict[str, int]:
+    def modality_distribution(self, show: bool = True) -> dict[str, int]:
         """Count datasets per data modality."""
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for d in self._datasets:
             counts[d.modality] = counts.get(d.modality, 0) + 1
         if show:
-            print(f"\nDataset distribution by modality:")
+            print("\nDataset distribution by modality:")
             for mod, count in sorted(counts.items(), key=lambda x: -x[1]):
                 bar = "█" * count
                 print(f"  {mod:<18}: {bar} ({count})")
@@ -104,9 +104,9 @@ class DatasetAnalyzer:
     # ── Correlation matrix ────────────────────────────────────────────
     def correlation_matrix(
         self,
-        names: Optional[List[str]] = None,
+        names: list[str] | None = None,
         show: bool = True,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """Compute pairwise EarthNets similarity matrix.
 
         Returns an N×N matrix where entry [i][j] is the similarity
@@ -149,8 +149,8 @@ class DatasetAnalyzer:
         self,
         method: str = "tsne",
         n_components: int = 2,
-        save_path: Optional[str] = None,
-    ) -> Optional[Any]:
+        save_path: str | None = None,
+    ) -> Any | None:
         """Cluster all datasets in 2D using t-SNE or UMAP.
 
         Requires: scikit-learn (t-SNE) or umap-learn (UMAP).
@@ -179,7 +179,7 @@ class DatasetAnalyzer:
             features.append(feat)
 
         X = np.array(features)
-        labels = [d.name for d in self._datasets]
+        [d.name for d in self._datasets]
         domains = [d.domain for d in self._datasets]
 
         try:
@@ -220,14 +220,15 @@ class DatasetAnalyzer:
     # ── Radar chart ───────────────────────────────────────────────────
     def radar_chart(
         self,
-        dataset_names: List[str],
-        save_path: Optional[str] = None,
+        dataset_names: list[str],
+        save_path: str | None = None,
         show: bool = True,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """Radar chart comparing datasets across 6 EarthNets dimensions."""
         try:
-            import numpy as np
             import math
+
+            import numpy as np
         except ImportError:
             logger.warning("numpy required: pip install numpy")
             return None
@@ -249,7 +250,7 @@ class DatasetAnalyzer:
         max_log_samples = math.log1p(max(all_samples))
         max_log_vol = math.log1p(max(all_vols))
 
-        def _features(d: Any) -> List[float]:
+        def _features(d: Any) -> list[float]:
             return [
                 1.0 - min(math.log1p(d.resolution_m) / max_res_log, 1.0),  # Resolution (finer=higher)
                 math.log1p(d.n_samples) / max_log_samples,                 # Scale
@@ -298,7 +299,7 @@ class DatasetAnalyzer:
             return None
 
     # ── Summary report ────────────────────────────────────────────────
-    def full_report(self) -> Dict[str, Any]:
+    def full_report(self) -> dict[str, Any]:
         """Generate complete EarthNets-style catalog analysis report."""
         s = self.registry.summary()
         return {

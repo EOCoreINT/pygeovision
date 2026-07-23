@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Microsoft Building Footprints are distributed as Azure Blob Storage files
 # partitioned by quadkey. Coverage index:
 MS_BUILDINGS_INDEX_URL = (
-    "https://minedbuildings.blob.core.windows.net/global-buildings/dataset-links.csv"
+    "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
 )
 
 
@@ -53,7 +53,7 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
 
     def __init__(
         self,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
         confidence_threshold: float = 0.5,
         quadkey_zoom: int = 9,
     ) -> None:
@@ -61,7 +61,7 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
         self.cache_dir = Path(cache_dir) if cache_dir else Path(".pygeovision_cache/ms_buildings")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.quadkey_zoom = quadkey_zoom
-        self._index_cache: Optional[dict[str, str]] = None
+        self._index_cache: dict[str, str] | None = None
 
     @property
     def name(self) -> str:
@@ -149,7 +149,7 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
     def _ensure_wgs84_bounds(
         self,
         tile: TileMetadata,
-    ) -> Optional[tuple[float, float, float, float]]:
+    ) -> tuple[float, float, float, float] | None:
         """Reproject tile bounds to WGS84 if necessary."""
         bounds = tile.bounds
         if tile.crs == "EPSG:4326":

@@ -71,12 +71,9 @@ Key physical constants
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -134,11 +131,11 @@ class InSARPairInfo:
     primary_date:   str   # YYYYMMDD
     secondary_date: str   # YYYYMMDD
     temporal_baseline_days: int
-    perpendicular_baseline_m: Optional[float] = None
+    perpendicular_baseline_m: float | None = None
     subswath:       str = "IW2"
-    relative_orbit: Optional[int] = None
+    relative_orbit: int | None = None
     pass_direction: str = "DESCENDING"
-    warnings:       List[str] = field(default_factory=list)
+    warnings:       list[str] = field(default_factory=list)
 
     @property
     def is_suitable(self) -> bool:
@@ -172,34 +169,34 @@ class InSARProcessingResult:
     """Result of the full InSAR processing chain."""
     success:             bool
     # Intermediate products
-    coregistered_stack:  Optional[str] = None
-    interferogram:       Optional[str] = None
-    coherence:           Optional[str] = None
-    filtered_phase:      Optional[str] = None
-    unwrapped_phase:     Optional[str] = None
+    coregistered_stack:  str | None = None
+    interferogram:       str | None = None
+    coherence:           str | None = None
+    filtered_phase:      str | None = None
+    unwrapped_phase:     str | None = None
     # Final displacement products
-    los_displacement_m:  Optional[str] = None   # line-of-sight displacement (m)
-    vertical_disp_m:     Optional[str] = None   # vertical component (m), approx
-    geocoded_product:    Optional[str] = None   # geocoded to WGS84
+    los_displacement_m:  str | None = None   # line-of-sight displacement (m)
+    vertical_disp_m:     str | None = None   # vertical component (m), approx
+    geocoded_product:    str | None = None   # geocoded to WGS84
     # Quality metrics
-    mean_coherence:      Optional[float] = None
-    valid_pixel_fraction: Optional[float] = None
+    mean_coherence:      float | None = None
+    valid_pixel_fraction: float | None = None
     unwrapping_success:  bool = False
     # Processing metadata
-    errors:              List[str] = field(default_factory=list)
-    warnings:            List[str] = field(default_factory=list)
-    processing_log:      List[str] = field(default_factory=list)
+    errors:              list[str] = field(default_factory=list)
+    warnings:            list[str] = field(default_factory=list)
+    processing_log:      list[str] = field(default_factory=list)
 
 
 # ── Step 1: Pair selection ────────────────────────────────────────────────────
 
 def select_insar_pair(
-    scenes: List[dict],
+    scenes: list[dict],
     max_temporal_baseline_days: int = 24,
     max_perpendicular_baseline_m: float = 200.0,
     preferred_subswath: str = "IW2",
     land_cover: str = "mixed",
-) -> Optional[InSARPairInfo]:
+) -> InSARPairInfo | None:
     """
     Select the optimal primary/secondary SLC pair from a list of scenes.
 
@@ -305,8 +302,8 @@ def generate_snap_graph(
     secondary_zip:  str,
     output_dir:     str,
     subswath:       str = "IW2",
-    bursts:         Optional[List[int]] = None,
-    dem_path:       Optional[str] = None,
+    bursts:         list[int] | None = None,
+    dem_path:       str | None = None,
     polarisation:   str = "VV",
     goldstein_alpha: float = GOLDSTEIN_ALPHA,
 ) -> str:
@@ -370,7 +367,7 @@ def generate_snap_graph(
 
     # Output file paths
     ifg_output   = str(output_dir / "interferogram_goldstein.dim")
-    stack_output = str(output_dir / "coregistered_stack.dim")
+    str(output_dir / "coregistered_stack.dim")
 
     graph_xml = f"""<graph id="S1_TOPSAR_InSAR_Chain">
   <version>1.0</version>
@@ -613,7 +610,7 @@ def run_snap_graph(
     graph_path: str,
     snap_gpt:   str = "gpt",
     java_heap_gb: int = 16,
-    n_threads:  Optional[int] = None,
+    n_threads:  int | None = None,
     timeout_h:  float = 12.0,
 ) -> bool:
     """
@@ -631,7 +628,7 @@ def run_snap_graph(
     """
     cmd = [snap_gpt, graph_path, f"-J-Xmx{java_heap_gb}g"]
     if n_threads:
-        cmd.extend([f"-q", str(n_threads)])
+        cmd.extend(["-q", str(n_threads)])
 
     logger.info(f"Running SNAP graph: {Path(graph_path).name}")
     logger.info(f"Command: {' '.join(cmd)}")
@@ -669,7 +666,7 @@ def prepare_snaphu_config(
     mode:               str = "DEFO",
     coherence_threshold: float = COHERENCE_THRESHOLD_UNWRAP,
     n_processors:       int = 4,
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     """
     Prepare SNAPHU configuration and return (config_path, cmd_string).
 
@@ -791,7 +788,7 @@ def run_snaphu(
     coherence_threshold: float = COHERENCE_THRESHOLD_UNWRAP,
     n_processors:       int = 4,
     timeout_h:          float = 12.0,
-) -> Optional[str]:
+) -> str | None:
     """
     Run SNAPHU phase unwrapping and return path to unwrapped phase file.
 
@@ -870,8 +867,8 @@ def phase_to_los_displacement(
 def los_to_vertical_displacement(
     d_los: np.ndarray,
     incidence_angle_deg: float,
-    heading_deg: Optional[float] = None,
-) -> Dict[str, np.ndarray]:
+    heading_deg: float | None = None,
+) -> dict[str, np.ndarray]:
     """
     Decompose LOS displacement into vertical (and optionally horizontal) components.
 
@@ -950,7 +947,7 @@ def compute_sensitivity_to_noise(
     wavelength_m: float = SENTINEL1_WAVELENGTH_M,
     coherence: float = 0.5,
     n_looks: int = 4,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Compute InSAR phase noise and resulting displacement uncertainty.
 
@@ -1003,9 +1000,9 @@ def compute_sensitivity_to_noise(
 def estimate_linear_aps(
     unwrapped_phase: np.ndarray,
     elevation:       np.ndarray,
-    coherence:       Optional[np.ndarray] = None,
+    coherence:       np.ndarray | None = None,
     coherence_min:   float = 0.5,
-) -> Tuple[np.ndarray, Dict[str, float]]:
+) -> tuple[np.ndarray, dict[str, float]]:
     """
     Estimate and remove linear elevation-phase tropospheric delay (APS).
 
@@ -1032,7 +1029,6 @@ def estimate_linear_aps(
         (corrected_phase, stats_dict) where corrected_phase has the linear
         elevation-phase correlation removed.
     """
-    from numpy.polynomial import polynomial as P
 
     valid = np.isfinite(unwrapped_phase) & np.isfinite(elevation)
     if coherence is not None:
@@ -1089,8 +1085,8 @@ def estimate_linear_aps(
 
 def analyse_coherence(
     coherence: np.ndarray,
-    valid_mask: Optional[np.ndarray] = None,
-) -> Dict[str, float]:
+    valid_mask: np.ndarray | None = None,
+) -> dict[str, float]:
     """
     Compute coherence statistics for quality assessment and reporting.
 
@@ -1165,7 +1161,7 @@ class SLCInSARPipeline:
         self,
         output_dir:   str,
         subswath:     str   = "IW2",
-        bursts:       Optional[List[int]] = None,
+        bursts:       list[int] | None = None,
         polarisation: str   = "VV",
         snap_gpt:     str   = "gpt",
         java_heap_gb: int   = 16,
@@ -1188,7 +1184,7 @@ class SLCInSARPipeline:
         self,
         primary_zip:   str,
         secondary_zip: str,
-        dem_path:      Optional[str] = None,
+        dem_path:      str | None = None,
         apply_linear_aps: bool = True,
     ) -> InSARProcessingResult:
         """
@@ -1368,8 +1364,8 @@ class SLCInSARPipeline:
     def _run_terrain_correction(
         self,
         input_dim: str,
-        dem_path: Optional[str] = None,
-    ) -> Optional[str]:
+        dem_path: str | None = None,
+    ) -> str | None:
         """Run Range-Doppler terrain correction to geocode to WGS84."""
         output_path = str(self.output_dir / "geocoded_displacement.dim")
 

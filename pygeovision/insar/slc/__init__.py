@@ -31,11 +31,11 @@ Quick start::
     print(result.displacement_m.min(), result.displacement_m.max())
 """
 
-from pygeovision.insar.slc.pipeline      import SLCInSARPipeline, SLCInSARResult
-from pygeovision.insar.slc.snap_graph    import SNAPGraph, check_snap, check_snapista
-from pygeovision.insar.slc.snaphu        import SnaphuUnwrapper, unwrap_phase
-from pygeovision.insar.slc.displacement  import slc_phase_to_displacement, los_to_vertical
-from pygeovision.insar.slc.sentinel1     import S1SLCProduct, parse_s1_slc_manifest
+from pygeovision.insar.slc.displacement import los_to_vertical, slc_phase_to_displacement
+from pygeovision.insar.slc.pipeline import SLCInSARPipeline, SLCInSARResult
+from pygeovision.insar.slc.sentinel1 import S1SLCProduct, parse_s1_slc_manifest
+from pygeovision.insar.slc.snap_graph import SNAPGraph, check_snap, check_snapista
+from pygeovision.insar.slc.snaphu import SnaphuUnwrapper, unwrap_phase
 
 __all__ = [
     "SLCInSARPipeline", "SLCInSARResult",

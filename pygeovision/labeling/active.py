@@ -3,9 +3,10 @@ Active Learning Pipeline (E3, D4) — Human-in-the-loop labeling.
 Selects the most informative unlabeled samples for annotation.
 """
 from __future__ import annotations
+
 import logging
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,18 +53,18 @@ class ActiveLearner:
         self.n_iterations = n_iterations
         self.batch_size = batch_size
         self.seed = seed
-        self._labeled: List[Dict] = []
+        self._labeled: list[dict] = []
         self._iteration = 0
-        self._history: List[Dict] = []
+        self._history: list[dict] = []
 
     # ── Selection strategies ───────────────────────────────────────────────────
     def select(
         self,
         model: Any,
         unlabeled_pool: Any,
-        n_select: Optional[int] = None,
-        device: Optional[str] = None,
-    ) -> List[Dict]:
+        n_select: int | None = None,
+        device: str | None = None,
+    ) -> list[dict]:
         """Select the most informative samples from the unlabeled pool.
 
         Args:
@@ -95,9 +96,10 @@ class ActiveLearner:
             random.shuffle(pool)
             return pool[:n_select]
 
-    def _uncertainty_select(self, model, pool, n_select, device) -> List[Dict]:
+    def _uncertainty_select(self, model, pool, n_select, device) -> list[dict]:
         """Score samples by prediction uncertainty."""
-        import torch, numpy as np
+        import numpy as np
+        import torch
 
         model.eval()
         scores = []
@@ -140,9 +142,10 @@ class ActiveLearner:
                     self.strategy, len(selected), len(scores))
         return selected
 
-    def _coreset_select(self, model, pool, n_select, device) -> List[Dict]:
+    def _coreset_select(self, model, pool, n_select, device) -> list[dict]:
         """Core-set selection: maximise feature space coverage."""
-        import torch, numpy as np
+        import numpy as np
+        import torch
 
         model.eval()
         features = []
@@ -176,9 +179,10 @@ class ActiveLearner:
 
         return [items[i] for i in selected_idx]
 
-    def _committee_select(self, model, pool, n_select, device) -> List[Dict]:
+    def _committee_select(self, model, pool, n_select, device) -> list[dict]:
         """Query by committee using MC Dropout for multiple stochastic predictions."""
-        import torch, numpy as np
+        import numpy as np
+        import torch
 
         # Enable dropout for inference
         def _enable_dropout(m):
@@ -210,11 +214,13 @@ class ActiveLearner:
         scores.sort(key=lambda x: x[0], reverse=True)
         return [s[1] for s in scores[:n_select]]
 
-    def _load_image(self, path: Optional[str], device: Any) -> Optional[Any]:
+    def _load_image(self, path: str | None, device: Any) -> Any | None:
         if path is None:
             return None
         try:
-            import torch, rasterio, numpy as np
+            import numpy as np
+            import rasterio
+            import torch
             with rasterio.open(path) as src:
                 data = src.read().astype(np.float32)
             data = (data - data.min()) / (data.max() - data.min() + 1e-8)
@@ -241,7 +247,7 @@ class ActiveLearner:
         return np.zeros(128)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
-    def update(self, newly_labeled: List[Dict]) -> "ActiveLearner":
+    def update(self, newly_labeled: list[dict]) -> ActiveLearner:
         """Add newly annotated samples to the labeled set."""
         self._labeled.extend(newly_labeled)
         self._iteration += 1
@@ -254,14 +260,12 @@ class ActiveLearner:
         model: Any,
         config: Any,
         unlabeled_pool: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run one full active learning iteration:
         select → annotate (manual) → retrain → evaluate.
 
         Returns dict with val_iou improvement history.
         """
-        from pygeovision.training import GeoTrainer
-        import torch
 
         selected = self.select(model, unlabeled_pool)
         logger.info("Iteration %d: selected %d samples for annotation",
@@ -281,10 +285,10 @@ class ActiveLearner:
         return result
 
     @property
-    def history(self) -> List[Dict]:
+    def history(self) -> list[dict]:
         return self._history
 
-    def plot_learning_curve(self, save_path: Optional[str] = None) -> None:
+    def plot_learning_curve(self, save_path: str | None = None) -> None:
         """Plot val_iou vs annotation budget."""
         if not self._history:
             logger.warning("No active learning history to plot")

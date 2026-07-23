@@ -26,11 +26,11 @@ Heuristic planning (no API key — covers ~80% of common workflows)::
     agent = GeoAgent(client)  # auto-detects no key → heuristic mode
 """
 
-from pygeovision.agent.core     import GeoAgent
-from pygeovision.agent.tools    import GeoTool, ToolResult, TOOL_REGISTRY, build_tools
-from pygeovision.agent.planner  import Plan, Step, LLMPlanner, HeuristicPlanner
-from pygeovision.agent.executor import PlanExecutor, ExecutionTrace, StepExecution
-from pygeovision.agent.memory   import GeoAgentMemory, Turn
+from pygeovision.agent.core import GeoAgent
+from pygeovision.agent.executor import ExecutionTrace, PlanExecutor, StepExecution
+from pygeovision.agent.memory import GeoAgentMemory, Turn
+from pygeovision.agent.planner import HeuristicPlanner, LLMPlanner, Plan, Step
+from pygeovision.agent.tools import TOOL_REGISTRY, GeoTool, ToolResult, build_tools
 
 __all__ = [
     "GeoAgent",

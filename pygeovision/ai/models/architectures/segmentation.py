@@ -9,7 +9,7 @@ of input bands and output classes.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +18,8 @@ def build_unet(
     encoder: str = "resnet50",
     in_channels: int = 3,
     num_classes: int = 2,
-    encoder_weights: Optional[str] = "imagenet",
-    activation: Optional[str] = None,
+    encoder_weights: str | None = "imagenet",
+    activation: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Build a U-Net segmentation model.
@@ -72,7 +72,7 @@ def build_deeplabv3plus(
     encoder: str = "resnet101",
     in_channels: int = 3,
     num_classes: int = 2,
-    encoder_weights: Optional[str] = "imagenet",
+    encoder_weights: str | None = "imagenet",
     encoder_output_stride: int = 16,
     **kwargs: Any,
 ) -> Any:
@@ -151,7 +151,7 @@ def build_segformer(
         )
 
     try:
-        from transformers import SegformerForSemanticSegmentation, SegformerConfig
+        from transformers import SegformerConfig, SegformerForSemanticSegmentation
 
         if pretrained:
             model = SegformerForSemanticSegmentation.from_pretrained(
@@ -222,7 +222,7 @@ def build_fpn(
     encoder: str = "resnet50",
     in_channels: int = 3,
     num_classes: int = 2,
-    encoder_weights: Optional[str] = "imagenet",
+    encoder_weights: str | None = "imagenet",
     **kwargs: Any,
 ) -> Any:
     """Build an FPN (Feature Pyramid Network) segmentation model.
@@ -257,7 +257,7 @@ def build_pan(
     encoder: str = "resnet50",
     in_channels: int = 3,
     num_classes: int = 2,
-    encoder_weights: Optional[str] = "imagenet",
+    encoder_weights: str | None = "imagenet",
     **kwargs: Any,
 ) -> Any:
     """Build a PAN (Pyramid Attention Network) segmentation model.

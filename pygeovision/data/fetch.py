@@ -47,22 +47,24 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
-from pygeovision.core.exceptions import PyGeoVisionError
 from pygeovision.data.providers import (
-    PROVIDERS, STAC_PROVIDERS, SATELLITE_SHORTCUTS,
-    COLLECTION_TO_PROVIDER, DEFAULT_SEARCH_PROVIDERS, OPEN_PROVIDERS,
+    COLLECTION_TO_PROVIDER,
+    DEFAULT_SEARCH_PROVIDERS,
+    OPEN_PROVIDERS,
+    PROVIDERS,
+    SATELLITE_SHORTCUTS,
 )
 
 logger = logging.getLogger(__name__)
 
 # Check if pygeofetch is available
-_PYGEOFETCH_AVAILABLE: Optional[bool] = None
+_PYGEOFETCH_AVAILABLE: bool | None = None
 
 # CLI fallback — used by tests and when Python API is unavailable
-_PYGEOFETCH_PY_AVAILABLE: Optional[bool] = None   # Python API availability
-_PYGEOFETCH_CLI_EXE: Optional[str] = None          # Path to pygeofetch CLI executable
+_PYGEOFETCH_PY_AVAILABLE: bool | None = None   # Python API availability
+_PYGEOFETCH_CLI_EXE: str | None = None          # Path to pygeofetch CLI executable
 _PYGEOFETCH_CLI_CHECKED: bool = False              # Whether we've already checked for CLI
 
 # Search-result cache schema version. Bump this whenever the cached
@@ -83,9 +85,12 @@ def _check_pygeofetch() -> bool:
     if _PYGEOFETCH_AVAILABLE is None:
         try:
             from pygeofetch import PyGeoFetch as _pgf  # noqa: F401
-            from pygeofetch.models.search_query import SearchQuery  # noqa: F401
-            from pygeofetch.models.download_task import DownloadOptions, PostProcessAction  # noqa: F401
+            from pygeofetch.models.download_task import (  # noqa: F401
+                DownloadOptions,
+                PostProcessAction,
+            )
             from pygeofetch.models.satellite_data import SatelliteData  # noqa: F401
+            from pygeofetch.models.search_query import SearchQuery  # noqa: F401
             _PYGEOFETCH_AVAILABLE = True
             _PYGEOFETCH_PY_AVAILABLE = True
         except ImportError:
@@ -94,7 +99,7 @@ def _check_pygeofetch() -> bool:
     return _PYGEOFETCH_AVAILABLE
 
 
-def _check_cli() -> Optional[str]:
+def _check_cli() -> str | None:
     """Detect pygeofetch CLI executable. Returns path or None."""
     global _PYGEOFETCH_CLI_EXE, _PYGEOFETCH_CLI_CHECKED
     if _PYGEOFETCH_CLI_CHECKED:
@@ -114,8 +119,8 @@ def _use_cli_mode() -> bool:
 
 _MIN_PIXEL_SIZE_M   = 0.3    # WorldView-3 finest commercial res
 _MAX_ORIGIN_FOR_PIXEL = 1e4  # Real UTM origins are >100 km from equator
- 
- 
+
+
 def _is_pixel_space_transform(transform) -> bool:
     """Return True when *transform* looks like a pixel-space / identity matrix.
  
@@ -138,7 +143,7 @@ def _is_pixel_space_transform(transform) -> bool:
     if a < _MIN_PIXEL_SIZE_M:
         return True
     return False
- 
+
 def _rescue_geotransform(src_path: Path, target_crs: str):
     """Attempt to recover a valid affine transform for a corrupt-georef file.
  
@@ -152,9 +157,9 @@ def _rescue_geotransform(src_path: Path, target_crs: str):
     Returns (transform, crs_wkt) or (None, None) if recovery is impossible.
     """
     import rasterio
-    from rasterio.crs import CRS
     from affine import Affine
- 
+    from rasterio.crs import CRS
+
     try:
         with rasterio.open(str(src_path)) as src:
             # ── Strategy 1: GCPs ──────────────────────────────────────────
@@ -171,9 +176,9 @@ def _rescue_geotransform(src_path: Path, target_crs: str):
                         return t, (gcp_crs or CRS.from_epsg(4326)).to_wkt()
                 except Exception as gcp_exc:
                     logger.debug("GCP transform failed: %s", gcp_exc)
- 
-            width, height = src.width, src.height
- 
+
+            _width, _height = src.width, src.height
+
             # ── Strategy 2: tags / descriptions ──────────────────────────
             # Some GDAL drivers write the source bounds into image description
             # or dataset-level metadata when they can't preserve the transform.
@@ -193,7 +198,7 @@ def _rescue_geotransform(src_path: Path, target_crs: str):
                                 return t, target_crs
     except Exception as exc:
         logger.debug("_rescue_geotransform open failed: %s", exc)
- 
+
     # ── Strategy 3: Sentinel-1 GRD heuristic ─────────────────────────────
     # The filename encodes the scene: iw-vh_EPSG_32630_cog.tiff
     # We can't reconstruct exact coordinates without the original metadata,
@@ -207,7 +212,7 @@ def _rescue_geotransform(src_path: Path, target_crs: str):
         src_path.name
     )
     return None, None
- 
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -223,12 +228,12 @@ class SearchResult:
     provider: str
     satellite: str
     datetime: str
-    cloud_cover: Optional[float]
-    bbox: Optional[Tuple[float, float, float, float]]
-    score: Optional[float] = None
+    cloud_cover: float | None
+    bbox: tuple[float, float, float, float] | None
+    score: float | None = None
     collection: str = ""
-    assets: Dict[str, Any] = field(default_factory=dict)
-    properties: Dict[str, Any] = field(default_factory=dict)
+    assets: dict[str, Any] = field(default_factory=dict)
+    properties: dict[str, Any] = field(default_factory=dict)
     # Native pygeofetch SatelliteData object for direct operations
     satellite_data: Any = field(default=None, repr=False)
 
@@ -242,7 +247,7 @@ class SearchResult:
         return any(s in sat for s in ["sentinel-1", "palsar", "sar", "ers"])
 
     @property
-    def resolution_m(self) -> Optional[float]:
+    def resolution_m(self) -> float | None:
         for key in ["gsd", "resolution", "spatial_resolution"]:
             v = self.properties.get(key)
             if v is not None:
@@ -256,7 +261,7 @@ class SearchResult:
         if "pleiades" in sat:   return 0.5
         return None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to simple dictionary for serialization.
 
         IMPORTANT: includes 'assets' so that the 1-hour search cache
@@ -294,13 +299,13 @@ class DownloadResult:
     """Result from a pygeofetch download operation."""
     scene_id: str
     provider: str = ""
-    path: Optional[Path] = None
+    path: Path | None = None
     success: bool = True
     bytes_downloaded: int = 0
     duration_seconds: float = 0.0
     checksum_verified: bool = False
     error: str = ""
-    post_process_steps: List[str] = field(default_factory=list)
+    post_process_steps: list[str] = field(default_factory=list)
 
     @property
     def size_mb(self) -> float:
@@ -344,8 +349,8 @@ class SatelliteFetcher:
 
     def __init__(
         self,
-        config_path: Optional[Path] = None,
-        cache_dir: Optional[Path] = None,
+        config_path: Path | None = None,
+        cache_dir: Path | None = None,
         log_level: str = "WARNING",
     ) -> None:
         """Initialize the fetcher.
@@ -358,7 +363,7 @@ class SatelliteFetcher:
         self.config_path = config_path
         self.cache_dir = cache_dir or Path.home() / ".pygeovision" / "search_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._credentials: Dict[str, Dict[str, str]] = {}
+        self._credentials: dict[str, dict[str, str]] = {}
 
         # Bypass module-level cache: do a fresh import check so that test injection
         # of _PYGEOFETCH_PY_AVAILABLE=False cannot poison newly-constructed instances.
@@ -394,12 +399,12 @@ class SatelliteFetcher:
     def add_credentials(
         self,
         provider: str,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        api_key: Optional[str] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-    ) -> "SatelliteFetcher":
+        username: str | None = None,
+        password: str | None = None,
+        api_key: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+    ) -> SatelliteFetcher:
         """Add provider credentials.
 
         Credentials are stored securely via pygeofetch's auth system.
@@ -451,8 +456,8 @@ class SatelliteFetcher:
             # even when AuthManager.add_credentials() is broken.
             if username and password:
                 try:
+
                     from pygeofetch.models.user_auth import Credentials as PgfCreds
-                    import enum as _enum
 
                     # Build a credentials object — auth type varies by version
                     creds_kwargs = {
@@ -518,7 +523,7 @@ class SatelliteFetcher:
         cli_exe  = getattr(self, "_instance_cli_exe", None)
         return py_avail is False and cli_exe is not None
 
-    def list_credentials(self) -> List[str]:
+    def list_credentials(self) -> list[str]:
         """List providers with stored credentials."""
         return [item["provider"] for item in self._engine.auth.list()]
 
@@ -537,23 +542,23 @@ class SatelliteFetcher:
 
     def search(
         self,
-        bbox: Tuple[float, float, float, float],
-        date_range: Tuple[str, str],
-        collections: Optional[List[str]] = None,
-        providers: Optional[List[str]] = None,
-        satellite: Optional[str] = None,
+        bbox: tuple[float, float, float, float],
+        date_range: tuple[str, str],
+        collections: list[str] | None = None,
+        providers: list[str] | None = None,
+        satellite: str | None = None,
         cloud_cover_max: float = 30.0,
         max_results: int = 100,
         sort_by: str = "datetime",
         sort_order: str = "desc",
-        processing_level: Optional[str] = None,
-        resolution_range: Optional[Tuple[float, float]] = None,
-        cql2_filter: Optional[str] = None,
+        processing_level: str | None = None,
+        resolution_range: tuple[float, float] | None = None,
+        cql2_filter: str | None = None,
         on_provider_failure: str = "skip",
         timeout: int = 120,
         use_cache: bool = True,
-        geometry_file: Optional[Path] = None,
-    ) -> List[SearchResult]:
+        geometry_file: Path | None = None,
+    ) -> list[SearchResult]:
         """Search for satellite imagery across providers.
 
         Args:
@@ -593,11 +598,12 @@ class SatelliteFetcher:
             bbox, date_range[0], date_range[1], cloud_cover_max,
         )
 
-        results: List[SearchResult] = []
+        results: list[SearchResult] = []
 
         # ── Path A: CLI fallback ──────────────────────────────────────
         if self._use_cli():
-            import tempfile, os
+            import os
+            import tempfile
             with tempfile.NamedTemporaryFile(suffix=".geojson", delete=False) as tmp:
                 tmp_path = tmp.name
             try:
@@ -626,8 +632,9 @@ class SatelliteFetcher:
         # ── Path B: Python API (primary) ─────────────────────────────
         elif _PYGEOFETCH_PY_AVAILABLE is not False:
             try:
-                from pygeofetch.models.search_query import SearchQuery, BoundingBox
                 from datetime import date as _date
+
+                from pygeofetch.models.search_query import BoundingBox, SearchQuery
 
                 # Build BoundingBox properly using PyGeoFetch's native model
                 pgf_bbox = BoundingBox.from_string(
@@ -732,15 +739,15 @@ class SatelliteFetcher:
 
     def _search_pystac_fallback(
         self,
-        bbox: Tuple[float, float, float, float],
-        date_range: Tuple[str, str],
-        providers: List[str],
+        bbox: tuple[float, float, float, float],
+        date_range: tuple[str, str],
+        providers: list[str],
         cloud_cover_max: float,
         max_results: int,
-        collections: Optional[List[str]],
-    ) -> List["SearchResult"]:
+        collections: list[str] | None,
+    ) -> list[SearchResult]:
         """pystac_client fallback when both Python API and CLI are unavailable."""
-        results: List[SearchResult] = []
+        results: list[SearchResult] = []
         try:
             import pystac_client
         except ImportError:
@@ -796,7 +803,6 @@ class SatelliteFetcher:
                             self._credentials.get("copernicus_dataspace") or {}
                     if creds:
                         # Build auth header for Copernicus STAC
-                        import requests, base64
                         user = creds.get("username", "")
                         pwd  = creds.get("password", "")
                         if user and pwd:
@@ -851,7 +857,7 @@ class SatelliteFetcher:
                 logger.warning("%s: pystac fallback failed: %s", provider, exc)
         return results
 
-    def _satellite_data_to_result(self, sd: Any) -> "SearchResult":
+    def _satellite_data_to_result(self, sd: Any) -> SearchResult:
         """Convert pygeofetch SatelliteData → SearchResult using the bridge."""
         from pygeovision.data.pgf_bridge import _pgf_satellite_data_to_pgv
         return _pgf_satellite_data_to_pgv(sd)
@@ -862,20 +868,20 @@ class SatelliteFetcher:
 
     def download(
         self,
-        items: Union[List[SearchResult], SearchResult],
-        output_dir: Union[str, Path] = "./data",
+        items: list[SearchResult] | SearchResult,
+        output_dir: str | Path = "./data",
         parallel: int = 4,
         verify_checksum: bool = True,
         resume: bool = True,
         retry_attempts: int = 5,
-        post_process: Optional[List[str]] = None,
-        bandwidth_limit_mb: Optional[float] = None,
+        post_process: list[str] | None = None,
+        bandwidth_limit_mb: float | None = None,
         on_failure: str = "skip",
         overwrite: bool = False,
-        notify_webhook: Optional[str] = None,
-        max_items: Optional[int] = None,
+        notify_webhook: str | None = None,
+        max_items: int | None = None,
         priority: str = "normal",
-    ) -> List["DownloadResult"]:
+    ) -> list[DownloadResult]:
         """Download satellite scenes with progress display."""
         import sys
 
@@ -891,7 +897,6 @@ class SatelliteFetcher:
 
         # ── CLI fallback ─────────────────────────────────────────────
         if self._use_cli():
-            import json as _json, tempfile
             # Write search results to a temp JSON so CLI can read them
             ids_str = ",".join(item.id for item in items)
             args = [
@@ -975,7 +980,7 @@ class SatelliteFetcher:
                 )
 
         # Download pystac fallback items directly
-        direct_results: List[DownloadResult] = []
+        direct_results: list[DownloadResult] = []
         if stac_items:
             logger.info(
                 "Downloading %d pystac-fallback item(s) directly (bypassing PyGeoFetch engine).",
@@ -1077,14 +1082,14 @@ class SatelliteFetcher:
         # `pgf_result.data_id == item.id` is fragile across pygeofetch
         # versions, and a mismatch silently produced
         # DownloadResult(path=None) for items that actually downloaded
-        # successfully — which then crashed geoai with:
+        # successfully — which then crashed the downstream AI pipeline with:
         #     RasterioIOError: None: No such file or directory
         # because str(None) == "None" got passed to rasterio.open().
         # ------------------------------------------------------------
         items_with_data = [item for item in items if item.satellite_data is not None]
         items_with_data_ids = {id(i) for i in items_with_data}
 
-        download_results: List[DownloadResult] = []
+        download_results: list[DownloadResult] = []
         n_results = len(results)
 
         for idx, item in enumerate(items_with_data):
@@ -1122,7 +1127,6 @@ class SatelliteFetcher:
                         creds.get("username", ""), creds.get("password", "")
                     )
                     if token:
-                        auth_hdrs = {"Authorization": f"Bearer {token}"}
                         # Use download.dataspace.copernicus.eu directly —
                         # catalogue.dataspace.copernicus.eu redirects here and
                         # requests drops the Authorization header on cross-domain
@@ -1217,11 +1221,11 @@ class SatelliteFetcher:
 
     def _download_stac_item_direct(
         self,
-        item: "SearchResult",
+        item: SearchResult,
         output_dir: Path,
-        post_process: Optional[List[str]],
-        bandwidth_limit_mb: Optional[float],
-    ) -> "DownloadResult":
+        post_process: list[str] | None,
+        bandwidth_limit_mb: float | None,
+    ) -> DownloadResult:
         """
         Download a STAC search result directly using requests, bypassing PyGeoFetch.
 
@@ -1367,7 +1371,7 @@ class SatelliteFetcher:
         self,
         product_name: str,
         auth_headers: dict,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Query Copernicus OData API by product name to get the direct download URL.
 
@@ -1383,7 +1387,8 @@ class SatelliteFetcher:
         Returns:
             Direct download URL string, or None if lookup fails.
         """
-        import urllib.request, json as _json
+        import json as _json
+        import urllib.request
 
         # Copernicus product names end in .SAFE — try with and without
         safe_name = product_name if product_name.endswith(".SAFE") else f"{product_name}.SAFE"
@@ -1499,8 +1504,8 @@ class SatelliteFetcher:
     def _apply_post_process(
         self,
         input_path: Path,
-        steps: List[str],
-    ) -> Optional[Path]:
+        steps: list[str],
+    ) -> Path | None:
         """
         Replacement for SatelliteFetcher._apply_post_process().
     
@@ -1513,24 +1518,24 @@ class SatelliteFetcher:
         """
         import shutil
         import subprocess
-    
+
         try:
             import rasterio
-            from rasterio.warp import calculate_default_transform, reproject, Resampling
             from rasterio.crs import CRS
+            from rasterio.warp import Resampling, calculate_default_transform, reproject
         except ImportError:
             logger.error("rasterio not installed — cannot post-process")
             return input_path
-    
+
         current = input_path
-    
+
         for step in steps:
             step = step.strip()
-    
+
             # ── reproject:EPSG:XXXXX ────────────────────────────────────────
             if step.startswith("reproject:"):
                 target_crs = step.split(":", 1)[1].strip()
-    
+
                 with rasterio.open(str(current)) as src:
                     src_transform = src.transform
                     src_crs       = src.crs
@@ -1538,9 +1543,7 @@ class SatelliteFetcher:
                     src_height    = src.height
                     src_meta      = src.meta.copy()
                     src_count     = src.count
-                    src_dtypes    = src.dtypes
-                    src_nodata    = src.nodata
-    
+
                 # ── Detect corrupt geotransform ───────────────────────────────
                 if _is_pixel_space_transform(src_transform):
                     logger.warning(
@@ -1561,21 +1564,21 @@ class SatelliteFetcher:
                         # Return what we have; caller's validator will report the issue
                         return current
                     src_transform = rescued_t
-    
+
                 # ── Skip if already in target CRS and transform is valid ──────
                 try:
                     already_there = src_crs and CRS.from_user_input(str(src_crs)) == \
                                                 CRS.from_user_input(target_crs)
                 except Exception:
                     already_there = False
-    
+
                 if already_there and not _is_pixel_space_transform(src_transform):
                     logger.debug(
                         "reproject: %s already in %s with valid transform — skipping",
                         current.name, target_crs
                     )
                     continue
-    
+
                 # ── Compute output transform ──────────────────────────────────
                 try:
                     out_transform, out_w, out_h = calculate_default_transform(
@@ -1586,7 +1589,7 @@ class SatelliteFetcher:
                 except Exception as cdt_exc:
                     logger.error("calculate_default_transform failed: %s", cdt_exc)
                     return current
-    
+
                 # Sanity-check the output transform
                 if _is_pixel_space_transform(out_transform):
                     logger.error(
@@ -1596,7 +1599,7 @@ class SatelliteFetcher:
                         out_transform.a
                     )
                     return current
-    
+
                 out_meta = src_meta.copy()
                 out_meta.update(
                     crs=target_crs,
@@ -1605,7 +1608,7 @@ class SatelliteFetcher:
                     height=out_h,
                     compress="deflate",   # keep output manageable
                 )
-    
+
                 out_path = current.with_name(current.stem + "_repr.tif")
                 tmp_path = out_path.with_suffix(".tmp.tif")
                 try:
@@ -1632,14 +1635,14 @@ class SatelliteFetcher:
                     tmp_path.unlink(missing_ok=True)
                     logger.error("reproject failed: %s", exc)
                     return current
-    
+
             # ── cog ─────────────────────────────────────────────────────────
             elif step == "cog":
                 # Skip if the file was already a COG (e.g. PyGeoFetch already did it)
                 if "_cog" in current.stem.lower():
                     logger.debug("cog step: %s already appears to be a COG — skipping", current.name)
                     continue
-    
+
                 out_path = current.with_name(current.stem + "_cog.tif")
                 tmp_path = out_path.with_suffix(".tmp.tif")
                 try:
@@ -1665,17 +1668,17 @@ class SatelliteFetcher:
                 except Exception as exc:
                     tmp_path.unlink(missing_ok=True)
                     logger.warning("COG step error: %s", exc)
-    
+
             else:
                 logger.warning("Unknown post-process step %r — skipping", step)
-    
+
         return current
 
     # ------------------------------------------------------------------
     # Pipeline
     # ------------------------------------------------------------------
 
-    def run_pipeline(self, pipeline_yaml: Union[str, Path], step: Optional[str] = None) -> Dict[str, Any]:
+    def run_pipeline(self, pipeline_yaml: str | Path, step: str | None = None) -> dict[str, Any]:
         """Run a pygeofetch YAML pipeline."""
         if self._use_cli():
             args = ["pipeline", "run", str(pipeline_yaml)]
@@ -1695,20 +1698,20 @@ class SatelliteFetcher:
         result = p.run()
         return {"success": result.success, "steps": result.steps_completed}
 
-    def validate_pipeline(self, pipeline_yaml: Union[str, Path]) -> bool:
+    def validate_pipeline(self, pipeline_yaml: str | Path) -> bool:
         """Validate a pipeline YAML file."""
         return self._engine.validate_pipeline(pipeline_yaml)
 
-    def schedule_pipeline(self, pipeline_yaml: Union[str, Path],
-                          name: Optional[str] = None, cron: Optional[str] = None) -> bool:
+    def schedule_pipeline(self, pipeline_yaml: str | Path,
+                          name: str | None = None, cron: str | None = None) -> bool:
         """Schedule a pipeline for periodic execution."""
         return self._engine.schedule_pipeline(pipeline_yaml, name=name, cron=cron)
 
-    def list_scheduled_pipelines(self) -> List[Dict]:
+    def list_scheduled_pipelines(self) -> list[dict]:
         """List scheduled pipelines."""
         return self._engine.list_scheduled_pipelines()
 
-    def pipeline_history(self, limit: int = 20) -> List[Dict]:
+    def pipeline_history(self, limit: int = 20) -> list[dict]:
         """Get pipeline execution history."""
         return self._engine.pipeline_history(limit=limit)
 
@@ -1716,7 +1719,7 @@ class SatelliteFetcher:
     # Cache management
     # ------------------------------------------------------------------
 
-    def cache_stats(self) -> Dict[str, Any]:
+    def cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         if self._use_cli():
             import json as _json
@@ -1734,8 +1737,8 @@ class SatelliteFetcher:
             "location": str(self.cache_dir),
         }
 
-    def clear_cache(self, provider: Optional[str] = None,
-                    older_than: Optional[str] = None, dry_run: bool = False) -> None:
+    def clear_cache(self, provider: str | None = None,
+                    older_than: str | None = None, dry_run: bool = False) -> None:
         """Clear search cache."""
         if self._use_cli():
             args = ["cache", "clear"]
@@ -1794,7 +1797,7 @@ class SatelliteFetcher:
     # System
     # ------------------------------------------------------------------
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         """Get system status."""
         try:
             return self._engine.status()
@@ -1806,10 +1809,10 @@ class SatelliteFetcher:
                 "open_providers": OPEN_PROVIDERS,
             }
 
-    def doctor(self) -> Dict[str, Any]:
+    def doctor(self) -> dict[str, Any]:
         """Run diagnostic checks across all PyGeoVision components."""
         import platform
-        report: Dict[str, Any] = {
+        report: dict[str, Any] = {
             "pygeovision": {"ok": True},
             "python":      platform.python_version(),
             "platform":    platform.system(),
@@ -1824,13 +1827,6 @@ class SatelliteFetcher:
                 report["pygeofetch"].update(self._engine.doctor())
         except Exception as exc:
             report["pygeofetch"] = {"ok": False, "error": str(exc)}
-
-        # geoai
-        try:
-            import geoai
-            report["geoai"] = {"ok": True, "version": getattr(geoai, "__version__", "?")}
-        except ImportError:
-            report["geoai"] = {"ok": False, "error": "not installed — pip install geoai-py"}
 
         # torch / CUDA
         try:
@@ -1884,7 +1880,7 @@ class SatelliteFetcher:
         return report
 
     def list_providers(self, auth_only: bool = False, open_only: bool = False,
-                       capabilities: Optional[List[str]] = None) -> Dict[str, Dict]:
+                       capabilities: list[str] | None = None) -> dict[str, dict]:
         """List available providers."""
         providers = dict(PROVIDERS)
         if auth_only:
@@ -1897,7 +1893,7 @@ class SatelliteFetcher:
                     providers = {k: v for k, v in providers.items() if v.get(cap)}
         return providers
 
-    def provider_info(self, provider_id: str) -> Dict:
+    def provider_info(self, provider_id: str) -> dict:
         """Get information about a specific provider."""
         return PROVIDERS.get(provider_id, {})
 
@@ -1909,7 +1905,7 @@ class SatelliteFetcher:
         """Set configuration value."""
         return self._engine.config.set(key, value)
 
-    def config_show(self) -> Dict[str, Any]:
+    def config_show(self) -> dict[str, Any]:
         """Show all configuration."""
         return dict(self._engine.config)
 
@@ -1919,7 +1915,7 @@ class SatelliteFetcher:
     # ── CLI-mode helpers ─────────────────────────────────────────────
     # ------------------------------------------------------------------
 
-    def _run_cli(self, args: List[str], capture: bool = True) -> Any:
+    def _run_cli(self, args: list[str], capture: bool = True) -> Any:
         """Run pygeofetch CLI command. Returns CompletedProcess."""
         import subprocess
         exe = _PYGEOFETCH_CLI_EXE or "pygeofetch"
@@ -1931,7 +1927,7 @@ class SatelliteFetcher:
             text=True,
         )
 
-    def _parse_stac_geojson_file(self, geojson_path: Path) -> List["SearchResult"]:
+    def _parse_stac_geojson_file(self, geojson_path: Path) -> list[SearchResult]:
         """Parse a pygeofetch-style GeoJSON result file into SearchResult objects."""
         import json
         with open(geojson_path, encoding="utf-8") as f:
@@ -1990,7 +1986,7 @@ class SatelliteFetcher:
                 return val
         return collection
 
-    def _get_copernicus_token(self, username: str, password: str) -> Optional[str]:
+    def _get_copernicus_token(self, username: str, password: str) -> str | None:
         """
         Obtain a short-lived OAuth2 bearer token from Copernicus Identity Service.
 
@@ -2009,9 +2005,9 @@ class SatelliteFetcher:
             if time.time() < self._copernicus_token_exp - 30:
                 return self._copernicus_token
 
-        import urllib.request
-        import urllib.parse
         import json as _json
+        import urllib.parse
+        import urllib.request
 
         token_url = (
             "https://identity.dataspace.copernicus.eu"
@@ -2116,12 +2112,12 @@ class SatelliteFetcher:
             return True
         else:
             print(f"  ✗ Copernicus auth FAILED for {username}")
-            print(f"    → Update credentials: client.add_credentials(")
+            print("    → Update credentials: client.add_credentials(")
             print(f"          'copernicus', username='{username}',")
-            print(f"          password='YOUR_CURRENT_PASSWORD')")
+            print("          password='YOUR_CURRENT_PASSWORD')")
             return False
 
-    def _pick_best_asset(self, result: "SearchResult") -> Optional[str]:
+    def _pick_best_asset(self, result: SearchResult) -> str | None:
         """Pick the best available asset key from a SearchResult.
 
         Priority: specific spectral bands > visual > thumbnail > first available.
@@ -2137,7 +2133,7 @@ class SatelliteFetcher:
 
     # ------------------------------------------------------------------
 
-    def _find_downloaded_file(self, output_dir: Path, scene_id: str) -> Optional[Path]:
+    def _find_downloaded_file(self, output_dir: Path, scene_id: str) -> Path | None:
         """Best-effort: locate a downloaded file matching scene_id under output_dir.
 
         Fallback used when a successful pygeofetch DownloadResult doesn't
@@ -2202,7 +2198,7 @@ class SatelliteFetcher:
                 return resolved
         return DEFAULT_SEARCH_PROVIDERS
 
-    def _providers_to_satellites(self, providers: List[str]) -> List[str]:
+    def _providers_to_satellites(self, providers: list[str]) -> list[str]:
         """Convert provider IDs to satellite name hints."""
         sat_map = {
             "planetary_computer": [],
@@ -2223,7 +2219,7 @@ class SatelliteFetcher:
         key_str = f"{bbox}|{date_range}|{sorted(providers)}|{cloud_cover_max}|{sorted(collections or [])}"
         return hashlib.md5(key_str.encode()).hexdigest()
 
-    def _load_cache(self, key: str) -> Optional[List[SearchResult]]:
+    def _load_cache(self, key: str) -> list[SearchResult] | None:
         """Load cached search results.
 
         Validates the cache schema version before trusting the entry.
@@ -2258,7 +2254,7 @@ class SatelliteFetcher:
         except Exception:
             return None
 
-    def _save_cache(self, key: str, results: List[SearchResult]) -> None:
+    def _save_cache(self, key: str, results: list[SearchResult]) -> None:
         """Save search results to cache, tagged with the current schema version."""
         try:
             import json

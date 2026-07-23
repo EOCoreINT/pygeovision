@@ -1,14 +1,16 @@
 """DINOv2/v3 feature extractor for geospatial tasks — independent implementation."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
 class DINOv2GeoExtractor:
     """DINOv2 feature extractor fine-tuned for geospatial data.
 
-    Extracts rich patch-level and image-level features without any GeoAI dependency.
+    Extracts rich patch-level and image-level features, fully native.
     Supports: classification, few-shot learning, dense prediction via linear probing.
 
     Example::
@@ -26,7 +28,7 @@ class DINOv2GeoExtractor:
     }
 
     def __init__(self, model_name: str = "dinov2-base",
-                 device: Optional[str] = None) -> None:
+                 device: str | None = None) -> None:
         self.model_name = model_name
         self.model_id = self.HF_IDS.get(model_name, model_name)
         self.device = device or self._auto_device()
@@ -42,7 +44,7 @@ class DINOv2GeoExtractor:
     def _load(self) -> None:
         if self._model is not None: return
         try:
-            from transformers import AutoModel, AutoImageProcessor
+            from transformers import AutoImageProcessor, AutoModel
             self._processor = AutoImageProcessor.from_pretrained(self.model_id)
             self._model = AutoModel.from_pretrained(self.model_id).to(self.device).eval()
         except ImportError:
@@ -50,9 +52,10 @@ class DINOv2GeoExtractor:
 
     def extract(self, image_path: str) -> Any:
         """Extract CLS token embedding from a satellite image."""
-        import numpy as np, rasterio
-        from PIL import Image
+        import numpy as np
+        import rasterio
         import torch
+        from PIL import Image
 
         self._load()
         with rasterio.open(image_path) as src:

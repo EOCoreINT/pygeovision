@@ -35,17 +35,19 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from pygeovision.insar.slc.sentinel1   import (
-    S1SLCProduct, parse_s1_slc_manifest, validate_slc_pair,
-    SENTINEL1_WAVELENGTH_M, SUBSWATH_INCIDENCE_DEG,
-)
-from pygeovision.insar.slc.snap_graph  import SNAPGraph, check_environment
-from pygeovision.insar.slc.snaphu      import SnaphuConfig, SnaphuUnwrapper
 from pygeovision.insar.slc.displacement import slc_phase_to_displacement
+from pygeovision.insar.slc.sentinel1 import (
+    SENTINEL1_WAVELENGTH_M,
+    SUBSWATH_INCIDENCE_DEG,
+    S1SLCProduct,
+    parse_s1_slc_manifest,
+    validate_slc_pair,
+)
+from pygeovision.insar.slc.snap_graph import SNAPGraph, check_environment
+from pygeovision.insar.slc.snaphu import SnaphuConfig, SnaphuUnwrapper
 
 logger = logging.getLogger("pygeovision.insar.slc.pipeline")
 
@@ -61,11 +63,11 @@ class SLCInSARResult:
     Arrays are only populated when keep_arrays=True in SLCInSARPipeline.run().
     """
     # File paths (always populated)
-    displacement_path:  Optional[str] = None   # LOS + vertical, 2-band GeoTIFF
-    coherence_path:     Optional[str] = None   # Coherence, single-band GeoTIFF
-    interferogram_path: Optional[str] = None   # Wrapped phase GeoTIFF
-    unwrapped_path:     Optional[str] = None   # Unwrapped phase GeoTIFF
-    elevation_path:     Optional[str] = None   # DEM used (terrain corrected)
+    displacement_path:  str | None = None   # LOS + vertical, 2-band GeoTIFF
+    coherence_path:     str | None = None   # Coherence, single-band GeoTIFF
+    interferogram_path: str | None = None   # Wrapped phase GeoTIFF
+    unwrapped_path:     str | None = None   # Unwrapped phase GeoTIFF
+    elevation_path:     str | None = None   # DEM used (terrain corrected)
 
     # Summary statistics
     los_min_m:          float = float("nan")
@@ -77,14 +79,14 @@ class SLCInSARResult:
     temporal_baseline:  float = float("nan")   # Days between acquisitions
 
     # Arrays (populated when keep_arrays=True)
-    los_m:          Optional[np.ndarray] = None
-    vertical_m:     Optional[np.ndarray] = None
-    coherence:      Optional[np.ndarray] = None
+    los_m:          np.ndarray | None = None
+    vertical_m:     np.ndarray | None = None
+    coherence:      np.ndarray | None = None
 
     # Processing metadata
-    master:         Optional[S1SLCProduct] = None
-    slave:          Optional[S1SLCProduct] = None
-    processing_log: List[str]  = field(default_factory=list)
+    master:         S1SLCProduct | None = None
+    slave:          S1SLCProduct | None = None
+    processing_log: list[str]  = field(default_factory=list)
     elapsed_sec:    float      = 0.0
     success:        bool       = False
 
@@ -184,12 +186,12 @@ class SLCInSARPipeline:
         slave_zip:            str,
         output_dir:           str  = "./slc_insar/",
         subswath:             str  = "IW2",
-        bursts:               Tuple[int, int] = (1, 9),
+        bursts:               tuple[int, int] = (1, 9),
         polarisation:         str  = "VV",
         dem_name:             str  = "SRTM 3Sec",
         coherence_threshold:  float = 0.3,
-        gpt_path:             Optional[str] = None,
-        snaphu_exe:           Optional[str] = None,
+        gpt_path:             str | None = None,
+        snaphu_exe:           str | None = None,
         n_procs:              int  = 4,
         pixel_size_m:         float = 20.0,
     ) -> None:
@@ -212,7 +214,7 @@ class SLCInSARPipeline:
     # ── Environment check ─────────────────────────────────────────────────
 
     @staticmethod
-    def check_environment() -> Dict:
+    def check_environment() -> dict:
         """
         Check whether all required external tools are available.
 
@@ -395,7 +397,7 @@ class SLCInSARPipeline:
         snap_ifg_dim:  str,
         graph:         SNAPGraph,
         keep_arrays:   bool,
-    ) -> Dict:
+    ) -> dict:
         """
         Read unwrapped phase, convert to metres, write GeoTIFF.
 
@@ -420,7 +422,7 @@ class SLCInSARPipeline:
         phase_2d = phase_flat.reshape(n_lines, line_len)
 
         # ── Read coherence (if available) ─────────────────────────────────
-        coh_2d: Optional[np.ndarray] = None
+        coh_2d: np.ndarray | None = None
         coh_path = unwrap_result.coherence_path
         if coh_path and Path(coh_path).exists():
             coh_flat = np.fromfile(coh_path, dtype=np.float32)
@@ -443,7 +445,7 @@ class SLCInSARPipeline:
         # PhaseToDisplacement → RangeDoppler-Terrain-Correction for precise
         # geocoding. Here we write the radar-geometry output and call SNAP TC.
         los_path   = str(output_dir / "los_displacement_radar.tif")
-        disp_path  = str(output_dir / "displacement_geocoded.tif")
+        str(output_dir / "displacement_geocoded.tif")
 
         self._write_flat_tif(disp["los_m"], disp["vertical_m"], los_path)
 

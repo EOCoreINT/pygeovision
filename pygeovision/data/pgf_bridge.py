@@ -23,7 +23,7 @@ PyGeoVision owns:
   • SpectralIndices        — 22 indices (own numpy impl)
   • PostProcessor          — vectorise, sieve, accuracy, zonal_stats (own impl)
   • DataValidator          — mandatory validation gate before AI
-  • GeoAI plugin (optional)
+  • Native model layer (segmentation, detection, change, classification)
 
 This bridge:
   1. Uses PyGeoFetch's real Python API for search/download (not CLI).
@@ -73,8 +73,11 @@ from __future__ import annotations
 
 import logging
 import pathlib
-from datetime import datetime, date
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pygeovision.data.fetch import DownloadResult, SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +89,7 @@ logger = logging.getLogger(__name__)
 def _pgf_available() -> bool:
     """True when PyGeoFetch v1.0+ Python API is importable."""
     try:
-        from pygeofetch import PyGeoFetch       # noqa: F401
+        from pygeofetch import PyGeoFetch  # noqa: F401
         return True
     except ImportError:
         return False
@@ -115,7 +118,7 @@ def _get_pgf_client():
 # Type translation helpers
 # ---------------------------------------------------------------------------
 
-def _pgf_satellite_data_to_pgv(sd, provider_hint: str = "") -> "SearchResult":
+def _pgf_satellite_data_to_pgv(sd, provider_hint: str = "") -> SearchResult:
     """Convert PyGeoFetch ``SatelliteData`` to PyGeoVision ``SearchResult``."""
     from pygeovision.data.fetch import SearchResult
 
@@ -168,7 +171,7 @@ def _pgf_satellite_data_to_pgv(sd, provider_hint: str = "") -> "SearchResult":
     return result
 
 
-def _pgf_download_result_to_pgv(dr) -> "DownloadResult":
+def _pgf_download_result_to_pgv(dr) -> DownloadResult:
     """Convert PyGeoFetch ``DownloadResult`` to PyGeoVision ``DownloadResult``."""
     from pygeovision.data.fetch import DownloadResult
 
@@ -186,7 +189,7 @@ def _pgf_download_result_to_pgv(dr) -> "DownloadResult":
         output_path = output_paths[0]
 
     error_    = getattr(dr, "error", None)
-    size_mb   = float(getattr(dr, "bytes_downloaded", 0) or 0) / 1024 / 1024
+    float(getattr(dr, "bytes_downloaded", 0) or 0) / 1024 / 1024
     duration  = float(getattr(dr, "duration_seconds", 0.0) or 0.0)
 
     # PGV DownloadResult fields: scene_id, provider, path, success,
@@ -251,22 +254,22 @@ class PyGeoFetchBridge:
 
     def search(
         self,
-        bbox: Tuple[float, float, float, float],
-        date_range: Optional[Tuple[str, str]] = None,
-        providers: Optional[List[str]] = None,
+        bbox: tuple[float, float, float, float],
+        date_range: tuple[str, str] | None = None,
+        providers: list[str] | None = None,
         cloud_cover_max: float = 100.0,
         cloud_cover_min: float = 0.0,
         max_results: int = 100,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         sort_by: str = "cloud_cover",
         sort_ascending: bool = True,
-        collections: Optional[List[str]] = None,
-        satellites: Optional[List[str]] = None,
-        cql2_filter: Optional[str] = None,
+        collections: list[str] | None = None,
+        satellites: list[str] | None = None,
+        cql2_filter: str | None = None,
         use_cache: bool = True,
         on_provider_failure: str = "skip",
         timeout_seconds: int = 60,
-    ) -> List["SearchResult"]:
+    ) -> list[SearchResult]:
         """Search satellite imagery via PyGeoFetch's Python API.
 
         Translates PyGeoVision's keyword-based interface to
@@ -309,7 +312,7 @@ class PyGeoFetchBridge:
             return []
 
         # Build pygeofetch SearchQuery
-        from pygeofetch.models.search_query import SearchQuery, BoundingBox
+        from pygeofetch.models.search_query import BoundingBox, SearchQuery
 
         bbox_str = f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
         pgf_bbox = BoundingBox.from_string(bbox_str)
@@ -362,19 +365,19 @@ class PyGeoFetchBridge:
 
     def download(
         self,
-        items: List["SearchResult"],
-        output_dir: Union[str, pathlib.Path],
+        items: list[SearchResult],
+        output_dir: str | pathlib.Path,
         parallel: int = 4,
-        bands: Optional[List[str]] = None,
-        post_process: Optional[List[str]] = None,
+        bands: list[str] | None = None,
+        post_process: list[str] | None = None,
         verify_checksum: bool = True,
         resume: bool = True,
         retry_attempts: int = 3,
-        bandwidth_limit_mb: Optional[float] = None,
+        bandwidth_limit_mb: float | None = None,
         on_failure: str = "skip",
         overwrite: bool = False,
-        notify_webhook: Optional[str] = None,
-    ) -> List["DownloadResult"]:
+        notify_webhook: str | None = None,
+    ) -> list[DownloadResult]:
         """Download satellite imagery via PyGeoFetch's Python API.
 
         Translates PyGeoVision's download interface to
@@ -505,27 +508,27 @@ class PyGeoFetchBridge:
         input_path: str,
         *,
         # Stacking
-        stack_bands: Optional[List[str]] = None,
-        stack_dir: Optional[str] = None,
+        stack_bands: list[str] | None = None,
+        stack_dir: str | None = None,
         # Spatial
-        bbox: Optional[Tuple[float, float, float, float]] = None,
+        bbox: tuple[float, float, float, float] | None = None,
         bbox_crs: str = "EPSG:4326",
-        clip_geojson: Optional[str] = None,
+        clip_geojson: str | None = None,
         # Cloud masking
-        cloud_mask_path: Optional[str] = None,
-        scl_path: Optional[str] = None,
+        cloud_mask_path: str | None = None,
+        scl_path: str | None = None,
         scl_keep_classes: Sequence[int] = (4, 5, 6),
         # Normalisation
-        normalise: Optional[str] = "scale_factor",
+        normalise: str | None = "scale_factor",
         scale_factor: float = 10000.0,
         # Resampling
-        resample_m: Optional[float] = None,
+        resample_m: float | None = None,
         # Validation
         model_type: str = "segmentation",
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         # v2.0 native preprocessing (used when available)
         use_pgf_preprocess: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Complete preprocessing pipeline: download output → AI-ready array.
 
         This is the **mandatory gate** between raw satellite data and AI
@@ -642,7 +645,7 @@ class PyGeoFetchBridge:
             "steps":        steps_applied,
         }
 
-    def _prepare_via_pgf_v2(self, input_path, **kw) -> Dict[str, Any]:
+    def _prepare_via_pgf_v2(self, input_path, **kw) -> dict[str, Any]:
         """Use PyGeoFetch v2.0 native preprocessing when available."""
         pgf_pre  = self._pgf.preprocess
         steps    = []
@@ -672,10 +675,10 @@ class PyGeoFetchBridge:
             steps.append("pgf.cloud_mask_scl")
 
         if kw.get("normalise") == "scale_factor":
-            sf = kw.get("scale_factor", 10000.0)
+            kw.get("scale_factor", 10000.0)
             r  = pgf_pre.atmos(current, method="dos1")
             current = str(r.output_path)
-            steps.append(f"pgf.atmos_dos1")
+            steps.append("pgf.atmos_dos1")
 
         if kw.get("resample_m"):
             r = pgf_pre.resample(current, resolution=int(kw["resample_m"]))
@@ -734,7 +737,7 @@ class PyGeoFetchBridge:
 
     def preprocess_cloud_mask(
         self, input_path: str, method: str = "scl",
-        scl_band: Optional[str] = None, **kw
+        scl_band: str | None = None, **kw
     ) -> str:
         """Cloud masking.
 
@@ -754,9 +757,9 @@ class PyGeoFetchBridge:
 
     def preprocess_clip(
         self, input_path: str,
-        bbox: Optional[Tuple] = None,
-        geometry: Optional[str] = None,
-        output_path: Optional[str] = None,
+        bbox: tuple | None = None,
+        geometry: str | None = None,
+        output_path: str | None = None,
         bbox_crs: str = "EPSG:4326",
         **kw
     ) -> str:
@@ -794,9 +797,8 @@ class PyGeoFetchBridge:
         # Use rasterio fallback
         try:
             import rasterio
-            from rasterio.warp import calculate_default_transform, reproject, Resampling
             from rasterio.crs import CRS
-            import numpy as np
+            from rasterio.warp import Resampling, calculate_default_transform, reproject
             out = _auto_suffix(input_path, f"_{crs.replace(':','')}")
             pathlib.Path(out).parent.mkdir(parents=True, exist_ok=True)
             with rasterio.open(input_path) as src:
@@ -846,8 +848,8 @@ class PyGeoFetchBridge:
 
     def preprocess_tile(
         self, input_path: str, tile_size: int = 512,
-        overlap: int = 64, output_dir: Optional[str] = None, **kw
-    ) -> List[str]:
+        overlap: int = 64, output_dir: str | None = None, **kw
+    ) -> list[str]:
         """Cut a scene into chips for training."""
         if self._pgf_v2:
             r = self._pgf.preprocess.tile(
@@ -857,7 +859,7 @@ class PyGeoFetchBridge:
         logger.info("tile() → TiledInference handles tiling at inference time")
         return [input_path]
 
-    def preprocess_mosaic(self, inputs: List[str], method: str = "first", **kw) -> str:
+    def preprocess_mosaic(self, inputs: list[str], method: str = "first", **kw) -> str:
         """Mosaic multiple scenes."""
         if self._pgf_v2:
             r = self._pgf.preprocess.mosaic(inputs, method=method, **kw)
@@ -881,15 +883,16 @@ class PyGeoFetchBridge:
             return inputs[0]
 
     def preprocess_composite(
-        self, inputs: List[str], method: str = "median",
-        output_path: Optional[str] = None, **kw
+        self, inputs: list[str], method: str = "median",
+        output_path: str | None = None, **kw
     ) -> str:
         """Temporal composite (median / mean / max / best-pixel)."""
         if self._pgf_v2:
             r = self._pgf.preprocess.composite(inputs, method=method, **kw)
             return str(r.output_path)
         try:
-            import rasterio, numpy as np
+            import numpy as np
+            import rasterio
             arrays = []
             for p in inputs:
                 with rasterio.open(p) as src:
@@ -928,7 +931,7 @@ class PyGeoFetchBridge:
         return input_path
 
     def preprocess_cloud_fill(
-        self, cloudy: str, time_series: List[str], **kw
+        self, cloudy: str, time_series: list[str], **kw
     ) -> str:
         """Fill cloud gaps using a temporal series."""
         if self._pgf_v2:
@@ -941,7 +944,7 @@ class PyGeoFetchBridge:
     # Spectral indices proxy (v2.0 native / PGV fallback)
     # ------------------------------------------------------------------
 
-    def index(self, name: str, output_path: Optional[str] = None, **band_paths) -> str:
+    def index(self, name: str, output_path: str | None = None, **band_paths) -> str:
         """Compute a spectral index.
 
         When PyGeoFetch v2.0 is available, delegates to
@@ -1009,7 +1012,7 @@ class PyGeoFetchBridge:
 
     def sar_flood_map(
         self, post_path: str, threshold: float = -15.0,
-        reference: Optional[str] = None, **kw
+        reference: str | None = None, **kw
     ) -> str:
         """SAR flood extent mapping."""
         if self._pgf_v2 and hasattr(self._pgf, "sar"):
@@ -1061,11 +1064,11 @@ class PyGeoFetchBridge:
 
     def batch_process(
         self,
-        inputs: List[str],
-        chain: List[Tuple[str, Dict]],
+        inputs: list[str],
+        chain: list[tuple[str, dict]],
         output_dir: str,
         parallel: int = 4,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Run a preprocessing chain on multiple scenes in parallel.
 
         When PyGeoFetch v2.0 is available, delegates to
@@ -1136,7 +1139,7 @@ class PyGeoFetchBridge:
     # Status / info
     # ------------------------------------------------------------------
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         """Return bridge and PyGeoFetch status information."""
         info = {
             "pgf_available":    self._pgf is not None,
@@ -1161,7 +1164,7 @@ class _SimpleChain:
     def __init__(self, name: str, bridge: PyGeoFetchBridge):
         self._name   = name
         self._bridge = bridge
-        self._steps: List[Tuple[str, Dict]] = []
+        self._steps: list[tuple[str, dict]] = []
 
     def __getattr__(self, item: str):
         def _capture(**kw):
@@ -1169,7 +1172,7 @@ class _SimpleChain:
             return self
         return _capture
 
-    def run(self, input: str, output_dir: str = "./processed/", **kw) -> Dict:
+    def run(self, input: str, output_dir: str = "./processed/", **kw) -> dict:
         logger.info("_SimpleChain: running %d steps on %s", len(self._steps), input)
         results = self._bridge.batch_process([input], self._steps, output_dir, parallel=1)
         return results[0] if results else {"input": input, "success": False}
@@ -1185,10 +1188,10 @@ def _auto_suffix(path: str, suffix: str) -> str:
 
 
 def _reproject_bbox(
-    bbox: Tuple[float, float, float, float],
+    bbox: tuple[float, float, float, float],
     bbox_crs: str,
     raster_path: str,
-) -> Tuple[float, float, float, float]:
+) -> tuple[float, float, float, float]:
     """Reproject a bounding box to match the CRS of *raster_path*.
 
     Scenes are often downloaded in a projected CRS (e.g. UTM Zone 30N,

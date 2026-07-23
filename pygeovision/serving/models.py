@@ -1,13 +1,13 @@
 """Pydantic request/response models for the inference API."""
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union
+
 from datetime import datetime
+from typing import Any
 
 try:
     from pydantic import BaseModel, Field
 except ImportError:
     # Fallback dataclass
-    from dataclasses import dataclass, field as dc_field
     class BaseModel:
         pass
 
@@ -17,8 +17,8 @@ except ImportError:
 
 class PredictRequest(BaseModel):
     """Request model for single image prediction."""
-    image_b64: Optional[str] = Field(None, description="Base64-encoded image bytes")
-    image_url: Optional[str] = Field(None, description="Accessible image URL")
+    image_b64: str | None = Field(None, description="Base64-encoded image bytes")
+    image_url: str | None = Field(None, description="Accessible image URL")
     model_name: str = Field("default", description="Registered model name")
     task: str = Field("segmentation", description="Inference task")
     confidence_threshold: float = Field(0.5, ge=0.0, le=1.0)
@@ -26,12 +26,12 @@ class PredictRequest(BaseModel):
     overlap: int = Field(64, ge=0, le=512)
     return_probabilities: bool = Field(False)
     output_format: str = Field("geotiff", description="geotiff|png|json")
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class BatchPredictRequest(BaseModel):
     """Request model for batch prediction."""
-    image_urls: List[str] = Field(..., min_length=1, max_length=100)
+    image_urls: list[str] = Field(..., min_length=1, max_length=100)
     model_name: str = "default"
     task: str = "segmentation"
     confidence_threshold: float = 0.5
@@ -43,13 +43,13 @@ class PredictResponse(BaseModel):
     success: bool
     model_name: str
     task: str
-    n_classes: Optional[int] = None
-    output_url: Optional[str] = None
-    output_b64: Optional[str] = None
-    statistics: Dict[str, Any] = Field(default_factory=dict)
+    n_classes: int | None = None
+    output_url: str | None = None
+    output_b64: str | None = None
+    statistics: dict[str, Any] = Field(default_factory=dict)
     inference_time_ms: float = 0.0
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class ModelInfo(BaseModel):
@@ -60,9 +60,9 @@ class ModelInfo(BaseModel):
     in_channels: int = 4
     description: str = ""
     version: str = "1.0.0"
-    onnx_path: Optional[str] = None
-    pytorch_path: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    onnx_path: str | None = None
+    pytorch_path: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class HealthResponse(BaseModel):
@@ -72,3 +72,14 @@ class HealthResponse(BaseModel):
     gpu_available: bool
     memory_mb: float
     uptime_s: float
+
+
+# `from __future__ import annotations` (PEP 563) makes every annotation in
+# this module a deferred string. Pydantic v2 must re-resolve those forward
+# references against the fully-populated module namespace before the models
+# are usable — without this, FastAPI's schema generation fails with an
+# opaque "not fully defined" error the first time any endpoint using these
+# models is actually invoked.
+for _model in (PredictRequest, BatchPredictRequest, PredictResponse, ModelInfo, HealthResponse):
+    if hasattr(_model, "model_rebuild"):
+        _model.model_rebuild()

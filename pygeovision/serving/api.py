@@ -12,13 +12,33 @@ Endpoints:
     WS   /ws/stream         — WebSocket streaming inference
 """
 from __future__ import annotations
-import base64, io, logging, time
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+
+import base64
+import logging
+import time
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
+# Imported at true module level (not inside create_app()) so that
+# `typing.get_type_hints()` — which FastAPI/pydantic use to resolve the
+# deferred string annotations that `from __future__ import annotations`
+# produces — can actually find these names via the endpoint functions'
+# __globals__. Endpoint functions are defined *inside* create_app(), and
+# get_type_hints() only looks at module globals, not enclosing-function
+# closures, so importing these locally inside create_app() silently breaks
+# every route that type-hints on them. `pygeovision.serving.models` has its
+# own internal pydantic-missing fallback, so this import is safe even
+# without fastapi/pydantic installed.
+from pygeovision.serving.models import (
+    BatchPredictRequest,
+    ModelInfo,
+    PredictRequest,
+    PredictResponse,
+)
 
-def create_app(auth_keys: Optional[Dict] = None, enable_metrics: bool = True):
+
+def create_app(auth_keys: dict | None = None, enable_metrics: bool = True):
     """Create and configure the FastAPI inference server.
 
     Example::
@@ -27,29 +47,28 @@ def create_app(auth_keys: Optional[Dict] = None, enable_metrics: bool = True):
         # uvicorn.run(app, host="0.0.0.0", port=8080)
     """
     try:
-        from fastapi import FastAPI, HTTPException, Depends, Header, WebSocket
+        from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket
         from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import JSONResponse
     except ImportError:
         raise ImportError("pip install fastapi uvicorn")
 
-    from pygeovision.serving.models   import (PredictRequest, PredictResponse,
-                                               ModelInfo, HealthResponse)
-    from pygeovision.serving.auth     import APIKeyAuth
-    from pygeovision.serving.health   import HealthChecker
+    from pygeovision.serving.auth import APIKeyAuth
+    from pygeovision.serving.health import HealthChecker
 
     app   = FastAPI(title="PyGeoVision Inference API", version="2.1.6",
                      description="Geospatial AI inference server")
     _auth = APIKeyAuth(keys=auth_keys or {})
-    _models: Dict[str, Any] = {}
+    _models: dict[str, Any] = {}
     _health = HealthChecker(models=_models)
     _start  = time.time()
+    _request_count = {"total": 0}
 
     app.add_middleware(CORSMiddleware, allow_origins=["*"],
                         allow_methods=["*"], allow_headers=["*"])
 
     # ── Auth dependency ───────────────────────────────────────────────────────
-    async def get_api_key(x_api_key: Optional[str] = Header(None)):
+    async def get_api_key(x_api_key: str | None = Header(None)):
         if not auth_keys:
             return "anonymous"
         if x_api_key and _auth.verify(x_api_key):
@@ -93,6 +112,7 @@ def create_app(auth_keys: Optional[Dict] = None, enable_metrics: bool = True):
     async def predict(req: PredictRequest, user: str = Depends(get_api_key)):
         """Run inference on a single image."""
         t_start = time.time()
+        _request_count["total"] += 1
         model_info = _models.get(req.model_name)
         if not model_info and req.model_name != "default":
             raise HTTPException(status_code=404, detail=f"Model '{req.model_name}' not registered")
@@ -111,9 +131,38 @@ def create_app(auth_keys: Optional[Dict] = None, enable_metrics: bool = True):
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.post("/predict/batch", tags=["Inference"])
-    async def predict_batch(req: Any, user: str = Depends(get_api_key)):
-        """Run batch inference on multiple images."""
-        return {"status": "queued", "message": "Batch inference queued for async processing"}
+    async def predict_batch(req: BatchPredictRequest, user: str = Depends(get_api_key)):
+        """Run inference on multiple images (by URL), sequentially.
+
+        Note: there is no background task queue in this server, so
+        `async_mode` does not change behaviour — every request is processed
+        and returned in the response rather than silently discarded.
+        """
+        t_start = time.time()
+        model_info = _models.get(req.model_name)
+        if not model_info and req.model_name != "default":
+            raise HTTPException(status_code=404, detail=f"Model '{req.model_name}' not registered")
+
+        results = []
+        for url in req.image_urls:
+            _request_count["total"] += 1
+            item_req = PredictRequest(
+                image_url=url, model_name=req.model_name, task=req.task,
+                confidence_threshold=req.confidence_threshold,
+            )
+            try:
+                r = await _run_inference(item_req, model_info)
+                results.append({"image_url": url, "success": True, **r})
+            except Exception as exc:
+                results.append({"image_url": url, "success": False, "error": str(exc)})
+
+        return {
+            "status": "completed",
+            "n_images": len(req.image_urls),
+            "n_succeeded": sum(1 for r in results if r["success"]),
+            "results": results,
+            "total_time_ms": round((time.time() - t_start) * 1000, 1),
+        }
 
     # ── Metrics ───────────────────────────────────────────────────────────────
     if enable_metrics:
@@ -122,28 +171,39 @@ def create_app(auth_keys: Optional[Dict] = None, enable_metrics: bool = True):
             return {
                 "uptime_s": round(time.time() - _start, 1),
                 "models_loaded": len(_models),
-                "requests_total": 0,
+                "requests_total": _request_count["total"],
             }
 
     # ── WebSocket streaming ───────────────────────────────────────────────────
     @app.websocket("/ws/stream")
     async def websocket_stream(ws: WebSocket):
-        """WebSocket endpoint for real-time streaming inference."""
+        """WebSocket endpoint for real-time streaming inference.
+
+        Each received JSON message is treated as a PredictRequest payload
+        and run through the same inference path as POST /predict.
+        """
         await ws.accept()
         try:
             while True:
                 data = await ws.receive_json()
-                result = {"status": "received", "echo": data}
-                await ws.send_json(result)
+                _request_count["total"] += 1
+                try:
+                    item_req = PredictRequest(**data)
+                    model_info = _models.get(item_req.model_name)
+                    result = await _run_inference(item_req, model_info)
+                    await ws.send_json({"success": True, **result})
+                except Exception as exc:
+                    await ws.send_json({"success": False, "error": str(exc)})
         except Exception:
             await ws.close()
 
     return app
 
 
-async def _run_inference(req: Any, model_info: Optional[Dict]) -> Dict:
+async def _run_inference(req: Any, model_info: dict | None) -> dict:
     """Execute model inference from a request."""
-    import tempfile, os
+    import os
+    import tempfile
 
     # Decode image
     image_path = None
@@ -188,12 +248,12 @@ class InferenceServer:
         server.serve(host="0.0.0.0", port=8080)
     """
 
-    def __init__(self, auth_keys: Optional[Dict] = None) -> None:
+    def __init__(self, auth_keys: dict | None = None) -> None:
         self.app = create_app(auth_keys=auth_keys)
-        self._models: Dict[str, Any] = {}
+        self._models: dict[str, Any] = {}
 
     def register(self, name: str, model_path: str, task: str = "segmentation",
-                  num_classes: int = 2, in_channels: int = 4, **kwargs) -> "InferenceServer":
+                  num_classes: int = 2, in_channels: int = 4, **kwargs) -> InferenceServer:
         """Register a model for serving."""
         self._models[name] = {
             "name": name, "task": task, "num_classes": num_classes,

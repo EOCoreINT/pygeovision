@@ -1,7 +1,8 @@
 """Moondream VLM for satellite image captioning and VQA (G2)."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional, Union
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,15 +22,15 @@ class MoondreamGeo:
 
     MODEL_ID = "vikhyatk/moondream2"
 
-    def __init__(self, device: Optional[str] = None) -> None:
+    def __init__(self, device: str | None = None) -> None:
         self.device = device or "cpu"
         self._model = None; self._tokenizer = None
 
     def _load(self):
         if self._model: return
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
             import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
             self._tokenizer = AutoTokenizer.from_pretrained(self.MODEL_ID, trust_remote_code=True)
             self._model = AutoModelForCausalLM.from_pretrained(
                 self.MODEL_ID, trust_remote_code=True, torch_dtype=torch.float16
@@ -38,7 +39,8 @@ class MoondreamGeo:
             raise ImportError("transformers + torch required")
 
     def _load_pil(self, image_path: str):
-        import rasterio, numpy as np
+        import numpy as np
+        import rasterio
         from PIL import Image
         with rasterio.open(image_path) as src:
             data = src.read(list(range(1, min(src.count, 4)+1))).astype(float)
@@ -62,7 +64,7 @@ class MoondreamGeo:
         enc = self._model.encode_image(img)
         return self._model.answer_question(enc, question, self._tokenizer)
 
-    def batch_caption(self, image_dir: str, top_k: int = 10) -> List[Dict]:
+    def batch_caption(self, image_dir: str, top_k: int = 10) -> list[dict]:
         import pathlib
         paths = list(pathlib.Path(image_dir).rglob("*.tif"))[:top_k]
         return [{"path": str(p), "caption": self.caption(str(p))} for p in paths]

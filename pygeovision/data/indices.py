@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import logging
 import pathlib
-from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -49,7 +48,7 @@ def _require_rasterio():
         raise ImportError("pip install rasterio") from None
 
 
-def _load_band(source: Union[str, np.ndarray], band_idx: int = 1) -> np.ndarray:
+def _load_band(source: str | np.ndarray, band_idx: int = 1) -> np.ndarray:
     """Load a single band from a GeoTIFF or return the array slice."""
     if isinstance(source, (str, pathlib.Path)):
         r = _require_rasterio()
@@ -62,7 +61,7 @@ def _load_band(source: Union[str, np.ndarray], band_idx: int = 1) -> np.ndarray:
     return arr
 
 
-def _load_multiband(path: str) -> Tuple[np.ndarray, dict]:
+def _load_multiband(path: str) -> tuple[np.ndarray, dict]:
     r = _require_rasterio()
     with r.open(path) as src:
         return src.read().astype(np.float32), dict(src.profile)
@@ -125,11 +124,11 @@ class SpectralIndices:
 
     def ndvi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         red_band: int = 3,
         nir_band: int = 4,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Normalized Difference Vegetation Index.
 
         NDVI = (NIR - Red) / (NIR + Red)
@@ -152,13 +151,13 @@ class SpectralIndices:
 
     def evi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         blue_band: int = 1,
         red_band:  int = 3,
         nir_band:  int = 4,
         G: float = 2.5, C1: float = 6.0, C2: float = 7.5, L: float = 1.0,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Enhanced Vegetation Index (Huete et al. 2002).
 
         EVI = G × (NIR − Red) / (NIR + C1×Red − C2×Blue + L)
@@ -173,12 +172,12 @@ class SpectralIndices:
 
     def savi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         red_band: int = 3,
         nir_band: int = 4,
         L: float = 0.5,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Soil-Adjusted Vegetation Index (Huete 1988).
 
         SAVI = (NIR − Red) × (1 + L) / (NIR + Red + L)
@@ -192,11 +191,11 @@ class SpectralIndices:
 
     def msavi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         red_band: int = 3,
         nir_band: int = 4,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Modified SAVI (Qi et al. 1994) — no soil factor needed.
 
         MSAVI = (2×NIR + 1 − sqrt((2×NIR+1)² − 8×(NIR−Red))) / 2
@@ -209,13 +208,13 @@ class SpectralIndices:
 
     def arvi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         blue_band: int = 1,
         red_band:  int = 3,
         nir_band:  int = 4,
         gamma: float = 1.0,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Atmospherically Resistant Vegetation Index (Kaufman & Tanré 1992).
 
         rb = Red − γ × (Blue − Red)
@@ -230,11 +229,11 @@ class SpectralIndices:
 
     def ndre(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         red_edge_band: int = 5,
         nir_band: int = 4,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Normalized Difference Red Edge (Gitelson & Merzlyak 1994).
 
         NDRE = (NIR − RedEdge) / (NIR + RedEdge)
@@ -249,11 +248,11 @@ class SpectralIndices:
 
     def rvi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         red_band: int = 3,
         nir_band: int = 4,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Ratio Vegetation Index (Jordan 1969).  RVI = NIR / Red."""
         red, nir, ref = self._get_two_bands(source, red_band, nir_band)
         result = nir / (red + _EPS)
@@ -262,12 +261,12 @@ class SpectralIndices:
 
     def wdrvi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         red_band: int = 3,
         nir_band: int = 4,
         alpha: float = 0.1,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Wide Dynamic Range Vegetation Index (Gitelson 2004).
 
         WDRVI = (α×NIR − Red) / (α×NIR + Red)
@@ -281,12 +280,12 @@ class SpectralIndices:
 
     def vari(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         blue_band: int = 1,
         green_band: int = 2,
         red_band:   int = 3,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Visible Atmospherically Resistant Index (Gitelson et al. 2002).
 
         VARI = (Green − Red) / (Green + Red − Blue)
@@ -301,12 +300,12 @@ class SpectralIndices:
 
     def exg(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         blue_band: int = 1,
         green_band: int = 2,
         red_band:   int = 3,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Excess Green Index (Woebbecke et al. 1995).
 
         ExG = 2×g − r − b,  where r,g,b are normalised RGB channels.
@@ -326,11 +325,11 @@ class SpectralIndices:
 
     def ndwi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         green_band: int = 2,
         nir_band:   int = 4,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Normalized Difference Water Index — Gao (1996).
 
         NDWI = (Green − NIR) / (Green + NIR)
@@ -344,11 +343,11 @@ class SpectralIndices:
 
     def mndwi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         green_band: int = 2,
         swir1_band: int = 5,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Modified NDWI — McFeeters (1996) / Xu (2006).
 
         MNDWI = (Green − SWIR1) / (Green + SWIR1)
@@ -362,11 +361,11 @@ class SpectralIndices:
 
     def lswi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         nir_band:  int = 4,
         swir1_band: int = 5,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Land Surface Water Index (Xiao et al. 2004).
 
         LSWI = (NIR − SWIR1) / (NIR + SWIR1)
@@ -380,13 +379,13 @@ class SpectralIndices:
 
     def wri(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         green_band: int = 2,
         red_band:   int = 3,
         nir_band:   int = 4,
         swir1_band: int = 5,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Water Ratio Index (Shen & Li 2010).
 
         WRI = (Green + Red) / (NIR + SWIR1)
@@ -406,11 +405,11 @@ class SpectralIndices:
 
     def ndbi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         swir1_band: int = 5,
         nir_band:   int = 4,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Normalized Difference Built-up Index (Zha et al. 2003).
 
         NDBI = (SWIR1 − NIR) / (SWIR1 + NIR)
@@ -424,13 +423,13 @@ class SpectralIndices:
 
     def bsi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         blue_band:  int = 1,
         red_band:   int = 3,
         nir_band:   int = 4,
         swir1_band: int = 5,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Bare Soil Index (Rikimaru et al. 2002).
 
         BSI = ((SWIR1+Red) − (NIR+Blue)) / ((SWIR1+Red) + (NIR+Blue))
@@ -450,11 +449,11 @@ class SpectralIndices:
 
     def nbr(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         nir_band:  int = 4,
         swir2_band: int = 6,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Normalized Burn Ratio (Key & Benson 1999).
 
         NBR = (NIR − SWIR2) / (NIR + SWIR2)
@@ -468,11 +467,11 @@ class SpectralIndices:
 
     def bai(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         red_band: int = 3,
         nir_band: int = 4,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Burn Area Index (Martín 1998).
 
         BAI = 1 / ((0.1 − Red)² + (0.06 − NIR)²)
@@ -490,11 +489,11 @@ class SpectralIndices:
 
     def ndsi(
         self,
-        source: Union[str, np.ndarray],
+        source: str | np.ndarray,
         green_band: int = 2,
         swir1_band: int = 5,
-        output_path: Optional[str] = None,
-    ) -> Union[str, np.ndarray]:
+        output_path: str | None = None,
+    ) -> str | np.ndarray:
         """Normalized Difference Snow Index (Hall et al. 1995).
 
         NDSI = (Green − SWIR1) / (Green + SWIR1)
@@ -520,8 +519,8 @@ class SpectralIndices:
         swir1_band: int = 5,
         swir2_band: int = 6,
         sensor: str = "sentinel2",
-        output_prefix: Optional[str] = None,
-    ) -> Dict[str, Union[str, np.ndarray]]:
+        output_prefix: str | None = None,
+    ) -> dict[str, str | np.ndarray]:
         """Tasseled Cap Transform — returns Brightness, Greenness, Wetness.
 
         Coefficients for Sentinel-2 (Nedkov 2017).
@@ -572,8 +571,8 @@ class SpectralIndices:
         self,
         source: str,
         n_components: int = 3,
-        output_prefix: Optional[str] = None,
-    ) -> Union[Dict[str, str], np.ndarray]:
+        output_prefix: str | None = None,
+    ) -> dict[str, str] | np.ndarray:
         """Principal Component Analysis — decorrelate multi-band imagery.
 
         Args:
@@ -614,10 +613,10 @@ class SpectralIndices:
     def compute_all(
         self,
         source: str,
-        indices: Optional[List[str]] = None,
-        output_dir: Optional[str] = None,
-        band_map: Optional[Dict[str, int]] = None,
-    ) -> Dict[str, Union[str, np.ndarray]]:
+        indices: list[str] | None = None,
+        output_dir: str | None = None,
+        band_map: dict[str, int] | None = None,
+    ) -> dict[str, str | np.ndarray]:
         """Compute a set of indices in one call.
 
         Args:
@@ -657,7 +656,7 @@ class SpectralIndices:
         if output_dir:
             pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        def _path(name: str) -> Optional[str]:
+        def _path(name: str) -> str | None:
             return str(pathlib.Path(output_dir) / f"{name}.tif") if output_dir else None
 
         _MAP = {
@@ -697,7 +696,7 @@ class SpectralIndices:
 
     def _get_two_bands(
         self, source, b1: int, b2: int
-    ) -> Tuple[np.ndarray, np.ndarray, Optional[str]]:
+    ) -> tuple[np.ndarray, np.ndarray, str | None]:
         ref = str(source) if isinstance(source, (str, pathlib.Path)) else None
         arr1 = _load_band(source, b1)
         arr2 = _load_band(source, b2)
@@ -705,7 +704,7 @@ class SpectralIndices:
 
     def _get_three_bands(
         self, source, b1: int, b2: int, b3: int
-    ) -> Tuple[Tuple[np.ndarray, np.ndarray, np.ndarray], None, Optional[str]]:
+    ) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], None, str | None]:
         ref = str(source) if isinstance(source, (str, pathlib.Path)) else None
         return ((_load_band(source, b1),
                   _load_band(source, b2),
@@ -715,8 +714,8 @@ class SpectralIndices:
         return _load_band(source, band)
 
     def _load_multiband_indexed(
-        self, source: str, band_idxs: List[int]
-    ) -> Tuple[np.ndarray, dict, str]:
+        self, source: str, band_idxs: list[int]
+    ) -> tuple[np.ndarray, dict, str]:
         r = _require_rasterio()
         with r.open(source) as src:
             arrs = [src.read(b).astype(np.float32) for b in band_idxs]
@@ -726,10 +725,10 @@ class SpectralIndices:
     def _out(
         self,
         arr: np.ndarray,
-        ref_path: Optional[str],
-        output_path: Optional[str],
+        ref_path: str | None,
+        output_path: str | None,
         name: str,
-    ) -> Union[str, np.ndarray]:
+    ) -> str | np.ndarray:
         if output_path and ref_path:
             pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             _save_index(arr, ref_path, output_path)

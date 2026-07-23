@@ -48,10 +48,8 @@ This module provides:
 from __future__ import annotations
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -104,13 +102,13 @@ class Sen1Floods11Config:
     test_split:  str = "flood_test_data.csv"
 
     # Input configuration
-    sar_bands: List[str] = field(default_factory=lambda: ["VV", "VH"])
+    sar_bands: list[str] = field(default_factory=lambda: ["VV", "VH"])
     use_optical: bool = False  # False = SAR-only (default for domain adaptation)
     image_size: int = 512
 
     # Normalisation parameters for Sen1Floods11 SAR data (empirical)
-    sar_mean: List[float] = field(default_factory=lambda: [0.6851, 0.4851])
-    sar_std:  List[float] = field(default_factory=lambda: [0.1903, 0.1568])
+    sar_mean: list[float] = field(default_factory=lambda: [0.6851, 0.4851])
+    sar_std:  list[float] = field(default_factory=lambda: [0.1903, 0.1568])
 
     # Training
     batch_size: int = 4
@@ -300,7 +298,7 @@ class SARPrithviAdapter:
         mode: str = "zero_shot",
         task: str = "flood_detection",
         backbone: str = "prithvi_eo_v2_600",
-        weights_path: Optional[str] = None,
+        weights_path: str | None = None,
         device: str = "cpu",
     ) -> None:
         if mode not in ("zero_shot", "fine_tune", "spt"):
@@ -325,7 +323,7 @@ class SARPrithviAdapter:
     def run(
         self,
         vv: np.ndarray,
-        vh: Optional[np.ndarray] = None,
+        vh: np.ndarray | None = None,
         *,
         channel_mapping: str = "physics_guided",
     ) -> dict:
@@ -412,15 +410,15 @@ class SARPrithviAdapter:
         )
         return water_mask
 
-    def _finetuned_predict(self, six_ch: np.ndarray) -> Optional[np.ndarray]:
+    def _finetuned_predict(self, six_ch: np.ndarray) -> np.ndarray | None:
         """Run inference using a TerraTorch fine-tuned Prithvi checkpoint.
 
         Requires TerraTorch + a checkpoint from Sen1Floods11 fine-tuning.
         Call ``self.fine_tune()`` first or supply ``weights_path``.
         """
         try:
-            import torch
             import terratorch.models as ttm
+            import torch
         except ImportError:
             logger.error("TerraTorch not available. Use mode='zero_shot' or install TerraTorch.")
             return None
@@ -444,11 +442,11 @@ class SARPrithviAdapter:
         prediction = logits.argmax(dim=1).squeeze(0).cpu().numpy().astype(np.uint8)
         return prediction
 
-    def _spt_predict(self, six_ch: np.ndarray) -> Optional[np.ndarray]:
+    def _spt_predict(self, six_ch: np.ndarray) -> np.ndarray | None:
         """Run inference with Scattering Prompt Tuning prompts injected."""
         try:
-            import torch
             import terratorch.models as ttm
+            import torch
         except ImportError:
             logger.error("TerraTorch not available for SPT mode.")
             return None
@@ -461,8 +459,8 @@ class SARPrithviAdapter:
     def _load_finetuned_model(self) -> None:
         """Load a fine-tuned Prithvi checkpoint via TerraTorch."""
         try:
-            import torch
             import terratorch.models as ttm
+            import torch
 
             model_factory = ttm.PrithviModelFactory()
             self._model = model_factory.build_model(
@@ -487,8 +485,8 @@ class SARPrithviAdapter:
     def _load_spt_model(self) -> None:
         """Load a model with SPT prompts via TerraTorch."""
         try:
-            import torch
             import terratorch.models as ttm
+            import torch
 
             prompt_tuner = ScatteringPromptTuner(n_prompts=4, prompt_dim=768)
             cfg = prompt_tuner.get_terratorch_config(self.backbone)
@@ -540,8 +538,8 @@ class SARPrithviAdapter:
             raise ImportError("TerraTorch required: pip install terratorch")
 
         try:
-            from lightning import Trainer
             import terratorch.models as ttm
+            from lightning import Trainer
             from terratorch.datamodules import Sen1Floods11NonGeographicDataModule
 
             data_cfg = Sen1Floods11Config(data_root=data_root)

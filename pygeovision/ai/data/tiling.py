@@ -11,9 +11,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-from dataclasses import dataclass, field
+from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generator, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -54,10 +55,10 @@ class TilingConfig:
     tile_size: int = 512
     overlap: int = 64
     min_valid_fraction: float = 0.1
-    nodata_value: Optional[float] = None
+    nodata_value: float | None = None
     padding_mode: str = "reflect"
     save_tiles: bool = True
-    output_dir: Optional[Path] = None
+    output_dir: Path | None = None
     compress: str = "lzw"
 
     def __post_init__(self) -> None:
@@ -111,9 +112,9 @@ class TilingEngine:
 
     def tile(
         self,
-        raster_path: Union[str, Path],
-        bands: Optional[list[int]] = None,
-        mask_path: Optional[Union[str, Path]] = None,
+        raster_path: str | Path,
+        bands: list[int] | None = None,
+        mask_path: str | Path | None = None,
         provider: str = "",
         satellite: str = "",
         datetime: str = "",
@@ -171,9 +172,9 @@ class TilingEngine:
 
     def tile_stream(
         self,
-        raster_path: Union[str, Path],
-        bands: Optional[list[int]] = None,
-        mask_path: Optional[Union[str, Path]] = None,
+        raster_path: str | Path,
+        bands: list[int] | None = None,
+        mask_path: str | Path | None = None,
         provider: str = "",
         satellite: str = "",
         datetime: str = "",
@@ -221,7 +222,7 @@ class TilingEngine:
                 raster_height = src.height
                 raster_width = src.width
                 src_crs = str(src.crs) if src.crs else "EPSG:4326"
-                src_transform = list(src.transform)
+                list(src.transform)
                 resolution_m = abs(src.transform.a)  # pixel width in CRS units
                 nodata = self.config.nodata_value or src.nodata
                 band_indices = bands or list(range(1, src.count + 1))
@@ -376,7 +377,7 @@ class TilingEngine:
     def _pad_tile(
         self,
         data: np.ndarray,
-        nodata: Optional[float],
+        nodata: float | None,
     ) -> np.ndarray:
         """Pad a tile to ``(C, tile_size, tile_size)``."""
         c, h, w = data.shape
@@ -412,7 +413,7 @@ class TilingEngine:
         meta: TileMetadata,
         src_profile: dict[str, Any],
         band_indices: list[int],
-        nodata: Optional[float],
+        nodata: float | None,
     ) -> Path:
         """Save a tile as a GeoTIFF."""
         try:

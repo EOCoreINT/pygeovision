@@ -4,10 +4,13 @@ pygeovision.enterprise.audit
 Audit logging for compliance (GDPR, SOC 2, HIPAA).
 """
 from __future__ import annotations
-import json, logging, time
+
+import json
+import logging
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("pygeovision.enterprise.audit")
 
@@ -20,8 +23,8 @@ class AuditEvent:
     action:      str
     outcome:     str   # "success" | "failure" | "denied"
     timestamp:   float = field(default_factory=time.time)
-    ip_address:  Optional[str] = None
-    metadata:    Dict[str, Any] = field(default_factory=dict)
+    ip_address:  str | None = None
+    metadata:    dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -33,7 +36,7 @@ class AuditLogger:
     def __init__(self, log_path: str = "./audit.jsonl") -> None:
         self._path   = Path(log_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._events: List[AuditEvent] = []
+        self._events: list[AuditEvent] = []
 
     def log(self, event: AuditEvent) -> None:
         self._events.append(event)
@@ -50,9 +53,9 @@ class AuditLogger:
             action=action, outcome=outcome, metadata=metadata,
         ))
 
-    def query(self, user_id: Optional[str] = None,
-               action: Optional[str] = None,
-               since: Optional[float] = None) -> List[AuditEvent]:
+    def query(self, user_id: str | None = None,
+               action: str | None = None,
+               since: float | None = None) -> list[AuditEvent]:
         result = self._events
         if user_id: result = [e for e in result if e.user_id == user_id]
         if action:  result = [e for e in result if e.action  == action]

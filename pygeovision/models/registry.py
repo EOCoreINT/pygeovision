@@ -3,9 +3,13 @@ Central model registry — 50+ geospatial architectures.
 Each entry stores metadata and a factory function.
 """
 from __future__ import annotations
+
+import builtins
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,17 +19,17 @@ class ModelSpec:
     task: str
     family: str
     params_m: float
-    hf_id: Optional[str] = None
-    timm_id: Optional[str] = None
+    hf_id: str | None = None
+    timm_id: str | None = None
     description: str = ""
     supports_multispectral: bool = True
     pretrained_on: str = "imagenet"
     paper: str = ""
-    factory: Optional[Callable] = field(default=None, repr=False)
+    factory: Callable | None = field(default=None, repr=False)
 
 
 # ── Registry data ──────────────────────────────────────────────────────────────
-_REGISTRY: Dict[str, ModelSpec] = {}
+_REGISTRY: dict[str, ModelSpec] = {}
 
 
 def register_model(spec: ModelSpec) -> ModelSpec:
@@ -33,11 +37,11 @@ def register_model(spec: ModelSpec) -> ModelSpec:
     return spec
 
 
-def get_model_spec(name: str) -> Optional[ModelSpec]:
+def get_model_spec(name: str) -> ModelSpec | None:
     return _REGISTRY.get(name)
 
 
-def list_models(task: Optional[str] = None, family: Optional[str] = None) -> List[str]:
+def list_models(task: str | None = None, family: str | None = None) -> list[str]:
     return [n for n, s in _REGISTRY.items()
             if (task is None or s.task == task) and (family is None or s.family == family)]
 
@@ -211,31 +215,31 @@ class ModelRegistry:
             raise KeyError(f"Model '{name}' not found. Use list_models() to see all options.")
         return _REGISTRY[name]
 
-    def list(self, task: Optional[str] = None, family: Optional[str] = None,
-              max_params_m: Optional[float] = None) -> List[str]:
+    def list(self, task: str | None = None, family: str | None = None,
+              max_params_m: float | None = None) -> builtins.list[str]:
         return [n for n, s in _REGISTRY.items()
                 if (task is None or s.task == task)
                 and (family is None or s.family == family)
                 and (max_params_m is None or s.params_m <= max_params_m)]
 
-    def search(self, query: str) -> List[ModelSpec]:
+    def search(self, query: str) -> builtins.list[ModelSpec]:
         q = query.lower()
         return [s for s in _REGISTRY.values()
                 if q in s.name.lower() or q in s.description.lower()
                 or q in s.task.lower() or q in s.family.lower()]
 
-    def by_task(self) -> Dict[str, List[str]]:
-        tasks: Dict[str, List[str]] = {}
+    def by_task(self) -> dict[str, builtins.list[str]]:
+        tasks: dict[str, list[str]] = {}
         for n, s in _REGISTRY.items():
             tasks.setdefault(s.task, []).append(n)
         return tasks
 
-    def top_by_task(self, task: str, n: int = 5) -> List[ModelSpec]:
+    def top_by_task(self, task: str, n: int = 5) -> builtins.list[ModelSpec]:
         """Return top-n models for a task, sorted by param count."""
         models = [s for s in _REGISTRY.values() if s.task == task]
         return sorted(models, key=lambda s: s.params_m)[:n]
 
-    def summary(self) -> Dict:
+    def summary(self) -> dict:
         by_task = self.by_task()
         return {
             "total": len(_REGISTRY),
@@ -249,7 +253,7 @@ model_registry = ModelRegistry()
 
 
 def get_model(name: str, num_classes: int = 2, in_channels: int = 4,
-               pretrained: bool = True, device: Optional[str] = None,
+               pretrained: bool = True, device: str | None = None,
                **kwargs) -> Any:
     """Load a model by name with geospatial configuration.
 
@@ -310,7 +314,7 @@ def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
 
 def _build_hf_model(spec: ModelSpec, num_classes: int, in_channels: int,
                      pretrained: bool, **kwargs) -> Any:
-    from transformers import AutoModel, AutoConfig
+    from transformers import AutoConfig, AutoModel
     config = AutoConfig.from_pretrained(spec.hf_id)
     if hasattr(config, "num_labels"):
         config.num_labels = num_classes

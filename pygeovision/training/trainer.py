@@ -15,9 +15,10 @@ from __future__ import annotations
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class TrainingConfig:
 
     # ── Distributed ───────────────────────────────────────────────────
     strategy: str = "auto"            # auto | ddp | fsdp | dp
-    devices: Union[str, int, List[int]] = "auto"
+    devices: str | int | list[int] = "auto"
     sync_batchnorm: bool = True
     find_unused_parameters: bool = False
 
@@ -105,18 +106,18 @@ class TrainingConfig:
     export_torchscript: bool = False
     onnx_opset: int = 17
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         import dataclasses
         return dataclasses.asdict(self)
 
     @classmethod
-    def from_yaml(cls, path: Union[str, Path]) -> "TrainingConfig":
+    def from_yaml(cls, path: str | Path) -> TrainingConfig:
         import yaml
         with open(path) as f:
             d = yaml.safe_load(f)
         return cls(**{k: v for k, v in d.items() if hasattr(cls, k)})
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         import yaml
         Path(path).write_text(yaml.dump(self.to_dict()))
 
@@ -128,11 +129,11 @@ class EarlyStopping:
         self.patience = patience
         self.metric = metric
         self.mode = mode
-        self.best: Optional[float] = None
+        self.best: float | None = None
         self.counter = 0
         self.should_stop = False
 
-    def update(self, metrics: Dict[str, float]) -> bool:
+    def update(self, metrics: dict[str, float]) -> bool:
         val = metrics.get(self.metric, 0.0)
         improved = (
             self.best is None or
@@ -158,9 +159,9 @@ class CheckpointManager:
         self.top_k = top_k
         self.metric = metric
         self.mode = mode
-        self._history: List[tuple] = []  # (score, path)
+        self._history: list[tuple] = []  # (score, path)
 
-    def save(self, model: Any, epoch: int, metrics: Dict[str, float]) -> Optional[Path]:
+    def save(self, model: Any, epoch: int, metrics: dict[str, float]) -> Path | None:
         try:
             import torch
             score = metrics.get(self.metric, 0.0)
@@ -189,7 +190,7 @@ class CheckpointManager:
             logger.warning("Checkpoint save failed: %s", exc)
             return None
 
-    def best_path(self) -> Optional[Path]:
+    def best_path(self) -> Path | None:
         if not self._history:
             return None
         return self._history[0][1]
@@ -223,7 +224,7 @@ class GeoTrainer:
         results = trainer.fit(train_dataset, val_dataset)
     """
 
-    def __init__(self, model: Any, config: Optional[TrainingConfig] = None) -> None:
+    def __init__(self, model: Any, config: TrainingConfig | None = None) -> None:
         self.model = model
         self.cfg = config or TrainingConfig()
         self.output_dir = Path(self.cfg.output_dir)
@@ -234,7 +235,9 @@ class GeoTrainer:
         self._tracker_obj: Any = None
 
     def _setup_seed(self) -> None:
-        import random, numpy as np
+        import random
+
+        import numpy as np
         random.seed(self.cfg.seed)
         np.random.seed(self.cfg.seed)
         try:
@@ -312,7 +315,7 @@ class GeoTrainer:
             except ImportError:
                 logger.warning("wandb not installed (pip install wandb)")
 
-    def _log_metrics(self, metrics: Dict[str, float], step: int) -> None:
+    def _log_metrics(self, metrics: dict[str, float], step: int) -> None:
         if self._tracker_obj is not None:
             try:
                 self._tracker_obj.log_metrics(metrics, step=step)
@@ -352,9 +355,9 @@ class GeoTrainer:
         val_dataset: Any = None,
         train_loader: Any = None,
         val_loader: Any = None,
-        loss_fn: Optional[Any] = None,
-        metric_fn: Optional[Callable] = None,
-    ) -> Dict[str, Any]:
+        loss_fn: Any | None = None,
+        metric_fn: Callable | None = None,
+    ) -> dict[str, Any]:
         """Train the model.
 
         Provide either datasets (GeoTrainer builds DataLoaders) or
@@ -365,8 +368,9 @@ class GeoTrainer:
         """
         try:
             import torch
-            from pygeovision.training.optimizer import build_optimizer, build_scheduler
+
             from pygeovision.training.metrics import SegmentationMetrics
+            from pygeovision.training.optimizer import build_optimizer, build_scheduler
         except ImportError as exc:
             logger.error("torch not installed: %s", exc)
             return {"error": str(exc)}
@@ -434,8 +438,8 @@ class GeoTrainer:
         )
         metrics_obj = SegmentationMetrics(self.cfg.num_classes)
 
-        history: Dict[str, List] = {"train_loss": [], "val_loss": [], "val_iou": []}
-        best_metric = float("-inf") if self.cfg.checkpoint_mode == "max" else float("inf")
+        history: dict[str, list] = {"train_loss": [], "val_loss": [], "val_iou": []}
+        float("-inf") if self.cfg.checkpoint_mode == "max" else float("inf")
         global_step = 0
         t_start = time.time()
 
@@ -505,7 +509,7 @@ class GeoTrainer:
             history["train_loss"].append(avg_train_loss)
 
             # ── Validate ─────────────────────────────────────────────
-            val_metrics: Dict[str, float] = {}
+            val_metrics: dict[str, float] = {}
             if val_loader is not None:
                 model.eval()
                 val_loss = 0.0
@@ -596,7 +600,7 @@ class GeoTrainer:
                     early_stopping.best or 0.0)
         return result
 
-    def _export_onnx(self, model: Any, device: Any) -> Optional[Path]:
+    def _export_onnx(self, model: Any, device: Any) -> Path | None:
         try:
             import torch
             out_path = self.output_dir / "model.onnx"
@@ -614,7 +618,7 @@ class GeoTrainer:
             logger.warning("ONNX export failed: %s", exc)
             return None
 
-    def _export_torchscript(self, model: Any, device: Any) -> Optional[Path]:
+    def _export_torchscript(self, model: Any, device: Any) -> Path | None:
         try:
             import torch
             out_path = self.output_dir / "model_scripted.pt"

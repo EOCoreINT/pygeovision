@@ -1,18 +1,27 @@
 """
 PyGeoVision Geospatial Loss Functions (D1) — beyond generic cross-entropy.
-All losses are independent of GeoAI, implemented in pure PyTorch.
+All losses are implemented natively in pure PyTorch.
 """
-from pygeovision.losses.segmentation import (
-    DiceLoss, FocalLoss, TverskyLoss, ComboLoss,
-    BoundaryAwareLoss, LovaszLoss, OhemCrossEntropy,
-    GeospatialMixedLoss,
+from pygeovision.losses.class_balance import (
+    ClassBalancedCrossEntropy,
+    FocalCrossEntropy,
+    LabelSmoothingCrossEntropy,
 )
 from pygeovision.losses.detection import (
-    CIoULoss, DIoULoss, GIoULoss, SIoULoss,
+    CIoULoss,
+    DIoULoss,
+    GIoULoss,
+    SIoULoss,
 )
-from pygeovision.losses.class_balance import (
-    ClassBalancedCrossEntropy, LabelSmoothingCrossEntropy,
-    FocalCrossEntropy,
+from pygeovision.losses.segmentation import (
+    BoundaryAwareLoss,
+    ComboLoss,
+    DiceLoss,
+    FocalLoss,
+    GeospatialMixedLoss,
+    LovaszLoss,
+    OhemCrossEntropy,
+    TverskyLoss,
 )
 
 __all__ = [

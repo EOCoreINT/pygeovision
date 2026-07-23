@@ -21,12 +21,11 @@ from __future__ import annotations
 
 import logging
 import re
+import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-import xml.etree.ElementTree as ET
 
 logger = logging.getLogger("pygeovision.insar.slc.sentinel1")
 
@@ -76,11 +75,11 @@ class S1SLCProduct:
     start_time:     datetime
     stop_time:      datetime
     absolute_orbit: int
-    polarisations:  List[str]           = field(default_factory=list)
-    subswaths:      List[str]           = field(default_factory=list)
+    polarisations:  list[str]           = field(default_factory=list)
+    subswaths:      list[str]           = field(default_factory=list)
     pass_direction: str                 = "UNKNOWN"
     wavelength_m:   float               = S1_WAVELENGTH_M
-    metadata:       Dict[str, str]      = field(default_factory=dict)
+    metadata:       dict[str, str]      = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -99,7 +98,7 @@ class S1SLCProduct:
         """Return mid-swath incidence angle for the given subswath."""
         return SUBSWATH_INCIDENCE.get(subswath.upper(), 38.3)
 
-    def is_compatible_with(self, other: "S1SLCProduct") -> bool:
+    def is_compatible_with(self, other: S1SLCProduct) -> bool:
         """
         Check whether this product can form an InSAR pair with `other`.
 
@@ -154,7 +153,7 @@ _POL_MAP = {
 }
 
 
-def parse_s1_slc_filename(path: str) -> Optional[S1SLCProduct]:
+def parse_s1_slc_filename(path: str) -> S1SLCProduct | None:
     """
     Parse a Sentinel-1 SLC product from its filename alone.
 
@@ -181,7 +180,7 @@ def parse_s1_slc_filename(path: str) -> Optional[S1SLCProduct]:
     )
 
 
-def parse_s1_slc_manifest(path: str) -> Optional[S1SLCProduct]:
+def parse_s1_slc_manifest(path: str) -> S1SLCProduct | None:
     """
     Parse a Sentinel-1 SLC product by reading its manifest.safe XML.
 
@@ -260,7 +259,7 @@ def parse_s1_slc_manifest(path: str) -> Optional[S1SLCProduct]:
         pass_direction = pass_dir,
     )
 
-def _read_manifest(path: Path) -> Optional[str]:
+def _read_manifest(path: Path) -> str | None:
     """Read manifest.safe from a .zip or .SAFE directory."""
     if path.suffix.lower() == ".zip":
         try:
@@ -287,7 +286,7 @@ def _read_manifest(path: Path) -> Optional[str]:
 def validate_slc_pair(
     master: S1SLCProduct,
     slave:  S1SLCProduct,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """
     Validate a master/slave SLC pair for InSAR processing.
 
@@ -298,8 +297,8 @@ def validate_slc_pair(
         warnings                : list of warning messages
         errors                  : list of blocking error messages
     """
-    warnings_: List[str] = []
-    errors_:   List[str] = []
+    warnings_: list[str] = []
+    errors_:   list[str] = []
 
     # Temporal baseline
     dt = abs((slave.start_time - master.start_time).total_seconds()) / 86400

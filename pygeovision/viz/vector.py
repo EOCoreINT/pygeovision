@@ -20,14 +20,14 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
 logger = logging.getLogger("pygeovision.viz.vector")
 
 
-def _read_geodata(path: str) -> Tuple[Any, dict]:
+def _read_geodata(path: str) -> tuple[Any, dict]:
     """Read a vector file and return (GeoDataFrame, geojson_dict)."""
     try:
         import geopandas as gpd
@@ -51,14 +51,14 @@ class VectorViewer:
         Path to GeoJSON / Shapefile, or a GeoJSON dict.
     """
 
-    def __init__(self, path: Union[str, dict]) -> None:
+    def __init__(self, path: str | dict) -> None:
         self._path   = path
         self._gdf    = None
-        self._geojson: Optional[dict] = None
+        self._geojson: dict | None = None
         self._fig    = None
-        self._filter_expr: Optional[str] = None
+        self._filter_expr: str | None = None
 
-    def _load(self) -> Tuple[Any, dict]:
+    def _load(self) -> tuple[Any, dict]:
         if self._geojson is not None:
             return self._gdf, self._geojson
         if isinstance(self._path, dict):
@@ -70,7 +70,7 @@ class VectorViewer:
     # ── Basic view ─────────────────────────────────────────────────────────────
 
     def view(self, color: str = "#3388ff", fill_opacity: float = 0.4,
-             title: Optional[str] = None) -> "VectorViewer":
+             title: str | None = None) -> VectorViewer:
         plt = _mpl()
         gdf, _ = self._load()
         if gdf is not None:
@@ -89,7 +89,7 @@ class VectorViewer:
 
     # ── Attribute table ────────────────────────────────────────────────────────
 
-    def table(self, max_rows: int = 20) -> "VectorViewer":
+    def table(self, max_rows: int = 20) -> VectorViewer:
         """Display attribute table."""
         gdf, geojson = self._load()
         if gdf is not None:
@@ -108,7 +108,7 @@ class VectorViewer:
     # ── Choropleth ─────────────────────────────────────────────────────────────
 
     def style_by_attribute(self, attribute: str, cmap: str = "viridis",
-                            title: Optional[str] = None) -> "VectorViewer":
+                            title: str | None = None) -> VectorViewer:
         """Colour features by a numeric attribute (choropleth map)."""
         plt = _mpl()
         gdf, _ = self._load()
@@ -131,7 +131,7 @@ class VectorViewer:
 
     # ── Filter ─────────────────────────────────────────────────────────────────
 
-    def filter(self, expression: str) -> "VectorViewer":
+    def filter(self, expression: str) -> VectorViewer:
         """Filter features using a query expression (GeoPandas .query() syntax)."""
         gdf, _ = self._load()
         if gdf is None:
@@ -145,7 +145,7 @@ class VectorViewer:
     # ── Heatmap ────────────────────────────────────────────────────────────────
 
     def heatmap(self, lat_col: str = "latitude", lon_col: str = "longitude",
-                bandwidth: float = 0.01, title: str = "Density Heatmap") -> "VectorViewer":
+                bandwidth: float = 0.01, title: str = "Density Heatmap") -> VectorViewer:
         plt = _mpl()
         gdf, _ = self._load()
         if gdf is None:
@@ -196,7 +196,7 @@ class VectorViewer:
         suffix = Path(path).suffix.lower()
         if suffix in (".html", "") and format == "auto":
             return self._export_html(path)
-        plt = _mpl()
+        _mpl()
         if self._fig is None:
             self.view()
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -210,7 +210,7 @@ class VectorViewer:
         m.add_vector(geojson, name=_layer_name(self._path))
         return m.export(path)
 
-    def show(self) -> "VectorViewer":
+    def show(self) -> VectorViewer:
         plt = _mpl()
         if self._fig:
             plt.show()

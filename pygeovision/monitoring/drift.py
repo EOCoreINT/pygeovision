@@ -8,10 +8,13 @@ Monitors:
     - Spatial distribution shift (which regions are being processed)
 """
 from __future__ import annotations
-import json, logging, time
+
+import json
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +27,7 @@ class DistributionDrift:
 
     PSI_THRESHOLDS = {"low": 0.1, "medium": 0.2, "high": 0.25}
 
-    def __init__(self, reference_stats: Optional[Dict] = None,
+    def __init__(self, reference_stats: dict | None = None,
                  n_bins: int = 10) -> None:
         self.reference_stats = reference_stats
         self.n_bins = n_bins
@@ -49,10 +52,11 @@ class DistributionDrift:
         p /= p.sum(); q /= q.sum()
         return float(np.sum(p * np.log(p / q)))
 
-    def fit_reference(self, images: List[str]) -> Dict[str, Any]:
+    def fit_reference(self, images: list[str]) -> dict[str, Any]:
         """Compute reference statistics from a list of GeoTIFFs."""
         try:
-            import numpy as np, rasterio
+            import numpy as np
+            import rasterio
         except ImportError:
             return {}
 
@@ -81,17 +85,18 @@ class DistributionDrift:
             }
         return self.reference_stats
 
-    def detect(self, current_images: List[str]) -> Dict[str, Any]:
+    def detect(self, current_images: list[str]) -> dict[str, Any]:
         """Detect drift in current production images vs reference."""
         if self.reference_stats is None:
             return {"error": "No reference stats. Call fit_reference() first."}
 
         try:
-            import numpy as np, rasterio
+            import numpy as np
+            import rasterio
         except ImportError:
             return {"error": "rasterio required"}
 
-        current_values: Dict[str, List] = {}
+        current_values: dict[str, list] = {}
         for path in current_images[:50]:
             try:
                 with rasterio.open(path) as src:
@@ -151,7 +156,7 @@ class PerformanceDrift:
     def __init__(
         self,
         window_size: int = 100,
-        alert_thresholds: Optional[Dict[str, float]] = None,
+        alert_thresholds: dict[str, float] | None = None,
         storage_path: str = "./monitoring/performance_log.jsonl",
     ) -> None:
         self.window_size = window_size
@@ -162,8 +167,8 @@ class PerformanceDrift:
         }
         self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-        self._baseline: Optional[Dict[str, float]] = None
-        self._history: List[Dict] = []
+        self._baseline: dict[str, float] | None = None
+        self._history: list[dict] = []
         self._load_history()
 
     def _load_history(self) -> None:
@@ -171,7 +176,7 @@ class PerformanceDrift:
             with open(self.storage_path) as f:
                 self._history = [json.loads(l) for l in f if l.strip()]
 
-    def log(self, metrics: Dict[str, float], timestamp: Optional[str] = None) -> None:
+    def log(self, metrics: dict[str, float], timestamp: str | None = None) -> None:
         """Log a new metric measurement."""
         entry = {
             "timestamp": timestamp or datetime.utcnow().isoformat(),
@@ -181,12 +186,12 @@ class PerformanceDrift:
         with open(self.storage_path, "a") as f:
             f.write(json.dumps(entry) + "\n")
 
-    def set_baseline(self, metrics: Dict[str, float]) -> None:
+    def set_baseline(self, metrics: dict[str, float]) -> None:
         """Set the reference performance (from validation set)."""
         self._baseline = metrics
         logger.info("Baseline set: %s", metrics)
 
-    def detect(self, recent_n: Optional[int] = None) -> Dict[str, Any]:
+    def detect(self, recent_n: int | None = None) -> dict[str, Any]:
         """Detect performance drift vs baseline."""
         if self._baseline is None:
             return {"error": "No baseline. Call set_baseline() with validation metrics."}
@@ -227,7 +232,7 @@ class PerformanceDrift:
             "recommendation": self._performance_recommendation(alerts),
         }
 
-    def _performance_recommendation(self, alerts: List[str]) -> str:
+    def _performance_recommendation(self, alerts: list[str]) -> str:
         if not alerts:
             return "Model performance stable. No action required."
         n = len(alerts)
@@ -235,7 +240,7 @@ class PerformanceDrift:
             return f"Minor performance drop in {alerts[0]}. Consider re-calibration."
         return f"{n} metrics degraded. Schedule fine-tuning on recent labelled data."
 
-    def plot_history(self, metric: str = "mean_iou", save_path: Optional[str] = None) -> None:
+    def plot_history(self, metric: str = "mean_iou", save_path: str | None = None) -> None:
         try:
             import matplotlib.pyplot as plt
             vals = [(e["timestamp"][:10], e[metric]) for e in self._history if metric in e]
@@ -261,17 +266,17 @@ class PerformanceDrift:
 class DriftDetector:
     """Unified drift detector — monitors data + prediction + performance drift."""
 
-    def __init__(self, model: Optional[Any] = None,
+    def __init__(self, model: Any | None = None,
                  storage_dir: str = "./monitoring/") -> None:
         self.model = model
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.data_drift   = DistributionDrift()
         self.perf_drift   = PerformanceDrift(storage_path=str(self.storage_dir / "perf.jsonl"))
-        self._reference_images: List[str] = []
+        self._reference_images: list[str] = []
 
-    def fit(self, reference_images: List[str],
-             reference_metrics: Optional[Dict[str, float]] = None) -> "DriftDetector":
+    def fit(self, reference_images: list[str],
+             reference_metrics: dict[str, float] | None = None) -> DriftDetector:
         """Set the reference distribution and performance baseline."""
         self._reference_images = reference_images
         self.data_drift.fit_reference(reference_images)
@@ -280,8 +285,8 @@ class DriftDetector:
         logger.info("DriftDetector: reference set (%d images)", len(reference_images))
         return self
 
-    def check(self, current_images: List[str],
-               current_metrics: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
+    def check(self, current_images: list[str],
+               current_metrics: dict[str, float] | None = None) -> dict[str, Any]:
         """Run full drift check and return combined report."""
         data_report = self.data_drift.detect(current_images)
         if current_metrics:
@@ -300,7 +305,7 @@ class DriftDetector:
             "action_required": data_report.get("drift_level") == "major" or perf_report.get("drift_detected"),
         }
 
-    def save_report(self, report: Dict, path: Optional[str] = None) -> str:
+    def save_report(self, report: dict, path: str | None = None) -> str:
         p = path or str(self.storage_dir / f"drift_report_{datetime.now().strftime('%Y%m%d_%H%M')}.json")
         with open(p, "w") as f:
             json.dump(report, f, indent=2, default=str)

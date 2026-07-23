@@ -1,12 +1,14 @@
 """U-Net and variants for geospatial segmentation — independent PyTorch implementation."""
 from __future__ import annotations
+
 import logging
-from typing import Any, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
 def build_unet(backbone: str = "resnet50", num_classes: int = 2, in_channels: int = 4,
-                pretrained: bool = True, decoder_channels: List[int] = None, **kwargs) -> Any:
+                pretrained: bool = True, decoder_channels: list[int] = None, **kwargs) -> Any:
     """Build U-Net with configurable encoder backbone.
 
     Args:
@@ -38,7 +40,8 @@ def build_unet(backbone: str = "resnet50", num_classes: int = 2, in_channels: in
 
 def _build_simple_unet(in_ch: int, n_classes: int) -> Any:
     """Minimal U-Net that works without SMP."""
-    import torch, torch.nn as nn
+    import torch
+    import torch.nn as nn
 
     def _block(ci, co, p=1):
         return nn.Sequential(

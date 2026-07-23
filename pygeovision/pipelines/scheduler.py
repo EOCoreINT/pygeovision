@@ -1,7 +1,12 @@
 """Cron-based pipeline scheduling."""
 from __future__ import annotations
-import logging, threading, time
-from typing import Any, Callable, Dict, List, Optional
+
+import logging
+import threading
+import time
+from collections.abc import Callable
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,12 +23,12 @@ class PipelineScheduler:
     """
 
     def __init__(self) -> None:
-        self._jobs: List[Dict] = []
+        self._jobs: list[dict] = []
         self._running = False
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
 
     def add_job(self, name: str, fn: Callable, cron: str,
-                 args: tuple = (), kwargs: dict = None) -> "PipelineScheduler":
+                 args: tuple = (), kwargs: dict = None) -> PipelineScheduler:
         """Add a scheduled job.
 
         Args:
@@ -67,7 +72,7 @@ class PipelineScheduler:
                         logger.error("Job '%s' failed: %s", job["name"], exc)
             time.sleep(60)  # Check every minute
 
-    def start(self) -> "PipelineScheduler":
+    def start(self) -> PipelineScheduler:
         """Start the scheduler in a background thread."""
         self._running = True
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
@@ -81,7 +86,7 @@ class PipelineScheduler:
             self._thread.join(timeout=5)
         logger.info("Scheduler stopped")
 
-    def status(self) -> List[Dict]:
+    def status(self) -> list[dict]:
         return [{"name": j["name"], "cron": j["cron"],
                  "n_runs": j["n_runs"], "errors": j["errors"],
                  "last_run": j["last_run"]} for j in self._jobs]

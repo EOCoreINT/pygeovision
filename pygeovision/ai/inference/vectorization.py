@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -40,8 +40,8 @@ class VectorizationConfig:
 
     simplify_tolerance: float = 1.0
     min_area_m2: float = 0.0
-    output_crs: Optional[str] = "EPSG:4326"
-    class_filter: Optional[List[int]] = None
+    output_crs: str | None = "EPSG:4326"
+    class_filter: list[int] | None = None
     multipart: bool = False
     connectivity: int = 8
 
@@ -80,8 +80,8 @@ class Vectorizer:
         self,
         simplify_tolerance: float = 1.0,
         min_area_m2: float = 0.0,
-        output_crs: Optional[str] = "EPSG:4326",
-        class_filter: Optional[List[int]] = None,
+        output_crs: str | None = "EPSG:4326",
+        class_filter: list[int] | None = None,
         connectivity: int = 8,
     ) -> None:
         self.config = VectorizationConfig(
@@ -98,11 +98,11 @@ class Vectorizer:
 
     def raster_to_geojson(
         self,
-        mask_path: Union[str, Path],
-        class_names: Optional[List[str]] = None,
-        class_filter: Optional[List[int]] = None,
-        output_path: Optional[Union[str, Path]] = None,
-    ) -> Dict[str, Any]:
+        mask_path: str | Path,
+        class_names: list[str] | None = None,
+        class_filter: list[int] | None = None,
+        output_path: str | Path | None = None,
+    ) -> dict[str, Any]:
         """Vectorize a classified GeoTIFF mask to GeoJSON.
 
         Args:
@@ -142,10 +142,10 @@ class Vectorizer:
         mask: np.ndarray,
         transform: Any,
         crs: str,
-        class_names: Optional[List[str]] = None,
-        class_filter: Optional[List[int]] = None,
-        output_path: Optional[Union[str, Path]] = None,
-    ) -> Dict[str, Any]:
+        class_names: list[str] | None = None,
+        class_filter: list[int] | None = None,
+        output_path: str | Path | None = None,
+    ) -> dict[str, Any]:
         """Vectorize a numpy label mask array to GeoJSON.
 
         Args:
@@ -161,7 +161,7 @@ class Vectorizer:
         """
         try:
             from rasterio.features import shapes
-            from shapely.geometry import shape, mapping
+            from shapely.geometry import mapping, shape
         except ImportError as exc:
             raise ImportError("array_to_geojson requires rasterio + shapely. "
                               "pip install rasterio shapely") from exc
@@ -220,7 +220,7 @@ class Vectorizer:
                 })
 
         output_crs = self.config.output_crs or crs
-        geojson: Dict[str, Any] = {
+        geojson: dict[str, Any] = {
             "type": "FeatureCollection",
             "crs": {"type": "name", "properties": {"name": output_crs}},
             "features": features,
@@ -240,10 +240,10 @@ class Vectorizer:
 
     def raster_to_shapefile(
         self,
-        mask_path: Union[str, Path],
-        output_path: Union[str, Path],
-        class_names: Optional[List[str]] = None,
-        class_filter: Optional[List[int]] = None,
+        mask_path: str | Path,
+        output_path: str | Path,
+        class_names: list[str] | None = None,
+        class_filter: list[int] | None = None,
     ) -> Path:
         """Vectorize a classified GeoTIFF mask to a Shapefile.
 
@@ -281,9 +281,9 @@ class Vectorizer:
 
     def geojson_to_mask(
         self,
-        geojson: Dict[str, Any],
-        reference_path: Union[str, Path],
-        output_path: Union[str, Path],
+        geojson: dict[str, Any],
+        reference_path: str | Path,
+        output_path: str | Path,
         class_field: str = "class_id",
         background: int = 0,
     ) -> np.ndarray:
@@ -367,7 +367,7 @@ class Vectorizer:
             return float(geom.area)  # fallback: native area
 
     @staticmethod
-    def _reproject_geom(geom: Any, src_crs: str, dst_crs: str) -> Optional[Any]:
+    def _reproject_geom(geom: Any, src_crs: str, dst_crs: str) -> Any | None:
         """Reproject a shapely geometry between CRS."""
         try:
             from pyproj import Transformer

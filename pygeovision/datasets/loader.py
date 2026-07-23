@@ -1,7 +1,8 @@
 """DatasetLoader — unified interface for downloading and loading datasets."""
 from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, Optional
+
 
 class DatasetLoader:
     """Unified loader for any dataset in the registry."""
@@ -17,7 +18,7 @@ class DatasetLoader:
         for k, v in d.to_dict().items():
             if v: print(f"  {k:<18}: {v}")
 
-    def download(self, name: str, output_dir: Optional[str] = None) -> Path:
+    def download(self, name: str, output_dir: str | None = None) -> Path:
         from pygeovision.datasets.registry import dataset_registry
         d = dataset_registry[name]
         if not d.download_url:

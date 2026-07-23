@@ -9,8 +9,7 @@ sees a balanced view of the data.
 from __future__ import annotations
 
 import logging
-import math
-from typing import Iterator, Optional, Sized
+from collections.abc import Iterator
 
 import numpy as np
 
@@ -55,7 +54,7 @@ class ClassBalancedSampler(Sampler if TORCH_AVAILABLE else object):  # type: ign
     def __init__(
         self,
         class_counts: list[list[int]],
-        num_samples: Optional[int] = None,
+        num_samples: int | None = None,
         replacement: bool = True,
         background_weight: float = 0.1,
     ) -> None:
@@ -188,7 +187,6 @@ class GeographicBlockSampler(Sampler if TORCH_AVAILABLE else object):  # type: i
         return blocks
 
     def __iter__(self) -> Iterator[int]:
-        import torch  # noqa: PLC0415
 
         blocks = self._blocks.copy()
         if self.shuffle:
@@ -236,7 +234,7 @@ class StratifiedTileSampler(Sampler if TORCH_AVAILABLE else object):  # type: ig
         tile_labels: list[int],
         num_classes: int,
         batch_size: int = 8,
-        num_samples: Optional[int] = None,
+        num_samples: int | None = None,
     ) -> None:
         if not TORCH_AVAILABLE:
             raise ImportError("PyTorch required for StratifiedTileSampler")

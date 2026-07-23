@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -55,7 +55,7 @@ class ModelHubConfig(BaseModel):
 
 class PyGeoFetchConfig(BaseModel):
     """PyGeoFetch pass-through configuration."""
-    default_providers: List[str] = Field(
+    default_providers: list[str] = Field(
         default_factory=lambda: ["planetary_computer", "aws_earth", "element84"],
         description="Default providers for open-access searches",
     )
@@ -99,9 +99,9 @@ class PyGeoVisionConfig(BaseModel):
     log_level: str = Field("INFO")
 
     @classmethod
-    def load(cls, config_path: Optional[Path] = None) -> "PyGeoVisionConfig":
+    def load(cls, config_path: Path | None = None) -> PyGeoVisionConfig:
         """Load config from YAML file(s) and environment variables."""
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
 
         # Load user config
         user_config = Path.home() / ".pygeovision" / "config.yaml"
@@ -139,7 +139,7 @@ class PyGeoVisionConfig(BaseModel):
 
         return cls(**data)
 
-    def as_pygeofetch_config(self) -> Dict[str, Any]:
+    def as_pygeofetch_config(self) -> dict[str, Any]:
         """Return the PyGeoFetch-compatible config subset."""
         return {
             "providers": self.pygeofetch.default_providers,
@@ -150,7 +150,7 @@ class PyGeoVisionConfig(BaseModel):
             "timeout": self.pygeofetch.timeout_seconds,
         }
 
-    def save(self, path: Optional[Path] = None) -> Path:
+    def save(self, path: Path | None = None) -> Path:
         """Save config to YAML."""
         target = path or (Path.home() / ".pygeovision" / "config.yaml")
         target.parent.mkdir(parents=True, exist_ok=True)

@@ -12,7 +12,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -46,12 +46,12 @@ class LabelingResult:
     """
 
     tile_id: str
-    label_path: Optional[Path] = None
+    label_path: Path | None = None
     confidence: float = 1.0
     source: str = ""
     class_distribution: dict[str, float] = field(default_factory=dict)
     skipped: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def success(self) -> bool:
@@ -277,7 +277,7 @@ class BaseLabeler(ABC):
     @staticmethod
     def _compute_class_distribution(
         mask: np.ndarray,
-        class_names: Optional[list[str]] = None,
+        class_names: list[str] | None = None,
         nodata_value: int = 255,
     ) -> dict[str, float]:
         """

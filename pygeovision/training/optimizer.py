@@ -1,6 +1,7 @@
 """Optimizer and LR scheduler builders (Phase 4.1)."""
 from __future__ import annotations
-from typing import Any, Optional
+
+from typing import Any
 
 
 def build_optimizer(model: Any, cfg: Any) -> Any:
@@ -35,7 +36,7 @@ def build_optimizer(model: Any, cfg: Any) -> Any:
         raise ImportError("torch is required for training. pip install torch")
 
 
-def build_scheduler(optimizer: Any, cfg: Any, steps_per_epoch: int = 100) -> Optional[Any]:
+def build_scheduler(optimizer: Any, cfg: Any, steps_per_epoch: int = 100) -> Any | None:
     """Build LR scheduler from TrainingConfig."""
     try:
         import torch.optim.lr_scheduler as sched
@@ -64,7 +65,7 @@ def build_scheduler(optimizer: Any, cfg: Any, steps_per_epoch: int = 100) -> Opt
             scheduler = sched.OneCycleLR(optimizer, max_lr=cfg.learning_rate,
                                           total_steps=total_steps, pct_start=0.1)
         elif name == "warmup_cosine":
-            from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
+            from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
             warmup = LinearLR(optimizer, start_factor=cfg.warmup_lr_scale, end_factor=1.0, total_iters=warmup_steps)
             cosine = CosineAnnealingLR(optimizer, T_max=total_steps - warmup_steps, eta_min=cfg.min_lr)
             scheduler = SequentialLR(optimizer, schedulers=[warmup, cosine], milestones=[warmup_steps])

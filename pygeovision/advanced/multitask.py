@@ -3,8 +3,10 @@ Multi-task learning for geospatial models (G5).
 Jointly optimise segmentation + detection + classification from one backbone.
 """
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,11 +42,11 @@ class MultiTaskLearner:
     def __init__(
         self,
         backbone: str = "resnet50",
-        tasks: Optional[List[str]] = None,
-        n_classes: Optional[Dict[str, int]] = None,
-        task_weights: Optional[Dict[str, float]] = None,
+        tasks: list[str] | None = None,
+        n_classes: dict[str, int] | None = None,
+        task_weights: dict[str, float] | None = None,
         pretrained: bool = True,
-        device: Optional[str] = None,
+        device: str | None = None,
     ) -> None:
         self.backbone = backbone
         self.tasks = tasks or ["segmentation", "classification"]
@@ -119,16 +121,17 @@ class MultiTaskLearner:
         logger.info("MultiTaskModel built: backbone=%s tasks=%s", self.backbone, self.tasks)
         return self._model
 
-    def compute_loss(self, outputs: Dict[str, Any], targets: Dict[str, Any]) -> Any:
+    def compute_loss(self, outputs: dict[str, Any], targets: dict[str, Any]) -> Any:
         """Compute weighted multi-task loss."""
         try:
             import torch
         except ImportError:
             raise ImportError("torch required")
 
-        from pygeovision.losses.segmentation import ComboLoss
-        from pygeovision.losses.class_balance import LabelSmoothingCrossEntropy
         import torch.nn.functional as F
+
+        from pygeovision.losses.class_balance import LabelSmoothingCrossEntropy
+        from pygeovision.losses.segmentation import ComboLoss
 
         task_losses = {}
         total_loss = torch.tensor(0.0, requires_grad=True)
@@ -159,8 +162,8 @@ class MultiTaskLearner:
         val_loader: Any,
         epochs: int = 100,
         lr: float = 1e-4,
-        save_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        save_path: str | None = None,
+    ) -> dict[str, Any]:
         """Train the multi-task model."""
         if self._model is None:
             self.build()

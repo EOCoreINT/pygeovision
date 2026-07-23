@@ -52,11 +52,11 @@ class ExperimentRecord:
     run_id: str
     start_time: str
     end_time: str = ""
-    params: Dict[str, Any] = field(default_factory=dict)
-    metrics: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
-    tags: Dict[str, str] = field(default_factory=dict)
-    artifacts: List[str] = field(default_factory=list)
-    environment: Dict[str, str] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    tags: dict[str, str] = field(default_factory=dict)
+    artifacts: list[str] = field(default_factory=list)
+    environment: dict[str, str] = field(default_factory=dict)
 
 
 class ExperimentTracker:
@@ -83,9 +83,9 @@ class ExperimentTracker:
     def __init__(
         self,
         name: str,
-        save_dir: Optional[Path] = None,
-        tags: Optional[Dict[str, str]] = None,
-        seed: Optional[int] = None,
+        save_dir: Path | None = None,
+        tags: dict[str, str] | None = None,
+        seed: int | None = None,
     ) -> None:
         self.save_dir = Path(save_dir or Path.home() / ".pygeovision" / "experiments")
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -109,7 +109,7 @@ class ExperimentTracker:
     # Logging API
     # ------------------------------------------------------------------
 
-    def log_params(self, params: Dict[str, Any]) -> None:
+    def log_params(self, params: dict[str, Any]) -> None:
         """Log hyperparameters for this run.
 
         Args:
@@ -121,7 +121,7 @@ class ExperimentTracker:
         self.record.params.update(params)
         logger.debug("Logged params: %s", list(params.keys()))
 
-    def log_metrics(self, metrics: Dict[str, float], step: int = 0) -> None:
+    def log_metrics(self, metrics: dict[str, float], step: int = 0) -> None:
         """Log metrics at a training step.
 
         Args:
@@ -171,7 +171,7 @@ class ExperimentTracker:
         return out_path
 
     @classmethod
-    def load(cls, run_id: str, save_dir: Optional[Path] = None) -> "ExperimentTracker":
+    def load(cls, run_id: str, save_dir: Path | None = None) -> ExperimentTracker:
         """Load an existing experiment record by run_id.
 
         Args:
@@ -191,7 +191,7 @@ class ExperimentTracker:
         tracker.record = ExperimentRecord(**data)
         return tracker
 
-    def list_experiments(self) -> List[Dict[str, Any]]:
+    def list_experiments(self) -> list[dict[str, Any]]:
         """List all saved experiment records in save_dir.
 
         Returns:
@@ -211,7 +211,7 @@ class ExperimentTracker:
                 pass
         return records
 
-    def get_best_metric(self, metric: str, mode: str = "max") -> Optional[float]:
+    def get_best_metric(self, metric: str, mode: str = "max") -> float | None:
         """Return the best recorded value for a metric.
 
         Args:
@@ -237,7 +237,6 @@ class ExperimentTracker:
         Args:
             seed: Integer seed value.
         """
-        import random
         random.seed(seed)
         np.random.seed(seed)
         try:
@@ -263,7 +262,7 @@ class ExperimentTracker:
         return f"{safe_name}_{ts}_{short_hash}"
 
     @staticmethod
-    def _capture_env() -> Dict[str, str]:
+    def _capture_env() -> dict[str, str]:
         env = {
             "python": platform.python_version(),
             "platform": platform.platform(),

@@ -10,15 +10,8 @@ Uses pygeofetch CLI as primary backend + pystac_client as Python fallback.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pygeovision.core.config import PyGeoVisionConfig
-from pygeovision.core.exceptions import (
-    PyGeoVisionError,
-    PyGeoVisionConfigError,
-    PyGeoVisionAuthError,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +25,8 @@ class PyGeoVisionEngine:
 
     def __init__(
         self,
-        config: Optional[PyGeoVisionConfig] = None,
-        api_key: Optional[str] = None,
+        config: PyGeoVisionConfig | None = None,
+        api_key: str | None = None,
     ) -> None:
         from pygeovision.data.fetch import SatelliteFetcher
         self.config = config or PyGeoVisionConfig()

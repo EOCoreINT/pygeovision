@@ -9,21 +9,21 @@ without AI extras doesn't fail. All data operations use PyGeoFetch
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from pygeovision.ai.experiments import ExperimentTracker
     from pygeovision.ai.models.hub import ModelHub
     from pygeovision.ai.models.registry import ModelRegistry
     from pygeovision.ai.monitoring import DriftDetector, PerformanceTracker
-    from pygeovision.ai.experiments import ExperimentTracker
 
 
 class AIEngine:
     """Lazy-loaded AI engine. Access via ``client.ai``.
 
-    All heavy imports (torch, transformers, geoai, etc.) happen on first
+    All heavy imports (torch, transformers, etc.) happen on first
     access. All data retrieval delegates to PyGeoFetch via the parent
     PyGeoVision client.
 
@@ -35,11 +35,11 @@ class AIEngine:
 
     def __init__(self, pgv_client: Any) -> None:
         self._pgv = pgv_client          # PyGeoVision instance
-        self._models_hub: Optional[Any] = None
-        self._registry: Optional[Any] = None
+        self._models_hub: Any | None = None
+        self._registry: Any | None = None
 
     @property
-    def models(self) -> "ModelHub":
+    def models(self) -> ModelHub:
         """ModelHub — download, cache, and load pretrained models."""
         if self._models_hub is None:
             from pygeovision.ai.models.hub import ModelHub
@@ -47,7 +47,7 @@ class AIEngine:
         return self._models_hub  # type: ignore[return-value]
 
     @property
-    def registry(self) -> "ModelRegistry":
+    def registry(self) -> ModelRegistry:
         """ModelRegistry — list and inspect all registered architectures."""
         from pygeovision.ai.models.registry import registry
         return registry  # type: ignore[return-value]
@@ -59,8 +59,11 @@ class AIEngine:
                   'esa_worldcover', 'dynamic_world', 'sam', 'foundation'.
         """
         from pygeovision.ai.labeling import (
-            OSMLabeler, ESAWorldCoverLabeler, MicrosoftBuildingsLabeler,
-            GoogleBuildingsLabeler, DynamicWorldLabeler,
+            DynamicWorldLabeler,
+            ESAWorldCoverLabeler,
+            GoogleBuildingsLabeler,
+            MicrosoftBuildingsLabeler,
+            OSMLabeler,
         )
         _LABELERS = {
             "osm": OSMLabeler,
@@ -104,37 +107,38 @@ class AIEngine:
         return self._pgv.pipeline(name, bbox=bbox, **kwargs)
 
     @property
-    def monitor(self) -> "_MonitorProxy":
+    def monitor(self) -> _MonitorProxy:
         return _MonitorProxy()
 
     @property
-    def experiments(self) -> "_ExperimentsProxy":
+    def experiments(self) -> _ExperimentsProxy:
         return _ExperimentsProxy()
 
 
 class _MonitorProxy:
-    def drift_detector(self, **kwargs: Any) -> "DriftDetector":
+    def drift_detector(self, **kwargs: Any) -> DriftDetector:
         from pygeovision.ai.monitoring import DriftDetector
         return DriftDetector(**kwargs)
 
-    def performance_tracker(self, **kwargs: Any) -> "PerformanceTracker":
+    def performance_tracker(self, **kwargs: Any) -> PerformanceTracker:
         from pygeovision.ai.monitoring import PerformanceTracker
         return PerformanceTracker(**kwargs)
 
     def detect(self, reference_features: Any, production_features: Any,
                threshold: float = 0.1, method: str = "ks") -> Any:
-        from pygeovision.ai.monitoring import DriftDetector
         import numpy as np
+
+        from pygeovision.ai.monitoring import DriftDetector
         d = DriftDetector(threshold=threshold, method=method)
         d.fit_reference(np.array(reference_features))
         return d.check(np.array(production_features))
 
 
 class _ExperimentsProxy:
-    def new(self, name: str, **kwargs: Any) -> "ExperimentTracker":
+    def new(self, name: str, **kwargs: Any) -> ExperimentTracker:
         from pygeovision.ai.experiments import ExperimentTracker
         return ExperimentTracker(name, **kwargs)
 
-    def load(self, run_id: str, **kwargs: Any) -> "ExperimentTracker":
+    def load(self, run_id: str, **kwargs: Any) -> ExperimentTracker:
         from pygeovision.ai.experiments import ExperimentTracker
         return ExperimentTracker.load(run_id, **kwargs)

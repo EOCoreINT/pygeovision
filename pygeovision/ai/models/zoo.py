@@ -3,8 +3,9 @@ AI Model Zoo — 50+ architectures across all geospatial tasks (Phase 2).
 Extends the base ModelRegistry with comprehensive coverage.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -21,12 +22,12 @@ class ModelSpec:
     hf_model_id: str = ""       # HuggingFace Hub ID for auto-download
     input_size: int = 224
     params_m: float = 0.0       # Million parameters
-    tags: List[str] = field(default_factory=list)
-    domains: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    domains: list[str] = field(default_factory=list)
 
 
-def _build_zoo() -> List[ModelSpec]:
-    M: List[ModelSpec] = []
+def _build_zoo() -> list[ModelSpec]:
+    M: list[ModelSpec] = []
 
     # ── Classification (Phase 2.1) ─────────────────────────────────────
     M += [
@@ -191,17 +192,17 @@ class ModelZoo:
     def __contains__(self, name: str) -> bool:
         return name in self._by_name
 
-    def all(self) -> List[ModelSpec]:
+    def all(self) -> list[ModelSpec]:
         return list(self._models)
 
     def filter(
         self,
-        task: Optional[str] = None,
-        backbone: Optional[str] = None,
-        tag: Optional[str] = None,
-        max_params_m: Optional[float] = None,
+        task: str | None = None,
+        backbone: str | None = None,
+        tag: str | None = None,
+        max_params_m: float | None = None,
         pretrained_only: bool = False,
-    ) -> List[ModelSpec]:
+    ) -> list[ModelSpec]:
         out = []
         for m in self._models:
             if task and m.task != task: continue
@@ -212,14 +213,14 @@ class ModelZoo:
             out.append(m)
         return out
 
-    def search(self, query: str) -> List[ModelSpec]:
+    def search(self, query: str) -> list[ModelSpec]:
         q = query.lower()
         return [m for m in self._models if q in (m.name + m.architecture + m.description + " ".join(m.tags)).lower()]
 
-    def tasks(self) -> List[str]:
+    def tasks(self) -> list[str]:
         return sorted(set(m.task for m in self._models))
 
-    def top_for_task(self, task: str, n: int = 5) -> List[ModelSpec]:
+    def top_for_task(self, task: str, n: int = 5) -> list[ModelSpec]:
         candidates = self.filter(task=task, pretrained_only=True)
         # Score: recency proxy (more params generally = newer) + smaller models preferred for deployability
         def _score(m: ModelSpec) -> float:
@@ -229,8 +230,8 @@ class ModelZoo:
             return pretrained + has_hf + param_score
         return sorted(candidates, key=_score, reverse=True)[:n]
 
-    def summary(self) -> Dict[str, Any]:
-        tasks: Dict[str, int] = {}
+    def summary(self) -> dict[str, Any]:
+        tasks: dict[str, int] = {}
         for m in self._models:
             tasks[m.task] = tasks.get(m.task, 0) + 1
         return {
@@ -240,7 +241,7 @@ class ModelZoo:
             "pretrained": sum(1 for m in self._models if m.pretrained_available),
         }
 
-    def print_table(self, models: Optional[List[ModelSpec]] = None) -> None:
+    def print_table(self, models: list[ModelSpec] | None = None) -> None:
         items = models or self._models
         print(f"\n{'Name':<28} {'Task':<18} {'Architecture':<20} {'Params(M)':>10} {'HF':>4}")
         print("─" * 85)

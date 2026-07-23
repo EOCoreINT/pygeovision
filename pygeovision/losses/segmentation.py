@@ -1,5 +1,5 @@
 """
-Geospatial segmentation losses (D1) — pure PyTorch, no GeoAI dependency.
+Geospatial segmentation losses (D1) — pure PyTorch, fully native.
 
 Includes:
     DiceLoss          — overlap-based, class-imbalance tolerant
@@ -12,8 +12,9 @@ Includes:
     GeospatialMixedLoss — production-ready composite
 """
 from __future__ import annotations
+
 import logging
-from typing import Optional
+
 logger = logging.getLogger(__name__)
 
 
@@ -184,7 +185,7 @@ class ComboLoss:
         self.ignore_index = ignore_index
 
     def __call__(self, predictions: Any, targets: Any) -> Any:
-        torch = _check_torch()
+        _check_torch()
         import torch.nn.functional as F
         dice = self._dice(predictions, targets)
         ce = F.cross_entropy(predictions, targets.long(), ignore_index=self.ignore_index)
@@ -214,9 +215,9 @@ class BoundaryAwareLoss:
 
     def _extract_boundaries(self, targets: Any) -> Any:
         """Extract boundary pixels via morphological erosion."""
-        torch = _check_torch()
+        _check_torch()
+
         import torch.nn.functional as F
-        import math
 
         pad = self.kernel_size // 2
         # Erode: min-pool
@@ -226,7 +227,7 @@ class BoundaryAwareLoss:
         return boundary & (targets != self.ignore_index)
 
     def __call__(self, predictions: Any, targets: Any) -> Any:
-        torch = _check_torch()
+        _check_torch()
         import torch.nn.functional as F
 
         base = self._base_loss(predictions, targets)
@@ -261,7 +262,7 @@ class OhemCrossEntropy:
         self.ignore_index = ignore_index
 
     def __call__(self, predictions: Any, targets: Any) -> Any:
-        torch = _check_torch()
+        _check_torch()
         import torch.nn.functional as F
 
         ce = F.cross_entropy(predictions, targets.long(),
@@ -289,7 +290,6 @@ class LovaszLoss:
 
     def __call__(self, predictions: Any, targets: Any) -> Any:
         torch = _check_torch()
-        import torch.nn.functional as F
 
         # Lovász extension for multiclass via one-vs-rest
         B, C = predictions.shape[:2]
@@ -337,7 +337,7 @@ class GeospatialMixedLoss:
 
     def __init__(
         self,
-        weights: Optional[dict] = None,
+        weights: dict | None = None,
         num_classes: int = 2,
         ignore_index: int = 255,
     ) -> None:
@@ -347,7 +347,7 @@ class GeospatialMixedLoss:
         self._ohem     = OhemCrossEntropy(ignore_index=ignore_index)
 
     def __call__(self, predictions: Any, targets: Any) -> Any:
-        torch = _check_torch()
+        _check_torch()
         total = None
         for name, weight in self.weights.items():
             if name == "combo":

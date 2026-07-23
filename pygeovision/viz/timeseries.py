@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -58,12 +57,12 @@ class TimeSeriesViewer:
 
     def __init__(
         self,
-        paths: List[str],
-        dates: Optional[List[str]] = None,
+        paths: list[str],
+        dates: list[str] | None = None,
         band: int = 0,
         colormap: str = "RdYlGn",
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
+        vmin: float | None = None,
+        vmax: float | None = None,
     ) -> None:
         self._paths   = [str(p) for p in paths]
         self._dates   = dates or [f"T{i}" for i in range(len(paths))]
@@ -72,7 +71,7 @@ class TimeSeriesViewer:
         self._vmin    = vmin
         self._vmax    = vmax
         self._fig     = None
-        self._data_cache: Optional[np.ndarray] = None   # (T, H, W)
+        self._data_cache: np.ndarray | None = None   # (T, H, W)
 
     def _load_stack(self) -> np.ndarray:
         if self._data_cache is not None:
@@ -129,8 +128,8 @@ class TimeSeriesViewer:
 
     # ── Trend over ROI ────────────────────────────────────────────────────────
 
-    def trend(self, roi: Optional[Tuple[float, float, float, float]] = None,
-               title: str = "Temporal Trend") -> "TimeSeriesViewer":
+    def trend(self, roi: tuple[float, float, float, float] | None = None,
+               title: str = "Temporal Trend") -> TimeSeriesViewer:
         """Plot mean pixel value over time for a region of interest."""
         plt = _mpl()
         stack = self._load_stack()
@@ -181,20 +180,20 @@ class TimeSeriesViewer:
 
     # ── Seasonal decomposition ────────────────────────────────────────────────
 
-    def seasonal(self, period: int = 12, title: str = "Seasonal Pattern") -> "TimeSeriesViewer":
+    def seasonal(self, period: int = 12, title: str = "Seasonal Pattern") -> TimeSeriesViewer:
         """Show seasonal pattern of the mean time-series."""
         plt = _mpl()
         stack  = self._load_stack()
         means  = np.nanmean(stack.reshape(stack.shape[0], -1), axis=1)
         T      = len(means)
 
-        if T < 2 * period:
+        if 2 * period > T:
             logger.warning("Not enough time steps (%d) for seasonal analysis (need %d)", T, 2*period)
             period = max(2, T // 2)
 
         try:
-            from statsmodels.tsa.seasonal import seasonal_decompose
             import pandas as pd
+            from statsmodels.tsa.seasonal import seasonal_decompose
             s = pd.Series(means)
             decomp = seasonal_decompose(s, model="additive", period=period, extrapolate_trend="freq")
 
@@ -230,7 +229,7 @@ class TimeSeriesViewer:
     # ── Anomaly detection ─────────────────────────────────────────────────────
 
     def anomaly(self, n_sigma: float = 2.0,
-                title: str = "Anomaly Detection") -> "TimeSeriesViewer":
+                title: str = "Anomaly Detection") -> TimeSeriesViewer:
         """Flag time steps where the mean value deviates more than n_sigma."""
         plt = _mpl()
         stack = self._load_stack()
@@ -273,7 +272,7 @@ class TimeSeriesViewer:
 
     # ── Mosaic overview ───────────────────────────────────────────────────────
 
-    def mosaic(self, max_cols: int = 4, title: str = "Time-Series Mosaic") -> "TimeSeriesViewer":
+    def mosaic(self, max_cols: int = 4, title: str = "Time-Series Mosaic") -> TimeSeriesViewer:
         """Display all time steps as a small multiples grid."""
         plt  = _mpl()
         stack = self._load_stack()
@@ -303,14 +302,14 @@ class TimeSeriesViewer:
 
     # ── Output ────────────────────────────────────────────────────────────────
 
-    def show(self) -> "TimeSeriesViewer":
+    def show(self) -> TimeSeriesViewer:
         plt = _mpl()
         if self._fig:
             plt.show()
         return self
 
     def export(self, path: str, dpi: int = 150) -> str:
-        plt = _mpl()
+        _mpl()
         if self._fig is None:
             self.trend()
         Path(path).parent.mkdir(parents=True, exist_ok=True)

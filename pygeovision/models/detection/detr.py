@@ -1,5 +1,5 @@
 """DETR / RT-DETR / RF-DETR for satellite object detection."""
-from typing import Any, Optional
+from typing import Any
 
 
 def build_detr(variant: str = "detr-r50", num_classes: int = 5,
@@ -17,7 +17,7 @@ def build_detr(variant: str = "detr-r50", num_classes: int = 5,
         "rf-detr-b":  "roboflow/rf-detr-base",
     }
     try:
-        from transformers import AutoModelForObjectDetection, AutoConfig
+        from transformers import AutoConfig, AutoModelForObjectDetection
         hf_id = HF_IDS.get(variant, HF_IDS["detr-r50"])
         config = AutoConfig.from_pretrained(hf_id)
         if hasattr(config, "num_labels"):

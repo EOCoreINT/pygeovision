@@ -22,13 +22,11 @@ Typical workflow:
 from __future__ import annotations
 
 import logging
-import os
 import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -118,7 +116,7 @@ class UnwrappingResult:
     n_lines:        int   = 0
     line_length:    int   = 0
     masked_fraction: float = 0.0           # Fraction of pixels masked by coherence
-    stats:          Dict  = field(default_factory=dict)
+    stats:          dict  = field(default_factory=dict)
 
 
 class SnaphuUnwrapper:
@@ -141,12 +139,12 @@ class SnaphuUnwrapper:
 
     def __init__(
         self,
-        snaphu_exe: Optional[str] = None,
-        config:     Optional[SnaphuConfig] = None,
+        snaphu_exe: str | None = None,
+        config:     SnaphuConfig | None = None,
     ) -> None:
         self.exe    = snaphu_exe or shutil.which("snaphu") or "snaphu"
         self.config = config or SnaphuConfig()
-        self._available: Optional[bool] = None
+        self._available: bool | None = None
 
     @property
     def available(self) -> bool:
@@ -157,7 +155,7 @@ class SnaphuUnwrapper:
     def run(
         self,
         snaphu_export_dir: str,
-        output_dir:        Optional[str] = None,
+        output_dir:        str | None = None,
     ) -> UnwrappingResult:
         """
         Run SNAPHU on the output of SNAP's SnaphuExport operator.
@@ -337,7 +335,7 @@ class SnaphuUnwrapper:
     # ── Helpers ───────────────────────────────────────────────────────────
 
     @staticmethod
-    def _find_file(directory: Path, *patterns: str) -> Optional[str]:
+    def _find_file(directory: Path, *patterns: str) -> str | None:
         """Find first matching file in directory."""
         for pattern in patterns:
             matches = list(directory.glob(pattern))
@@ -346,7 +344,7 @@ class SnaphuUnwrapper:
         return None
 
     @staticmethod
-    def _parse_dimensions(conf_file: str) -> Tuple[int, int]:
+    def _parse_dimensions(conf_file: str) -> tuple[int, int]:
         """Parse NLINES and LINELENGTH from a snaphu.conf file."""
         text   = Path(conf_file).read_text()
         n_line = re.search(r"^\s*NLINES\s+(\d+)", text, re.MULTILINE)
@@ -364,7 +362,7 @@ class SnaphuUnwrapper:
         self,
         n_lines:     int,
         line_length: int,
-        coh_file:    Optional[str],
+        coh_file:    str | None,
     ) -> float:
         if not coh_file or not Path(coh_file).exists():
             return 0.0
@@ -382,7 +380,7 @@ class SnaphuUnwrapper:
 
 def unwrap_phase(
     snaphu_export_dir: str,
-    output_dir:        Optional[str] = None,
+    output_dir:        str | None = None,
     stat_cost_mode:    str = "DEFO",
     n_procs:           int = 4,
     coh_threshold:     float = 0.3,

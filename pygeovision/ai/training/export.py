@@ -14,8 +14,8 @@ Example:
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
@@ -42,7 +42,7 @@ class ModelExporter:
     def __init__(
         self,
         model: nn.Module,
-        input_shape: Tuple[int, ...] = (1, 3, 512, 512),
+        input_shape: tuple[int, ...] = (1, 3, 512, 512),
         device: str = "cpu",
         opset_version: int = 17,
     ) -> None:
@@ -54,9 +54,9 @@ class ModelExporter:
     def to_onnx(
         self,
         output_path: str | Path,
-        input_names: Optional[Sequence[str]] = None,
-        output_names: Optional[Sequence[str]] = None,
-        dynamic_axes: Optional[dict] = None,
+        input_names: Sequence[str] | None = None,
+        output_names: Sequence[str] | None = None,
+        dynamic_axes: dict | None = None,
         simplify: bool = True,
     ) -> Path:
         """Export model to ONNX format.
@@ -183,8 +183,8 @@ class ModelExporter:
         Returns:
             Dict with mean_ms, std_ms, fps, and input_shape.
         """
-        import time
         import statistics
+        import time
 
         dummy = torch.zeros(self.input_shape, device=self.device)
 

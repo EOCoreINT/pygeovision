@@ -2,8 +2,11 @@
 AutoML for geospatial models (D6) — automated architecture search and HPO.
 """
 from __future__ import annotations
+
 import logging
-from typing import Any, Callable, Dict, List, Optional, Union
+from collections.abc import Callable
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,11 +40,11 @@ class GeoAutoML:
         metric: str = "val_iou",
         direction: str = "maximize",
         n_trials: int = 50,
-        timeout_s: Optional[int] = None,
+        timeout_s: int | None = None,
         backend: str = "optuna",
         n_jobs: int = 1,
-        storage: Optional[str] = None,
-        study_name: Optional[str] = None,
+        storage: str | None = None,
+        study_name: str | None = None,
     ) -> None:
         self.metric = metric
         self.direction = direction
@@ -55,11 +58,11 @@ class GeoAutoML:
 
     def search(
         self,
-        train_fn: Callable[[Dict], float],
-        search_space: Dict[str, Any],
-        pruner: Optional[str] = "median",
-        sampler: Optional[str] = "tpe",
-    ) -> Dict[str, Any]:
+        train_fn: Callable[[dict], float],
+        search_space: dict[str, Any],
+        pruner: str | None = "median",
+        sampler: str | None = "tpe",
+    ) -> dict[str, Any]:
         """Run hyperparameter search.
 
         Args:
@@ -79,7 +82,7 @@ class GeoAutoML:
         else:
             return {"success": False, "error": f"Unknown backend: {self.backend}"}
 
-    def _search_optuna(self, train_fn, search_space, pruner, sampler) -> Dict[str, Any]:
+    def _search_optuna(self, train_fn, search_space, pruner, sampler) -> dict[str, Any]:
         try:
             import optuna
             optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -146,9 +149,9 @@ class GeoAutoML:
             "study_name": self.study_name,
         }
 
-    def _search_ray(self, train_fn, search_space) -> Dict[str, Any]:
+    def _search_ray(self, train_fn, search_space) -> dict[str, Any]:
         try:
-            from ray import tune, air
+            from ray import air, tune
         except ImportError:
             return {"success": False, "error": "pip install ray[tune]"}
 
@@ -183,7 +186,7 @@ class GeoAutoML:
             "n_trials_completed": self.n_trials,
         }
 
-    def importance(self) -> Dict[str, float]:
+    def importance(self) -> dict[str, float]:
         """Return hyperparameter importance from the completed study."""
         if self._study is None:
             return {}
@@ -194,7 +197,7 @@ class GeoAutoML:
         except Exception:
             return {}
 
-    def plot_optimization_history(self, save_path: Optional[str] = None) -> None:
+    def plot_optimization_history(self, save_path: str | None = None) -> None:
         if self._study is None: return
         try:
             import optuna

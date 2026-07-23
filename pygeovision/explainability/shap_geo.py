@@ -1,7 +1,9 @@
 """SHAP values for geospatial feature importance (G6)."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,16 +20,18 @@ class GeospatialSHAP:
         shap_exp.plot_band_importance(values, band_names=["B02","B03","B04","B08"])
     """
 
-    def __init__(self, model: Any, device: Optional[str] = None,
+    def __init__(self, model: Any, device: str | None = None,
                  background_samples: int = 50) -> None:
         self.model = model
         self.device = device or "cpu"
         self.background_samples = background_samples
 
-    def band_importance(self, image: Any, n_samples: int = 100) -> Dict[str, Any]:
+    def band_importance(self, image: Any, n_samples: int = 100) -> dict[str, Any]:
         """Compute spectral band importance using SHAP."""
         try:
-            import shap, torch, numpy as np
+            import numpy as np
+            import shap
+            import torch
         except ImportError:
             return {"error": "pip install shap"}
 
@@ -56,8 +60,8 @@ class GeospatialSHAP:
 
         return {"band_importance": band_importance, "method": "shap"}
 
-    def plot_band_importance(self, values: Dict, band_names: Optional[list] = None,
-                              save_path: Optional[str] = None) -> None:
+    def plot_band_importance(self, values: dict, band_names: list | None = None,
+                              save_path: str | None = None) -> None:
         try:
             import matplotlib.pyplot as plt
             bi = values.get("band_importance", {})

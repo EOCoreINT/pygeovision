@@ -1,5 +1,5 @@
 """
-PyGeoVision GeoAI Engine.
+PyGeoVision AI Engine.
 
 The AI engine is the new intelligence layer built on top of PyGeoFetch data.
 All data retrieval within the AI engine uses PyGeoFetch — no data pipeline code

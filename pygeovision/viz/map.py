@@ -28,10 +28,9 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -54,13 +53,13 @@ class Layer:
         self.type     = layer_type
         self.visible  = visible
         self.opacity  = opacity
-        self._meta: Dict[str, Any] = {}
+        self._meta: dict[str, Any] = {}
 
 
 class RasterLayer(Layer):
     def __init__(self, path: str, band: int = 0, colormap: str = "viridis",
-                 vmin: Optional[float] = None, vmax: Optional[float] = None,
-                 opacity: float = 0.8, name: Optional[str] = None):
+                 vmin: float | None = None, vmax: float | None = None,
+                 opacity: float = 0.8, name: str | None = None):
         super().__init__(name or Path(path).stem, "raster", opacity=opacity)
         self.path     = path
         self.band     = band
@@ -70,11 +69,11 @@ class RasterLayer(Layer):
 
 
 class VectorLayer(Layer):
-    def __init__(self, path_or_geojson: Union[str, dict],
+    def __init__(self, path_or_geojson: str | dict,
                  color: str = "#3388ff", fill_color: str = "#3388ff",
                  fill_opacity: float = 0.3, weight: int = 2,
-                 popup_fields: Optional[List[str]] = None,
-                 name: Optional[str] = None, opacity: float = 1.0):
+                 popup_fields: list[str] | None = None,
+                 name: str | None = None, opacity: float = 1.0):
         src_name = Path(path_or_geojson).stem if isinstance(path_or_geojson, str) else "vector"
         super().__init__(name or src_name, "vector", opacity=opacity)
         self.source      = path_or_geojson
@@ -105,7 +104,7 @@ class Map:
 
     def __init__(
         self,
-        center:  Optional[Tuple[float, float]] = None,
+        center:  tuple[float, float] | None = None,
         zoom:    int = 12,
         basemap: str = "streets",
         height:  str = "500px",
@@ -114,8 +113,8 @@ class Map:
         self._zoom    = zoom
         self._basemap = basemap
         self._height  = height
-        self._layers:  List[Layer] = []
-        self._controls: List[str]  = ["zoom", "scale", "layers"]
+        self._layers:  list[Layer] = []
+        self._controls: list[str]  = ["zoom", "scale", "layers"]
 
     # ── Layer management ───────────────────────────────────────────────────────
 
@@ -124,11 +123,11 @@ class Map:
         path: str,
         band: int = 0,
         colormap: str = "viridis",
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
+        vmin: float | None = None,
+        vmax: float | None = None,
         opacity: float = 0.8,
-        name: Optional[str] = None,
-    ) -> "Map":
+        name: str | None = None,
+    ) -> Map:
         """Add a raster layer (GeoTIFF / COG)."""
         self._layers.append(RasterLayer(path, band, colormap, vmin, vmax, opacity, name))
         if self._center is None:
@@ -137,15 +136,15 @@ class Map:
 
     def add_vector(
         self,
-        path_or_geojson: Union[str, dict],
+        path_or_geojson: str | dict,
         color: str = "#3388ff",
         fill_color: str = "#3388ff",
         fill_opacity: float = 0.3,
         weight: int = 2,
-        popup_fields: Optional[List[str]] = None,
-        name: Optional[str] = None,
+        popup_fields: list[str] | None = None,
+        name: str | None = None,
         opacity: float = 1.0,
-    ) -> "Map":
+    ) -> Map:
         """Add a vector layer (GeoJSON / Shapefile)."""
         self._layers.append(VectorLayer(
             path_or_geojson, color, fill_color, fill_opacity, weight,
@@ -153,16 +152,16 @@ class Map:
         ))
         return self
 
-    def add_basemap(self, basemap: str = "satellite") -> "Map":
+    def add_basemap(self, basemap: str = "satellite") -> Map:
         self._basemap = basemap
         return self
 
-    def remove_layer(self, name: str) -> "Map":
+    def remove_layer(self, name: str) -> Map:
         self._layers = [l for l in self._layers if l.name != name]
         return self
 
     @property
-    def layers(self) -> List[Layer]:
+    def layers(self) -> list[Layer]:
         return list(self._layers)
 
     # ── Display ────────────────────────────────────────────────────────────────
@@ -200,7 +199,8 @@ class Map:
 
     def _make_raster_overlay(self, ipyl: Any, layer: RasterLayer):
         """Convert raster to image overlay for ipyleaflet."""
-        import rasterio, matplotlib
+        import matplotlib
+        import rasterio
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         from rasterio.warp import transform_bounds
@@ -360,17 +360,17 @@ L.control.scale().addTo(map);
         cls,
         left_raster:  str,
         right_raster: str,
-        center: Optional[Tuple[float, float]] = None,
+        center: tuple[float, float] | None = None,
         zoom:   int = 12,
         left_colormap:  str = "viridis",
         right_colormap: str = "viridis",
-    ) -> "SplitMap":
+    ) -> SplitMap:
         return SplitMap(left_raster, right_raster, center, zoom, left_colormap, right_colormap)
 
     # ── Helpers ────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _raster_center(path: str) -> Tuple[float, float]:
+    def _raster_center(path: str) -> tuple[float, float]:
         try:
             import rasterio
             from rasterio.warp import transform_bounds
@@ -392,7 +392,7 @@ class SplitMap:
         self,
         left_path:  str,
         right_path: str,
-        center: Optional[Tuple[float, float]] = None,
+        center: tuple[float, float] | None = None,
         zoom:   int = 12,
         left_colormap:  str = "viridis",
         right_colormap: str = "viridis",
@@ -406,7 +406,8 @@ class SplitMap:
 
     def show(self) -> Any:
         try:
-            from ipyleaflet import Map as IMap, SplitMapControl, TileLayer, ImageOverlay
+            from ipyleaflet import ImageOverlay, SplitMapControl, TileLayer
+            from ipyleaflet import Map as IMap
             m = IMap(center=self._center, zoom=self._zoom)
             # Create left/right overlays and return split control map
             return m
@@ -415,7 +416,6 @@ class SplitMap:
 
     def export(self, path: str = "split_view.html") -> str:
         """Export as HTML split-panel comparison."""
-        center = self._center
         html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <title>PyGeoVision Split View</title>

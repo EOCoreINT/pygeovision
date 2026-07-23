@@ -22,7 +22,8 @@ Transforms:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 # ── Registry ──────────────────────────────────────────────────────────────────
 
-DINOV3_MODELS: Dict[str, Dict] = {
+DINOV3_MODELS: dict[str, dict] = {
     # ViT Web (LVD-1689M)
     "dinov3_vits16":       {"arch": "vit_small",   "params_m": 21,    "dataset": "LVD-1689M", "patch": 16, "embed": 384,  "hf_id": "facebook/dinov2-small"},
     "dinov3_vits16plus":   {"arch": "vit_small",   "params_m": 29,    "dataset": "LVD-1689M", "patch": 16, "embed": 384,  "hf_id": "facebook/dinov2-small"},
@@ -48,7 +49,7 @@ DINOV3_MODELS: Dict[str, Dict] = {
     "dinov3_convnext_large": {"arch": "convnext",  "params_m": 198,   "dataset": "LVD-1689M", "embed": 1024, "timm_id": "convnext_large"},
 }
 
-DINOV3_HEADS: Dict[str, Dict] = {
+DINOV3_HEADS: dict[str, dict] = {
     "classifier": {"dataset": "ImageNet-1k", "task": "classification",  "compatible": ["vit"]},
     "depther":    {"dataset": "SYNTHMIX",    "task": "depth",           "compatible": ["vit_large", "vit_7b"]},
     "detector":   {"dataset": "COCO2017",    "task": "detection",       "compatible": ["vit_7b"]},
@@ -208,7 +209,7 @@ def load_dinov3_hf(model_name: str = "dinov3_vitl16",
             raise ImportError("pip install timm")
 
     try:
-        from transformers import AutoModel, AutoImageProcessor
+        from transformers import AutoImageProcessor, AutoModel
         logger.info("Loading DINOv3 from HuggingFace: %s", hf_id)
         processor = AutoImageProcessor.from_pretrained(hf_id)
         model = AutoModel.from_pretrained(hf_id).to(device).eval()
@@ -244,8 +245,9 @@ def load_dinov3_local(model_name: str, weights_path: str,
     if spec is None:
         raise ValueError(f"Unknown DINOv3 model: '{model_name}'")
     try:
-        import torch
         from pathlib import Path
+
+        import torch
         wpath = Path(weights_path)
         if not wpath.exists():
             raise FileNotFoundError(f"Weights not found: {weights_path}")
@@ -341,8 +343,8 @@ class DINOv3Backbone:
 
     def __init__(self, model_name: str = "dinov3_vitl16_sat",
                  method: str = "hf",
-                 device: Optional[str] = None,
-                 weights_path: Optional[str] = None) -> None:
+                 device: str | None = None,
+                 weights_path: str | None = None) -> None:
         self.model_name = model_name
         self.method     = method
         self.device     = device or self._auto_device()
@@ -379,9 +381,8 @@ class DINOv3Backbone:
             self._transform = dinov3_web_transform()
             logger.info("Using LVD-1689M web transform (mean=%s)", WEB_MEAN)
 
-    def _load_image(self, image: Union[str, Any]) -> Any:
+    def _load_image(self, image: str | Any) -> Any:
         """Load and preprocess a satellite image into a model-ready tensor."""
-        import torch
         from PIL import Image as PILImage
 
         if isinstance(image, str):
@@ -417,7 +418,7 @@ class DINOv3Backbone:
             tensor = F.to_tensor(pil_img).unsqueeze(0).to(self.device)
         return tensor
 
-    def extract_features(self, image: Union[str, Any]) -> np.ndarray:
+    def extract_features(self, image: str | Any) -> np.ndarray:
         """Extract dense patch-level features as a spatial feature map.
 
         Args:
@@ -460,7 +461,7 @@ class DINOv3Backbone:
         spatial = patch_tokens.squeeze(0).view(H_p, W_p, -1)
         return spatial.cpu().float().numpy()
 
-    def extract_embeddings(self, image: Union[str, Any]) -> np.ndarray:
+    def extract_embeddings(self, image: str | Any) -> np.ndarray:
         """Extract global CLS token embedding for similarity search / retrieval.
 
         Returns:
@@ -491,7 +492,7 @@ class DINOv3Backbone:
 
         return cls.cpu().float().numpy()
 
-    def extract_patch_features(self, image: Union[str, Any]) -> np.ndarray:
+    def extract_patch_features(self, image: str | Any) -> np.ndarray:
         """Extract per-patch features for dense prediction tasks.
 
         Useful as input to segmentation or detection decoders.
@@ -524,8 +525,8 @@ class DINOv3Backbone:
 
         return patches.squeeze(0).cpu().float().numpy()
 
-    def get_attention_maps(self, image: Union[str, Any],
-                            head_idx: Optional[int] = None) -> np.ndarray:
+    def get_attention_maps(self, image: str | Any,
+                            head_idx: int | None = None) -> np.ndarray:
         """Extract multi-head self-attention maps for explainability.
 
         Args:
@@ -618,7 +619,6 @@ class DINOv3Backbone:
                 self._pgv_processor = getattr(backbone, "_pgv_processor", None)
 
             def forward(self, x):
-                import torch
                 if self._pgv_processor and hasattr(backbone, "_pgv_spec"):
                     out = backbone(pixel_values=x)
                     cls = out.last_hidden_state[:, 0]
@@ -629,7 +629,7 @@ class DINOv3Backbone:
 
         return GeoClassifier()
 
-    def finetune_config(self) -> Dict:
+    def finetune_config(self) -> dict:
         """Return recommended fine-tuning hyperparameters (from DINOv3 paper)."""
         return {
             "optimizer": "AdamW",
@@ -672,7 +672,7 @@ class CHMv2Model:
     _BIOMASS_COEF_A = 0.112
     _BIOMASS_COEF_B = 2.40
 
-    def __init__(self, device: Optional[str] = None) -> None:
+    def __init__(self, device: str | None = None) -> None:
         self.device = device or DINOv3Backbone._auto_device()
         self._backbone = DINOv3Backbone("dinov3_vitl16_sat", device=self.device)
         self._decoder  = None
@@ -700,7 +700,6 @@ class CHMv2Model:
                     )
 
                 def forward(self, patch_tokens):
-                    import torch
                     import math
                     B, N, D = patch_tokens.shape
                     H_p = W_p = int(math.sqrt(N))
@@ -713,8 +712,8 @@ class CHMv2Model:
             raise ImportError("torch required")
 
     def predict_canopy_height(self, image_path: str,
-                               output_path: Optional[str] = None,
-                               max_height_m: float = 70.0) -> Dict[str, Any]:
+                               output_path: str | None = None,
+                               max_height_m: float = 70.0) -> dict[str, Any]:
         """Predict canopy height from a Sentinel-2 GeoTIFF.
 
         Args:
@@ -732,7 +731,8 @@ class CHMv2Model:
             return {"error": f"File not found: {image_path}"}
 
         try:
-            import torch, rasterio
+            import rasterio
+            import torch
         except ImportError as exc:
             return {"error": f"Missing dependency: {exc}"}
 
@@ -744,8 +744,6 @@ class CHMv2Model:
         # Load image
         with rasterio.open(str(image_path)) as src:
             profile   = src.profile.copy()
-            transform = src.transform
-            crs       = src.crs
             data      = src.read().astype(np.float32)
 
         # Preprocess
@@ -815,7 +813,7 @@ class CHMv2Model:
 
 
     def estimate_biomass(self, image_path: str,
-                          output_path: Optional[str] = None) -> Dict[str, Any]:
+                          output_path: str | None = None) -> dict[str, Any]:
         """Estimate above-ground biomass from canopy height.
 
         Uses allometric equation: AGB = a * H^b (Brown 1997).
@@ -838,7 +836,7 @@ class CHMv2Model:
 
     def detect_deforestation(self, before_path: str, after_path: str,
                               min_height_loss_m: float = 2.0,
-                              output_path: Optional[str] = None) -> Dict[str, Any]:
+                              output_path: str | None = None) -> dict[str, Any]:
         """Detect deforestation by comparing canopy height at two dates.
 
         Args:
@@ -870,7 +868,7 @@ class CHMv2Model:
         if output_path:
             try:
                 import rasterio
-                from pygeovision.models.foundation.prithvi import Prithvi
+
                 with rasterio.open(after_path) as src:
                     profile = src.profile.copy()
                 profile.update(count=1, dtype="uint8", compress="lzw")
@@ -907,7 +905,7 @@ class DINOv3Text:
 
     def __init__(self, backbone: str = "dinov3_vitl16_sat",
                  text_encoder: str = "openai/clip-vit-large-patch14",
-                 device: Optional[str] = None) -> None:
+                 device: str | None = None) -> None:
         self.backbone_name  = backbone
         self.text_enc_id    = text_encoder
         self.device         = device or DINOv3Backbone._auto_device()
@@ -923,13 +921,13 @@ class DINOv3Text:
             self._text_model = CLIPTextModel.from_pretrained(self.text_enc_id).to(self.device).eval()
         except Exception:
             try:
-                from transformers import AutoTokenizer, AutoModel
+                from transformers import AutoModel, AutoTokenizer
                 self._text_tok   = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
                 self._text_model = AutoModel.from_pretrained("openai/clip-vit-base-patch32").to(self.device).eval()
             except Exception as exc:
                 raise ImportError(f"Text encoder load failed: {exc}")
 
-    def _encode_text(self, prompts: List[str]) -> Any:
+    def _encode_text(self, prompts: list[str]) -> Any:
         """Encode text prompts into embeddings."""
         import torch
         self._load_text_encoder()
@@ -940,7 +938,7 @@ class DINOv3Text:
             emb = out.pooler_output if hasattr(out, "pooler_output") else out.last_hidden_state[:, 0]
         return emb / emb.norm(dim=-1, keepdim=True)   # L2 normalise
 
-    def segment_by_text(self, image: Union[str, Any], text_prompt: str,
+    def segment_by_text(self, image: str | Any, text_prompt: str,
                          threshold: float = 0.5) -> np.ndarray:
         """Zero-shot segmentation from a text description.
 
@@ -979,8 +977,8 @@ class DINOv3Text:
         mask = (sim_up > threshold).astype(np.uint8)
         return mask
 
-    def detect_by_text(self, image: Union[str, Any], text_prompt: str,
-                        min_patch_area: int = 4) -> List[Dict]:
+    def detect_by_text(self, image: str | Any, text_prompt: str,
+                        min_patch_area: int = 4) -> list[dict]:
         """Zero-shot object detection by finding high-similarity patch clusters.
 
         Args:
@@ -1012,8 +1010,8 @@ class DINOv3Text:
         except ImportError:
             return [{"note": "scipy required for detection (pip install scipy)"}]
 
-    def classify_by_text(self, image: Union[str, Any],
-                          text_prompts: List[str]) -> Dict[str, float]:
+    def classify_by_text(self, image: str | Any,
+                          text_prompts: list[str]) -> dict[str, float]:
         """Zero-shot scene classification via text-image similarity.
 
         Args:
@@ -1023,7 +1021,8 @@ class DINOv3Text:
         Returns:
             Dict mapping each text_prompt to its similarity score (softmax)
         """
-        import torch, torch.nn.functional as F_
+        import torch
+        import torch.nn.functional as F_
 
         # Global embedding
         cls_emb = torch.tensor(self.extract_global(image),
@@ -1038,7 +1037,7 @@ class DINOv3Text:
         probs = F_.softmax(sims * 100, dim=-1).cpu().numpy()
         return {p: float(probs[i]) for i, p in enumerate(text_prompts)}
 
-    def extract_global(self, image: Union[str, Any]) -> np.ndarray:
+    def extract_global(self, image: str | Any) -> np.ndarray:
         return self._vision.extract_embeddings(image)
 
 
@@ -1056,7 +1055,7 @@ def finetune_dinov3(
     distributed: bool = False,
     output_dir: str = "./checkpoints/dinov3/",
     **kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Fine-tune a DINOv3 model for geospatial tasks.
 
     Recommended fine-tuning parameters from the DINOv3 paper:
@@ -1083,6 +1082,7 @@ def finetune_dinov3(
     """
     try:
         import torch
+
         from pygeovision.training.checkpoint import CheckpointManager
         from pygeovision.training.mixed_precision import MixedPrecisionManager
     except ImportError:
@@ -1132,17 +1132,17 @@ def finetune_dinov3(
 
 # ── Convenience functions ─────────────────────────────────────────────────────
 
-def list_dinov3_models() -> List[str]:
+def list_dinov3_models() -> list[str]:
     """List all available DINOv3 model names."""
     return list(DINOV3_MODELS.keys())
 
 
-def list_satellite_models() -> List[str]:
+def list_satellite_models() -> list[str]:
     """List DINOv3 models pretrained on satellite data (SAT-493M)."""
     return [n for n, s in DINOV3_MODELS.items() if s.get("sat")]
 
 
-def get_dinov3_info(model_name: str) -> Dict:
+def get_dinov3_info(model_name: str) -> dict:
     """Get detailed info for a DINOv3 model."""
     spec = DINOV3_MODELS.get(model_name)
     if spec is None:

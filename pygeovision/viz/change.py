@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -72,7 +72,7 @@ class ChangeViewer:
     # ── Side-by-side split ─────────────────────────────────────────────────────
 
     def split(self, before_label: str = "Before", after_label: str = "After",
-               colormap: str = "gray", title: str = "Change Comparison") -> "ChangeViewer":
+               colormap: str = "gray", title: str = "Change Comparison") -> ChangeViewer:
         """Display before and after rasters side by side."""
         plt = _mpl()
         b_data = self._pct_stretch(self._read_band(self._before))
@@ -97,7 +97,7 @@ class ChangeViewer:
 
     # ── Difference map ─────────────────────────────────────────────────────────
 
-    def difference(self, title: str = "Amplitude Difference") -> "ChangeViewer":
+    def difference(self, title: str = "Amplitude Difference") -> ChangeViewer:
         """Show normalised amplitude change map."""
         plt = _mpl()
         b_data  = self._read_band(self._before)
@@ -129,7 +129,7 @@ class ChangeViewer:
     # ── Overlay ────────────────────────────────────────────────────────────────
 
     def overlay(self, mask_path: str, change_color: str = "#ff4444",
-                alpha: float = 0.5, title: str = "Change Overlay") -> "ChangeViewer":
+                alpha: float = 0.5, title: str = "Change Overlay") -> ChangeViewer:
         """Overlay a binary/classified change mask on the 'after' raster."""
         plt = _mpl()
         import matplotlib.colors as mcolors
@@ -173,8 +173,8 @@ class ChangeViewer:
 
     # ── Statistics ─────────────────────────────────────────────────────────────
 
-    def statistics(self, mask_path: Optional[str] = None,
-                   pixel_area_m2: float = 100.0) -> Dict[str, Any]:
+    def statistics(self, mask_path: str | None = None,
+                   pixel_area_m2: float = 100.0) -> dict[str, Any]:
         """Compute and display change statistics."""
         plt = _mpl()
 
@@ -182,7 +182,7 @@ class ChangeViewer:
         a_data = self._read_band(self._after)
         diff   = a_data - b_data
 
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "total_pixels":   int(diff.size),
             "mean_change":    round(float(np.nanmean(np.abs(diff))), 4),
             "max_change":     round(float(np.nanmax(np.abs(diff))), 4),
@@ -229,19 +229,19 @@ class ChangeViewer:
 
     # ── Export / show ──────────────────────────────────────────────────────────
 
-    def show(self) -> "ChangeViewer":
+    def show(self) -> ChangeViewer:
         plt = _mpl()
         if self._fig:
             plt.show()
         return self
 
     def export(self, path: str, dpi: int = 150) -> str:
-        plt = _mpl()
+        _mpl()
         if self._fig is None:
             self.split()
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         if path.endswith(".html"):
-            from pygeovision.viz.map import Map, SplitMap
+            from pygeovision.viz.map import SplitMap
             return SplitMap(self._before, self._after).export(path)
         self._fig.savefig(path, dpi=dpi, bbox_inches="tight")
         return path

@@ -1,12 +1,15 @@
 """
 SAM Auto-Labeler (E2) — Segment Anything Model for automated label generation.
 Generates segmentation masks without any manual annotation.
-No GeoAI dependency — uses HuggingFace transformers directly.
+Fully native — uses HuggingFace transformers directly.
 """
 from __future__ import annotations
-import logging, time
+
+import logging
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,8 +48,10 @@ class SAMAutoLabeler:
     def __init__(
         self,
         model: str = "sam-vit-large",
-        device: Optional[str] = None,
-        cache_dir: Optional[str] = None,
+        device: str | None = None,
+        cache_dir: str | None = None,
+        gdino_config_path: str | None = None,
+        gdino_checkpoint_path: str | None = None,
     ) -> None:
         self.model_name = model
         self.model_id = self.HF_MODELS.get(model, model)
@@ -54,6 +59,10 @@ class SAMAutoLabeler:
         self.cache_dir = cache_dir
         self._model = None
         self._processor = None
+        # GroundingDINO (used by grounded_label) — lazily loaded and cached.
+        self._gdino_config_path = gdino_config_path
+        self._gdino_checkpoint_path = gdino_checkpoint_path
+        self._gdino_model = None
 
     @staticmethod
     def _auto_device() -> str:
@@ -67,7 +76,7 @@ class SAMAutoLabeler:
         if self._model is not None:
             return
         try:
-            from transformers import SamModel, SamProcessor, SamAutomaticMaskGenerator
+            from transformers import SamAutomaticMaskGenerator, SamModel, SamProcessor
             logger.info("Loading SAM: %s → %s", self.model_name, self.device)
             self._processor = SamProcessor.from_pretrained(self.model_id, cache_dir=self.cache_dir)
             self._model = SamModel.from_pretrained(self.model_id, cache_dir=self.cache_dir)
@@ -78,18 +87,18 @@ class SAMAutoLabeler:
 
     def auto_label(
         self,
-        image_path: Union[str, Path],
-        output_path: Union[str, Path] = "./labels/sam_auto.tif",
-        output_vector: Optional[str] = None,
+        image_path: str | Path,
+        output_path: str | Path = "./labels/sam_auto.tif",
+        output_vector: str | None = None,
         points_per_side: int = 32,
         pred_iou_thresh: float = 0.88,
         stability_score_thresh: float = 0.95,
         min_area_m2: float = 10.0,
-        max_area_m2: Optional[float] = None,
+        max_area_m2: float | None = None,
         chip_size: int = 1024,
         overlap: int = 128,
         merge_overlapping: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate automatic segmentation masks from a GeoTIFF.
 
         Uses grid-based SAM prompting with filtering by quality and area.
@@ -219,10 +228,9 @@ class SAMAutoLabeler:
     def _process_chip(
         self, chip: Any, points_per_side: int,
         pred_iou_thresh: float, stability_thresh: float
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Run SAM automatic mask generator on one image chip."""
         try:
-            import torch
             from transformers import SamAutomaticMaskGenerator
             generator = SamAutomaticMaskGenerator(
                 model=self._model,
@@ -240,15 +248,49 @@ class SAMAutoLabeler:
             logger.debug("SAM chip failed: %s", exc)
             return []
 
+    def _load_gdino(self) -> Any:
+        """Load (and cache) the GroundingDINO model used by grounded_label().
+
+        Uses the standard Swin-T OGC config shipped inside the
+        `groundingdino` package by default, and auto-downloads the matching
+        pretrained checkpoint from HuggingFace Hub if not already cached.
+        Both can be overridden via `gdino_config_path`/`gdino_checkpoint_path`
+        for custom deployments.
+        """
+        if self._gdino_model is not None:
+            return self._gdino_model
+
+        from groundingdino.util.inference import load_model as load_gdino
+
+        config_path = self._gdino_config_path
+        if config_path is None:
+            import groundingdino
+            config_path = str(
+                Path(groundingdino.__file__).parent / "config" / "GroundingDINO_SwinT_OGC.py"
+            )
+
+        checkpoint_path = self._gdino_checkpoint_path
+        if checkpoint_path is None:
+            from huggingface_hub import hf_hub_download
+            checkpoint_path = hf_hub_download(
+                repo_id="ShilongLiu/GroundingDINO",
+                filename="groundingdino_swint_ogc.pth",
+                cache_dir=self.cache_dir,
+            )
+
+        logger.info("Loading GroundingDINO: config=%s checkpoint=%s", config_path, checkpoint_path)
+        self._gdino_model = load_gdino(config_path, checkpoint_path)
+        return self._gdino_model
+
     def grounded_label(
         self,
-        image_path: Union[str, Path],
-        prompts: List[str],
-        output_path: Union[str, Path] = "./labels/grounded_sam.tif",
-        output_vector: Optional[str] = None,
+        image_path: str | Path,
+        prompts: list[str],
+        output_path: str | Path = "./labels/grounded_sam.tif",
+        output_vector: str | None = None,
         box_threshold: float = 0.3,
         text_threshold: float = 0.25,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate labels using GroundedSAM — text-prompt driven segmentation.
 
         Combines Grounding DINO (text → bbox) + SAM (bbox → mask).
@@ -257,10 +299,17 @@ class SAMAutoLabeler:
             prompts: List of natural language prompts, e.g. ["building", "swimming pool"]
         """
         try:
-            from groundingdino.util.inference import load_model as load_gdino
             from groundingdino.util.inference import predict as gdino_predict
         except ImportError:
             return {"success": False, "error": "pip install groundingdino-py for GroundedSAM"}
+
+        try:
+            gdino_model = self._load_gdino()
+        except ImportError as exc:
+            return {"success": False, "error": f"GroundingDINO not available: {exc}"}
+        except Exception as exc:
+            return {"success": False,
+                    "error": f"Failed to load GroundingDINO model/checkpoint: {exc}"}
 
         logger.info("GroundedSAM: prompts=%s", prompts)
         self._load()
@@ -270,7 +319,8 @@ class SAMAutoLabeler:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            import rasterio, numpy as np
+            import numpy as np
+            import rasterio
             from PIL import Image
             with rasterio.open(str(image_path)) as src:
                 profile = src.profile.copy()
@@ -289,7 +339,7 @@ class SAMAutoLabeler:
             for class_idx, prompt in enumerate(prompts, start=1):
                 # Grounding DINO detects boxes
                 boxes, logits, phrases = gdino_predict(
-                    model=None,  # placeholder
+                    model=gdino_model,
                     image=Image.fromarray(rgb),
                     caption=prompt,
                     box_threshold=box_threshold,
@@ -330,9 +380,10 @@ class SAMAutoLabeler:
     def _masks_to_vector(self, masks, transform, crs, output_path):
         """Convert mask list to GeoJSON polygons."""
         try:
-            import rasterio.features, numpy as np
-            from shapely.geometry import shape as shp
             import json
+
+            import numpy as np
+            import rasterio.features
 
             features = []
             for i, m in enumerate(masks):

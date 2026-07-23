@@ -10,11 +10,12 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterator, List, Optional
+from typing import Any
 
 from pygeovision.agent.planner import Plan, Step
-from pygeovision.agent.tools  import GeoTool, ToolResult
+from pygeovision.agent.tools import GeoTool, ToolResult
 
 logger = logging.getLogger("pygeovision.agent.executor")
 
@@ -30,7 +31,7 @@ class StepExecution:
 @dataclass
 class ExecutionTrace:
     plan:           Plan
-    executions:     List[StepExecution] = field(default_factory=list)
+    executions:     list[StepExecution] = field(default_factory=list)
     total_duration: float = 0.0
     success:        bool  = False
     final_output:   Any   = None
@@ -84,9 +85,9 @@ class PlanExecutor:
 
     def __init__(
         self,
-        tools: Dict[str, GeoTool],
-        on_step_start: Optional[Callable] = None,
-        on_step_done:  Optional[Callable] = None,
+        tools: dict[str, GeoTool],
+        on_step_start: Callable | None = None,
+        on_step_done:  Callable | None = None,
         stop_on_failure: bool = True,
     ) -> None:
         self._tools           = tools
@@ -94,10 +95,10 @@ class PlanExecutor:
         self._on_done         = on_step_done
         self._stop_on_failure = stop_on_failure
 
-    def execute(self, plan: Plan, context: Optional[dict] = None) -> ExecutionTrace:
+    def execute(self, plan: Plan, context: dict | None = None) -> ExecutionTrace:
         """Execute the plan sequentially, resolving output references."""
         trace   = ExecutionTrace(plan=plan)
-        outputs: Dict[int, ToolResult] = {}   # step_idx → result
+        outputs: dict[int, ToolResult] = {}   # step_idx → result
         ctx     = context or {}
         t_total = time.perf_counter()
 
@@ -153,13 +154,13 @@ class PlanExecutor:
                     trace.total_duration)
         return trace
 
-    def stream(self, plan: Plan, context: Optional[dict] = None) -> Iterator[dict]:
+    def stream(self, plan: Plan, context: dict | None = None) -> Iterator[dict]:
         """
         Generator version of ``execute`` that yields one event dict per step.
 
         Events have type: "step_start" | "step_done" | "execution_complete"
         """
-        outputs: Dict[int, ToolResult] = {}
+        outputs: dict[int, ToolResult] = {}
         ctx     = context or {}
         t_total = time.perf_counter()
         execs   = []
@@ -220,10 +221,10 @@ class PlanExecutor:
 
     def _resolve_args(
         self,
-        args:    Dict[str, Any],
-        outputs: Dict[int, ToolResult],
+        args:    dict[str, Any],
+        outputs: dict[int, ToolResult],
         ctx:     dict,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Replace placeholder strings in args:
           "$step_N_output"       → output_path (or output) of step N

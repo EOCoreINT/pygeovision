@@ -1,8 +1,11 @@
 """Streaming inference for ultra-large GeoTIFFs (B3, B4) — never loads full image."""
 from __future__ import annotations
+
 import logging
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,7 +20,7 @@ class StreamingInference:
 
     def __init__(self, model: Any, chip_size: int = 1024,
                  overlap: int = 128, num_classes: int = 2,
-                 device: Optional[str] = None) -> None:
+                 device: str | None = None) -> None:
         self.model = model
         self.chip_size = chip_size
         self.overlap = overlap
@@ -30,10 +33,11 @@ class StreamingInference:
             import torch; return torch.cuda.is_available()
         except ImportError: return False
 
-    def stream_chips(self, image_path: str) -> Generator[Dict, None, None]:
+    def stream_chips(self, image_path: str) -> Generator[dict, None, None]:
         """Generator that yields image chips one at a time (never loads full image)."""
         try:
-            import rasterio, numpy as np
+            import numpy as np
+            import rasterio
             from rasterio.windows import Window
         except ImportError:
             raise ImportError("rasterio required")
@@ -56,10 +60,9 @@ class StreamingInference:
                             "height": r2 - row, "width": c2 - col,
                             "window": (col, row, c2 - col, r2 - row)}
 
-    def infer(self, image_path: Union[str, Path],
-               output_path: Union[str, Path]) -> Dict[str, Any]:
+    def infer(self, image_path: str | Path,
+               output_path: str | Path) -> dict[str, Any]:
         """Stream-infer a large GeoTIFF with minimal memory footprint."""
-        import numpy as np, rasterio
         from pygeovision.inference.tiled import TiledInference
         # Delegate to TiledInference with batch_tiles=1 (minimal memory)
         inf = TiledInference(
@@ -73,19 +76,21 @@ class StreamingInference:
 class EnsembleInference:
     """Ensemble of multiple models for robust predictions."""
 
-    def __init__(self, models: List[Any], weights: Optional[List[float]] = None,
+    def __init__(self, models: list[Any], weights: list[float] | None = None,
                  fusion: str = "mean", num_classes: int = 2,
-                 device: Optional[str] = None) -> None:
+                 device: str | None = None) -> None:
         self.models = models
         self.weights = weights or [1.0 / len(models)] * len(models)
         self.fusion = fusion
         self.num_classes = num_classes
         self.device = device or ("cuda" if StreamingInference._has_cuda() else "cpu")
 
-    def infer(self, image_path: Union[str, Path],
-               output_path: Union[str, Path]) -> Dict[str, Any]:
+    def infer(self, image_path: str | Path,
+               output_path: str | Path) -> dict[str, Any]:
+        import numpy as np
+        import rasterio
+
         from pygeovision.inference.tiled import TiledInference
-        import numpy as np, rasterio
 
         all_probs = []
         for model, weight in zip(self.models, self.weights):

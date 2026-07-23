@@ -1,8 +1,10 @@
 """Geo image retrieval using CLIP embeddings."""
 from __future__ import annotations
-import logging, json
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+
+import json
+import logging
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -12,10 +14,11 @@ class GeoImageRetrieval:
     def __init__(self, model: str = "openclip-b32") -> None:
         from pygeovision.advanced.vlm.clip_geo import CLIPGeo
         self._clip = CLIPGeo(model=model)
-        self._index: Dict[str, Any] = {}
+        self._index: dict[str, Any] = {}
 
-    def build_index(self, image_dir: str, save_path: Optional[str] = None) -> int:
-        import pathlib, numpy as np
+    def build_index(self, image_dir: str, save_path: str | None = None) -> int:
+        import pathlib
+
         paths = list(pathlib.Path(image_dir).rglob("*.tif"))
         for p in paths:
             try:
@@ -33,7 +36,7 @@ class GeoImageRetrieval:
         with open(path) as f:
             self._index = json.load(f)
 
-    def search_by_text(self, query: str, top_k: int = 10) -> List[Dict]:
+    def search_by_text(self, query: str, top_k: int = 10) -> list[dict]:
         import numpy as np
         query_emb = self._clip.embed_text(query)
         scores = [(p, float(np.dot(query_emb, np.array(emb))))
@@ -41,7 +44,7 @@ class GeoImageRetrieval:
         scores.sort(key=lambda x: x[1], reverse=True)
         return [{"path": p, "score": round(s, 4)} for p, s in scores[:top_k]]
 
-    def search_by_image(self, image_path: str, top_k: int = 10) -> List[Dict]:
+    def search_by_image(self, image_path: str, top_k: int = 10) -> list[dict]:
         import numpy as np
         query_emb = self._clip.embed_image(image_path)
         scores = [(p, float(np.dot(query_emb, np.array(emb))))

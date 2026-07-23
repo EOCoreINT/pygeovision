@@ -16,9 +16,9 @@ Example:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -28,7 +28,7 @@ from pygeovision.core.exceptions import LabelingError
 logger = logging.getLogger(__name__)
 
 # SAM model checkpoints available from Meta
-_SAM_CHECKPOINTS: Dict[str, Dict[str, str]] = {
+_SAM_CHECKPOINTS: dict[str, dict[str, str]] = {
     "vit_h": {
         "filename": "sam_vit_h_4b8939.pth",
         "url": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
@@ -71,16 +71,16 @@ class SAMConfig:
 
     model_type: str = "vit_b"
     device: str = "cpu"
-    checkpoint_dir: Optional[Path] = None
+    checkpoint_dir: Path | None = None
     points_per_side: int = 32
     pred_iou_thresh: float = 0.88
     stability_score_thresh: float = 0.95
     box_nms_thresh: float = 0.7
     min_mask_region_area: int = 100
-    points_prompt: Optional[List[Tuple[int, int]]] = None
-    boxes_prompt: Optional[List[List[int]]] = None
+    points_prompt: list[tuple[int, int]] | None = None
+    boxes_prompt: list[list[int]] | None = None
     multimask_output: bool = False
-    rgb_bands: Tuple[int, int, int] = (0, 1, 2)
+    rgb_bands: tuple[int, int, int] = (0, 1, 2)
 
 
 class SAMLabeler(BaseLabeler):
@@ -118,13 +118,13 @@ class SAMLabeler(BaseLabeler):
     def __init__(
         self,
         model_type: str = "vit_b",
-        device: Optional[str] = None,
-        checkpoint_dir: Optional[Path] = None,
+        device: str | None = None,
+        checkpoint_dir: Path | None = None,
         points_per_side: int = 32,
         pred_iou_thresh: float = 0.88,
         stability_score_thresh: float = 0.95,
         min_mask_region_area: int = 100,
-        rgb_bands: Tuple[int, int, int] = (0, 1, 2),
+        rgb_bands: tuple[int, int, int] = (0, 1, 2),
         num_workers: int = 1,  # SAM is GPU-heavy; default 1
         skip_existing: bool = True,
     ) -> None:
@@ -152,8 +152,8 @@ class SAMLabeler(BaseLabeler):
             rgb_bands=rgb_bands,
         )
         self.config.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        self._sam_model: Optional[Any] = None
-        self._mask_generator: Optional[Any] = None
+        self._sam_model: Any | None = None
+        self._mask_generator: Any | None = None
 
     # ------------------------------------------------------------------
     # BaseLabeler abstract properties
@@ -205,7 +205,6 @@ class SAMLabeler(BaseLabeler):
                 height, width = src.height, src.width
                 crs = src.crs
                 transform = src.transform
-                bands = src.count
 
             # Extract RGB image for SAM
             rgb = self._load_rgb(tile_path, self.config.rgb_bands)
@@ -296,10 +295,10 @@ class SAMLabeler(BaseLabeler):
 
         try:
             if self.config.model_type == "mobile":
-                from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator  # type: ignore
+                from mobile_sam import SamAutomaticMaskGenerator, sam_model_registry  # type: ignore
                 self._sam_model = sam_model_registry["vit_t"](checkpoint=str(checkpoint_path))
             else:
-                from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+                from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
                 self._sam_model = sam_model_registry[self.config.model_type](
                     checkpoint=str(checkpoint_path)
                 )
@@ -364,7 +363,7 @@ class SAMLabeler(BaseLabeler):
         return local_path
 
     def _load_rgb(
-        self, tile_path: Path, rgb_bands: Tuple[int, int, int]
+        self, tile_path: Path, rgb_bands: tuple[int, int, int]
     ) -> np.ndarray:
         """Load and prepare an RGB image for SAM.
 
@@ -394,7 +393,7 @@ class SAMLabeler(BaseLabeler):
         rgb = np.stack([_normalize_band(r), _normalize_band(g), _normalize_band(b)], axis=-1)
         return rgb  # (H, W, 3) uint8
 
-    def _generate_masks(self, rgb: np.ndarray) -> List[Dict[str, Any]]:
+    def _generate_masks(self, rgb: np.ndarray) -> list[dict[str, Any]]:
         """Run SAM automatic mask generation on an RGB image.
 
         Args:
@@ -412,7 +411,7 @@ class SAMLabeler(BaseLabeler):
 
     def _compose_instance_mask(
         self,
-        masks_data: List[Dict[str, Any]],
+        masks_data: list[dict[str, Any]],
         height: int,
         width: int,
     ) -> np.ndarray:

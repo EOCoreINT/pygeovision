@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -59,13 +58,13 @@ class RasterViewer:
         Default figure size (width, height) in inches.
     """
 
-    def __init__(self, path: str, figsize: Tuple[float, float] = (10, 8)) -> None:
+    def __init__(self, path: str, figsize: tuple[float, float] = (10, 8)) -> None:
         self.path    = path
         self.figsize = figsize
         self._fig    = None
         self._cache: dict = {}
 
-    def _read(self, bands: Optional[Union[int, List[int]]] = None) -> np.ndarray:
+    def _read(self, bands: int | list[int] | None = None) -> np.ndarray:
         """Read and cache raster data."""
         key = str(bands)
         if key in self._cache:
@@ -84,7 +83,7 @@ class RasterViewer:
         self._cache[key] = data
         return data
 
-    def _normalize(self, arr: np.ndarray, pct: Tuple[float, float] = (2, 98)) -> np.ndarray:
+    def _normalize(self, arr: np.ndarray, pct: tuple[float, float] = (2, 98)) -> np.ndarray:
         """Percentile stretch to [0, 1]."""
         lo = np.nanpercentile(arr, pct[0])
         hi = np.nanpercentile(arr, pct[1])
@@ -93,7 +92,7 @@ class RasterViewer:
     # ── Composites ─────────────────────────────────────────────────────────────
 
     def rgb(self, red: int = 2, green: int = 1, blue: int = 0,
-            title: str = "True-Colour RGB") -> "RasterViewer":
+            title: str = "True-Colour RGB") -> RasterViewer:
         """Display a true-colour RGB composite."""
         plt = _get_plt()
         if getattr(self, "_fig", None) is not None:
@@ -110,41 +109,41 @@ class RasterViewer:
         return self
 
     def false_color(self, nir: int = 3, red: int = 2, green: int = 1,
-                    title: str = "False-Colour (NIR-R-G)") -> "RasterViewer":
+                    title: str = "False-Colour (NIR-R-G)") -> RasterViewer:
         """Display a false-colour composite (NIR / Red / Green)."""
         return self.rgb(red=nir, green=red, blue=green, title=title)
 
     def swir_composite(self, swir1: int = 4, nir: int = 3, blue: int = 0,
-                        title: str = "SWIR Composite") -> "RasterViewer":
+                        title: str = "SWIR Composite") -> RasterViewer:
         """Display a SWIR composite highlighting burn scars and geology."""
         return self.rgb(red=swir1, green=nir, blue=blue, title=title)
 
     # ── Index maps ─────────────────────────────────────────────────────────────
 
     def ndvi(self, nir_band: int = 3, red_band: int = 2,
-             title: str = "NDVI") -> "RasterViewer":
-        plt = _get_plt()
+             title: str = "NDVI") -> RasterViewer:
+        _get_plt()
         data = self._read([nir_band, red_band])
         nir, red = data[0], data[1]
         index = (nir - red) / (nir + red + 1e-8)
         return self._plot_index(index, cmap="RdYlGn", vmin=-0.2, vmax=0.8, title=title)
 
     def ndwi(self, green_band: int = 1, nir_band: int = 3,
-             title: str = "NDWI") -> "RasterViewer":
+             title: str = "NDWI") -> RasterViewer:
         data = self._read([green_band, nir_band])
         green, nir = data[0], data[1]
         index = (green - nir) / (green + nir + 1e-8)
         return self._plot_index(index, cmap="Blues", vmin=-0.5, vmax=0.5, title=title)
 
     def ndbi(self, swir_band: int = 4, nir_band: int = 3,
-             title: str = "NDBI") -> "RasterViewer":
+             title: str = "NDBI") -> RasterViewer:
         data = self._read([swir_band, nir_band])
         swir, nir = data[0], data[1]
         index = (swir - nir) / (swir + nir + 1e-8)
         return self._plot_index(index, cmap="YlOrBr", vmin=-0.5, vmax=0.5, title=title)
 
     def _plot_index(self, arr: np.ndarray, cmap: str, vmin: float, vmax: float,
-                    title: str) -> "RasterViewer":
+                    title: str) -> RasterViewer:
         plt = _get_plt()
         if getattr(self, "_fig", None) is not None:
             plt.close(self._fig)
@@ -159,7 +158,7 @@ class RasterViewer:
         return self
 
     def single_band(self, band: int = 0, colormap: str = "gray",
-                    title: Optional[str] = None) -> "RasterViewer":
+                    title: str | None = None) -> RasterViewer:
         plt = _get_plt()
         if getattr(self, "_fig", None) is not None:
             plt.close(self._fig)
@@ -177,8 +176,8 @@ class RasterViewer:
 
     # ── Histogram ──────────────────────────────────────────────────────────────
 
-    def histogram(self, band: Optional[int] = None, bins: int = 128,
-                  title: Optional[str] = None) -> "RasterViewer":
+    def histogram(self, band: int | None = None, bins: int = 128,
+                  title: str | None = None) -> RasterViewer:
         plt = _get_plt()
         all_data = self._read()
         if all_data.ndim == 2:
@@ -207,9 +206,9 @@ class RasterViewer:
 
     # ── Profile (transect) ─────────────────────────────────────────────────────
 
-    def profile(self, start_px: Tuple[int, int], end_px: Tuple[int, int],
-                bands: Optional[List[int]] = None,
-                title: str = "Spectral Profile") -> "RasterViewer":
+    def profile(self, start_px: tuple[int, int], end_px: tuple[int, int],
+                bands: list[int] | None = None,
+                title: str = "Spectral Profile") -> RasterViewer:
         """Plot pixel values along a line (transect)."""
         plt = _get_plt()
         data = self._read()
@@ -247,14 +246,14 @@ class RasterViewer:
 
     # ── Output ─────────────────────────────────────────────────────────────────
 
-    def show(self) -> "RasterViewer":
+    def show(self) -> RasterViewer:
         plt = _get_plt()
         if self._fig is not None:
             plt.show()
         return self
 
     def export(self, path: str, dpi: int = 150) -> str:
-        plt = _get_plt()
+        _get_plt()
         if self._fig is None:
             raise RuntimeError("Nothing to export — call rgb(), ndvi(), histogram(), etc. first")
         Path(path).parent.mkdir(parents=True, exist_ok=True)

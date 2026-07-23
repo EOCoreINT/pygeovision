@@ -13,7 +13,6 @@ For SLC data, the true interferometric coherence is computed from the complex si
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 
@@ -67,8 +66,8 @@ def estimate_coherence(
 def coherence_mask(
     coherence: np.ndarray,
     threshold: float = 0.4,
-    output_path: Optional[str] = None,
-    profile: Optional[dict] = None,
+    output_path: str | None = None,
+    profile: dict | None = None,
 ) -> np.ndarray:
     """
     Generate a binary mask where coherence exceeds the threshold.

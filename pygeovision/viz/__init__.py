@@ -45,11 +45,11 @@ Quick reference::
     split.export("comparison.html")
 """
 
-from pygeovision.viz.map        import Map, SplitMap, Layer, RasterLayer, VectorLayer
-from pygeovision.viz.raster     import RasterViewer
-from pygeovision.viz.vector     import VectorViewer
-from pygeovision.viz.change     import ChangeViewer
+from pygeovision.viz.change import ChangeViewer
+from pygeovision.viz.map import Layer, Map, RasterLayer, SplitMap, VectorLayer
+from pygeovision.viz.raster import RasterViewer
 from pygeovision.viz.timeseries import TimeSeriesViewer
+from pygeovision.viz.vector import VectorViewer
 
 __all__ = [
     # Map viewer

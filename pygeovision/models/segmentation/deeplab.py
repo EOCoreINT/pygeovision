@@ -21,8 +21,8 @@ def build_deeplab(backbone: str = "resnet50", num_classes: int = 2,
     except ImportError:
         # Torchvision fallback
         try:
-            import torchvision.models.segmentation as tvseg
             import torch.nn as nn
+            import torchvision.models.segmentation as tvseg
             model = tvseg.deeplabv3_resnet50(
                 pretrained=False, num_classes=num_classes,
             )

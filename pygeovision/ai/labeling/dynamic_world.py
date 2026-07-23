@@ -21,10 +21,9 @@ Example:
 from __future__ import annotations
 
 import logging
-import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -34,7 +33,7 @@ from pygeovision.core.exceptions import LabelingError
 logger = logging.getLogger(__name__)
 
 # Dynamic World class definitions
-DW_CLASSES: Dict[int, str] = {
+DW_CLASSES: dict[int, str] = {
     0: "water",
     1: "trees",
     2: "grass",
@@ -71,7 +70,7 @@ class DynamicWorldConfig:
     end_date: str = "2023-12-31"
     composite_method: str = "mode"  # 'mode' | 'probability'
     probability_bands: bool = False
-    cache_dir: Optional[Path] = None
+    cache_dir: Path | None = None
     request_timeout: int = 120
 
 
@@ -109,7 +108,7 @@ class DynamicWorldLabeler(BaseLabeler):
         end_date: str = "2023-12-31",
         composite_method: str = "mode",
         probability_bands: bool = False,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
         num_workers: int = 4,
         skip_existing: bool = True,
     ) -> None:
@@ -165,8 +164,8 @@ class DynamicWorldLabeler(BaseLabeler):
             LabelingResult with class statistics and metadata.
         """
         try:
-            import rasterio
             import pyproj
+            import rasterio
             from shapely.geometry import box
             from shapely.ops import transform as shp_transform
         except ImportError as exc:
@@ -269,8 +268,8 @@ class DynamicWorldLabeler(BaseLabeler):
     # ------------------------------------------------------------------
 
     def _fetch_dynamic_world_scenes(
-        self, bbox_wgs84: Tuple[float, float, float, float]
-    ) -> List[Path]:
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> list[Path]:
         """Search for and download Dynamic World scenes via STAC.
 
         Falls back to GEE Python API if Planetary Computer is unavailable.
@@ -291,8 +290,8 @@ class DynamicWorldLabeler(BaseLabeler):
         return paths
 
     def _fetch_via_planetary_computer(
-        self, bbox_wgs84: Tuple[float, float, float, float]
-    ) -> List[Path]:
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> list[Path]:
         """Fetch Dynamic World scenes from Microsoft Planetary Computer STAC.
 
         Args:
@@ -302,8 +301,8 @@ class DynamicWorldLabeler(BaseLabeler):
             Local paths to downloaded label GeoTIFFs.
         """
         try:
-            import pystac_client
             import planetary_computer
+            import pystac_client
         except ImportError:
             logger.debug(
                 "pystac-client or planetary-computer not installed; "
@@ -326,7 +325,7 @@ class DynamicWorldLabeler(BaseLabeler):
             logger.info(
                 "Found %d Dynamic World scenes on Planetary Computer", len(items)
             )
-            paths: List[Path] = []
+            paths: list[Path] = []
             for item in items:
                 path = self._download_stac_item(item)
                 if path is not None:
@@ -337,8 +336,8 @@ class DynamicWorldLabeler(BaseLabeler):
             return []
 
     def _fetch_via_gee(
-        self, bbox_wgs84: Tuple[float, float, float, float]
-    ) -> List[Path]:
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> list[Path]:
         """Fetch a Dynamic World composite via Google Earth Engine Python API.
 
         Requires `earthengine-api` package and authenticated GEE account.
@@ -399,7 +398,7 @@ class DynamicWorldLabeler(BaseLabeler):
             logger.warning("GEE Dynamic World fetch failed: %s", exc)
             return []
 
-    def _download_stac_item(self, item: Any) -> Optional[Path]:
+    def _download_stac_item(self, item: Any) -> Path | None:
         """Download the label band from a STAC item.
 
         Args:
@@ -435,7 +434,7 @@ class DynamicWorldLabeler(BaseLabeler):
 
     def _create_composite(
         self,
-        scene_paths: List[Path],
+        scene_paths: list[Path],
         method: str,
         dst_crs: Any,
         dst_transform: Any,
@@ -456,9 +455,9 @@ class DynamicWorldLabeler(BaseLabeler):
             Uint8 composite label array.
         """
         import rasterio
-        from rasterio.warp import reproject, Resampling
+        from rasterio.warp import Resampling, reproject
 
-        layers: List[np.ndarray] = []
+        layers: list[np.ndarray] = []
         for path in scene_paths:
             try:
                 layer = np.zeros((dst_height, dst_width), dtype=np.uint8)
@@ -491,6 +490,6 @@ class DynamicWorldLabeler(BaseLabeler):
         return result
 
     @property
-    def class_names(self) -> Dict[int, str]:
+    def class_names(self) -> dict[int, str]:
         """Return the Dynamic World class name mapping."""
         return DW_CLASSES

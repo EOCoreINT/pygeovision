@@ -2,8 +2,11 @@
 Hyperparameter Optimisation — Optuna + Ray Tune integration (Phase 4.1).
 """
 from __future__ import annotations
+
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,9 +33,9 @@ class OptunaHPO:
         n_trials: int = 50,
         direction: str = "maximize",
         study_name: str = "pgv_hpo",
-        storage: Optional[str] = None,
+        storage: str | None = None,
         n_jobs: int = 1,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         pruner: str = "median",          # median | hyperband | none
     ) -> None:
         self.n_trials = n_trials
@@ -57,9 +60,9 @@ class OptunaHPO:
 
     def run(
         self,
-        objective_fn: Callable[[Dict], float],
-        search_space: Dict[str, tuple],
-    ) -> Dict[str, Any]:
+        objective_fn: Callable[[dict], float],
+        search_space: dict[str, tuple],
+    ) -> dict[str, Any]:
         """Run HPO and return the best hyperparameters found.
 
         search_space format:
@@ -84,7 +87,7 @@ class OptunaHPO:
         )
 
         def _wrapped_objective(trial: Any) -> float:
-            params: Dict[str, Any] = {}
+            params: dict[str, Any] = {}
             for name, spec in search_space.items():
                 kind = spec[0]
                 if kind == "float":
@@ -125,7 +128,7 @@ class OptunaHPO:
     def study(self) -> Any:
         return self._study
 
-    def importance(self) -> Dict[str, float]:
+    def importance(self) -> dict[str, float]:
         """Return hyperparameter importance scores."""
         try:
             import optuna
@@ -135,7 +138,7 @@ class OptunaHPO:
         except Exception:
             return {}
 
-    def plot_history(self, save_path: Optional[str] = None) -> None:
+    def plot_history(self, save_path: str | None = None) -> None:
         """Plot optimisation history."""
         try:
             import optuna.visualization as vis
@@ -174,7 +177,7 @@ class ModelOptimizer:
             import torch
             self.model.eval()
             dummy = torch.randn(1, self.in_channels, input_size, input_size)
-            dynamic_axes: Dict[str, Any] = {}
+            dynamic_axes: dict[str, Any] = {}
             if dynamic_batch:
                 dynamic_axes = {"input": {0: "batch"}, "output": {0: "batch"}}
             torch.onnx.export(
@@ -188,7 +191,8 @@ class ModelOptimizer:
             # Optionally simplify
             if simplify:
                 try:
-                    import onnxsim, onnx
+                    import onnx
+                    import onnxsim
                     model_onnx = onnx.load(output_path)
                     simplified, check = onnxsim.simplify(model_onnx)
                     if check:
@@ -314,8 +318,8 @@ class ModelOptimizer:
     ) -> Any:
         """Run inference with an ONNX Runtime session."""
         try:
-            import onnxruntime as ort
             import numpy as np
+            import onnxruntime as ort
             sess_opts = ort.SessionOptions()
             sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -335,10 +339,12 @@ class ModelOptimizer:
         n_runs: int = 100,
         warmup: int = 10,
         device: str = "cuda",
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Benchmark model inference speed (ms/image, FPS)."""
         try:
-            import torch, time
+            import time
+
+            import torch
             dev = torch.device(device if torch.cuda.is_available() else "cpu")
             self.model.to(dev).eval()
             dummy = torch.randn(1, self.in_channels, input_size, input_size, device=dev)

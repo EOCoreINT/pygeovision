@@ -1,8 +1,13 @@
 """YAML pipeline configuration parser and validator."""
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pygeovision.pipelines.orchestrator import Pipeline
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,7 +60,7 @@ class PipelineYAMLParser:
         parser.validate(pipeline)
     """
 
-    def load(self, path: Union[str, Path]) -> Dict[str, Any]:
+    def load(self, path: str | Path) -> dict[str, Any]:
         """Load and parse a YAML pipeline file."""
         try:
             import yaml
@@ -66,7 +71,7 @@ class PipelineYAMLParser:
         self.validate(config)
         return config
 
-    def loads(self, yaml_str: str) -> Dict[str, Any]:
+    def loads(self, yaml_str: str) -> dict[str, Any]:
         """Parse a YAML pipeline string."""
         try:
             import yaml
@@ -76,7 +81,7 @@ class PipelineYAMLParser:
         self.validate(config)
         return config
 
-    def validate(self, config: Dict) -> None:
+    def validate(self, config: dict) -> None:
         """Validate a pipeline configuration dict."""
         missing = REQUIRED_FIELDS - set(config.keys())
         if missing:
@@ -103,11 +108,11 @@ class PipelineYAMLParser:
                 if dep not in step_names:
                     raise ValueError(f"Step '{step['name']}' depends on unknown step '{dep}'")
 
-    def from_dict(self, config: Dict) -> "ParsedPipeline":
+    def from_dict(self, config: dict) -> Pipeline:
         from pygeovision.pipelines.orchestrator import Pipeline
         return Pipeline.from_config(config)
 
-    def dump(self, config: Dict, path: Union[str, Path]) -> None:
+    def dump(self, config: dict, path: str | Path) -> None:
         """Save a pipeline config to YAML."""
         try:
             import yaml

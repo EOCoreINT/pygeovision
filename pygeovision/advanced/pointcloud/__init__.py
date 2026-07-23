@@ -1,7 +1,9 @@
 """3D Point Cloud processing for geospatial data (G3)."""
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict, List, Optional, Union
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,10 +27,11 @@ class PointCloudProcessor:
     def __init__(self) -> None:
         pass
 
-    def read(self, path: str) -> Dict[str, Any]:
+    def read(self, path: str) -> dict[str, Any]:
         """Read a LAS/LAZ point cloud file."""
         try:
-            import laspy, numpy as np
+            import laspy
+            import numpy as np
             las = laspy.read(path)
             return {
                 "n_points": len(las.x),
@@ -51,10 +54,12 @@ class PointCloudProcessor:
         output_path: str,
         resolution: float = 1.0,
         filter_ground: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate a Canopy Height Model (CHM = DSM - DTM) from LiDAR."""
         try:
-            import laspy, numpy as np, rasterio
+            import laspy
+            import numpy as np
+            import rasterio
             from rasterio.transform import from_bounds
         except ImportError:
             return {"error": "pip install laspy rasterio"}
@@ -68,7 +73,7 @@ class PointCloudProcessor:
 
         # Separate ground (class 2) from vegetation (classes 3-5)
         ground_mask = cls == 2
-        veg_mask = np.isin(cls, [3, 4, 5])
+        np.isin(cls, [3, 4, 5])
 
         xmin, ymin, xmax, ymax = pc["bounds"]
         W = max(1, int((xmax - xmin) / resolution))

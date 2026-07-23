@@ -1,8 +1,11 @@
 """Checkpoint management — save, load, resume training."""
 from __future__ import annotations
-import json, logging
+
+import json
+import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +29,7 @@ class CheckpointManager:
         self._index_path = self.dirpath / "index.json"
         self._index = self._load_index()
 
-    def _load_index(self) -> Dict:
+    def _load_index(self) -> dict:
         if self._index_path.exists():
             return json.loads(self._index_path.read_text())
         return {"checkpoints": [], "best": None}
@@ -35,8 +38,8 @@ class CheckpointManager:
         self._index_path.write_text(json.dumps(self._index, indent=2))
 
     def save(self, epoch: int, model: Any, optimizer: Any = None,
-              scheduler: Any = None, metrics: Optional[Dict] = None,
-              extra: Optional[Dict] = None) -> str:
+              scheduler: Any = None, metrics: dict | None = None,
+              extra: dict | None = None) -> str:
         """Save a training checkpoint."""
         try:
             import torch
@@ -86,7 +89,7 @@ class CheckpointManager:
         return str(ckpt_path)
 
     def load(self, path: str, model: Any, optimizer: Any = None,
-              scheduler: Any = None, strict: bool = True) -> Dict:
+              scheduler: Any = None, strict: bool = True) -> dict:
         """Load a checkpoint into model and optionally optimizer/scheduler."""
         try:
             import torch
@@ -103,7 +106,7 @@ class CheckpointManager:
         return state
 
     def load_best(self, model: Any, optimizer: Any = None,
-                   scheduler: Any = None) -> Optional[Dict]:
+                   scheduler: Any = None) -> dict | None:
         """Load the best checkpoint."""
         best = self._index.get("best")
         if not best or not Path(best).exists():
@@ -112,7 +115,7 @@ class CheckpointManager:
         return self.load(best, model, optimizer, scheduler)
 
     def load_last(self, model: Any, optimizer: Any = None,
-                   scheduler: Any = None) -> Optional[Dict]:
+                   scheduler: Any = None) -> dict | None:
         """Load the last checkpoint (resume training)."""
         last = self.dirpath / "last.pth"
         if not last.exists():
@@ -120,6 +123,6 @@ class CheckpointManager:
         return self.load(str(last), model, optimizer, scheduler)
 
     @property
-    def best_metrics(self) -> Optional[Dict]:
+    def best_metrics(self) -> dict | None:
         ckpts = self._index.get("checkpoints", [])
         return ckpts[0]["metrics"] if ckpts else None

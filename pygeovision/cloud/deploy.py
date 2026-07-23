@@ -3,33 +3,37 @@ Cloud deployment utilities (F4) — AWS SageMaker, Azure ML, GCP Vertex AI.
 Deploy PyGeoVision models to all major cloud providers.
 """
 from __future__ import annotations
-import json, logging, os
+
+import json
+import logging
+import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
 class CloudDeployer:
     """Base class for cloud deployment."""
 
-    def __init__(self, provider: str, region: Optional[str] = None) -> None:
+    def __init__(self, provider: str, region: str | None = None) -> None:
         self.provider = provider
         self.region = region
 
-    def deploy(self, model_path: str, endpoint_name: str, **kwargs) -> Dict[str, Any]:
+    def deploy(self, model_path: str, endpoint_name: str, **kwargs) -> dict[str, Any]:
         raise NotImplementedError
 
     def predict(self, endpoint_name: str, input_data: Any) -> Any:
         raise NotImplementedError
 
-    def delete_endpoint(self, endpoint_name: str) -> Dict[str, Any]:
+    def delete_endpoint(self, endpoint_name: str) -> dict[str, Any]:
         raise NotImplementedError
 
-    def list_endpoints(self) -> List[str]:
+    def list_endpoints(self) -> list[str]:
         raise NotImplementedError
 
     @staticmethod
-    def from_provider(provider: str, **kwargs) -> "CloudDeployer":
+    def from_provider(provider: str, **kwargs) -> CloudDeployer:
         providers = {"aws": AWSDeployer, "azure": AzureDeployer, "gcp": GCPDeployer}
         if provider not in providers:
             raise ValueError(f"provider must be one of {list(providers)}")
@@ -51,8 +55,8 @@ class AWSDeployer(CloudDeployer):
     """
 
     def __init__(self, region: str = "us-east-1",
-                 role_arn: Optional[str] = None,
-                 bucket: Optional[str] = None) -> None:
+                 role_arn: str | None = None,
+                 bucket: str | None = None) -> None:
         super().__init__("aws", region)
         self.role_arn = role_arn or os.environ.get("AWS_SAGEMAKER_ROLE_ARN", "")
         self.bucket   = bucket   or os.environ.get("AWS_S3_BUCKET", "")
@@ -69,17 +73,18 @@ class AWSDeployer(CloudDeployer):
 
     def deploy(
         self,
-        model_path: Union[str, Path],
+        model_path: str | Path,
         endpoint_name: str,
         instance_type: str = "ml.g4dn.xlarge",
         framework: str = "onnx",
         min_instances: int = 1,
         max_instances: int = 3,
         auto_scale: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Package and deploy a model to AWS SageMaker."""
         try:
-            import boto3, sagemaker
+            import boto3
+            import sagemaker
             from sagemaker.model import Model
 
             # Upload model to S3
@@ -99,7 +104,7 @@ class AWSDeployer(CloudDeployer):
             )
 
             # Deploy endpoint
-            predictor = model.deploy(
+            model.deploy(
                 initial_instance_count=min_instances,
                 instance_type=instance_type,
                 endpoint_name=endpoint_name,
@@ -166,7 +171,10 @@ class AWSDeployer(CloudDeployer):
 
     def predict(self, endpoint_name: str, input_data: Any) -> Any:
         try:
-            import boto3, numpy as np, json as _json
+            import json as _json
+
+            import boto3
+            import numpy as np
             runtime = boto3.client("sagemaker-runtime", region_name=self.region)
             if isinstance(input_data, np.ndarray):
                 payload = _json.dumps({"inputs": input_data.tolist()})
@@ -181,7 +189,7 @@ class AWSDeployer(CloudDeployer):
         except ImportError:
             return {"error": "pip install boto3"}
 
-    def delete_endpoint(self, endpoint_name: str) -> Dict[str, Any]:
+    def delete_endpoint(self, endpoint_name: str) -> dict[str, Any]:
         try:
             import boto3
             sm = boto3.client("sagemaker", region_name=self.region)
@@ -190,7 +198,7 @@ class AWSDeployer(CloudDeployer):
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    def list_endpoints(self) -> List[str]:
+    def list_endpoints(self) -> list[str]:
         try:
             resp = self._get_client().list_endpoints(StatusEquals="InService")
             return [e["EndpointName"] for e in resp.get("Endpoints", [])]
@@ -227,9 +235,9 @@ class AzureDeployer(CloudDeployer):
 
     def __init__(
         self,
-        subscription_id: Optional[str] = None,
-        resource_group: Optional[str] = None,
-        workspace_name: Optional[str] = None,
+        subscription_id: str | None = None,
+        resource_group: str | None = None,
+        workspace_name: str | None = None,
         region: str = "eastus",
     ) -> None:
         super().__init__("azure", region)
@@ -239,16 +247,21 @@ class AzureDeployer(CloudDeployer):
 
     def deploy(
         self,
-        model_path: Union[str, Path],
+        model_path: str | Path,
         endpoint_name: str,
         vm_size: str = "Standard_NC4as_T4_v3",
         instance_count: int = 1,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Deploy model to Azure ML online endpoint."""
         try:
             from azure.ai.ml import MLClient
-            from azure.ai.ml.entities import (ManagedOnlineEndpoint, ManagedOnlineDeployment,
-                                               Model as AzModel, Environment, CodeConfiguration)
+            from azure.ai.ml.entities import (
+                CodeConfiguration,
+                Environment,
+                ManagedOnlineDeployment,
+                ManagedOnlineEndpoint,
+            )
+            from azure.ai.ml.entities import Model as AzModel
             from azure.identity import DefaultAzureCredential
 
             ml = MLClient(DefaultAzureCredential(),
@@ -267,7 +280,7 @@ class AzureDeployer(CloudDeployer):
             ).result()
 
             # Create deployment
-            deployment = ml.online_deployments.begin_create_or_update(
+            ml.online_deployments.begin_create_or_update(
                 ManagedOnlineDeployment(
                     name="default",
                     endpoint_name=endpoint_name,
@@ -291,9 +304,11 @@ class AzureDeployer(CloudDeployer):
 
     def predict(self, endpoint_name: str, input_data: Any) -> Any:
         try:
+            import json as _json
+
+            import numpy as np
             from azure.ai.ml import MLClient
             from azure.identity import DefaultAzureCredential
-            import json as _json, numpy as np
             ml = MLClient(DefaultAzureCredential(), self.subscription_id,
                            self.resource_group, self.workspace_name)
             payload = {"inputs": input_data.tolist() if hasattr(input_data, "tolist") else input_data}
@@ -302,7 +317,7 @@ class AzureDeployer(CloudDeployer):
         except ImportError:
             return {"error": "pip install azure-ai-ml"}
 
-    def delete_endpoint(self, endpoint_name: str) -> Dict[str, Any]:
+    def delete_endpoint(self, endpoint_name: str) -> dict[str, Any]:
         try:
             from azure.ai.ml import MLClient
             from azure.identity import DefaultAzureCredential
@@ -313,7 +328,7 @@ class AzureDeployer(CloudDeployer):
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    def list_endpoints(self) -> List[str]:
+    def list_endpoints(self) -> list[str]:
         try:
             from azure.ai.ml import MLClient
             from azure.identity import DefaultAzureCredential
@@ -334,23 +349,22 @@ class GCPDeployer(CloudDeployer):
                                   machine_type="n1-standard-4-nvidia-tesla-t4")
     """
 
-    def __init__(self, project_id: Optional[str] = None, region: str = "us-central1") -> None:
+    def __init__(self, project_id: str | None = None, region: str = "us-central1") -> None:
         super().__init__("gcp", region)
         self.project_id = project_id or os.environ.get("GCP_PROJECT_ID", "")
 
     def deploy(
         self,
-        model_path: Union[str, Path],
+        model_path: str | Path,
         endpoint_name: str,
         machine_type: str = "n1-standard-4",
         accelerator_type: str = "NVIDIA_TESLA_T4",
         accelerator_count: int = 1,
-        gcs_bucket: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        gcs_bucket: str | None = None,
+    ) -> dict[str, Any]:
         """Deploy model to GCP Vertex AI."""
         try:
-            from google.cloud import aiplatform
-            from google.cloud import storage
+            from google.cloud import aiplatform, storage
 
             aiplatform.init(project=self.project_id, location=self.region)
 
@@ -407,7 +421,7 @@ class GCPDeployer(CloudDeployer):
         except ImportError:
             return {"error": "pip install google-cloud-aiplatform"}
 
-    def delete_endpoint(self, endpoint_name: str) -> Dict[str, Any]:
+    def delete_endpoint(self, endpoint_name: str) -> dict[str, Any]:
         try:
             from google.cloud import aiplatform
             aiplatform.init(project=self.project_id, location=self.region)
@@ -419,7 +433,7 @@ class GCPDeployer(CloudDeployer):
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    def list_endpoints(self) -> List[str]:
+    def list_endpoints(self) -> list[str]:
         try:
             from google.cloud import aiplatform
             aiplatform.init(project=self.project_id, location=self.region)

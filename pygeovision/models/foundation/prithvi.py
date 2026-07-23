@@ -16,7 +16,8 @@ Loading:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # ── Model Registry ────────────────────────────────────────────────────────────
 
-PRITHVI_MODELS: Dict[str, Dict] = {
+PRITHVI_MODELS: dict[str, dict] = {
     "prithvi_eo_1_0": {
         "params_m": 100,
         "hf_id":    "ibm-nasa-geospatial/Prithvi-100M",
@@ -144,7 +145,7 @@ def map_bands(
     data: np.ndarray,
     source: str = "sentinel2",
     n_prithvi_bands: int = 6,
-    source_bands: Optional[List[str]] = None,
+    source_bands: list[str] | None = None,
 ) -> np.ndarray:
     """Reorder bands from satellite native order to Prithvi HLS order.
 
@@ -192,7 +193,7 @@ def validate_prithvi_input(
     data: np.ndarray,
     source: str = "sentinel2",
     n_prithvi_bands: int = 6,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Validate and report on Prithvi input data quality.
 
     Args:
@@ -210,11 +211,11 @@ def validate_prithvi_input(
         errors.append(f"Expected (C,H,W), got shape {data.shape}")
     else:
         C, H, W = data.shape
-        if C < n_prithvi_bands:
+        if n_prithvi_bands > C:
             errors.append(f"Only {C} bands; Prithvi needs {n_prithvi_bands}")
         if data.dtype != np.float32:
             warnings.append(f"dtype={data.dtype}; will cast to float32")
-        vmin, vmax = float(data.min()), float(data.max())
+        _vmin, vmax = float(data.min()), float(data.max())
         if vmax > 5.0:
             errors.append(
                 f"Values up to {vmax:.0f} look like raw DN integers. "
@@ -264,7 +265,7 @@ def _spectral_land_cover(
 
     # Spectral indices
     NDVI  = (NIR  - R)     / (NIR  + R     + eps)  # vegetation
-    NDWI  = (G    - NIR)   / (G    + NIR   + eps)  # water
+    (G    - NIR)   / (G    + NIR   + eps)  # water
     MNDWI = (G    - SWIR1) / (G    + SWIR1 + eps)  # water (modified, less vegetation interference)
     NDBI  = (SWIR1 - NIR)  / (SWIR1 + NIR  + eps)  # built-up / bare
     NDSI  = (G    - SWIR1) / (G    + SWIR1 + eps)  # snow (same formula as MNDWI — use NIR constraint)
@@ -312,7 +313,7 @@ def _spectral_crop_mapping(data_hls: np.ndarray) -> np.ndarray:
 
     NDVI   = (NIR - R)     / (NIR + R     + eps)
     LSWI   = (NIR - SWIR1) / (NIR + SWIR1 + eps)   # Leaf water
-    NDRE   = (NIR - R)     / (NIR + R     + eps)    # proxy for red-edge ratio
+    (NIR - R)     / (NIR + R     + eps)    # proxy for red-edge ratio
     SWIR_R = SWIR2 / (SWIR1 + eps)                  # SWIR ratio
 
     H, W  = B.shape
@@ -386,7 +387,7 @@ def load_prithvi_hf(model_name: str = "prithvi_eo_2_0",
     logger.info("Loading Prithvi from HuggingFace: %s", hf_id)
 
     try:
-        from transformers import AutoModel, AutoConfig
+        from transformers import AutoConfig, AutoModel
         try:
             # First load the config and patch any None fields that would
             # cause "NoneType cannot be interpreted as an integer" inside
@@ -461,7 +462,7 @@ def load_prithvi_local(model_name: str, weights_path: str,
         raise ImportError("torch required")
 
 
-def _build_prithvi_surrogate(spec: Dict, device: str = "cpu") -> Any:
+def _build_prithvi_surrogate(spec: dict, device: str = "cpu") -> Any:
     """Build a Prithvi-compatible ViT surrogate (no pretrained weights)."""
     import torch
     import torch.nn as nn
@@ -490,7 +491,6 @@ def _build_prithvi_surrogate(spec: Dict, device: str = "cpu") -> Any:
             self.config   = type("Cfg", (), {"hidden_size": embed_dim})()
 
         def forward(self, pixel_values=None, x=None, **kwargs):
-            import torch
             if pixel_values is None: pixel_values = x
             if pixel_values is None:
                 raise ValueError("Pass pixel_values=... or x=...")
@@ -540,7 +540,7 @@ class Prithvi:
 
     def __init__(self, variant: str = "prithvi_eo_2_0",
                  method: str = "hf",
-                 device: Optional[str] = None) -> None:
+                 device: str | None = None) -> None:
         self.variant = variant
         self.method  = method
         self.device  = device or self._auto_device()
@@ -557,7 +557,7 @@ class Prithvi:
             pass
         return "cpu"
 
-    def load(self, weights_path: Optional[str] = None) -> "Prithvi":
+    def load(self, weights_path: str | None = None) -> Prithvi:
         """Load the Prithvi model. Returns self for chaining."""
         if weights_path:
             self._model = load_prithvi_local(self.variant, weights_path, self.device)
@@ -573,8 +573,8 @@ class Prithvi:
         self,
         path: str,
         source: str = "hls",
-        n_bands: Optional[int] = None,
-        source_bands: Optional[List[str]] = None,
+        n_bands: int | None = None,
+        source_bands: list[str] | None = None,
         resample_to_30m: bool = True,
     ) -> np.ndarray:
         """Load and prepare a GeoTIFF for Prithvi inference.
@@ -682,7 +682,7 @@ class Prithvi:
         import torch
 
         data   = self._load_geotiff(image_path, source)
-        H, W   = data.shape[1], data.shape[2]
+        _H, _W   = data.shape[1], data.shape[2]
 
         # Resize to model patch grid (224×224 standard)
         import cv2
@@ -736,7 +736,7 @@ class Prithvi:
                 self._n_bands  = n_bands
 
             def forward(self, x):
-                import torch, math
+                import math
                 if x.shape[1] != self._n_bands:
                     x = x[:, :self._n_bands]
                 out = self.backbone(pixel_values=x)
@@ -758,7 +758,7 @@ class Prithvi:
 
         return PrithviSegModel(self._model, head).to(self.device)
 
-    def finetune_config(self) -> Dict:
+    def finetune_config(self) -> dict:
         """Recommended fine-tuning hyperparameters for Prithvi-EO-2.0."""
         return {
             "optimizer":      "AdamW",
@@ -793,13 +793,13 @@ class PrithviMultiTemporal:
     """
 
     def __init__(self, model_name: str = "prithvi_eo_2_0",
-                 device: Optional[str] = None) -> None:
+                 device: str | None = None) -> None:
         self.model_name = model_name
         self._prithvi   = Prithvi(model_name, device=device)
 
-    def process_time_series(self, image_paths: List[str],
-                             dates: Optional[List[str]] = None,
-                             source: str = "hls") -> Dict[str, Any]:
+    def process_time_series(self, image_paths: list[str],
+                             dates: list[str] | None = None,
+                             source: str = "hls") -> dict[str, Any]:
         """Process a multi-temporal stack of HLS images.
 
         Args:
@@ -841,7 +841,7 @@ class PrithviMultiTemporal:
 
     def detect_change(self, before_path: str, after_path: str,
                        source: str = "hls",
-                       output_path: Optional[str] = None) -> Dict[str, Any]:
+                       output_path: str | None = None) -> dict[str, Any]:
         """Detect land-cover or vegetation changes between two dates.
 
         Uses Prithvi's temporal attention to identify meaningful change.
@@ -857,9 +857,9 @@ class PrithviMultiTemporal:
         # Simple change: L2 distance between CLS embeddings
         f = result["cls_per_frame"]
         if f.shape[0] >= 2:
-            diff = np.abs(f[0] - f[1])
+            np.abs(f[0] - f[1])
         else:
-            diff = np.zeros(f.shape[-1])
+            np.zeros(f.shape[-1])
 
         # Build spatial change map from patch features
         patch_features = result["features"]
@@ -891,7 +891,9 @@ class PrithviMultiTemporal:
 
         if output_path:
             try:
-                import rasterio, pathlib
+                import pathlib
+
+                import rasterio
                 pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 with rasterio.open(before_path) as src:
                     profile = src.profile.copy()
@@ -911,9 +913,9 @@ class PrithviMultiTemporal:
             "model":        self.model_name,
         }
 
-    def monitor_trend(self, time_series_paths: List[str],
-                       dates: Optional[List[str]] = None,
-                       source: str = "hls") -> Dict[str, Any]:
+    def monitor_trend(self, time_series_paths: list[str],
+                       dates: list[str] | None = None,
+                       source: str = "hls") -> dict[str, Any]:
         """Analyse temporal trends using Prithvi features.
 
         Fits a linear trend to the temporal CLS embeddings.
@@ -940,8 +942,8 @@ class PrithviMultiTemporal:
             "trend_per_dim":     slopes.tolist()[:20],  # first 20 dims
         }
 
-    def predict_seasonal(self, time_series_paths: List[str],
-                          dates: Optional[List[str]] = None) -> Dict[str, Any]:
+    def predict_seasonal(self, time_series_paths: list[str],
+                          dates: list[str] | None = None) -> dict[str, Any]:
         """Fit a seasonal model (annual cycle) to the temporal series.
 
         Returns:
@@ -955,7 +957,7 @@ class PrithviMultiTemporal:
             return {**result, "note": "Need ≥ 4 time steps for seasonal model"}
 
         # Fit sinusoid: mean + A * cos(2π/T * t + φ)
-        t = np.linspace(0, 2 * np.pi, T)
+        np.linspace(0, 2 * np.pi, T)
         mean_feat = features.mean(axis=-1)          # scalar per time step
         A = (mean_feat.max() - mean_feat.min()) / 2
         peak_idx  = int(np.argmax(mean_feat))
@@ -1007,10 +1009,10 @@ class PrithviTasks:
 
 
     def __init__(self, model_name: str = "prithvi_eo_2_0",
-                 device: Optional[str] = None) -> None:
+                 device: str | None = None) -> None:
         self.model_name = model_name
         self._prithvi   = Prithvi(model_name, device=device)
-        self._seg_heads: Dict[str, Any] = {}   # cache task heads to avoid rebuilding
+        self._seg_heads: dict[str, Any] = {}   # cache task heads to avoid rebuilding
 
     def _seg_head(self, task: str, n_classes: int) -> Any:
         """Get or create a segmentation head for a task."""
@@ -1035,9 +1037,9 @@ class PrithviTasks:
         task: str,
         n_classes: int,
         source: str = "hls",
-        source_bands: Optional[List[str]] = None,
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        source_bands: list[str] | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """Segmentation inference — routes to spectral or tiled backbone path.
 
         Routing:
@@ -1051,7 +1053,6 @@ class PrithviTasks:
            model is loaded, we extract dense patch features and decode with
            the segmentation head using tiled inference.
         """
-        import torch
 
         # Load and prepare data — always go through the full pipeline
         bands = source_bands or self._CANONICAL_BANDS.get(source)
@@ -1094,7 +1095,7 @@ class PrithviTasks:
             for u, c in zip(unique, counts)
         }
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "prediction":   pred_np,            # (H, W) uint8
             "class_pct":    class_pct,
             "n_classes":    n_classes,
@@ -1138,9 +1139,10 @@ class PrithviTasks:
         orig_W: int,
     ) -> np.ndarray:
         """Tiled inference with the Prithvi backbone + task segmentation head."""
+        import math
+
         import torch
         import torch.nn.functional as F_
-        import math
 
         model = self._seg_head(task, n_classes)
         model.eval()
@@ -1150,7 +1152,7 @@ class PrithviTasks:
         C, H, W = data_hls.shape
 
         pred_sum   = np.zeros((n_classes, H, W), dtype=np.float32)
-        pred_count = np.zeros((H, W), dtype=np.float32)
+        np.zeros((H, W), dtype=np.float32)
 
         # Build Gaussian weight window for blend
         def _gauss_window(size):
@@ -1215,9 +1217,9 @@ class PrithviTasks:
         self,
         image_path: str,
         source: str = "sentinel2",
-        source_bands: Optional[List[str]] = None,
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        source_bands: list[str] | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """9-class land cover classification (ESA WorldCover scheme).
 
         Classes: Tree cover, Shrubland, Grassland, Cropland, Built-up,
@@ -1244,9 +1246,9 @@ class PrithviTasks:
         self,
         image_path: str,
         source: str = "sentinel2",
-        source_bands: Optional[List[str]] = None,
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        source_bands: list[str] | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """10-class crop type mapping.
 
         Classes: corn, soybeans, cotton, winter_wheat, spring_wheat,
@@ -1262,9 +1264,9 @@ class PrithviTasks:
         self,
         image_path: str,
         source: str = "sentinel2",
-        source_bands: Optional[List[str]] = None,
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        source_bands: list[str] | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """Binary flood detection (0=dry, 1=flooded/water).
 
         Uses MNDWI threshold on HLS Green+SWIR1 bands. Spatially precise
@@ -1286,9 +1288,9 @@ class PrithviTasks:
         self,
         image_path: str,
         source: str = "sentinel2",
-        source_bands: Optional[List[str]] = None,
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        source_bands: list[str] | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """Binary burn scar detection (0=unburned, 1=burned).
 
         Uses NBR (Normalised Burn Ratio) on NIR and SWIR2 bands.
@@ -1316,8 +1318,10 @@ class PrithviTasks:
         match before writing.
         """
         try:
-            import rasterio, pathlib
+            import pathlib
+
             import cv2
+            import rasterio
 
             pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -1341,7 +1345,7 @@ class PrithviTasks:
             logger.warning("_save_prediction failed (%s) — file not written", exc)
 
     def biomass_estimation(self, image_path: str,
-                            source: str = "hls") -> Dict[str, Any]:
+                            source: str = "hls") -> dict[str, Any]:
         """Estimate above-ground biomass (t DM/ha) using Prithvi features + regression."""
         import torch
         self._prithvi._ensure_loaded()
@@ -1374,7 +1378,7 @@ class PrithviTasks:
                 "model": self.model_name, "source": source}
 
     def deforestation_detection(self, before_path: str, after_path: str,
-                                  output_path: Optional[str] = None) -> Dict[str, Any]:
+                                  output_path: str | None = None) -> dict[str, Any]:
         """Detect deforestation using Prithvi multi-temporal features."""
         mt = PrithviMultiTemporal(self.model_name, self._prithvi.device)
         return mt.detect_change(before_path, after_path, output_path=output_path)
@@ -1383,7 +1387,9 @@ class PrithviTasks:
                           output_path: str) -> None:
         """Save a prediction raster using the reference GeoTIFF's CRS/transform."""
         try:
-            import rasterio, pathlib
+            import pathlib
+
+            import rasterio
             pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with rasterio.open(reference_path) as src:
                 profile = src.profile.copy()
@@ -1408,7 +1414,7 @@ def finetune_prithvi(
     distributed: bool = False,
     output_dir: str = "./checkpoints/prithvi/",
     **kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Fine-tune Prithvi-EO for a downstream geospatial task.
 
     Recommended hyperparameters (from Prithvi-EO-2.0 paper):
@@ -1430,6 +1436,7 @@ def finetune_prithvi(
     """
     try:
         import torch
+
         from pygeovision.training.checkpoint import CheckpointManager
         from pygeovision.training.mixed_precision import MixedPrecisionManager
     except ImportError:
@@ -1463,11 +1470,11 @@ def finetune_prithvi(
 
 # ── Convenience ──────────────────────────────────────────────────────────────
 
-def list_prithvi_models() -> List[str]:
+def list_prithvi_models() -> list[str]:
     return list(PRITHVI_MODELS.keys())
 
 
-def get_prithvi_info(model_name: str) -> Dict:
+def get_prithvi_info(model_name: str) -> dict:
     spec = PRITHVI_MODELS.get(model_name)
     if spec is None:
         raise ValueError(f"Unknown Prithvi model: '{model_name}'")

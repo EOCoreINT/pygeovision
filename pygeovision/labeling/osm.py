@@ -3,12 +3,14 @@ OSM Auto-Labeler (E1, E2) — Generate training labels from OpenStreetMap.
 
 Uses the Overpass API to fetch building footprints, roads, water bodies,
 and land use polygons, then rasterises them to GeoTIFF label masks.
-No GeoAI dependency.
+Fully native — no external AI-platform dependency.
 """
 from __future__ import annotations
-import logging, time
+
+import logging
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,7 @@ class OSMLabeler:
 
     def __init__(
         self,
-        endpoint: Optional[str] = None,
+        endpoint: str | None = None,
         timeout: int = 120,
         retry_attempts: int = 3,
         crs: str = "EPSG:4326",
@@ -108,7 +110,7 @@ class OSMLabeler:
         self.crs = crs
 
     # ── Overpass query ────────────────────────────────────────────────────────
-    def _build_overpass_query(self, bbox: Tuple[float, ...], categories: List[str]) -> str:
+    def _build_overpass_query(self, bbox: tuple[float, ...], categories: list[str]) -> str:
         lon_min, lat_min, lon_max, lat_max = bbox
         # Overpass uses lat_min,lon_min,lat_max,lon_max
         bbox_str = f"({lat_min},{lon_min},{lat_max},{lon_max})"
@@ -124,7 +126,7 @@ class OSMLabeler:
         )
         return query
 
-    def _fetch_overpass(self, query: str) -> Optional[Dict]:
+    def _fetch_overpass(self, query: str) -> dict | None:
         for attempt in range(1, self.retry_attempts + 1):
             for endpoint in OVERPASS_ENDPOINTS:
                 try:
@@ -141,10 +143,10 @@ class OSMLabeler:
         return None
 
     # ── GeoJSON conversion ────────────────────────────────────────────────────
-    def _osm_to_geojson(self, data: Dict, categories: List[str]) -> Dict:
+    def _osm_to_geojson(self, data: dict, categories: list[str]) -> dict:
         """Convert Overpass JSON to a categorised GeoJSON FeatureCollection."""
         features = []
-        cat_by_name = {c: OSM_CATEGORIES[c] for c in categories if c in OSM_CATEGORIES}
+        {c: OSM_CATEGORIES[c] for c in categories if c in OSM_CATEGORIES}
 
         for elem in data.get("elements", []):
             if elem.get("type") not in ("way", "relation"):
@@ -197,18 +199,18 @@ class OSMLabeler:
     # ── Rasterisation ─────────────────────────────────────────────────────────
     def _rasterise(
         self,
-        geojson: Dict,
-        bbox: Tuple[float, ...],
+        geojson: dict,
+        bbox: tuple[float, ...],
         output_path: Path,
         resolution_m: float = 10.0,
-        reference_raster: Optional[str] = None,
+        reference_raster: str | None = None,
     ) -> Path:
         """Rasterise GeoJSON features to a labelled GeoTIFF."""
         try:
             import numpy as np
             import rasterio
-            from rasterio.transform import from_bounds
             from rasterio.features import rasterize
+            from rasterio.transform import from_bounds
             from shapely.geometry import shape
         except ImportError as exc:
             raise ImportError(f"rasterio + shapely required: {exc}")
@@ -268,14 +270,14 @@ class OSMLabeler:
     # ── Public API ────────────────────────────────────────────────────────────
     def label(
         self,
-        bbox: Tuple[float, ...],
-        categories: Optional[List[str]] = None,
-        output_path: Union[str, Path] = "./labels/osm_labels.tif",
-        reference_raster: Optional[str] = None,
+        bbox: tuple[float, ...],
+        categories: list[str] | None = None,
+        output_path: str | Path = "./labels/osm_labels.tif",
+        reference_raster: str | None = None,
         resolution_m: float = 10.0,
         save_vector: bool = True,
-        vector_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        vector_path: str | None = None,
+    ) -> dict[str, Any]:
         """Generate a labelled GeoTIFF from OSM features.
 
         Args:
@@ -305,7 +307,7 @@ class OSMLabeler:
         logger.info("OSMLabeler: %d features fetched", n_features)
 
         # Save vector
-        v_path: Optional[Path] = None
+        v_path: Path | None = None
         if save_vector:
             import json
             v_path = Path(vector_path or str(output_path).replace(".tif", "_vectors.geojson"))
@@ -331,10 +333,10 @@ class OSMLabeler:
             "vector_path": str(v_path) if v_path else None,
         }
 
-    def list_categories(self) -> Dict[str, str]:
+    def list_categories(self) -> dict[str, str]:
         """Return all supported OSM categories and their descriptions."""
         return {k: v["description"] for k, v in OSM_CATEGORIES.items()}
 
-    def preview_query(self, bbox: Tuple[float, ...], categories: Optional[List[str]] = None) -> str:
+    def preview_query(self, bbox: tuple[float, ...], categories: list[str] | None = None) -> str:
         """Return the Overpass QL query without executing it."""
         return self._build_overpass_query(bbox, categories or list(OSM_CATEGORIES.keys()))

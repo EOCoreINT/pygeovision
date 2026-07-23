@@ -21,11 +21,8 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
 
 import numpy as np
 import rasterio
@@ -51,13 +48,26 @@ MIN_GCPS_FOR_RECOVERY = 4
 class GeoreferenceResult:
     """Return value of validate_sar_georeference() and validate_georeference()."""
     valid:         bool
-    repaired_path: Optional[str] = None
-    errors:        List[str]     = field(default_factory=list)
-    warnings:      List[str]     = field(default_factory=list)
-    crs:           Optional[str] = None
-    transform_a:   Optional[float] = None
+    repaired_path: str | None = None
+    errors:        list[str]     = field(default_factory=list)
+    warnings:      list[str]     = field(default_factory=list)
+    crs:           str | None = None
+    transform_a:   float | None = None
     gcp_count:     int = 0
     recovered:     bool = False
+    srid:          int | None = None
+    origin_x:      float | None = None
+    origin_y:      float | None = None
+
+    @property
+    def repaired(self) -> bool:
+        """Alias for `recovered` — whether a repaired file was produced."""
+        return self.recovered
+
+    @property
+    def pixel_width_m(self) -> float | None:
+        """Alias for `transform_a` — pixel width in the raster's native CRS units."""
+        return self.transform_a
 
 
 # ── Identity-transform detection ──────────────────────────────────────────────
@@ -159,8 +169,8 @@ def _recover_via_bounds_heuristic(src_path: str, dst_path: str, target_crs: str 
     This is approximate but often good enough for Accra / UTM Zone 30N.
     """
     try:
-        from rasterio.transform import from_bounds as affine_from_bounds
         from rasterio.crs import CRS as RasterioCRS
+        from rasterio.transform import from_bounds as affine_from_bounds
 
         with rasterio.open(src_path) as src:
             data   = src.read()
@@ -194,36 +204,99 @@ def _recover_via_bounds_heuristic(src_path: str, dst_path: str, target_crs: str 
         return False
 
 
+# ── Raw-reference recovery (repair using a separate known-good file) ─────────
+
+def _recover_via_raw_reference(corrupt_path: str, raw_path: str, dst_path: str) -> bool:
+    """
+    Repair a corrupt (identity-transform) raster using a separate raw file
+    that carries a valid transform/CRS for the same scene — e.g. the
+    pre-reprojection download, before pygeofetch's post-reproject step
+    corrupted it.
+
+    Writes `corrupt_path`'s data with `raw_path`'s transform + CRS to
+    `dst_path`. Returns True if the raw file's own transform looks valid.
+    """
+    try:
+        with rasterio.open(raw_path) as raw_src:
+            raw_transform = raw_src.transform
+            raw_crs       = raw_src.crs
+
+        if raw_crs is None or _is_identity_transform(raw_transform):
+            logger.debug(f"Raw-reference recovery: raw file {raw_path} has no usable transform")
+            return False
+
+        is_geo = _is_geographic_crs(raw_crs)
+        a = abs(raw_transform.a)
+        min_px = GEO_MIN_PIXEL_DEG if is_geo else PROJ_MIN_PIXEL_M
+        if a < min_px or (not is_geo and a > PROJ_MAX_PIXEL_M):
+            logger.debug(f"Raw-reference recovery: raw file pixel size {a} out of range")
+            return False
+
+        with rasterio.open(corrupt_path) as src:
+            data = src.read()
+            meta = src.meta.copy()
+
+        meta.update(transform=raw_transform, crs=raw_crs)
+        os.makedirs(os.path.dirname(dst_path) or ".", exist_ok=True)
+        with rasterio.open(dst_path, "w", **meta) as dst:
+            dst.write(data)
+
+        logger.info(
+            f"Raw-reference recovery succeeded: {Path(corrupt_path).name} + "
+            f"{Path(raw_path).name} → {Path(dst_path).name}"
+        )
+        return True
+
+    except Exception as e:
+        logger.warning(f"Raw-reference recovery failed: {e}")
+        return False
+
+
 # ── Core validation function ──────────────────────────────────────────────────
 
 def validate_georeference(
-    file_path: str,
-    expected_crs: Optional[str] = None,
-    min_pixel_size: Optional[float] = None,
-    max_origin: Optional[float] = None,
+    path: str,
+    expected_crs: str | None = None,
+    min_pixel_size: float | None = None,
+    max_origin: float | None = None,
     attempt_recovery: bool = True,
+    file_path: str | None = None,
+    repair: bool | None = None,
+    allow_heuristic_recovery: bool = False,
 ) -> GeoreferenceResult:
     """
     CRS-aware georeference validation with GCP-based recovery.
 
     Args:
-        file_path:        Path to raster file.
-        expected_crs:     If set, also checks the CRS matches (e.g. 'EPSG:32630').
-        min_pixel_size:   Override minimum pixel size. Auto-detected from CRS type if None.
-        max_origin:       Override maximum absolute origin value. None = no check.
-        attempt_recovery: If True, attempt GCP recovery when validation fails.
+        path:              Path to the raster file to validate.
+        expected_crs:      If set, also checks the CRS matches (e.g. 'EPSG:32630').
+        min_pixel_size:    Override minimum pixel size. Auto-detected from CRS type if None.
+        max_origin:        Override maximum absolute origin value. None = no check.
+        attempt_recovery:  If True, attempt recovery when validation fails.
+        file_path:         Optional path to a separate raw/source raster carrying
+                            a known-good transform, used to repair `path` when its
+                            own transform is corrupt (e.g. pygeofetch's identity-
+                            transform bug). Takes priority over GCP recovery when
+                            provided.
+        repair:            Alias for `attempt_recovery` (if given, overrides it).
+        allow_heuristic_recovery: If True, also try the approximate Accra-bounds
+                            heuristic as a last resort when GCP/raw recovery are
+                            unavailable. Off by default — it's a location-specific
+                            approximation, not a general recovery method.
 
     Returns:
         GeoreferenceResult with valid, repaired_path, errors, warnings, etc.
     """
+    do_recovery = attempt_recovery if repair is None else repair
+    file_path_arg = path
     result = GeoreferenceResult(valid=False)
 
-    if not os.path.exists(file_path):
-        result.errors.append(f"File not found: {file_path}")
+    if not os.path.exists(file_path_arg):
+        result.errors.append(f"File not found: {file_path_arg}")
         return result
 
     try:
-        with rasterio.open(file_path) as src:
+        with rasterio.open(file_path_arg) as src:
             transform = src.transform
             crs       = src.crs
             gcps, _   = src.gcps
@@ -232,11 +305,14 @@ def validate_georeference(
         if crs is None:
             result.errors.append("No CRS defined")
         else:
-            result.crs = crs.to_string()
+            result.crs  = crs.to_string()
+            result.srid = crs.to_epsg()
 
         is_geo = _is_geographic_crs(crs) if crs else False
         a = abs(transform.a)
         result.transform_a = a
+        result.origin_x = transform.c
+        result.origin_y = transform.f
 
         # Determine minimum pixel size from CRS type
         if min_pixel_size is None:
@@ -283,17 +359,35 @@ def validate_georeference(
         return result
 
     # ── Attempt recovery ──────────────────────────────────────────────────────
-    if not attempt_recovery:
+    if not do_recovery:
         return result
 
-    src_path = str(file_path)
+    src_path = str(file_path_arg)
     stem     = Path(src_path).stem
     suffix   = Path(src_path).suffix
     repair_dir = Path(src_path).parent / "_repaired"
     repair_dir.mkdir(exist_ok=True)
     dst_path = str(repair_dir / f"{stem}_repaired{suffix}")
 
-    # Method 1: GCP recovery (preferred — uses embedded GCPs)
+    # Method 1: raw-reference recovery (explicit known-good source file)
+    if file_path:
+        if _recover_via_raw_reference(src_path, file_path, dst_path):
+            recovered_result = validate_georeference(
+                dst_path, expected_crs=expected_crs,
+                min_pixel_size=min_pixel_size, attempt_recovery=False,
+            )
+            if recovered_result.valid:
+                result.repaired_path = dst_path
+                result.recovered     = True
+                result.warnings.append(
+                    f"Georeference recovered from raw reference {Path(file_path).name} "
+                    f"→ {Path(dst_path).name}"
+                )
+                result.valid = True
+                logger.info(f"Raw-reference recovery validated: {dst_path}")
+                return result
+
+    # Method 2: GCP recovery (uses embedded GCPs)
     if result.gcp_count >= MIN_GCPS_FOR_RECOVERY:
         logger.info(
             f"Attempting GCP recovery for {Path(src_path).name} "
@@ -311,21 +405,24 @@ def validate_georeference(
                 result.warnings.append(
                     f"Georeference recovered from {result.gcp_count} GCPs → {Path(dst_path).name}"
                 )
+                result.valid = True
                 logger.info(f"GCP recovery validated: {dst_path}")
                 return result
             else:
                 logger.warning(f"Recovered file failed validation: {recovered_result.errors}")
 
-    # Method 2: Bounds heuristic (Accra-specific fallback)
-    logger.info(f"Attempting bounds-heuristic recovery for {Path(src_path).name}")
-    dst_path_h = str(repair_dir / f"{stem}_repaired_heuristic{suffix}")
-    if _recover_via_bounds_heuristic(src_path, dst_path_h):
-        result.repaired_path = dst_path_h
-        result.recovered     = True
-        result.warnings.append(
-            f"Georeference recovered via Accra bounds heuristic (APPROXIMATE) → {Path(dst_path_h).name}"
-        )
-        return result
+    # Method 3: Bounds heuristic (Accra-specific fallback, opt-in only)
+    if allow_heuristic_recovery:
+        logger.info(f"Attempting bounds-heuristic recovery for {Path(src_path).name}")
+        dst_path_h = str(repair_dir / f"{stem}_repaired_heuristic{suffix}")
+        if _recover_via_bounds_heuristic(src_path, dst_path_h):
+            result.repaired_path = dst_path_h
+            result.recovered     = True
+            result.valid         = True
+            result.warnings.append(
+                f"Georeference recovered via Accra bounds heuristic (APPROXIMATE) → {Path(dst_path_h).name}"
+            )
+            return result
 
     # Recovery failed
     logger.error(
@@ -344,14 +441,28 @@ def validate_sar_georeference(file_path: str, attempt_recovery: bool = True) -> 
 
 # ── check_download_complete ───────────────────────────────────────────────────
 
-def check_download_complete(file_path: str) -> dict:
+def check_download_complete(
+    file_path: str,
+    total_tiles: int | None = None,
+    file_size: int | None = None,
+) -> dict:
     """
     Check whether a downloaded GeoTIFF is complete and readable.
+
+    Args:
+        file_path:    Path to the downloaded raster.
+        total_tiles:  Optional expected tile count, if already known from a
+                      manifest/API response, for logging/cross-checks. The
+                      completeness check itself always re-derives the actual
+                      tile count from the file (a caller-supplied count can't
+                      be trusted to detect a truncated download).
+        file_size:    Optional expected file size in bytes, for the same
+                      cross-check purpose (unused in the pass/fail decision).
 
     Returns dict with keys:
         complete        (bool)   — True if all tiles readable
         readable_tiles  (int)    — number of readable overview tiles
-        total_tiles     (int)    — total tiles expected
+        total_tiles     (int)    — total tiles expected (measured from file)
         file_size_mb    (float)  — file size
         errors          (list)   — any errors encountered
     """
@@ -374,7 +485,6 @@ def check_download_complete(file_path: str) -> dict:
             return result
 
         with rasterio.open(file_path) as src:
-            bands = src.count
             H, W  = src.height, src.width
             # Sample tiles across the raster to verify readability
             tile_size = min(512, H, W)

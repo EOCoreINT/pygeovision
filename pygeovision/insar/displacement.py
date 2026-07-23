@@ -42,7 +42,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -131,10 +130,10 @@ def phase_to_displacement(
 
 
 def displacement_rate(
-    displacement_paths: List[str],
-    dates:              List[str],
+    displacement_paths: list[str],
+    dates:              list[str],
     output_path:        str = "deformation_rate_mm_yr.tif",
-    mask_path:          Optional[str] = None,
+    mask_path:          str | None = None,
 ) -> np.ndarray:
     """
     Estimate pixel-wise linear deformation rate (mm/year) from a displacement stack.

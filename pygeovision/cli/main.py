@@ -3,7 +3,7 @@ PyGeoVision CLI — production-ready geospatial AI command line interface.
 
 Integrates:
   pygeofetch — satellite data (search, download, auth, pipeline, cache)
-  geoai      — AI inference (segment, detect, classify, train)
+  native AI  — segment, detect, classify, change, train (no external AI platform)
 
 Usage:
     pygeovision --help
@@ -26,7 +26,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -47,7 +46,7 @@ def _setup_logging(verbose: bool) -> None:
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 @click.pass_context
 def cli(ctx: click.Context, verbose: bool) -> None:
-    """PyGeoVision — Geospatial AI Platform (pygeofetch + geoai)."""
+    """PyGeoVision — Geospatial AI Platform (pygeofetch + native AI)."""
     _setup_logging(verbose)
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
@@ -370,7 +369,7 @@ def pipeline() -> None:
 @pipeline.command("run")
 @click.argument("yaml_file", type=click.Path(exists=True))
 @click.option("--step", default=None, help="Run only this named step.")
-def pipeline_run(yaml_file, step):
+def data_pipeline_run(yaml_file, step):
     """Run a pygeofetch YAML pipeline.
 
     \b
@@ -514,214 +513,170 @@ def data_providers(open_only, sar, sub_meter):
 
 
 # =========================================================================
-# AI commands — powered by geoai
+# =========================================================================
+# AI commands — native (no external AI-platform dependency)
 # =========================================================================
 
 @cli.group()
 def ai() -> None:
-    """Geospatial AI commands — powered by geoai.
+    """Geospatial AI commands — fully native (SAM, YOLO, ChangeFormer, CLIP).
 
     \b
     Capabilities:
-        segment  — Building footprints, solar panels, water, agriculture, SAM
-        detect   — Cars, ships, parking, grounded SAM, RF-DETR
-        classify — Scene classification, land cover, CLIP zero-shot
-        change   — ChangeSTAR bi-temporal change detection
-        train    — Train segmentation, detection, classification models
+        segment  — Building footprints, water, general SAM segmentation
+        detect   — Generic / ships / cars object detection (native YOLO)
+        classify — Scene classification (CLIP), land cover (ESA WorldCover)
+        change   — Bi-temporal change detection (ChangeFormer)
+        train    — Train segmentation / detection models
         infer    — Tiled inference on large GeoTIFF scenes
-        embed    — Satellite image embeddings
-        cloud    — Cloud mask generation
+        chips    — Export aligned imagery/label training chips
+        cloud-mask — Native brightness/NDSI-style cloud masking
     """
 
 
 @ai.command("segment")
-@click.argument("target", type=click.Choice([
-    "buildings", "solar", "water", "agriculture", "custom"
-]))
+@click.argument("target", type=click.Choice(["buildings", "water", "sam", "custom"]))
 @click.option("--input", "-i", "input_path", required=True, type=click.Path(exists=True))
 @click.option("--output", "-o", required=True, help="Output mask GeoTIFF.")
-@click.option("--vector", default=None, help="Output GeoJSON/Shapefile for polygons.")
-@click.option("--model", default=None, help="Model name or HuggingFace Hub ID.")
-@click.option("--confidence", default=0.5, show_default=True)
-def ai_segment(target, input_path, output, vector, model, confidence):
-    """Segment geospatial features using geoai.
+@click.option("--model", default=None, help="Model name or HuggingFace Hub ID (target=custom).")
+def ai_segment(target, input_path, output, model):
+    """Segment geospatial features natively.
 
     \b
     Examples:
-        pygeovision ai segment buildings --input sentinel2.tif \\
-            --output buildings.tif --vector buildings.geojson
-
-        pygeovision ai segment water --input s2.tif \\
-            --output water.tif --band-order sentinel2
-
-        pygeovision ai segment solar --input aerial.tif \\
-            --output solar.tif --vector solar.geojson
+        pygeovision ai segment buildings --input sentinel2.tif --output buildings.tif
+        pygeovision ai segment water --input s2.tif --output water.tif
     """
     from pygeovision import PyGeoVision
     client = PyGeoVision()
-    ga = client.geoai
 
-    click.echo(f"Running geoai {target} segmentation on {input_path}...")
+    click.echo(f"Running native {target} segmentation on {input_path}...")
 
-    method = getattr(ga.segment, target, None) if target != "custom" else ga.segment.custom
     if target == "buildings":
-        result = ga.segment.buildings(input_path, output_path=output,
-                                      output_vector=vector, confidence_threshold=confidence)
-    elif target == "solar":
-        result = ga.segment.solar_panels(input_path, output_path=output, output_vector=vector)
+        client.segmentation.buildings(input_path, output_path=output)
     elif target == "water":
-        result = ga.segment.water(input_path, output_path=output)
-    elif target == "agriculture":
-        result = ga.segment.agriculture_fields(input_path, output_path=output, output_vector=vector)
-    elif target == "custom" and model:
-        result = ga.segment.custom(input_path, model, output_path=output)
-    else:
-        click.echo("--model required for custom segmentation", err=True)
-        sys.exit(1)
+        client.segmentation.water(input_path, output_path=output)
+    elif target == "sam":
+        client.segmentation.sam(input_path, output_path=output)
+    elif target == "custom":
+        if not model:
+            click.echo("--model required for custom segmentation", err=True)
+            sys.exit(1)
+        client.segmentation.custom(input_path, model, output_path=output)
 
     click.echo(f"✓ Segmentation complete → {output}")
-    if vector:
-        click.echo(f"✓ Vectors saved → {vector}")
 
 
 @ai.command("detect")
-@click.argument("target", type=click.Choice([
-    "cars", "ships", "parking", "grounded", "rfdetr", "multiclass"
-]))
+@click.argument("target", type=click.Choice(["generic", "ships", "cars", "custom"]))
 @click.option("--input", "-i", "input_path", required=True, type=click.Path(exists=True))
-@click.option("--output", "-o", required=True, help="Output GeoJSON detections.")
-@click.option("--prompt", default=None, help="Text prompt for grounded SAM detection.")
-@click.option("--model", default=None, help="Model path or Hub ID.")
-def ai_detect(target, input_path, output, prompt, model):
-    """Detect objects in satellite/aerial imagery using geoai.
+@click.option("--output", "-o", required=True, help="Output detections GeoTIFF/GeoJSON.")
+@click.option("--model", default=None, help="Model path or Hub ID (target=custom).")
+def ai_detect(target, input_path, output, model):
+    """Detect objects in satellite/aerial imagery using native YOLO.
 
     \b
     Examples:
-        pygeovision ai detect cars --input aerial.tif --output cars.geojson
-        pygeovision ai detect ships --input port.tif --output ships.geojson
-        pygeovision ai detect grounded --input aerial.tif \\
-            --output out.geojson --prompt "swimming pools"
+        pygeovision ai detect generic --input aerial.tif --output detections.tif
+        pygeovision ai detect ships --input port.tif --output ships.tif
     """
     from pygeovision import PyGeoVision
     client = PyGeoVision()
-    ga = client.geoai
 
-    click.echo(f"Running geoai {target} detection on {input_path}...")
+    click.echo(f"Running native {target} detection on {input_path}...")
 
-    if target == "cars":
-        ga.detect.cars(input_path, output_path=output)
+    if target == "generic":
+        client.detection.generic(input_path, output_path=output)
     elif target == "ships":
-        ga.detect.ships(input_path, output_path=output)
-    elif target == "parking":
-        ga.detect.parking(input_path, output_path=output)
-    elif target == "grounded":
-        if not prompt:
-            click.echo("--prompt required for grounded detection", err=True)
-            sys.exit(1)
-        ga.detect.grounded(input_path, prompt, output_path=output)
-    elif target == "rfdetr":
-        ga.detect.rfdetr(input_path, model_id=model, output_path=output)
-    elif target == "multiclass":
+        client.detection.ships(input_path, output_path=output)
+    elif target == "cars":
+        client.detection.cars(input_path, output_path=output)
+    elif target == "custom":
         if not model:
-            click.echo("--model required for multiclass detection", err=True)
+            click.echo("--model required for custom detection", err=True)
             sys.exit(1)
-        ga.detect.multiclass(input_path, model, output_path=output)
+        client.detection.custom(input_path, model, output_path=output)
 
     click.echo(f"✓ Detection complete → {output}")
 
 
 @ai.command("classify")
-@click.argument("mode", type=click.Choice(["scene", "land-cover", "batch"]))
+@click.argument("mode", type=click.Choice(["scene", "land-cover"]))
 @click.option("--input", "-i", "input_path", required=True, type=click.Path(exists=True))
-@click.option("--model", default=None, help="Model path or Hub ID.")
-@click.option("--classes", default=None, help="Comma-separated class names (land-cover).")
-def ai_classify(mode, input_path, model, classes):
-    """Classify satellite imagery using geoai.
+@click.option("--classes", default=None, help="Comma-separated class names (scene mode).")
+@click.option("--output", "-o", default="./output/land_cover.tif",
+              help="Output GeoTIFF (land-cover mode).")
+def ai_classify(mode, input_path, classes, output):
+    """Classify satellite imagery natively (CLIP zero-shot / ESA WorldCover).
 
     \b
     Examples:
-        pygeovision ai classify scene --input tile.tif --model classifier.pth
-        pygeovision ai classify land-cover --input s2.tif \\
+        pygeovision ai classify scene --input tile.tif \\
             --classes "forest,water,urban,agriculture"
+        pygeovision ai classify land-cover --input s2.tif --output lc.tif
     """
     from pygeovision import PyGeoVision
     client = PyGeoVision()
-    ga = client.geoai
 
     if mode == "scene":
-        if not model:
-            click.echo("--model required for scene classification", err=True)
-            sys.exit(1)
-        result = ga.classify.classify(input_path, model)
+        class_list = [c.strip() for c in classes.split(",")] if classes else None
+        result = client.classification.scene(input_path, categories=class_list)
         click.echo(f"Classification: {result}")
     elif mode == "land-cover":
-        class_list = [c.strip() for c in classes.split(",")] if classes else ["forest", "water", "urban", "agriculture"]
-        result = ga.classify.land_cover(input_path, classes=class_list)
-        click.echo(f"Land cover classification complete.")
-    elif mode == "batch":
-        if not model:
-            click.echo("--model required for batch classification", err=True)
-            sys.exit(1)
-        ga.classify.batch(input_path, model)
-        click.echo("Batch classification complete.")
+        client.classification.land_cover(input_path, output_path=output)
+        click.echo(f"✓ Land cover classification → {output}")
+
+
+@ai.command("change")
+@click.option("--before", required=True, type=click.Path(exists=True), help="Pre-event raster.")
+@click.option("--after", required=True, type=click.Path(exists=True), help="Post-event raster.")
+@click.option("--output", "-o", required=True, help="Output change mask GeoTIFF.")
+@click.option("--method", default="changeformer", show_default=True,
+              type=click.Choice(["changeformer", "spectral_diff"]))
+def ai_change(before, after, output, method):
+    """Bi-temporal change detection (native ChangeFormer, with a
+    dependency-free spectral-diff fallback).
+
+    \b
+    Example:
+        pygeovision ai change --before 2020.tif --after 2024.tif --output change.tif
+    """
+    from pygeovision import PyGeoVision
+    client = PyGeoVision()
+
+    click.echo(f"Running {method} change detection...")
+    client.change.detect(before, after, output_path=output, method=method)
+    click.echo(f"✓ Change detection complete → {output}")
 
 
 @ai.command("train")
-@click.argument("task", type=click.Choice([
-    "segmentation", "detection", "classification", "land-cover", "instance"
-]))
+@click.argument("task", type=click.Choice(["segmentation", "detection"]))
 @click.option("--data", "-d", "data_dir", required=True, type=click.Path(exists=True))
 @click.option("--output", "-o", required=True, help="Output model checkpoint path.")
-@click.option("--val-data", default=None, type=click.Path(exists=True))
 @click.option("--num-classes", default=2, show_default=True)
 @click.option("--epochs", default=50, show_default=True)
-@click.option("--batch-size", default=8, show_default=True)
 @click.option("--backbone", default="resnet50", show_default=True)
-@click.option("--loss-fn", default="dice",
-              type=click.Choice(["dice", "focal", "tversky", "unified_focal", "cross_entropy"]))
-def ai_train(task, data_dir, output, val_data, num_classes, epochs, batch_size,
-             backbone, loss_fn):
-    """Train geospatial AI models using geoai.
+def ai_train(task, data_dir, output, num_classes, epochs, backbone):
+    """Configure a native training run (segmentation or detection).
+
+    Builds a GeoTrainer configuration for the requested task. Dataset
+    wiring (train/val split, augmentation) is left to the caller, since
+    that's dataset-specific — see pygeovision.training.trainer.GeoTrainer.
 
     \b
-    Examples:
-        # Train a building segmentation model
+    Example:
         pygeovision ai train segmentation --data ./building_chips/ \\
             --output building_model.pth --num-classes 2 --epochs 100
-
-        # Train a land cover model with unified focal loss
-        pygeovision ai train land-cover --data ./lc_chips/ \\
-            --output lc_model.pth --num-classes 11 --loss-fn unified_focal
-
-        # Train an object detector
-        pygeovision ai train detection --data ./nwpu_chips/ \\
-            --output detector.pth --num-classes 10
     """
-    from pygeovision import PyGeoVision
-    client = PyGeoVision()
-    ga = client.geoai
+    from pygeovision.training.trainer import TrainingConfig
 
-    click.echo(f"Training geoai {task} model...")
+    click.echo(f"Preparing native {task} training config...")
     click.echo(f"  Data: {data_dir} | Classes: {num_classes} | Epochs: {epochs}")
 
-    if task == "segmentation":
-        ga.train.segmentation(data_dir, output, val_data=val_data,
-                              num_classes=num_classes, epochs=epochs,
-                              batch_size=batch_size, backbone=backbone)
-    elif task == "land-cover":
-        ga.train.segmentation_landcover(data_dir, output, num_classes=num_classes,
-                                        loss_fn=loss_fn)
-    elif task == "detection":
-        ga.train.detection(data_dir, output, val_data=val_data,
-                           num_classes=num_classes, epochs=epochs)
-    elif task == "classification":
-        ga.train.classifier(data_dir, output, num_classes=num_classes,
-                            backbone=backbone, epochs=epochs)
-    elif task == "instance":
-        ga.train.instance_segmentation(data_dir, output, num_classes=num_classes,
-                                       epochs=epochs)
-
-    click.echo(f"✓ Model trained → {output}")
+    cfg = TrainingConfig(task=task, num_classes=num_classes, max_epochs=epochs)
+    click.echo(f"✓ Config ready. Initialise GeoTrainer(model, cfg).fit(train_ds, val_ds) "
+               f"to train — output will be saved to {output}")
+    click.echo(f"  Config: {cfg.__dict__}")
 
 
 @ai.command("infer")
@@ -732,37 +687,23 @@ def ai_train(task, data_dir, output, val_data, num_classes, epochs, batch_size,
 @click.option("--tile-size", default=512, show_default=True)
 @click.option("--overlap", default=64, show_default=True)
 def ai_infer(input_path, model, output, num_classes, tile_size, overlap):
-    """Run tiled inference on a large GeoTIFF using geoai.
+    """Run tiled inference on a large GeoTIFF using PyGeoVision's native
+    model registry and Gaussian-blended tiled inference engine.
 
     \b
-    Examples:
-        # Using geoai with a custom model
+    Example:
         pygeovision ai infer --input large_scene.tif \\
-            --model custom_model.pth --output prediction.tif --num-classes 5
-
-        # Using PyGeoVision's model registry
-        pygeovision ai infer --input scene.tif \\
-            --model unet_resnet50 --output pred.tif
+            --model unet_resnet50 --output pred.tif --num-classes 5
     """
-    from pygeovision import PyGeoVision
-    client = PyGeoVision()
-    ga = client.geoai
+    from pygeovision.ai.inference import TiledInference
+    from pygeovision.ai.models import ModelHub
 
     click.echo(f"Running tiled inference: {input_path} → {output}")
-
-    # Try geoai semantic_segmentation first (most common)
-    try:
-        ga.infer.semantic_segmentation(input_path, model, output_path=output)
-        click.echo(f"✓ Inference complete → {output}")
-    except Exception:
-        # Fall back to PyGeoVision's own inference
-        from pygeovision.ai.models import ModelHub
-        from pygeovision.ai.inference import TiledInference
-        hub = ModelHub()
-        m = hub.load(model, num_classes=num_classes)
-        engine = TiledInference(m, tile_size=tile_size, overlap=overlap)
-        engine.run(input_path, output, num_classes=num_classes)
-        click.echo(f"✓ Inference complete → {output}")
+    hub = ModelHub()
+    m = hub.load(model, num_classes=num_classes)
+    engine = TiledInference(m, tile_size=tile_size, overlap=overlap)
+    engine.run(input_path, output, num_classes=num_classes)
+    click.echo(f"✓ Inference complete → {output}")
 
 
 @ai.command("chips")
@@ -772,40 +713,86 @@ def ai_infer(input_path, model, output, num_classes, tile_size, overlap):
 @click.option("--chip-size", default=256, show_default=True)
 @click.option("--overlap", default=0, show_default=True)
 def ai_chips(image, label, output, chip_size, overlap):
-    """Export training chips from imagery + labels using geoai.
+    """Export aligned imagery/label training chips (native windowed tiling).
 
     \b
     Example:
         pygeovision ai chips --image sentinel2.tif --label buildings.tif \\
             --output ./training_chips/ --chip-size 256
     """
-    from pygeovision import PyGeoVision
-    client = PyGeoVision()
-    ga = client.geoai
+    import rasterio
+    from rasterio.windows import Window
 
-    click.echo(f"Exporting {chip_size}×{chip_size} chips → {output}...")
-    ga.train.generate_chips(image, label, output, chip_size=chip_size, overlap=overlap)
-    click.echo(f"✓ Chips exported → {output}")
+    out_dir = Path(output)
+    (out_dir / "images").mkdir(parents=True, exist_ok=True)
+    (out_dir / "labels").mkdir(parents=True, exist_ok=True)
+
+    stride = chip_size - overlap
+    n_chips = 0
+    with rasterio.open(image) as img_src, rasterio.open(label) as lbl_src:
+        H, W = img_src.height, img_src.width
+        for row in range(0, H - chip_size + 1, stride):
+            for col in range(0, W - chip_size + 1, stride):
+                win = Window(col, row, chip_size, chip_size)
+                img_chip = img_src.read(window=win)
+                lbl_chip = lbl_src.read(1, window=win)
+
+                img_profile = img_src.profile.copy()
+                img_profile.update(height=chip_size, width=chip_size,
+                                   transform=img_src.window_transform(win))
+                lbl_profile = lbl_src.profile.copy()
+                lbl_profile.update(height=chip_size, width=chip_size, count=1,
+                                   transform=lbl_src.window_transform(win))
+
+                img_path = out_dir / "images" / f"chip_{row}_{col}.tif"
+                lbl_path = out_dir / "labels" / f"chip_{row}_{col}.tif"
+                with rasterio.open(img_path, "w", **img_profile) as dst:
+                    dst.write(img_chip)
+                with rasterio.open(lbl_path, "w", **lbl_profile) as dst:
+                    dst.write(lbl_chip, 1)
+                n_chips += 1
+
+    click.echo(f"✓ {n_chips} chips exported → {output}")
 
 
 @ai.command("cloud-mask")
 @click.option("--input", "-i", "input_path", required=True, type=click.Path(exists=True))
 @click.option("--output", "-o", required=True, help="Output cloud mask GeoTIFF.")
-def ai_cloud_mask(input_path, output):
-    """Generate cloud mask using geoai.
+@click.option("--brightness-threshold", default=0.7, show_default=True,
+              help="Reflectance threshold (0-1, normalised) above which pixels are flagged cloudy.")
+def ai_cloud_mask(input_path, output, brightness_threshold):
+    """Generate a cloud mask via native brightness thresholding
+    (bright + spectrally flat pixels across visible bands = likely cloud).
 
     \b
     Example:
         pygeovision ai cloud-mask --input sentinel2.tif --output cloud.tif
     """
-    from pygeovision import PyGeoVision
-    client = PyGeoVision()
-    client.geoai.cloud.predict(input_path, output_path=output)
-    click.echo(f"✓ Cloud mask → {output}")
+    import numpy as np
+    import rasterio
 
+    with rasterio.open(input_path) as src:
+        profile = src.profile.copy()
+        n_bands = min(src.count, 4)
+        data = src.read(list(range(1, n_bands + 1))).astype(np.float32)
+        for b in range(data.shape[0]):
+            p2, p98 = np.percentile(data[b], (2, 98))
+            data[b] = np.clip((data[b] - p2) / (p98 - p2 + 1e-8), 0, 1)
 
-# =========================================================================
-# End-to-end PIPELINE commands (pygeofetch data + geoai)
+    brightness = data.mean(axis=0)
+    spectral_flatness = 1.0 - (data.std(axis=0) / (brightness + 1e-6))
+    cloud_mask = ((brightness > brightness_threshold) &
+                  (spectral_flatness > 0.5)).astype(np.uint8)
+
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    profile.update(count=1, dtype="uint8", compress="lzw")
+    with rasterio.open(output, "w", **profile) as dst:
+        dst.write(cloud_mask[np.newaxis])
+
+    click.echo(f"✓ Cloud mask → {output} "
+               f"({round(float(cloud_mask.mean()) * 100, 1)}% flagged cloudy)")
+
+# End-to-end PIPELINE commands (pygeofetch data + native AI)
 # =========================================================================
 
 @cli.command("pipeline")
@@ -826,20 +813,20 @@ def ai_cloud_mask(input_path, output):
 def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, model, source):
     """Run a complete end-to-end geospatial AI pipeline.
 
-    Downloads satellite data via pygeofetch then applies geoai AI models.
+    Downloads satellite data via pygeofetch then applies a native AI model.
 
     \b
     Available pipelines:
-        building_footprints    Segment buildings (geoai + pygeofetch)
-        land_cover             Land cover classification (ESA WorldCover / geoai)
-        change_detection       Bi-temporal change detection (geoai)
-        water_bodies           Surface water mapping (pygeofetch NDWI + geoai)
-        solar_detection        Solar panel detection (geoai)
-        crop_monitoring        Crop type mapping (geoai)
-        disaster_assessment    Rapid damage assessment (geoai)
-        deforestation          Forest loss detection (geoai)
-        urban_growth           Urban expansion monitoring (geoai)
-        carbon_estimation      Biomass/carbon via NDVI (pygeofetch + geoai)
+        building_footprints    Segment buildings (SAM)
+        land_cover             Land cover classification (ESA WorldCover)
+        change_detection       Bi-temporal change detection (ChangeFormer)
+        water_bodies           Surface water mapping (NDWI)
+        solar_detection        Solar panel detection
+        crop_monitoring        Crop type mapping
+        disaster_assessment    Rapid damage assessment
+        deforestation          Forest loss detection
+        urban_growth           Urban expansion monitoring
+        carbon_estimation      Biomass/carbon via NDVI
         list                   Show all available pipelines
 
     \b
@@ -881,7 +868,7 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
     result = client.pipeline(pipeline_name, bbox=tuple(bbox), output_dir=output, **kwargs)
 
     if result.success:
-        click.echo(f"\n✓ Pipeline complete!")
+        click.echo("\n✓ Pipeline complete!")
         if result.output_path:
             click.echo(f"  Output: {result.output_path}")
         if result.stats:
@@ -898,17 +885,21 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
 # MODELS commands
 # =========================================================================
 
-@cli.group()
-def models() -> None:
-    """AI model management commands."""
+@cli.group("ai-models")
+def ai_models() -> None:
+    """AI model management commands (legacy AI-engine registry).
+
+    Note: this is distinct from `pygeovision models`, which uses the
+    newer, broader native model registry (pygeovision.models.registry).
+    """
 
 
-@models.command("list")
+@ai_models.command("list")
 @click.option("--task", default=None,
               type=click.Choice(["segmentation", "detection", "classification",
                                  "change_detection", "super_resolution"]))
 @click.option("--pretrained-only", is_flag=True)
-def models_list(task, pretrained_only):
+def ai_models_list(task, pretrained_only):
     """List all registered PyGeoVision AI models (14+ built-in)."""
     from pygeovision.ai.models.registry import registry
     results = registry.list_models(task=task, pretrained_only=pretrained_only)
@@ -923,9 +914,9 @@ def models_list(task, pretrained_only):
     click.echo(f"\nTotal: {len(results)} models")
 
 
-@models.command("info")
+@ai_models.command("info")
 @click.argument("model_name")
-def models_info(model_name):
+def ai_models_info(model_name):
     """Show details for a specific model."""
     from pygeovision.ai.models.registry import registry
     try:
@@ -945,10 +936,10 @@ def models_info(model_name):
         sys.exit(1)
 
 
-@models.command("cache")
+@ai_models.command("cache")
 @click.option("--clear", is_flag=True)
 @click.option("--model", default=None)
-def models_cache(clear, model):
+def ai_models_cache(clear, model):
     """Manage AI model checkpoint cache."""
     from pygeovision.ai.models import ModelHub
     hub = ModelHub()
@@ -973,7 +964,7 @@ def models_cache(clear, model):
 @cli.command("status")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 def status_cmd(as_json):
-    """Show PyGeoVision, pygeofetch, and geoai system status."""
+    """Show PyGeoVision, pygeofetch, and native AI stack status."""
     from pygeovision import PyGeoVision
     client = PyGeoVision()
     status = client.status()
@@ -991,11 +982,6 @@ def status_cmd(as_json):
     pf = status["pygeofetch"]
     pf_icon = "✓" if pf["available"] else "✗"
     click.echo(f"pygeofetch  {pf_icon}  v{pf['version']} | {pf['providers']} providers | {pf['open_providers']} open-access")
-
-    ga = status["geoai"]
-    ga_icon = "✓" if ga["available"] else "✗"
-    ga_ver = ga.get("version", "not installed")
-    click.echo(f"geoai       {ga_icon}  {ga_ver}")
 
     torch = status["torch"]
     if torch.get("available") is False:
@@ -1016,9 +1002,9 @@ def status_cmd(as_json):
     if not pf["available"]:
         click.echo("⚠  pygeofetch CLI not found in PATH.")
         click.echo("   Run: pip install pygeofetch  (installs PyGeoFetch CLI)")
-    if not ga["available"]:
-        click.echo("⚠  geoai not installed.")
-        click.echo("   Run: pip install geoai-py")
+    if torch.get("available") is False:
+        click.echo("⚠  torch not installed — AI segmentation/detection/training unavailable.")
+        click.echo("   Run: pip install 'pygeovision[train]'")
 
 
 @cli.command("doctor")
@@ -1182,8 +1168,8 @@ def infer_batch(input_dir, output_dir, model, workers, pattern):
     """Run batch inference on a directory of GeoTIFFs."""
     click.echo(f"\n  Batch inference: {input_dir} → {output_dir}")
     try:
-        from pygeovision.models.registry import get_model
         from pygeovision.inference.batch import BatchInferenceEngine
+        from pygeovision.models.registry import get_model
         m = get_model(model)
         engine = BatchInferenceEngine(model=m, n_workers=workers)
         result = engine.run_directory(input_dir, output_dir, pattern=pattern)
@@ -1247,14 +1233,13 @@ def explain_grp():
 @click.option("--class-idx", "-c", default=1, type=int)
 def explain_gradcam(image_path, model, output, class_idx):
     """Generate GradCAM saliency map."""
-    import pathlib
     output = output or image_path.replace(".tif", "_gradcam.tif")
     try:
-        from pygeovision.models.registry import get_model
         from pygeovision.explainability.gradcam import GradCAM
+        from pygeovision.models.registry import get_model
         m = get_model(model)
         cam = GradCAM(m)
-        result = cam.batch_explain(image_path, output, class_idx=class_idx)
+        cam.batch_explain(image_path, output, class_idx=class_idx)
         click.echo(f"  ✓ GradCAM → {output}")
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
@@ -1271,7 +1256,8 @@ def monitor_grp():
 @click.option("--output", "-o", default="./monitoring/drift_report.json")
 def monitor_drift(reference_dir, current_dir, output):
     """Detect data distribution drift."""
-    import glob, pathlib
+    import glob
+    import pathlib
     ref_images = glob.glob(f"{reference_dir}/*.tif")[:50]
     cur_images  = glob.glob(f"{current_dir}/*.tif")[:50]
     from pygeovision.monitoring.drift import DriftDetector
@@ -1333,8 +1319,8 @@ def edge_export_onnx(model_name, output, classes, in_channels, input_size):
     """Export a model to ONNX format."""
     click.echo(f"\n  Exporting {model_name} → ONNX ({output})")
     try:
-        from pygeovision.models.registry import get_model
         from pygeovision.edge.onnx_rt import ONNXRuntimeInference
+        from pygeovision.models.registry import get_model
         m = get_model(model_name, num_classes=classes, in_channels=in_channels)
         ONNXRuntimeInference.from_pytorch(
             m, output, input_shape=(1, in_channels, input_size, input_size), simplify=False
@@ -1589,7 +1575,7 @@ def datasets_stats():
     from pygeovision.datasets.registry import dataset_registry
     s = dataset_registry.summary()
     click.echo(f"\n{'═'*50}")
-    click.echo(f"  PyGeoVision Dataset Catalog (EarthNets)")
+    click.echo("  PyGeoVision Dataset Catalog (EarthNets)")
     click.echo(f"{'═'*50}")
     click.echo(f"  Total datasets : {s['total_datasets']}")
     click.echo(f"  Total volume   : {s['total_volume_tb']} TB")
@@ -1682,12 +1668,12 @@ def zoo_stats():
     from pygeovision.ai.models.zoo import model_zoo
     s = model_zoo.summary()
     click.echo(f"\n{'═'*50}")
-    click.echo(f"  PyGeoVision AI Model Zoo")
+    click.echo("  PyGeoVision AI Model Zoo")
     click.echo(f"{'═'*50}")
     click.echo(f"  Total models      : {s['total_models']}")
     click.echo(f"  With HF weights   : {s['with_hf_weights']}")
     click.echo(f"  Pretrained avail  : {s['pretrained']}")
-    click.echo(f"\n  By task:")
+    click.echo("\n  By task:")
     for task, count in sorted(s["tasks"].items(), key=lambda x: -x[1]):
         click.echo(f"    {task:<22} {count:>3} models")
 
@@ -1741,8 +1727,8 @@ def benchmark_models(task, n):
 @benchmark.command("tasks")
 def benchmark_tasks():
     """List all available benchmark tasks."""
-    from pygeovision.datasets.registry import dataset_registry
     from pygeovision.ai.models.zoo import model_zoo
+    from pygeovision.datasets.registry import dataset_registry
     d_tasks = set(dataset_registry.tasks())
     m_tasks = set(model_zoo.tasks())
     all_tasks = sorted(d_tasks | m_tasks)
@@ -1951,7 +1937,7 @@ def preprocess_pipeline(input_path, output, bands, bbox, scl, normalise, resampl
         normalise=norm_val,
         resample_m=resample_m,
     )
-    click.echo(f"  ✓ Pipeline complete")
+    click.echo("  ✓ Pipeline complete")
     click.echo(f"    Output  : {result['output_path']}")
     click.echo(f"    Shape   : {result['shape']}")
     click.echo(f"    Res     : {result['resolution_m']:.1f}m")
@@ -1992,7 +1978,7 @@ def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1
     """
     from pygeovision.data.indices import SpectralIndices
     ix = SpectralIndices()
-    bm = dict(blue=blue, green=green, red=red, nir=nir, swir1=swir1, swir2=swir2)
+    dict(blue=blue, green=green, red=red, nir=nir, swir1=swir1, swir2=swir2)
 
     fn_map = {
         "ndvi": lambda: ix.ndvi(input_path, red, nir, output),
@@ -2023,7 +2009,6 @@ def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1
     if isinstance(result, str):
         click.echo(f"  ✓ {index_name.upper()} → {result}")
     else:
-        import numpy as np
         click.echo(f"  ✓ {index_name.upper()}  shape={result.shape}  "
                    f"range=[{float(result.min()):.4f}, {float(result.max()):.4f}]")
 
@@ -2200,7 +2185,7 @@ def post_accuracy(prediction_path, reference_path, class_names):
     click.echo(f"  Cohen's κ        : {report['kappa']:.4f}")
     click.echo(f"  Mean IoU         : {report['mean_iou']:.4f}")
     click.echo(f"  Total pixels     : {report['total_pixels']:,}")
-    click.echo(f"\n  Per-class metrics:")
+    click.echo("\n  Per-class metrics:")
     click.echo(f"  {'Class':<6} {'Name':<16} {'Precision':>10} {'Recall':>8} {'F1':>8} {'IoU':>8}")
     click.echo(f"  {'─'*6} {'─'*16} {'─'*10} {'─'*8} {'─'*8} {'─'*8}")
     names_list = report.get("class_names", [])

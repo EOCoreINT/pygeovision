@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 try:
     import torch
@@ -64,8 +63,8 @@ def is_main_process() -> bool:
 def setup_ddp(
     backend: str = "nccl",
     init_method: str = "env://",
-    rank: Optional[int] = None,
-    world_size: Optional[int] = None,
+    rank: int | None = None,
+    world_size: int | None = None,
 ) -> None:
     """Initialize the distributed process group.
 
@@ -119,7 +118,7 @@ def cleanup_ddp() -> None:
 
 def wrap_ddp(
     model: nn.Module,
-    device_ids: Optional[list] = None,
+    device_ids: list | None = None,
     find_unused_parameters: bool = False,
     sync_batchnorm: bool = True,
 ) -> nn.Module:

@@ -39,8 +39,8 @@ class PyGeoVisionClient:
         >>> downloads = client.download(results[:3], output_dir="./data/",
         ...     post_process=["unzip", "reproject:EPSG:4326", "cog"])
         >>>
-        >>> # geoai AI inference
-        >>> masks = client.ai.segment.buildings(downloads[0].path)
+        >>> # Native AI inference
+        >>> masks = client._pgv.segmentation.buildings(downloads[0].path)
         >>>
         >>> # End-to-end pipeline
         >>> result = client.run_pipeline("building_footprints",
@@ -49,16 +49,17 @@ class PyGeoVisionClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        config_path: Optional[Union[str, Path]] = None,
+        api_key: str | None = None,
+        config_path: str | Path | None = None,
     ) -> None:
         from pygeovision import PyGeoVision
         self._pgv = PyGeoVision(config_path=config_path)
+        self._ai_engine: Any | None = None
         if api_key:
             # Store as generic credential
             self._pgv.data._credentials["__api_key__"] = {"api_key": api_key}
 
-    def add_credentials(self, provider: str, **kwargs: Any) -> "PyGeoVisionClient":
+    def add_credentials(self, provider: str, **kwargs: Any) -> PyGeoVisionClient:
         """Add PyGeoFetch provider credentials (stored in system keyring).
 
         Args:
@@ -71,12 +72,12 @@ class PyGeoVisionClient:
         self._pgv.add_credentials(provider, **kwargs)
         return self
 
-    def search(self, bbox: Tuple, date_range: Tuple,
-               collections: Optional[List[str]] = None,
-               providers: Optional[List[str]] = None,
-               satellite: Optional[str] = None,
+    def search(self, bbox: tuple, date_range: tuple,
+               collections: list[str] | None = None,
+               providers: list[str] | None = None,
+               satellite: str | None = None,
                cloud_cover_max: float = 30.0,
-               **kwargs: Any) -> List[Any]:
+               **kwargs: Any) -> list[Any]:
         """Search satellite imagery via PyGeoFetch (22+ providers).
 
         Delegates to ``pygeofetch search run`` as primary backend.
@@ -86,10 +87,10 @@ class PyGeoVisionClient:
             providers=providers, satellite=satellite,
             cloud_cover_max=cloud_cover_max, **kwargs)
 
-    def download(self, items: Any, output_dir: Union[str, Path] = "./data",
+    def download(self, items: Any, output_dir: str | Path = "./data",
                  parallel: int = 4,
-                 post_process: Optional[List[str]] = None,
-                 **kwargs: Any) -> List[Any]:
+                 post_process: list[str] | None = None,
+                 **kwargs: Any) -> list[Any]:
         """Download satellite data via PyGeoFetch.
 
         Post-processing: unzip, reproject:EPSG:4326, compress:lzw,
@@ -99,14 +100,14 @@ class PyGeoVisionClient:
             items, output_dir=output_dir, parallel=parallel,
             post_process=post_process, **kwargs)
 
-    def run_pipeline(self, pipeline_name: str, bbox: Tuple,
-                     output_dir: Union[str, Path] = "./output",
+    def run_pipeline(self, pipeline_name: str, bbox: tuple,
+                     output_dir: str | Path = "./output",
                      **kwargs: Any) -> Any:
-        """Run an end-to-end geospatial AI pipeline (PyGeoFetch + geoai)."""
+        """Run an end-to-end geospatial AI pipeline (PyGeoFetch + native AI)."""
         return self._pgv.pipeline(pipeline_name, bbox=bbox, output_dir=output_dir, **kwargs)
 
-    def run_yaml_pipeline(self, yaml_path: Union[str, Path],
-                          step: Optional[str] = None) -> Dict[str, Any]:
+    def run_yaml_pipeline(self, yaml_path: str | Path,
+                          step: str | None = None) -> dict[str, Any]:
         """Run a PyGeoFetch YAML pipeline file."""
         return self._pgv.run_pipeline_yaml(yaml_path, step=step)
 
@@ -116,23 +117,21 @@ class PyGeoVisionClient:
 
     @property
     def ai(self) -> Any:
-        """Access the full geoai integration layer via client.ai."""
-        return self._pgv.geoai
-
-    @property
-    def geoai(self) -> Any:
-        """Alias for client.ai — access the geoai integration layer."""
-        return self._pgv.geoai
+        """Access the native AI engine (model registry, training, inference) via client.ai."""
+        from pygeovision.ai.engine import AIEngine
+        if self._ai_engine is None:
+            self._ai_engine = AIEngine(pgv_client=self._pgv)
+        return self._ai_engine
 
     @property
     def data(self) -> Any:
         """Direct access to the PyGeoFetch SatelliteFetcher."""
         return self._pgv.data
 
-    def status(self) -> Dict[str, Any]:
-        """Full system status: PyGeoVision + PyGeoFetch + geoai."""
+    def status(self) -> dict[str, Any]:
+        """Full system status: PyGeoVision + PyGeoFetch + native AI stack."""
         return self._pgv.status()
 
-    def list_providers(self, **kwargs: Any) -> Dict[str, Any]:
+    def list_providers(self, **kwargs: Any) -> dict[str, Any]:
         """List all 22 PyGeoFetch satellite data providers."""
         return self._pgv.list_providers(**kwargs)

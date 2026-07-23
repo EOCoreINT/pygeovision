@@ -46,7 +46,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Callable, Dict, Iterator, List, Optional
+from collections.abc import Iterator
+from typing import Any
 
 logger = logging.getLogger("pygeovision.agent")
 
@@ -76,7 +77,7 @@ class GeoAgent:
         self,
         pgv_client: Any,
         *,
-        api_key:         Optional[str] = None,
+        api_key:         str | None = None,
         model:           str = "claude-sonnet-4-6",
         stop_on_failure: bool = True,
         verbose:         bool = True,
@@ -88,10 +89,10 @@ class GeoAgent:
         self._verbose= verbose
 
         # ── Build tools ────────────────────────────────────────────────────────
-        from pygeovision.agent.tools   import build_tools
-        from pygeovision.agent.memory  import GeoAgentMemory
-        from pygeovision.agent.planner import LLMPlanner, HeuristicPlanner
         from pygeovision.agent.executor import PlanExecutor
+        from pygeovision.agent.memory import GeoAgentMemory
+        from pygeovision.agent.planner import HeuristicPlanner, LLMPlanner
+        from pygeovision.agent.tools import build_tools
 
         self._tools = build_tools(pgv_client)
 
@@ -120,7 +121,7 @@ class GeoAgent:
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
-    def set_context(self, **kwargs) -> "GeoAgent":
+    def set_context(self, **kwargs) -> GeoAgent:
         """
         Set spatial context for all subsequent queries.
 
@@ -135,7 +136,7 @@ class GeoAgent:
         self._memory.set_context(**kwargs)
         return self
 
-    def bind(self, name: str, value: Any) -> "GeoAgent":
+    def bind(self, name: str, value: Any) -> GeoAgent:
         """Bind a named output (e.g. a file path) for reference in future queries."""
         self._memory.bind(name, value)
         return self
@@ -143,7 +144,7 @@ class GeoAgent:
     def run(
         self,
         query: str,
-        context_override: Optional[Dict[str, Any]] = None,
+        context_override: dict[str, Any] | None = None,
     ):
         """
         Execute a natural-language geospatial query end-to-end.
@@ -183,7 +184,7 @@ class GeoAgent:
         trace = self._executor.execute(plan, context=ctx)
 
         # Record
-        turn = self._memory.record_turn(query, plan, trace)
+        self._memory.record_turn(query, plan, trace)
 
         if self._verbose:
             print(f"\n{trace.summary()}")
@@ -195,7 +196,7 @@ class GeoAgent:
     def stream(
         self,
         query: str,
-        context_override: Optional[Dict[str, Any]] = None,
+        context_override: dict[str, Any] | None = None,
     ) -> Iterator[dict]:
         """
         Streaming version of ``run()``.  Yields event dicts for each step.
@@ -216,20 +217,20 @@ class GeoAgent:
         plan = self._planner.plan(query, context=ctx)
         yield from self._executor.stream(plan, context=ctx)
 
-    def tools(self) -> List[str]:
+    def tools(self) -> list[str]:
         """Return list of available tool names."""
         return list(self._tools.keys())
 
-    def tool_schema(self, name: str) -> Optional[dict]:
+    def tool_schema(self, name: str) -> dict | None:
         """Return the schema for a specific tool."""
         t = self._tools.get(name)
         return t.schema() if t else None
 
-    def all_schemas(self) -> List[dict]:
+    def all_schemas(self) -> list[dict]:
         """Return schemas for all tools (useful for documentation)."""
         return [t.schema() for t in self._tools.values()]
 
-    def history(self) -> List[dict]:
+    def history(self) -> list[dict]:
         """Return the conversation history as a list of turn dicts."""
         return [t.to_dict() for t in self._memory.turns]
 
@@ -241,7 +242,7 @@ class GeoAgent:
         """Restore a previously saved session."""
         self._memory.load(path)
 
-    def reset(self) -> "GeoAgent":
+    def reset(self) -> GeoAgent:
         """Clear conversation history and bindings (preserves spatial context)."""
         from pygeovision.agent.memory import GeoAgentMemory
         ctx = self._memory._spatial.copy()

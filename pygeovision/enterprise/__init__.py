@@ -8,8 +8,8 @@ compliance features on top of the open-source core.
 
     pip install "pygeovision[enterprise]"
 """
-from pygeovision.enterprise.auth      import RBACManager, APIKeyManager, SSOProvider
-from pygeovision.enterprise.audit     import AuditLogger, AuditEvent
+from pygeovision.enterprise.audit import AuditEvent, AuditLogger
+from pygeovision.enterprise.auth import APIKeyManager, RBACManager, SSOProvider
 from pygeovision.enterprise.compliance import ComplianceChecker, GDPRHandler
 
 __all__ = [

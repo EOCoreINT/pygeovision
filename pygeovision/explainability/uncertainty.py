@@ -1,7 +1,9 @@
 """Uncertainty estimation via Monte Carlo Dropout (G6)."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +27,7 @@ class UncertaintyEstimator:
     """
 
     def __init__(self, model: Any, n_passes: int = 20,
-                 device: Optional[str] = None) -> None:
+                 device: str | None = None) -> None:
         self.model = model
         self.n_passes = n_passes
         self.device = device or self._auto_device()
@@ -45,16 +47,18 @@ class UncertaintyEstimator:
 
     def estimate(
         self,
-        image_path: Union[str, Any],
-        output_path: Optional[str] = None,
+        image_path: str | Any,
+        output_path: str | None = None,
         chip_size: int = 512,
         overlap: int = 64,
         save_epistemic: bool = True,
         save_aleatoric: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Estimate per-pixel uncertainty across the GeoTIFF."""
         try:
-            import torch, numpy as np, rasterio
+            import numpy as np
+            import rasterio
+            import torch
         except ImportError as exc:
             return {"success": False, "error": str(exc)}
 
@@ -69,7 +73,6 @@ class UncertaintyEstimator:
         stride = chip_size - overlap
         # Store all MC samples
         n_classes = None
-        all_samples_shape = None
 
         # First pass to get output shape
         chip = image[:, :chip_size, :chip_size]
@@ -110,7 +113,7 @@ class UncertaintyEstimator:
         epistemic = pred_accum.var(axis=0).mean(axis=0)              # (H, W)
         # Aleatoric = mean entropy of individual passes
         per_pass_entropy = -np.sum(pred_accum * np.log(pred_accum + 1e-10), axis=1)  # (n_passes, H, W)
-        aleatoric = per_pass_entropy.mean(axis=0)
+        per_pass_entropy.mean(axis=0)
 
         # Prediction (mean across passes)
         label = np.argmax(mean_probs, axis=0).astype(np.uint8)

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import random
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 
@@ -233,10 +233,10 @@ class GeoAugmentationPipeline:
     def __init__(
         self,
         mode: str = "medium",
-        custom_transforms: Optional[list[Any]] = None,
+        custom_transforms: list[Any] | None = None,
         task: str = "segmentation",
         preserve_masks: bool = True,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ) -> None:
         _require_albumentations()
 
@@ -253,7 +253,7 @@ class GeoAugmentationPipeline:
     def __call__(
         self,
         image: np.ndarray,
-        mask: Optional[np.ndarray] = None,
+        mask: np.ndarray | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -289,7 +289,7 @@ class GeoAugmentationPipeline:
     def _build_pipeline(
         self,
         mode: str,
-        custom_transforms: Optional[list[Any]],
+        custom_transforms: list[Any] | None,
     ) -> Any:
         """Build the albumentations Compose pipeline."""
         additional_targets = {"mask": "mask"} if self.preserve_masks else {}
@@ -387,7 +387,7 @@ class GeoAugmentationPipeline:
     # ------------------------------------------------------------------
 
     @classmethod
-    def for_task(cls, task: str, mode: str = "medium") -> "GeoAugmentationPipeline":
+    def for_task(cls, task: str, mode: str = "medium") -> GeoAugmentationPipeline:
         """
         Build a task-specific augmentation pipeline.
 
@@ -407,16 +407,16 @@ class GeoAugmentationPipeline:
         return cls(mode=mode, task=task)
 
     @classmethod
-    def light(cls, task: str = "segmentation") -> "GeoAugmentationPipeline":
+    def light(cls, task: str = "segmentation") -> GeoAugmentationPipeline:
         """Light augmentation (minimal distortion)."""
         return cls(mode="light", task=task)
 
     @classmethod
-    def medium(cls, task: str = "segmentation") -> "GeoAugmentationPipeline":
+    def medium(cls, task: str = "segmentation") -> GeoAugmentationPipeline:
         """Medium augmentation (recommended default)."""
         return cls(mode="medium", task=task)
 
     @classmethod
-    def heavy(cls, task: str = "segmentation") -> "GeoAugmentationPipeline":
+    def heavy(cls, task: str = "segmentation") -> GeoAugmentationPipeline:
         """Heavy augmentation (maximum diversity)."""
         return cls(mode="heavy", task=task)

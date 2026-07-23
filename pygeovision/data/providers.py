@@ -2,10 +2,9 @@
 All 22 pygeofetch providers with full metadata.
 """
 
-from typing import Dict, List
 
 # Complete provider registry matching pygeofetch documentation exactly
-PROVIDERS: Dict[str, Dict] = {
+PROVIDERS: dict[str, dict] = {
     "usgs": {
         "name": "USGS Earth Explorer",
         "auth": "username_password",
@@ -214,7 +213,7 @@ PROVIDERS: Dict[str, Dict] = {
 }
 
 # Providers that support STAC and work with pystac_client directly
-STAC_PROVIDERS: Dict[str, str] = {
+STAC_PROVIDERS: dict[str, str] = {
     "planetary_computer": "https://planetarycomputer.microsoft.com/api/stac/v1",
     "aws_earth": "https://earth-search.aws.element84.com/v1",
     "element84": "https://earth-search.aws.element84.com/v1",
@@ -224,7 +223,7 @@ STAC_PROVIDERS: Dict[str, str] = {
 }
 
 # Satellite name → best providers (in priority order)
-SATELLITE_SHORTCUTS: Dict[str, List[str]] = {
+SATELLITE_SHORTCUTS: dict[str, list[str]] = {
     "sentinel-2": ["planetary_computer", "copernicus", "aws_earth", "element84", "sentinel_hub"],
     "sentinel-1": ["copernicus", "alaska_satellite_facility", "planetary_computer", "sentinel_hub"],
     "sentinel-3": ["copernicus", "sentinel_hub"],
@@ -256,7 +255,7 @@ SATELLITE_SHORTCUTS: Dict[str, List[str]] = {
 }
 
 # STAC collection → provider mapping
-COLLECTION_TO_PROVIDER: Dict[str, str] = {
+COLLECTION_TO_PROVIDER: dict[str, str] = {
     "sentinel-2-l2a": "planetary_computer",
     "sentinel-2-l1c": "element84",
     "sentinel-1-rtc": "planetary_computer",

@@ -1,7 +1,9 @@
 """Distributed training utilities — DDP, FSDP, gradient accumulation."""
 from __future__ import annotations
-import logging, os
-from typing import Any, Dict, List, Optional, Tuple
+
+import logging
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +29,7 @@ def cleanup_distributed() -> None:
         pass
 
 
-def wrap_ddp(model: Any, device_ids: Optional[List[int]] = None,
+def wrap_ddp(model: Any, device_ids: list[int] | None = None,
               find_unused_parameters: bool = False) -> Any:
     """Wrap model with DistributedDataParallel."""
     try:
@@ -44,8 +46,8 @@ def wrap_fsdp(model: Any, mixed_precision: bool = True) -> Any:
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
         from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
         if mixed_precision:
-            from torch.distributed.fsdp import MixedPrecision
             import torch
+            from torch.distributed.fsdp import MixedPrecision
             policy = MixedPrecision(param_dtype=torch.float16)
             return FSDP(model, mixed_precision=policy)
         return FSDP(model)
@@ -107,7 +109,7 @@ def auto_device_count() -> int:
         return 0
 
 
-def launch_ddp(train_fn: Any, world_size: Optional[int] = None, **kwargs) -> None:
+def launch_ddp(train_fn: Any, world_size: int | None = None, **kwargs) -> None:
     """Launch DDP training using torch.multiprocessing.spawn."""
     try:
         import torch

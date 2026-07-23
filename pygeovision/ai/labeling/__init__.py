@@ -6,11 +6,11 @@ from authoritative geospatial datasets, foundation models, and human review.
 """
 
 from pygeovision.ai.labeling.base_labeler import BaseLabeler, LabelingResult
-from pygeovision.ai.labeling.osm_labeler import OSMLabeler
-from pygeovision.ai.labeling.microsoft_buildings import MicrosoftBuildingsLabeler
-from pygeovision.ai.labeling.google_buildings import GoogleBuildingsLabeler
-from pygeovision.ai.labeling.esa_worldcover import ESAWorldCoverLabeler
 from pygeovision.ai.labeling.dynamic_world import DynamicWorldLabeler
+from pygeovision.ai.labeling.esa_worldcover import ESAWorldCoverLabeler
+from pygeovision.ai.labeling.google_buildings import GoogleBuildingsLabeler
+from pygeovision.ai.labeling.microsoft_buildings import MicrosoftBuildingsLabeler
+from pygeovision.ai.labeling.osm_labeler import OSMLabeler
 
 try:
     from pygeovision.ai.labeling.sam_labeler import SAMLabeler

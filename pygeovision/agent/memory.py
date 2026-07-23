@@ -18,7 +18,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("pygeovision.agent.memory")
 
@@ -36,7 +36,7 @@ class Turn:
     planner_used:  str = ""
     success:       bool = False
     final_output:  Any  = None
-    outputs:       List[Dict[str, Any]] = field(default_factory=list)
+    outputs:       list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -61,10 +61,10 @@ class GeoAgentMemory:
     """
 
     def __init__(self, max_turns: int = 20) -> None:
-        self._turns:    List[Turn] = []
+        self._turns:    list[Turn] = []
         self._max       = max_turns
-        self._spatial:  Dict[str, Any] = {}   # bbox, date, crs, output_dir
-        self._bindings: Dict[str, Any] = {}   # named outputs: "flood_mask" → path
+        self._spatial:  dict[str, Any] = {}   # bbox, date, crs, output_dir
+        self._bindings: dict[str, Any] = {}   # named outputs: "flood_mask" → path
 
     # ── Spatial context ────────────────────────────────────────────────────────
 
@@ -88,8 +88,6 @@ class GeoAgentMemory:
 
     def record_turn(self, query: str, plan: Any, trace: Any) -> Turn:
         """Record a completed turn."""
-        from pygeovision.agent.planner   import Plan
-        from pygeovision.agent.executor import ExecutionTrace
 
         turn = Turn(
             idx=len(self._turns),
@@ -126,11 +124,11 @@ class GeoAgentMemory:
         return turn
 
     @property
-    def turns(self) -> List[Turn]:
+    def turns(self) -> list[Turn]:
         return list(self._turns)
 
     @property
-    def last_turn(self) -> Optional[Turn]:
+    def last_turn(self) -> Turn | None:
         return self._turns[-1] if self._turns else None
 
     # ── Context for planner ────────────────────────────────────────────────────

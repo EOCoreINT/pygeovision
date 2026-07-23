@@ -43,10 +43,10 @@ Usage::
 """
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import pathlib
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -71,7 +71,7 @@ def _require_geopandas():
 
 def _require_shapely():
     try:
-        from shapely import geometry, affinity, ops
+        from shapely import affinity, geometry, ops
         return geometry, affinity, ops
     except ImportError:
         raise ImportError("pip install shapely>=2.0") from None
@@ -113,10 +113,10 @@ class PostProcessor:
         input_path: str,
         output_path: str,
         band: int = 1,
-        target_class: Optional[int] = None,
+        target_class: int | None = None,
         min_area_m2: float = 0.0,
         simplify_tolerance: float = 0.0,
-        nodata: Optional[float] = None,
+        nodata: float | None = None,
     ) -> str:
         """Vectorise a raster prediction mask into GeoJSON polygons.
 
@@ -147,8 +147,7 @@ class PostProcessor:
         """
         rasterio = _require_rasterio()
         from rasterio.features import shapes as rio_shapes
-        from shapely.geometry import shape, mapping
-        import json
+        from shapely.geometry import mapping, shape
 
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -221,12 +220,10 @@ class PostProcessor:
         rasterio = _require_rasterio()
         from rasterio.features import rasterize as rio_rasterize
         from shapely.geometry import shape
-        import json
 
         with rasterio.open(reference_path) as ref:
             transform = ref.transform
             shape_rc  = (ref.height, ref.width)
-            crs       = ref.crs
             profile   = ref.profile.copy()
 
         with open(vector_path) as f:
@@ -262,7 +259,7 @@ class PostProcessor:
         self,
         input_path: str,
         min_pixels: int = 10,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         connectivity: int = 4,
         band: int = 1,
     ) -> str:
@@ -305,9 +302,9 @@ class PostProcessor:
     def fill_holes(
         self,
         input_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         band: int = 1,
-        nodata: Optional[float] = None,
+        nodata: float | None = None,
         method: str = "nearest",
     ) -> str:
         """Fill no-data holes in a raster using spatial interpolation.
@@ -410,7 +407,6 @@ class PostProcessor:
             ``output_path``
         """
         geom_mod, _, _ = _require_shapely()
-        import json
 
         with open(input_path) as f:
             gj = json.load(f)
@@ -453,7 +449,6 @@ class PostProcessor:
             ``output_path``
         """
         geom_mod, affinity_mod, _ = _require_shapely()
-        import json
 
         with open(input_path) as f:
             gj = json.load(f)
@@ -487,7 +482,7 @@ class PostProcessor:
         self,
         input_path: str,
         output_path: str,
-        by_field: Optional[str] = "class",
+        by_field: str | None = "class",
         buffer_px: float = 0.0,
     ) -> str:
         """Merge adjacent or overlapping polygons of the same class.
@@ -503,13 +498,12 @@ class PostProcessor:
             ``output_path``
         """
         geom_mod, _, ops_mod = _require_shapely()
-        import json
 
         with open(input_path) as f:
             gj = json.load(f)
 
         # Group by field
-        groups: Dict[Any, List] = {}
+        groups: dict[Any, list] = {}
         for feat in gj.get("features", []):
             key = feat.get("properties", {}).get(by_field, "all") if by_field else "all"
             groups.setdefault(key, []).append(geom_mod.shape(feat["geometry"]))
@@ -559,7 +553,6 @@ class PostProcessor:
             ``output_path``
         """
         geom_mod, _, _ = _require_shapely()
-        import json
 
         with open(input_path) as f:
             gj = json.load(f)
@@ -584,8 +577,8 @@ class PostProcessor:
         self,
         prediction_path: str,
         band: int = 1,
-        pixel_size_m: Optional[float] = None,
-    ) -> Dict[int, Dict[str, float]]:
+        pixel_size_m: float | None = None,
+    ) -> dict[int, dict[str, float]]:
         """Compute per-class pixel count and area from a prediction raster.
 
         Args:
@@ -634,10 +627,10 @@ class PostProcessor:
         self,
         raster_path: str,
         vector_path: str,
-        output_path: Optional[str] = None,
-        stats: List[str] = ("mean", "std", "min", "max", "count"),
+        output_path: str | None = None,
+        stats: list[str] = ("mean", "std", "min", "max", "count"),
         band: int = 1,
-    ) -> Union[str, List[Dict]]:
+    ) -> str | list[dict]:
         """Compute raster statistics for each polygon in a vector layer.
 
         Args:
@@ -661,10 +654,9 @@ class PostProcessor:
         rasterio = _require_rasterio()
         from rasterio.mask import mask as rio_mask
         from shapely.geometry import shape
-        import json
 
         with rasterio.open(raster_path) as src:
-            src_crs = src.crs
+            pass
 
         with open(vector_path) as f:
             gj = json.load(f)
@@ -708,10 +700,10 @@ class PostProcessor:
         self,
         prediction_path: str,
         reference_path: str,
-        class_names: Optional[List[str]] = None,
+        class_names: list[str] | None = None,
         band: int = 1,
-        ignore_class: Optional[int] = None,
-    ) -> Dict:
+        ignore_class: int | None = None,
+    ) -> dict:
         """Compute confusion matrix and accuracy metrics.
 
         Compares a prediction raster against a reference (ground-truth)
@@ -809,7 +801,7 @@ class PostProcessor:
     # 5. Export helpers
     # ------------------------------------------------------------------
 
-    def to_cog(self, input_path: str, output_path: Optional[str] = None) -> str:
+    def to_cog(self, input_path: str, output_path: str | None = None) -> str:
         """Convert any GeoTIFF to a Cloud-Optimized GeoTIFF.
 
         Args:
@@ -819,7 +811,7 @@ class PostProcessor:
         Returns:
             ``output_path``
         """
-        import subprocess, shutil, tempfile, os
+        import subprocess
 
         if output_path is None:
             p = pathlib.Path(input_path)
@@ -886,8 +878,8 @@ class PostProcessor:
         self,
         prediction_path: str,
         output_path: str,
-        reference_path: Optional[str] = None,
-        class_names: Optional[List[str]] = None,
+        reference_path: str | None = None,
+        class_names: list[str] | None = None,
         fmt: str = "html",
     ) -> str:
         """Generate a complete prediction analysis report.

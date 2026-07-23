@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import logging
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class Callback(ABC):
     def on_train_begin(self, trainer: Any) -> None: ...
     def on_train_end(self, trainer: Any) -> None: ...
     def on_epoch_begin(self, trainer: Any, epoch: int) -> None: ...
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict[str, float]) -> None: ...
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None: ...
     def on_batch_begin(self, trainer: Any, batch_idx: int) -> None: ...
     def on_batch_end(self, trainer: Any, batch_idx: int, loss: float) -> None: ...
 
@@ -56,9 +56,9 @@ class EarlyStopping(Callback):
         self.restore_best_weights = restore_best_weights
         self._best: float = float("inf") if mode == "min" else float("-inf")
         self._wait = 0
-        self._best_weights: Optional[Any] = None
+        self._best_weights: Any | None = None
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict[str, float]) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None:
         import copy
         value = metrics.get(self.monitor)
         if value is None:
@@ -123,12 +123,12 @@ class ModelCheckpoint(Callback):
         self.mode = mode
         self.save_every_n_epochs = save_every_n_epochs
         self._best: float = float("inf") if mode == "min" else float("-inf")
-        self.best_model_path: Optional[Path] = None
+        self.best_model_path: Path | None = None
 
     def on_train_begin(self, trainer: Any) -> None:
         self.dirpath.mkdir(parents=True, exist_ok=True)
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict[str, float]) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None:
         import torch
 
         value = metrics.get(self.monitor, float("inf"))
@@ -180,7 +180,7 @@ class MLflowLogger(Callback):
     def __init__(
         self,
         experiment_name: str = "pygeovision",
-        run_name: Optional[str] = None,
+        run_name: str | None = None,
         tracking_uri: str = "mlruns",
         log_model: bool = False,
     ) -> None:
@@ -200,7 +200,7 @@ class MLflowLogger(Callback):
         except ImportError:
             logger.warning("mlflow not installed; logging disabled. pip install mlflow")
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict[str, float]) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None:
         if self._run is None:
             return
         try:
@@ -239,7 +239,7 @@ class LRSchedulerCallback(Callback):
         self.monitor = monitor
         self.call_on = call_on
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict[str, float]) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None:
         if self.call_on != "epoch":
             return
         sched_type = type(self.scheduler).__name__
@@ -269,7 +269,7 @@ class ProgressCallback(Callback):
     def on_epoch_begin(self, trainer: Any, epoch: int) -> None:
         self._epoch_start = time.time()
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict[str, float]) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None:
         elapsed = time.time() - self._epoch_start
         metric_str = " | ".join(f"{k}: {v:.4f}" for k, v in metrics.items())
         logger.info("Epoch %03d [%.1fs] %s", epoch, elapsed, metric_str)
@@ -282,7 +282,7 @@ class ProgressCallback(Callback):
 class CallbackList:
     """Manages and dispatches events to a list of callbacks."""
 
-    def __init__(self, callbacks: List[Callback]) -> None:
+    def __init__(self, callbacks: list[Callback]) -> None:
         self.callbacks = callbacks
 
     def on_train_begin(self, trainer: Any) -> None:
@@ -294,7 +294,7 @@ class CallbackList:
     def on_epoch_begin(self, trainer: Any, epoch: int) -> None:
         for cb in self.callbacks: cb.on_epoch_begin(trainer, epoch)
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict[str, float]) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None:
         for cb in self.callbacks: cb.on_epoch_end(trainer, epoch, metrics)
 
     def on_batch_begin(self, trainer: Any, batch_idx: int) -> None:

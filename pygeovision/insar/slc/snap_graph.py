@@ -29,13 +29,12 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger("pygeovision.insar.slc.snap_graph")
 
 # ── Availability checks ───────────────────────────────────────────────────────
 
-def check_snap(gpt_path: Optional[str] = None) -> Dict[str, object]:
+def check_snap(gpt_path: str | None = None) -> dict[str, object]:
     """
     Check whether ESA SNAP's GPT is available.
 
@@ -91,7 +90,7 @@ def check_snap(gpt_path: Optional[str] = None) -> Dict[str, object]:
         }
 
 
-def check_snapista() -> Dict[str, object]:
+def check_snapista() -> dict[str, object]:
     """
     Check whether snapista is importable.
 
@@ -122,7 +121,7 @@ def check_snapista() -> Dict[str, object]:
         }
 
 
-def check_environment() -> Dict[str, object]:
+def check_environment() -> dict[str, object]:
     """Full environment check: SNAP, snapista, snaphu."""
     snap     = check_snap()
     snapista = check_snapista()
@@ -145,7 +144,7 @@ def check_environment() -> Dict[str, object]:
     }
 
 
-def _check_snaphu() -> Dict[str, object]:
+def _check_snaphu() -> dict[str, object]:
     exe = shutil.which("snaphu")
     if exe:
         return {"available": True, "path": exe, "message": f"snaphu found: {exe}"}
@@ -202,9 +201,9 @@ class SNAPGraph:
 
     def __init__(
         self,
-        gpt_path:    Optional[str] = None,
+        gpt_path:    str | None = None,
         dem_name:    str = "SRTM 3Sec",
-        cache_dir:   Optional[str] = None,
+        cache_dir:   str | None = None,
         tile_size_mb: int = 4096,
     ) -> None:
         self.gpt_path    = gpt_path or shutil.which("gpt") or "gpt"
@@ -222,9 +221,9 @@ class SNAPGraph:
         slave_zip:    str,
         output_dir:   str,
         subswath:     str = "IW2",
-        bursts:       Tuple[int, int] = (1, 9),
+        bursts:       tuple[int, int] = (1, 9),
         polarisation: str = "VV",
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Run the full co-registration → interferogram → deburst → topo-removal
         → Goldstein-filter → Snaphu-export chain.
@@ -306,9 +305,9 @@ class SNAPGraph:
         slave_zip:    str,
         output_dir:   Path,
         subswath:     str,
-        bursts:       Tuple[int, int],
+        bursts:       tuple[int, int],
         polarisation: str,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Build and run the InSAR graph using snapista."""
         from snapista import Graph, Operator  # type: ignore[import]
 
@@ -545,9 +544,9 @@ class SNAPGraph:
         slave_zip:    str,
         output_dir:   Path,
         subswath:     str,
-        bursts:       Tuple[int, int],
+        bursts:       tuple[int, int],
         polarisation: str,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Build an XML graph file and run it via the gpt CLI."""
         first_burst, last_burst = bursts
         snaphu_dir = str(output_dir / "snaphu_export")
@@ -824,7 +823,7 @@ class SNAPGraph:
 
     @staticmethod
     def _validate_inputs(
-        subswath: str, bursts: Tuple[int, int], polarisation: str
+        subswath: str, bursts: tuple[int, int], polarisation: str
     ) -> None:
         if subswath.upper() not in SNAPGraph.VALID_SUBSWATHS:
             raise ValueError(

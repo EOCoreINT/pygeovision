@@ -13,6 +13,7 @@ __pycache__/
 *.so
 *.dll
 *.dylib
+*.zip/
 
 # ─── Build / Distribution ──────────────────────────────────────────────────
 build/

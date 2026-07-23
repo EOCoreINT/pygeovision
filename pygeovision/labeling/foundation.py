@@ -1,8 +1,10 @@
 """Foundation Model Auto-Labeler — DINOv2/Prithvi feature-based pseudo-labeling."""
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,26 +27,27 @@ class FoundationModelLabeler:
         )
     """
 
-    def __init__(self, model: str = "dinov2-base", device: Optional[str] = None) -> None:
+    def __init__(self, model: str = "dinov2-base", device: str | None = None) -> None:
         self.model_name = model
         self.device = device
 
     def pseudo_label(
         self,
-        image_path: Union[str, Path],
-        output_path: Union[str, Path],
+        image_path: str | Path,
+        output_path: str | Path,
         n_classes: int = 8,
         patch_size: int = 14,
         clustering: str = "kmeans",  # kmeans | hdbscan
         clip_annotate: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate pseudo-labels via foundation model features + clustering."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            import torch, numpy as np
+            import numpy as np
             import rasterio
+            import torch
             from PIL import Image
             from transformers import AutoImageProcessor, AutoModel
         except ImportError as exc:

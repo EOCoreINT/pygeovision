@@ -1,7 +1,9 @@
 """Change detection model architectures."""
 from __future__ import annotations
+
 import logging
 from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,8 +45,8 @@ def build_siamese_unet(in_channels: int = 3, num_classes: int = 2, encoder: str 
 def build_changeformer(in_channels: int = 3, num_classes: int = 2, **kwargs: Any) -> Any:
     """Build a ChangeFormer transformer change detection model."""
     try:
-        from transformers import SegformerConfig, SegformerForSemanticSegmentation
         import torch.nn as nn
+        from transformers import SegformerConfig, SegformerForSemanticSegmentation
 
         class ChangeFormer(nn.Module):
             def __init__(self):

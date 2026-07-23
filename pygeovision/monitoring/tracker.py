@@ -1,9 +1,12 @@
 """Model performance tracking over time."""
 from __future__ import annotations
-import json, logging
+
+import json
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,12 +17,12 @@ class ModelPerformanceTracker:
         self.model_name = model_name
         self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-        self._records: List[Dict] = []
+        self._records: list[dict] = []
         if self.storage_path.exists():
             with open(self.storage_path) as f:
                 self._records = json.load(f)
 
-    def record(self, metrics: Dict[str, float], split: str = "production",
+    def record(self, metrics: dict[str, float], split: str = "production",
                 n_samples: int = 0, notes: str = "") -> None:
         entry = {
             "model": self.model_name,
@@ -33,7 +36,7 @@ class ModelPerformanceTracker:
         with open(self.storage_path, "w") as f:
             json.dump(self._records, f, indent=2)
 
-    def trend(self, metric: str = "mean_iou", window: int = 10) -> Dict[str, Any]:
+    def trend(self, metric: str = "mean_iou", window: int = 10) -> dict[str, Any]:
         vals = [r[metric] for r in self._records if metric in r]
         if not vals:
             return {"metric": metric, "n_records": 0}
@@ -53,7 +56,7 @@ class ModelPerformanceTracker:
             "max": round(max(vals), 4),
         }
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         if not self._records:
             return {"n_records": 0}
         metrics = [k for k in self._records[-1] if k not in ("model","timestamp","split","n_samples","notes")]

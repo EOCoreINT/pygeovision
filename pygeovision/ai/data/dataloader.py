@@ -16,19 +16,17 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
-
-from pygeovision.ai.data.dataset import GeoDataset, TileMetadata
-from pygeovision.ai.data.tiling import TilingConfig, TilingEngine
 from pygeovision.ai.data.augmentations import GeoAugmentationPipeline
+from pygeovision.ai.data.dataset import GeoDataset, TileMetadata
 from pygeovision.ai.data.preprocessing import GeoPreprocessor
+from pygeovision.ai.data.tiling import TilingConfig, TilingEngine
 from pygeovision.core.exceptions import DatasetError
 
 if TYPE_CHECKING:
-    from pygeovision.data import SatelliteFetcher as PyGeoFetch
     from pygeovision.core.config import PyGeoVisionConfig
+    from pygeovision.data.fetch import SatelliteFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +62,8 @@ class GeoDataLoader:
 
     def __init__(
         self,
-        data_pipeline: "SatelliteFetcher",
-        config: Optional["PyGeoVisionConfig"] = None,
+        data_pipeline: SatelliteFetcher,
+        config: PyGeoVisionConfig | None = None,
         device: str = "cpu",
     ) -> None:
         self._pygeofetch = data_pipeline
@@ -75,17 +73,17 @@ class GeoDataLoader:
     def prepare(
         self,
         data_source: Any,
-        labels: Union[str, list[str]] = "openstreetmap",
+        labels: str | list[str] = "openstreetmap",
         task: str = "segmentation",
         tile_size: int = 512,
         overlap: int = 64,
-        bands: Optional[list[int]] = None,
+        bands: list[int] | None = None,
         val_split: float = 0.15,
         test_split: float = 0.10,
         augment: bool = True,
-        output_dir: Optional[Union[str, Path]] = None,
+        output_dir: str | Path | None = None,
         min_valid_fraction: float = 0.1,
-        preprocessing_steps: Optional[list[str]] = None,
+        preprocessing_steps: list[str] | None = None,
         seed: int = 42,
         **kwargs: Any,
     ) -> GeoDataset:
@@ -204,9 +202,8 @@ class GeoDataLoader:
         )
 
         # Step 4: Compute preprocessing statistics
-        preprocessor = None
         if preprocessing_steps:
-            preprocessor = GeoPreprocessor(steps=preprocessing_steps)
+            GeoPreprocessor(steps=preprocessing_steps)
 
         # Step 5: Create spatially aware train/val/test splits
         split_map = self._spatial_split(
@@ -302,12 +299,13 @@ class GeoDataLoader:
         All download logic is handled by PyGeoFetch — GeoDataLoader just
         tells it where to put the files and collects the output paths.
         """
-        from pygeovision.data.fetch import DownloadResult  # type: ignore[import-untyped]
 
         download_dir = work_dir / "raw"
         download_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info("Downloading %d scenes via PyGeoFetch → %s", len(results), download_dir)
+
+        from pygeofetch.models.download_task import DownloadOptions
 
         download_results = self._pygeofetch.download(
             results,
@@ -364,19 +362,27 @@ class GeoDataLoader:
 
                 return OSMLabeler()
             if strategy == "microsoft_buildings":
-                from pygeovision.ai.labeling.microsoft_buildings import MicrosoftBuildingsLabeler  # noqa: PLC0415
+                from pygeovision.ai.labeling.microsoft_buildings import (
+                    MicrosoftBuildingsLabeler,  # noqa: PLC0415
+                )
 
                 return MicrosoftBuildingsLabeler()
             if strategy == "google_buildings":
-                from pygeovision.ai.labeling.google_buildings import GoogleBuildingsLabeler  # noqa: PLC0415
+                from pygeovision.ai.labeling.google_buildings import (
+                    GoogleBuildingsLabeler,  # noqa: PLC0415
+                )
 
                 return GoogleBuildingsLabeler()
             if strategy == "esa_worldcover":
-                from pygeovision.ai.labeling.esa_worldcover import ESAWorldCoverLabeler  # noqa: PLC0415
+                from pygeovision.ai.labeling.esa_worldcover import (
+                    ESAWorldCoverLabeler,  # noqa: PLC0415
+                )
 
                 return ESAWorldCoverLabeler()
             if strategy == "dynamic_world":
-                from pygeovision.ai.labeling.dynamic_world import DynamicWorldLabeler  # noqa: PLC0415
+                from pygeovision.ai.labeling.dynamic_world import (
+                    DynamicWorldLabeler,  # noqa: PLC0415
+                )
 
                 return DynamicWorldLabeler()
             if strategy == "sam":
@@ -384,7 +390,9 @@ class GeoDataLoader:
 
                 return SAMLabeler()
             if strategy == "foundation":
-                from pygeovision.ai.labeling.foundation_labeler import FoundationModelLabeler  # noqa: PLC0415
+                from pygeovision.ai.labeling.foundation_labeler import (
+                    FoundationModelLabeler,  # noqa: PLC0415
+                )
 
                 return FoundationModelLabeler()
         except ImportError as exc:
@@ -455,7 +463,7 @@ class GeoDataLoader:
 
     @staticmethod
     def _resolve_output_dir(
-        output_dir: Optional[Union[str, Path]],
+        output_dir: str | Path | None,
         data_source: Any,
         task: str,
         tile_size: int,

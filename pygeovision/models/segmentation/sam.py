@@ -1,7 +1,9 @@
 """SAM and SAM2 for zero-shot geospatial segmentation."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,8 +43,8 @@ class GeoSAM:
         self._processor = SamProcessor.from_pretrained(self.hf_id)
         self._model = SamModel.from_pretrained(self.hf_id).to(self.device).eval()
 
-    def generate_masks(self, image_path: str, output_path: Optional[str] = None,
-                        points_per_side: int = 32, min_area_m2: float = 10.0) -> Dict:
+    def generate_masks(self, image_path: str, output_path: str | None = None,
+                        points_per_side: int = 32, min_area_m2: float = 10.0) -> dict:
         """Generate segmentation masks for a full GeoTIFF."""
         from pygeovision.labeling.sam_auto import SAMAutoLabeler
         labeler = SAMAutoLabeler(device=self.device)
@@ -50,13 +52,13 @@ class GeoSAM:
         return labeler.auto_label(image_path, output_path or "./output/sam_masks.tif",
                                    points_per_side=points_per_side, min_area_m2=min_area_m2)
 
-    def predict_points(self, image: Any, input_points: List[List[float]],
-                        input_labels: Optional[List[int]] = None) -> Any:
+    def predict_points(self, image: Any, input_points: list[list[float]],
+                        input_labels: list[int] | None = None) -> Any:
         """Predict masks from point prompts."""
         import torch
         self._load()
-        from PIL import Image as PILImage
         import numpy as np
+        from PIL import Image as PILImage
 
         if isinstance(image, str):
             import rasterio

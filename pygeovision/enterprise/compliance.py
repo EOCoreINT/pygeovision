@@ -4,9 +4,12 @@ pygeovision.enterprise.compliance
 GDPR, SOC 2, and HIPAA compliance utilities.
 """
 from __future__ import annotations
-import hashlib, logging, re
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+
+import hashlib
+import logging
+import re
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger("pygeovision.enterprise.compliance")
 
@@ -23,7 +26,7 @@ class ComplianceCheck:
 class ComplianceChecker:
     """Run compliance checks against a PyGeoVision deployment configuration."""
 
-    def check_all(self, config: Dict[str, Any]) -> List[ComplianceCheck]:
+    def check_all(self, config: dict[str, Any]) -> list[ComplianceCheck]:
         checks = []
         checks += self._check_data_encryption(config)
         checks += self._check_access_control(config)
@@ -31,7 +34,7 @@ class ComplianceChecker:
         checks += self._check_data_retention(config)
         return checks
 
-    def _check_data_encryption(self, cfg: Dict) -> List[ComplianceCheck]:
+    def _check_data_encryption(self, cfg: dict) -> list[ComplianceCheck]:
         return [
             ComplianceCheck(
                 "encryption_at_rest",
@@ -49,7 +52,7 @@ class ComplianceChecker:
             ),
         ]
 
-    def _check_access_control(self, cfg: Dict) -> List[ComplianceCheck]:
+    def _check_access_control(self, cfg: dict) -> list[ComplianceCheck]:
         return [
             ComplianceCheck(
                 "rbac_enabled",
@@ -67,7 +70,7 @@ class ComplianceChecker:
             ),
         ]
 
-    def _check_audit_logging(self, cfg: Dict) -> List[ComplianceCheck]:
+    def _check_audit_logging(self, cfg: dict) -> list[ComplianceCheck]:
         return [
             ComplianceCheck(
                 "audit_logging",
@@ -78,7 +81,7 @@ class ComplianceChecker:
             ),
         ]
 
-    def _check_data_retention(self, cfg: Dict) -> List[ComplianceCheck]:
+    def _check_data_retention(self, cfg: dict) -> list[ComplianceCheck]:
         retention = cfg.get("data_retention_days", 0)
         return [
             ComplianceCheck(
@@ -90,7 +93,7 @@ class ComplianceChecker:
             ),
         ]
 
-    def report(self, config: Dict) -> str:
+    def report(self, config: dict) -> str:
         checks  = self.check_all(config)
         passed  = sum(1 for c in checks if c.passed)
         lines   = [f"Compliance Report: {passed}/{len(checks)} checks passed", ""]
@@ -111,7 +114,7 @@ class GDPRHandler:
         (r"\b(?:\d[ -]*?){13,16}\b", "credit_card"),
     ]
 
-    def detect_pii(self, text: str) -> List[Dict[str, str]]:
+    def detect_pii(self, text: str) -> list[dict[str, str]]:
         found = []
         for pattern, pii_type in self.PII_PATTERNS:
             matches = re.findall(pattern, text)

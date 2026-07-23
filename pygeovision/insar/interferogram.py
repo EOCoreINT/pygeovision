@@ -25,9 +25,8 @@ Usage::
 from __future__ import annotations
 
 import logging
-import math
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -49,7 +48,7 @@ def generate_interferogram(
     multilook:  int = 1,
     filter_type: str = "goldstein",
     filter_strength: float = 0.5,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate an interferogram from two co-registered SAR rasters.
 

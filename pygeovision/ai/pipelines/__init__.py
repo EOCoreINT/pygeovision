@@ -38,9 +38,9 @@ logger = logging.getLogger(__name__)
 class PipelineResult:
     """Result from a geospatial pipeline run."""
     pipeline: str
-    output_path: Optional[Path] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    stats: Dict[str, Any] = field(default_factory=dict)
+    output_path: Path | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    stats: dict[str, Any] = field(default_factory=dict)
     success: bool = True
     error: str = ""
 
@@ -68,8 +68,8 @@ class BasePipeline(ABC):
     @abstractmethod
     def run(
         self,
-        bbox: Tuple[float, float, float, float],
-        output_dir: Union[str, Path],
+        bbox: tuple[float, float, float, float],
+        output_dir: str | Path,
         **kwargs: Any,
     ) -> PipelineResult: ...
 
@@ -79,15 +79,15 @@ class BasePipeline(ABC):
 
     def _search_and_download(
         self,
-        bbox: Tuple[float, float, float, float],
+        bbox: tuple[float, float, float, float],
         date: str,
         output_dir: Path,
-        collections: Optional[List[str]] = None,
-        providers: Optional[List[str]] = None,
+        collections: list[str] | None = None,
+        providers: list[str] | None = None,
         cloud_cover_max: float = 20.0,
-        post_process: Optional[List[str]] = None,
+        post_process: list[str] | None = None,
         max_results: int = 5,
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """Search PyGeoFetch → download best scene → return local path."""
         try:
             # Build date range from a YYYY-MM string
@@ -130,13 +130,13 @@ class BasePipeline(ABC):
 
     def _search_and_download_pair(
         self,
-        bbox: Tuple[float, float, float, float],
+        bbox: tuple[float, float, float, float],
         date_before: str,
         date_after: str,
         output_dir: Path,
-        collections: Optional[List[str]] = None,
+        collections: list[str] | None = None,
         cloud_cover_max: float = 25.0,
-    ) -> Tuple[Optional[Path], Optional[Path]]:
+    ) -> tuple[Path | None, Path | None]:
         """Download a bi-temporal (before/after) image pair."""
         before_path = self._search_and_download(
             bbox, date_before, output_dir / "before",
@@ -157,11 +157,11 @@ class BasePipeline(ABC):
         in_channels: int = 3,
         tile_size: int = 512,
         overlap: int = 64,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """Load model from hub and run tiled inference."""
         try:
-            from pygeovision.ai.models.hub import ModelHub
             from pygeovision.ai.inference.tiled_inference import TiledInference
+            from pygeovision.ai.models.hub import ModelHub
 
             hub = ModelHub()
             model = hub.load(model_name, num_classes=num_classes, in_channels=in_channels)
@@ -231,9 +231,10 @@ class LandCoverPipeline(BasePipeline):
                 img_path = self._search_and_download(bbox, date, output_dir)
                 if not img_path:
                     return PipelineResult(self.NAME, success=False, error="No imagery found.")
-                from pygeovision.ai.labeling.esa_worldcover import ESAWorldCoverLabeler
-                from pygeovision.ai.data.dataset import TileMetadata
                 import rasterio
+
+                from pygeovision.ai.data.dataset import TileMetadata
+                from pygeovision.ai.labeling.esa_worldcover import ESAWorldCoverLabeler
                 with rasterio.open(img_path) as src:
                     meta = TileMetadata(path=img_path, bounds=src.bounds, crs=src.crs,
                                         height=src.height, width=src.width)
@@ -247,9 +248,10 @@ class LandCoverPipeline(BasePipeline):
                 img_path = self._search_and_download(bbox, date, output_dir)
                 if not img_path:
                     return PipelineResult(self.NAME, success=False, error="No imagery.")
-                from pygeovision.ai.labeling.dynamic_world import DynamicWorldLabeler
-                from pygeovision.ai.data.dataset import TileMetadata
                 import rasterio
+
+                from pygeovision.ai.data.dataset import TileMetadata
+                from pygeovision.ai.labeling.dynamic_world import DynamicWorldLabeler
                 with rasterio.open(img_path) as src:
                     meta = TileMetadata(path=img_path, bounds=src.bounds, crs=src.crs,
                                         height=src.height, width=src.width)
@@ -409,7 +411,8 @@ class WaterBodiesPipeline(BasePipeline):
             if method == "ndwi":
                 # PyGeoFetch has already computed NDWI via post-process
                 out = img_path  # NDWI is the processed output
-                import numpy as np, rasterio
+                import numpy as np
+                import rasterio
                 with rasterio.open(img_path) as src:
                     ndwi = src.read(1).astype(np.float32)
                 water_mask = (ndwi > 0.3).astype(np.uint8)
@@ -467,7 +470,8 @@ class CarbonEstimationPipeline(BasePipeline):
             if not img_path:
                 return PipelineResult(self.NAME, success=False, error="No imagery.")
 
-            import rasterio, numpy as np
+            import numpy as np
+            import rasterio
             with rasterio.open(img_path) as src:
                 ndvi = src.read(1).astype(np.float32)
                 profile = src.profile.copy()
@@ -499,7 +503,7 @@ class CarbonEstimationPipeline(BasePipeline):
 # Router
 # ---------------------------------------------------------------------------
 
-_PIPELINE_REGISTRY: Dict[str, type] = {
+_PIPELINE_REGISTRY: dict[str, type] = {
     "change_detection":     ChangeDetectionPipeline,
     "land_cover":           LandCoverPipeline,
     "building_footprints":  BuildingFootprintsPipeline,
@@ -531,7 +535,7 @@ def get_pipeline(name: str, pgv_client: Any) -> BasePipeline:
     return _PIPELINE_REGISTRY[name](pgv_client)
 
 
-def list_pipelines() -> List[str]:
+def list_pipelines() -> list[str]:
     return sorted(_PIPELINE_REGISTRY.keys())
 
 

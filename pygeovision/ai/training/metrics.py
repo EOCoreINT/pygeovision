@@ -8,9 +8,9 @@ and change detection metrics — all computed efficiently on GPU tensors.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
 try:
     import torch
 except ImportError:
@@ -30,15 +30,15 @@ class SegmentationMetrics:
         recall_per_class: Recall per class.
         f1_per_class: F1 score per class.
     """
-    iou_per_class: List[float] = field(default_factory=list)
+    iou_per_class: list[float] = field(default_factory=list)
     accuracy: float = 0.0
     mean_iou: float = 0.0
     frequency_weighted_iou: float = 0.0
-    precision_per_class: List[float] = field(default_factory=list)
-    recall_per_class: List[float] = field(default_factory=list)
-    f1_per_class: List[float] = field(default_factory=list)
+    precision_per_class: list[float] = field(default_factory=list)
+    recall_per_class: list[float] = field(default_factory=list)
+    f1_per_class: list[float] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         return {
             "mean_iou": self.mean_iou,
             "accuracy": self.accuracy,
@@ -154,7 +154,7 @@ class BinaryMetrics:
     def reset(self) -> None:
         self._tp = self._fp = self._fn = self._tn = 0
 
-    def compute(self) -> Dict[str, float]:
+    def compute(self) -> dict[str, float]:
         eps = 1e-7
         tp, fp, fn = self._tp, self._fp, self._fn
         precision = tp / (tp + fp + eps)

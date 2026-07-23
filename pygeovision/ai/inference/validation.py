@@ -17,7 +17,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -40,15 +40,15 @@ class ValidationReport:
         class_names: Optional class name mapping.
     """
 
-    metrics: Dict[str, float] = field(default_factory=dict)
-    per_class_iou: List[float] = field(default_factory=list)
-    per_class_precision: List[float] = field(default_factory=list)
-    per_class_recall: List[float] = field(default_factory=list)
-    per_class_f1: List[float] = field(default_factory=list)
-    confusion_matrix: Optional[np.ndarray] = None
+    metrics: dict[str, float] = field(default_factory=dict)
+    per_class_iou: list[float] = field(default_factory=list)
+    per_class_precision: list[float] = field(default_factory=list)
+    per_class_recall: list[float] = field(default_factory=list)
+    per_class_f1: list[float] = field(default_factory=list)
+    confusion_matrix: np.ndarray | None = None
     error_rate: float = 0.0
     num_pixels: int = 0
-    class_names: Optional[List[str]] = None
+    class_names: list[str] | None = None
 
     def summary(self) -> str:
         """Return a formatted validation summary string."""
@@ -61,7 +61,7 @@ class ValidationReport:
                 lines.append(f"  [{i}] {name}: {iou:.4f}")
         return "\n".join(lines)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialise the report to a JSON-compatible dict."""
         return {
             "metrics": self.metrics,
@@ -74,7 +74,7 @@ class ValidationReport:
             "class_names": self.class_names,
         }
 
-    def save(self, path: Union[str, Path]) -> Path:
+    def save(self, path: str | Path) -> Path:
         """Save the report as a JSON file.
 
         Args:
@@ -112,7 +112,7 @@ class PredictionValidator:
         self,
         num_classes: int = 2,
         ignore_index: int = 255,
-        class_names: Optional[List[str]] = None,
+        class_names: list[str] | None = None,
     ) -> None:
         self.num_classes = num_classes
         self.ignore_index = ignore_index
@@ -120,9 +120,9 @@ class PredictionValidator:
 
     def validate(
         self,
-        prediction_path: Union[str, Path],
-        ground_truth_path: Union[str, Path],
-        output_error_map: Optional[Union[str, Path]] = None,
+        prediction_path: str | Path,
+        ground_truth_path: str | Path,
+        output_error_map: str | Path | None = None,
     ) -> ValidationReport:
         """Compare a prediction GeoTIFF to a ground truth GeoTIFF.
 
@@ -254,8 +254,8 @@ class PredictionValidator:
 
     def cross_validate(
         self,
-        pred_paths: List[Union[str, Path]],
-        gt_paths: List[Union[str, Path]],
+        pred_paths: list[str | Path],
+        gt_paths: list[str | Path],
     ) -> ValidationReport:
         """Validate across multiple prediction/GT pairs and aggregate.
 

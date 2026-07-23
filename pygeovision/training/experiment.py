@@ -2,10 +2,11 @@
 Experiment tracking — MLflow / W&B / TensorBoard (Phase 4.1).
 """
 from __future__ import annotations
+
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class ExperimentTracker:
         self,
         experiment_name: str,
         run_name: str = "",
-        backends: Optional[List[str]] = None,
+        backends: list[str] | None = None,
         mlflow_uri: str = "mlruns",
         wandb_project: str = "pygeovision",
         tb_log_dir: str = "./tb_logs",
@@ -41,10 +42,10 @@ class ExperimentTracker:
         self._mlflow_uri = mlflow_uri
         self._wandb_project = wandb_project
         self._tb_log_dir = tb_log_dir
-        self._history: Dict[str, List] = {}
+        self._history: dict[str, list] = {}
         self._start_time = time.time()
 
-    def start_run(self, config: Optional[Dict] = None) -> "ExperimentTracker":
+    def start_run(self, config: dict | None = None) -> ExperimentTracker:
         """Start all configured tracking backends."""
         if "mlflow" in self.backends:
             try:
@@ -85,7 +86,7 @@ class ExperimentTracker:
 
         return self
 
-    def log(self, metrics: Dict[str, float], step: Optional[int] = None) -> None:
+    def log(self, metrics: dict[str, float], step: int | None = None) -> None:
         """Log metrics to all active backends."""
         for k, v in metrics.items():
             self._history.setdefault(k, []).append(v)
@@ -115,7 +116,7 @@ class ExperimentTracker:
             except Exception:
                 pass
 
-    def log_model(self, model_path: Union[str, Path], artifact_name: str = "model") -> None:
+    def log_model(self, model_path: str | Path, artifact_name: str = "model") -> None:
         """Log a model artifact."""
         if self._mlflow_run:
             try:
@@ -132,11 +133,10 @@ class ExperimentTracker:
             except Exception:
                 pass
 
-    def log_image(self, key: str, image: Any, step: Optional[int] = None) -> None:
+    def log_image(self, key: str, image: Any, step: int | None = None) -> None:
         """Log an image (numpy array or PIL) to tracking backends."""
         if self._tb_writer:
             try:
-                import numpy as np
                 if hasattr(image, "numpy"):
                     image = image.numpy()
                 self._tb_writer.add_image(key, image, global_step=step)
@@ -149,7 +149,7 @@ class ExperimentTracker:
             except Exception:
                 pass
 
-    def end_run(self) -> Dict[str, Any]:
+    def end_run(self) -> dict[str, Any]:
         """End all tracking runs and return final summary."""
         duration = time.time() - self._start_time
         summary = {
@@ -180,5 +180,5 @@ class ExperimentTracker:
         return summary
 
     @property
-    def history(self) -> Dict[str, List]:
+    def history(self) -> dict[str, list]:
         return self._history

@@ -36,7 +36,7 @@ class PyGeoVisionAuthError(PyGeoVisionError):
 
 
 class AIEngineError(PyGeoVisionError):
-    """Base class for all GeoAI engine errors."""
+    """Base class for all AI engine errors."""
 
 
 class AINotAvailableError(AIEngineError):
@@ -44,7 +44,7 @@ class AINotAvailableError(AIEngineError):
 
     def __init__(self) -> None:
         super().__init__(
-            "GeoAI engine requires additional dependencies.",
+            "AI engine requires additional dependencies.",
             details="Install them with: pip install 'pygeovision[ai]'",
         )
 

@@ -1,8 +1,10 @@
 """AutoLabelPipeline — orchestrate multiple label sources with voting fusion."""
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,10 +28,10 @@ class AutoLabelPipeline:
 
     def __init__(
         self,
-        sources: Optional[List[str]] = None,
+        sources: list[str] | None = None,
         fusion: str = "majority_vote",  # majority_vote | union | intersection | priority
         quality_threshold: float = 0.6,
-        reference_raster: Optional[str] = None,
+        reference_raster: str | None = None,
     ) -> None:
         self.sources = sources or ["osm", "esa_worldcover"]
         self.fusion = fusion
@@ -38,15 +40,15 @@ class AutoLabelPipeline:
 
     def run(
         self,
-        bbox: Tuple[float, ...],
+        bbox: tuple[float, ...],
         output_dir: str = "./labels/",
-        categories: Optional[List[str]] = None,
+        categories: list[str] | None = None,
         assess_quality: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run all configured labeling sources and fuse results."""
         import os
         os.makedirs(output_dir, exist_ok=True)
-        partial_results: Dict[str, Dict] = {}
+        partial_results: dict[str, dict] = {}
 
         for source in self.sources:
             try:
@@ -79,8 +81,29 @@ class AutoLabelPipeline:
                     r = DynamicWorldLabeler().label(
                         bbox, output_path=f"{output_dir}/dynamic_world.tif",
                     )
+                elif source == "sam_auto":
+                    if not self.reference_raster:
+                        r = {"success": False,
+                             "error": "sam_auto requires reference_raster "
+                                      "(SAM segments an actual image, not a bbox query)"}
+                    else:
+                        from pygeovision.labeling.sam_auto import SAMAutoLabeler
+                        r = SAMAutoLabeler().auto_label(
+                            self.reference_raster, output_path=f"{output_dir}/sam_auto.tif",
+                        )
+                elif source == "foundation":
+                    if not self.reference_raster:
+                        r = {"success": False,
+                             "error": "foundation requires reference_raster "
+                                      "(foundation-model pseudo-labeling needs an actual image, not a bbox query)"}
+                    else:
+                        from pygeovision.labeling.foundation import FoundationModelLabeler
+                        r = FoundationModelLabeler().pseudo_label(
+                            self.reference_raster, output_path=f"{output_dir}/foundation.tif",
+                        )
                 else:
-                    r = {"success": False, "error": f"Source '{source}' not implemented"}
+                    r = {"success": False, "error": f"Unknown source: '{source}'. "
+                                                     f"Choose from: {self.SOURCES}"}
 
                 partial_results[source] = r
                 logger.info("Source '%s': %s", source, "OK" if r.get("success") else r.get("error"))
@@ -114,10 +137,11 @@ class AutoLabelPipeline:
 
         return result
 
-    def _fuse(self, paths: List[str], bbox: Tuple, output: str) -> Optional[str]:
+    def _fuse(self, paths: list[str], bbox: tuple, output: str) -> str | None:
         """Fuse multiple label rasters by majority voting."""
         try:
-            import numpy as np, rasterio
+            import numpy as np
+            import rasterio
             arrays = []
             ref_profile = None
             for p in paths:

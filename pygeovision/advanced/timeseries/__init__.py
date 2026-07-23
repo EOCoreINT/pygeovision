@@ -1,7 +1,9 @@
 """Time series analysis for geospatial data (G4)."""
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict, List, Optional, Union
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,14 +49,15 @@ class GeoTimeSeries:
 
     def compute_index_series(
         self,
-        image_paths: List[str],
+        image_paths: list[str],
         index: str = "ndvi",
-        date_strings: Optional[List[str]] = None,
+        date_strings: list[str] | None = None,
         cloud_mask: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compute a spectral index time series from multiple images."""
         try:
-            import numpy as np, rasterio
+            import numpy as np
+            import rasterio
         except ImportError:
             return {"error": "rasterio required"}
 
@@ -95,8 +98,8 @@ class GeoTimeSeries:
         return series
 
     def detect_anomalies(
-        self, series: Dict, method: str = "zscore", threshold: float = 2.5
-    ) -> List[Dict]:
+        self, series: dict, method: str = "zscore", threshold: float = 2.5
+    ) -> list[dict]:
         """Detect anomalous time steps (drought, flood, fire)."""
         import numpy as np
         vals = [v for v in series.get("mean", []) if v is not None]
@@ -115,7 +118,7 @@ class GeoTimeSeries:
             ]
         return []
 
-    def compute_trend(self, series: Dict) -> Dict[str, Any]:
+    def compute_trend(self, series: dict) -> dict[str, Any]:
         """Compute linear trend in the time series."""
         import numpy as np
         vals = [v for v in series.get("mean", []) if v is not None]
@@ -132,10 +135,11 @@ class GeoTimeSeries:
             "direction": "increasing" if slope > 0.001 else "decreasing" if slope < -0.001 else "stable",
         }
 
-    def plot(self, series: Dict, title: str = "NDVI Time Series",
-              save_path: Optional[str] = None) -> None:
+    def plot(self, series: dict, title: str = "NDVI Time Series",
+              save_path: str | None = None) -> None:
         try:
-            import matplotlib.pyplot as plt, numpy as np
+            import matplotlib.pyplot as plt
+            import numpy as np
             dates = series.get("dates", [])
             means = series.get("mean", [])
             p10 = series.get("p10", [None]*len(means))

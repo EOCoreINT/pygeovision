@@ -31,7 +31,6 @@ import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -62,15 +61,15 @@ class DeformationReport:
     max_subsidence_m:   float = 0.0
     max_uplift_m:       float = 0.0
     mean_displacement_m: float = 0.0
-    deformation_rate_mm_yr: Optional[float] = None
+    deformation_rate_mm_yr: float | None = None
 
     # Classification
     subsidence_extent_km2: float = 0.0
     uplift_extent_km2:     float = 0.0
     stable_pct:            float = 0.0
 
-    zones: List[DeformationZone] = field(default_factory=list)
-    flags: List[str]             = field(default_factory=list)
+    zones: list[DeformationZone] = field(default_factory=list)
+    flags: list[str]             = field(default_factory=list)
     notes: str = ""
 
     def summary(self) -> str:
@@ -155,8 +154,8 @@ class InSARInterpreter:
     def interpret(
         self,
         displacement_path: str,
-        rate_path:         Optional[str] = None,
-        coherence_path:    Optional[str] = None,
+        rate_path:         str | None = None,
+        coherence_path:    str | None = None,
         study_area:        str = "Study Area",
     ) -> DeformationReport:
         """
@@ -172,7 +171,7 @@ class InSARInterpreter:
 
         with rasterio.open(displacement_path) as src:
             disp      = src.read(1).astype("float32")
-            profile   = src.profile.copy()
+            src.profile.copy()
             pix_m     = abs(src.transform.a)
             area_per  = pix_m**2 / 1e6  # km² per pixel
 
@@ -194,7 +193,7 @@ class InSARInterpreter:
         upl_mask   = valid_mask & (disp > self.upl_thresh)
         stable_mask= valid_mask & (disp >= self.sub_thresh) & (disp <= self.upl_thresh)
 
-        zones: List[DeformationZone] = []
+        zones: list[DeformationZone] = []
 
         if sub_mask.sum() > 0:
             sub_area = float(sub_mask.sum()) * area_per
@@ -250,7 +249,7 @@ class InSARInterpreter:
             if abs(float(np.nanmin(disp))) > 0.20:
                 flags.append(f"CRITICAL: subsidence exceeds 20 cm (max={float(np.nanmin(disp))*100:.0f} cm) — structural risk")
             if abs(float(np.nanmax(disp))) > 0.10:
-                flags.append(f"SIGNIFICANT: uplift exceeds 10 cm — possible volcanic or hydrological activity")
+                flags.append("SIGNIFICANT: uplift exceeds 10 cm — possible volcanic or hydrological activity")
             stable_pct = float(stable_mask.sum() / (valid_mask.sum() + 1) * 100)
             if stable_pct < 50:
                 flags.append(f"WIDESPREAD: {100-stable_pct:.0f}% of reliable pixels show significant deformation")

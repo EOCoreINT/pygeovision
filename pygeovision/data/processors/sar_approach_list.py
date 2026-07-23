@@ -21,9 +21,10 @@ For the NB02 (Disaster Management / Turkey Earthquake) notebook, see
 inject as a notebook markdown cell.
 """
 from __future__ import annotations
-from typing import List, Dict, Any
 
-SAR_APPROACH_LIST: List[Dict[str, Any]] = [
+from typing import Any
+
+SAR_APPROACH_LIST: list[dict[str, Any]] = [
     # ──────────────────────────────────────────────────────────────────────
     # PRE-PROCESSING PHASE
     # ──────────────────────────────────────────────────────────────────────

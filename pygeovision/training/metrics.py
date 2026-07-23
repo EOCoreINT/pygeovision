@@ -3,7 +3,8 @@ Geospatial evaluation metrics (Phase 4.4).
 IoU, F1, mAP, accuracy, confusion matrix for segmentation and detection.
 """
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
+from typing import Any
 
 
 class SegmentationMetrics:
@@ -12,7 +13,7 @@ class SegmentationMetrics:
     def __init__(self, num_classes: int, ignore_index: int = 255) -> None:
         self.num_classes = num_classes
         self.ignore_index = ignore_index
-        self._confusion: Optional[Any] = None
+        self._confusion: Any | None = None
         self.reset()
 
     def reset(self) -> None:
@@ -36,10 +37,9 @@ class SegmentationMetrics:
         except Exception:
             pass
 
-    def compute(self) -> Dict[str, float]:
+    def compute(self) -> dict[str, float]:
         """Compute IoU, F1, accuracy from accumulated confusion matrix."""
         try:
-            import torch
             cm = self._confusion.float()
             tp = cm.diag()
             fp = cm.sum(0) - tp
@@ -63,17 +63,17 @@ class SegmentationMetrics:
 class DetectionMetrics:
     """Object detection metrics: mAP@50, mAP@50-95, precision, recall."""
 
-    def __init__(self, num_classes: int, iou_thresholds: Optional[List[float]] = None) -> None:
+    def __init__(self, num_classes: int, iou_thresholds: list[float] | None = None) -> None:
         self.num_classes = num_classes
         self.iou_thresholds = iou_thresholds or [0.5 + 0.05 * i for i in range(10)]
-        self._predictions: List[Dict] = []
-        self._targets: List[Dict] = []
+        self._predictions: list[dict] = []
+        self._targets: list[dict] = []
 
     def reset(self) -> None:
         self._predictions.clear()
         self._targets.clear()
 
-    def update(self, predictions: List[Dict], targets: List[Dict]) -> None:
+    def update(self, predictions: list[dict], targets: list[dict]) -> None:
         """
         predictions: list of dicts with 'boxes', 'scores', 'labels'
         targets:     list of dicts with 'boxes', 'labels'
@@ -81,7 +81,7 @@ class DetectionMetrics:
         self._predictions.extend(predictions)
         self._targets.extend(targets)
 
-    def compute(self) -> Dict[str, float]:
+    def compute(self) -> dict[str, float]:
         """Compute mAP metrics."""
         if not self._predictions:
             return {"mAP50": 0.0, "mAP50_95": 0.0, "precision": 0.0, "recall": 0.0}
@@ -107,7 +107,7 @@ class ChangeDetectionMetrics(SegmentationMetrics):
     def __init__(self) -> None:
         super().__init__(num_classes=2)
 
-    def compute(self) -> Dict[str, float]:
+    def compute(self) -> dict[str, float]:
         base = super().compute()
         return {
             "iou_change":       base.get("iou_class_1", 0.0),

@@ -1,23 +1,25 @@
 """Alert management for drift detection and performance monitoring."""
 from __future__ import annotations
+
 import logging
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+
 logger = logging.getLogger(__name__)
 
 
 class AlertManager:
     """Manage and route drift + performance alerts."""
 
-    def __init__(self, channels: Optional[List[str]] = None) -> None:
+    def __init__(self, channels: list[str] | None = None) -> None:
         self.channels = channels or ["log"]
-        self._handlers: Dict[str, Callable] = {"log": self._log_alert}
-        self._history: List[Dict] = []
+        self._handlers: dict[str, Callable] = {"log": self._log_alert}
+        self._history: list[dict] = []
 
     def register_handler(self, name: str, fn: Callable) -> None:
         self._handlers[name] = fn
 
-    def trigger(self, severity: str, message: str, data: Optional[Dict] = None) -> None:
+    def trigger(self, severity: str, message: str, data: dict | None = None) -> None:
         entry = {
             "timestamp": datetime.utcnow().isoformat(),
             "severity": severity,
@@ -30,12 +32,12 @@ class AlertManager:
             if handler:
                 handler(entry)
 
-    def _log_alert(self, entry: Dict) -> None:
+    def _log_alert(self, entry: dict) -> None:
         level = {"info": logger.info, "warning": logger.warning, "critical": logger.critical}
         fn = level.get(entry["severity"], logger.warning)
         fn("[Alert] %s: %s", entry["severity"].upper(), entry["message"])
 
-    def check_drift_report(self, report: Dict) -> None:
+    def check_drift_report(self, report: dict) -> None:
         if report.get("drift_detected"):
             for alert in report.get("performance_drift", {}).get("alerts", []):
                 self.trigger("warning", f"Performance drift: {alert}", report)
@@ -46,5 +48,5 @@ class AlertManager:
                 self.trigger("warning", "Minor data drift detected.", dd)
 
     @property
-    def history(self) -> List[Dict]:
+    def history(self) -> list[dict]:
         return self._history

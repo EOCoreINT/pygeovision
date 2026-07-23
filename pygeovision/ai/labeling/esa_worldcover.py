@@ -16,9 +16,9 @@ Example:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -28,7 +28,7 @@ from pygeovision.core.exceptions import LabelingError
 logger = logging.getLogger(__name__)
 
 # ESA WorldCover class definitions (value → name)
-WORLDCOVER_CLASSES: Dict[int, str] = {
+WORLDCOVER_CLASSES: dict[int, str] = {
     10: "tree_cover",
     20: "shrubland",
     30: "grassland",
@@ -64,8 +64,8 @@ class WorldCoverConfig:
     """
 
     year: int = 2021
-    remap: Optional[Dict[int, int]] = None
-    cache_dir: Optional[Path] = None
+    remap: dict[int, int] | None = None
+    cache_dir: Path | None = None
     request_timeout: int = 120
 
 
@@ -99,8 +99,8 @@ class ESAWorldCoverLabeler(BaseLabeler):
     def __init__(
         self,
         year: int = 2021,
-        remap: Optional[Dict[int, int]] = None,
-        cache_dir: Optional[Path] = None,
+        remap: dict[int, int] | None = None,
+        cache_dir: Path | None = None,
         num_workers: int = 4,
         skip_existing: bool = True,
     ) -> None:
@@ -154,9 +154,9 @@ class ESAWorldCoverLabeler(BaseLabeler):
             LabelingResult with class distribution statistics.
         """
         try:
-            import rasterio
-            from rasterio.warp import reproject, Resampling
             import pyproj
+            import rasterio
+            from rasterio.warp import Resampling, reproject
             from shapely.geometry import box
             from shapely.ops import transform as shapely_transform
         except ImportError as exc:
@@ -267,8 +267,8 @@ class ESAWorldCoverLabeler(BaseLabeler):
     # ------------------------------------------------------------------
 
     def _get_worldcover_tiles(
-        self, bbox_wgs84: Tuple[float, float, float, float]
-    ) -> List[Path]:
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> list[Path]:
         """Identify and download WorldCover tiles covering a bounding box.
 
         WorldCover uses a 3°×3° tile grid with filenames like:
@@ -296,7 +296,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
             lon_starts.append(lon)
             lon += tile_size
 
-        local_paths: List[Path] = []
+        local_paths: list[Path] = []
         for lat_s in lat_starts:
             for lon_s in lon_starts:
                 path = self._download_tile(lat_s, lon_s)
@@ -305,7 +305,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
 
         return local_paths
 
-    def _download_tile(self, lat: int, lon: int) -> Optional[Path]:
+    def _download_tile(self, lat: int, lon: int) -> Path | None:
         """Download a single WorldCover tile if not already cached.
 
         Args:
@@ -347,7 +347,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
 
     def _extract_worldcover_data(
         self,
-        wc_tile_paths: List[Path],
+        wc_tile_paths: list[Path],
         dst_crs: Any,
         dst_transform: Any,
         dst_height: int,
@@ -367,7 +367,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
         """
         import rasterio
         from rasterio.merge import merge
-        from rasterio.warp import reproject, Resampling
+        from rasterio.warp import Resampling, reproject
 
         # Open all source tiles
         src_files = [rasterio.open(p) for p in wc_tile_paths]
@@ -400,7 +400,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
 
     @staticmethod
     def _remap_classes(
-        mask: np.ndarray, remap: Dict[int, int]
+        mask: np.ndarray, remap: dict[int, int]
     ) -> np.ndarray:
         """Apply class ID remapping to a label mask.
 
@@ -418,6 +418,6 @@ class ESAWorldCoverLabeler(BaseLabeler):
         return new_mask
 
     @property
-    def class_names(self) -> Dict[int, str]:
+    def class_names(self) -> dict[int, str]:
         """Return the WorldCover class name mapping."""
         return WORLDCOVER_CLASSES

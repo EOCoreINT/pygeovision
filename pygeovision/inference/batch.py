@@ -1,9 +1,13 @@
 """Batch inference engine (B2, B6) — parallel multi-file inference."""
 from __future__ import annotations
-import logging, time
+
+import logging
+import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +29,7 @@ class BatchInferenceEngine:
     def __init__(
         self,
         model: Any,
-        device: Optional[str] = None,
+        device: str | None = None,
         n_workers: int = 1,
         chip_size: int = 512,
         overlap: int = 64,
@@ -46,13 +50,13 @@ class BatchInferenceEngine:
 
     def run_directory(
         self,
-        input_dir: Union[str, Path],
-        output_dir: Union[str, Path],
+        input_dir: str | Path,
+        output_dir: str | Path,
         pattern: str = "*.tif",
-        band_selection: Optional[List[int]] = None,
+        band_selection: list[int] | None = None,
         skip_existing: bool = True,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None,
-    ) -> Dict[str, Any]:
+        progress_callback: Callable[[int, int, str], None] | None = None,
+    ) -> dict[str, Any]:
         """Process all matching GeoTIFFs in a directory.
 
         Args:
@@ -139,10 +143,10 @@ class BatchInferenceEngine:
 
     def run_multi_gpu(
         self,
-        input_files: List[str],
+        input_files: list[str],
         output_dir: str,
-        gpu_ids: Optional[List[int]] = None,
-    ) -> Dict[str, Any]:
+        gpu_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
         """Distribute inference across multiple GPUs (B6)."""
         try:
             import torch
@@ -160,7 +164,7 @@ class BatchInferenceEngine:
         splits = [input_files[i::len(gpu_ids)] for i in range(len(gpu_ids))]
 
         def _gpu_worker(files, gpu_id):
-            engine = BatchInferenceEngine(
+            BatchInferenceEngine(
                 self.model, device=f"cuda:{gpu_id}",
                 n_workers=2, chip_size=self.chip_size,
                 overlap=self.overlap, num_classes=self.num_classes,

@@ -4,9 +4,12 @@ Handles arbitrarily large GeoTIFFs without memory overflow.
 Uses smooth Gaussian window weighting at tile boundaries.
 """
 from __future__ import annotations
-import logging, time
+
+import logging
+import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +25,7 @@ class GaussianBlend:
         """Generate a 2D Gaussian window of shape (size, size)."""
         import numpy as np
         sigma = size * sigma_ratio
-        centre = size // 2
+        size // 2
         y, x = np.mgrid[:size, :size]
         # Use exact centre (size-1)/2 for perfect symmetry
         cx = cy = (size - 1) / 2.0
@@ -73,7 +76,7 @@ class TiledInference:
         overlap: int = 128,
         blend_mode: str = "gaussian",     # gaussian | linear | constant
         batch_tiles: int = 4,
-        device: Optional[str] = None,
+        device: str | None = None,
         num_classes: int = 2,
         activation: str = "softmax",       # softmax | sigmoid | none
         sigma_ratio: float = 0.25,
@@ -107,7 +110,6 @@ class TiledInference:
         if self._model_loaded:
             return
         try:
-            import torch
             self.model = self.model.to(self._device)
             self.model.eval()
             if self.half_precision and self._device == "cuda":
@@ -131,7 +133,8 @@ class TiledInference:
     def _predict_chip(self, chip: Any) -> Any:
         """Run model inference on a single chip."""
         try:
-            import torch, numpy as np
+            import numpy as np
+            import torch
 
             if isinstance(chip, np.ndarray):
                 chip_t = torch.tensor(chip, dtype=torch.float16 if self.half_precision else torch.float32)
@@ -173,13 +176,13 @@ class TiledInference:
 
     def infer(
         self,
-        image_path: Union[str, Path],
-        output_path: Union[str, Path] = "./output/prediction.tif",
+        image_path: str | Path,
+        output_path: str | Path = "./output/prediction.tif",
         return_probabilities: bool = False,
-        band_selection: Optional[List[int]] = None,
+        band_selection: list[int] | None = None,
         normalise: bool = True,
-        nodata_value: Optional[float] = None,
-    ) -> Dict[str, Any]:
+        nodata_value: float | None = None,
+    ) -> dict[str, Any]:
         """Run tiled inference on a large GeoTIFF.
 
         Args:
@@ -194,7 +197,9 @@ class TiledInference:
             Dict with output_path, inference stats, timing
         """
         try:
-            import numpy as np, rasterio, torch
+            import numpy as np
+            import rasterio
+            import torch
         except ImportError as exc:
             return {"success": False, "error": f"rasterio + torch required: {exc}"}
 
@@ -211,8 +216,6 @@ class TiledInference:
             profile = src.profile.copy()
             H, W    = src.height, src.width
             n_bands = src.count
-            crs     = src.crs
-            transform = src.transform
 
             bands = band_selection or list(range(1, n_bands + 1))
             image = src.read(bands).astype(np.float32)
@@ -223,12 +226,11 @@ class TiledInference:
                 image[b] = (image[b] - p2) / (p98 - p2 + 1e-8)
 
         # Build accumulation buffers
-        n_out = self.num_classes if return_probabilities else 1
         accum  = np.zeros((self.num_classes, H, W), dtype=np.float64)
         counts = np.zeros((H, W), dtype=np.float64)
         stride = self.chip_size - self.overlap
 
-        tile_batch: List[Tuple] = []
+        tile_batch: list[tuple] = []
 
         def _flush_batch(batch):
             for (r, c, rh, cw, chip_data) in batch:
@@ -303,7 +305,7 @@ class TiledInference:
             "tta": self.tta,
         }
 
-    def estimate_memory(self, H: int, W: int) -> Dict[str, float]:
+    def estimate_memory(self, H: int, W: int) -> dict[str, float]:
         """Estimate GPU memory usage for a given image size."""
         import math
         stride = self.chip_size - self.overlap

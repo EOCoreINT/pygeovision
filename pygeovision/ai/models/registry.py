@@ -8,8 +8,9 @@ Provides a unified interface for model discovery, instantiation, and metadata.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,8 @@ class ModelInfo:
     pretrained_available: bool = False
     paper_url: str = ""
     description: str = ""
-    tags: List[str] = field(default_factory=list)
-    factory_fn: Optional[Callable[..., Any]] = None
+    tags: list[str] = field(default_factory=list)
+    factory_fn: Callable[..., Any] | None = None
 
 
 class ModelRegistry:
@@ -56,7 +57,7 @@ class ModelRegistry:
     """
 
     def __init__(self) -> None:
-        self._models: Dict[str, ModelInfo] = {}
+        self._models: dict[str, ModelInfo] = {}
 
     def register(self, info: ModelInfo) -> None:
         """Register a model with the registry.
@@ -118,10 +119,10 @@ class ModelRegistry:
 
     def list_models(
         self,
-        task: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        task: str | None = None,
+        tags: list[str] | None = None,
         pretrained_only: bool = False,
-    ) -> List[ModelInfo]:
+    ) -> list[ModelInfo]:
         """List registered models with optional filtering.
 
         Args:
@@ -175,27 +176,27 @@ registry = ModelRegistry()
 
 def _register_builtin_models() -> None:
     """Register all built-in PyGeoVision model architectures."""
-    from pygeovision.ai.models.architectures.segmentation import (
-        build_unet,
-        build_deeplabv3plus,
-        build_segformer,
+    from pygeovision.ai.models.architectures.change_detection import (
+        build_changeformer,
+        build_siamese_unet,
+    )
+    from pygeovision.ai.models.architectures.classification import (
+        build_efficientnet,
+        build_resnet,
+        build_vit,
     )
     from pygeovision.ai.models.architectures.detection import (
         build_fcos,
         build_retinanet,
     )
-    from pygeovision.ai.models.architectures.classification import (
-        build_resnet,
-        build_efficientnet,
-        build_vit,
-    )
-    from pygeovision.ai.models.architectures.change_detection import (
-        build_siamese_unet,
-        build_changeformer,
+    from pygeovision.ai.models.architectures.segmentation import (
+        build_deeplabv3plus,
+        build_segformer,
+        build_unet,
     )
     from pygeovision.ai.models.architectures.super_resolution import (
-        build_srcnn,
         build_esrgan_geo,
+        build_srcnn,
     )
 
     _BUILTIN = [

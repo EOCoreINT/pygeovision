@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -121,7 +122,7 @@ class TileMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TileMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> TileMetadata:
         """Deserialise from a dict."""
         data = data.copy()
         data["source_file"] = Path(data["source_file"])
@@ -168,12 +169,12 @@ class GeoDataset:
         self,
         tiles: list[TileMetadata],
         label_dir: Path,
-        split_file: Optional[Path] = None,
+        split_file: Path | None = None,
         task: str = "segmentation",
-        class_names: Optional[list[str]] = None,
-        augmentations: Optional[Callable] = None,
+        class_names: list[str] | None = None,
+        augmentations: Callable | None = None,
         normalize: bool = True,
-        bands: Optional[list[int]] = None,
+        bands: list[int] | None = None,
     ) -> None:
         self.tiles = tiles
         self.label_dir = Path(label_dir)
@@ -193,8 +194,8 @@ class GeoDataset:
             self._split_map = {t.tile_id: "train" for t in tiles}
 
         # Statistics (computed lazily)
-        self._mean: Optional[np.ndarray] = None
-        self._std: Optional[np.ndarray] = None
+        self._mean: np.ndarray | None = None
+        self._std: np.ndarray | None = None
 
         logger.info(
             "GeoDataset: %d tiles | task=%s | classes=%d",
@@ -250,8 +251,8 @@ class GeoDataset:
         batch_size: int = 8,
         num_workers: int = 4,
         pin_memory: bool = True,
-        shuffle: Optional[bool] = None,
-        sampler: Optional[Any] = None,
+        shuffle: bool | None = None,
+        sampler: Any | None = None,
     ) -> Any:
         """
         Convert to a PyTorch DataLoader.
@@ -385,7 +386,7 @@ class GeoDataset:
     # Persistence
     # ------------------------------------------------------------------
 
-    def save(self, output_dir: Union[str, Path]) -> Path:
+    def save(self, output_dir: str | Path) -> Path:
         """
         Save dataset metadata to disk (tiles, splits, class names).
 
@@ -422,7 +423,7 @@ class GeoDataset:
         return dest
 
     @classmethod
-    def load(cls, dataset_dir: Union[str, Path]) -> "GeoDataset":
+    def load(cls, dataset_dir: str | Path) -> GeoDataset:
         """
         Load a dataset from disk.
 
@@ -499,9 +500,9 @@ class TileDataset(TorchDataset if TORCH_AVAILABLE else object):  # type: ignore[
         tiles: list[TileMetadata],
         label_dir: Path,
         task: str = "segmentation",
-        augmentations: Optional[Callable] = None,
+        augmentations: Callable | None = None,
         normalize: bool = True,
-        bands: Optional[list[int]] = None,
+        bands: list[int] | None = None,
     ) -> None:
         if not TORCH_AVAILABLE:
             raise ImportError("PyTorch is required. Install with: pip install torch")
@@ -565,7 +566,7 @@ def _load_tile_numpy(
     tile: TileMetadata,
     label_dir: Path,
     normalize: bool = True,
-    bands: Optional[list[int]] = None,
+    bands: list[int] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """
     Load a tile's imagery and label as numpy arrays.

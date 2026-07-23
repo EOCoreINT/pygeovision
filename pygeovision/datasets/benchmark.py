@@ -11,7 +11,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,8 @@ SPLIT_RATIOS = {"train": 0.60, "val": 0.20, "test": 0.20}
 class BenchmarkConfig:
     """Configuration for a standardised EarthNets benchmark."""
     task: str
-    dataset_names: List[str]
-    split_ratios: Dict[str, float] = field(default_factory=lambda: dict(SPLIT_RATIOS))
+    dataset_names: list[str]
+    split_ratios: dict[str, float] = field(default_factory=lambda: dict(SPLIT_RATIOS))
     seed: int = 42
     metric: str = ""              # primary metric (auto-assigned by task)
     notes: str = ""
@@ -57,7 +57,7 @@ class BenchmarkConfig:
             }
             self.metric = _metric_map.get(self.task, "mean_iou")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "task": self.task,
             "dataset_names": self.dataset_names,
@@ -95,7 +95,7 @@ class BenchmarkBuilder:
         matrix = builder.cross_task_matrix()
     """
 
-    def __init__(self, registry: Optional[Any] = None) -> None:
+    def __init__(self, registry: Any | None = None) -> None:
         if registry is None:
             from pygeovision.datasets.registry import dataset_registry
             registry = dataset_registry
@@ -111,7 +111,7 @@ class BenchmarkBuilder:
         logger.info("Benchmark '%s': %s", task, cfg.dataset_names)
         return cfg
 
-    def build_all(self, n: int = 5) -> Dict[str, BenchmarkConfig]:
+    def build_all(self, n: int = 5) -> dict[str, BenchmarkConfig]:
         """Build benchmark configs for all supported tasks."""
         configs = {}
         for task in BENCHMARK_TASKS:
@@ -138,7 +138,7 @@ class BenchmarkBuilder:
                 print(f"  {i:<3} {d.name:<28} {d.domain:<14} {d.modality:<14} {d.year:>4} {d.n_samples:>10,}")
         print(f"\n{'═'*75}")
 
-    def save_all(self, output_dir: str = "./benchmarks", n: int = 5) -> List[str]:
+    def save_all(self, output_dir: str = "./benchmarks", n: int = 5) -> list[str]:
         """Save benchmark configs for all tasks as JSON files."""
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
@@ -150,12 +150,12 @@ class BenchmarkBuilder:
         logger.info("Saved %d benchmark configs → %s/", len(saved), output_dir)
         return saved
 
-    def cross_task_matrix(self) -> Dict[str, Dict[str, List[str]]]:
+    def cross_task_matrix(self) -> dict[str, dict[str, list[str]]]:
         """Build a cross-task dataset matrix (which datasets appear in multiple tasks).
 
         Returns a dict mapping dataset_name → list of tasks it's benchmarked for.
         """
-        matrix: Dict[str, List[str]] = {}
+        matrix: dict[str, list[str]] = {}
         for task in BENCHMARK_TASKS:
             top = self.registry.top_for_task(task, n=5)
             for d in top:
@@ -165,9 +165,9 @@ class BenchmarkBuilder:
         logger.info("Multi-task datasets: %d", len(multi))
         return {"multi_task": multi, "all": matrix}
 
-    def cross_domain_datasets(self) -> Dict[str, List[str]]:
+    def cross_domain_datasets(self) -> dict[str, list[str]]:
         """Group benchmark datasets by domain for cross-domain evaluation."""
-        by_domain: Dict[str, List[str]] = {}
+        by_domain: dict[str, list[str]] = {}
         all_cfgs = self.build_all(n=5)
         for cfg in all_cfgs.values():
             for name in cfg.dataset_names:
@@ -180,7 +180,7 @@ class BenchmarkBuilder:
                     pass
         return by_domain
 
-    def recommended_for_paper(self, task: str) -> Dict[str, Any]:
+    def recommended_for_paper(self, task: str) -> dict[str, Any]:
         """Return the full metadata for datasets recommended to benchmark in a paper."""
         cfg = self.build(task, n=5)
         datasets = []

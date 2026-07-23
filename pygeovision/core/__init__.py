@@ -2,16 +2,16 @@
 
 from pygeovision.core.config import PyGeoVisionConfig
 from pygeovision.core.exceptions import (  # noqa: F401
-    PyGeoVisionError,
-    PyGeoVisionConfigError,
-    PyGeoVisionAuthError,
     AIEngineError,
     AINotAvailableError,
-    ModelNotFoundError,
-    TrainingError,
     InferenceError,
-    PipelineError,
     LabelingError,
+    ModelNotFoundError,
+    PipelineError,
+    PyGeoVisionAuthError,
+    PyGeoVisionConfigError,
+    PyGeoVisionError,
+    TrainingError,
 )
 
 

@@ -40,7 +40,7 @@ class DriftReport:
     timestamp: str
     drift_score: float
     is_drifted: bool
-    feature_drift: Dict[str, float] = field(default_factory=dict)
+    feature_drift: dict[str, float] = field(default_factory=dict)
     threshold: float = 0.1
 
 
@@ -73,8 +73,8 @@ class DriftDetector:
         self.threshold = threshold
         self.window_size = window_size
         self.method = method
-        self._reference: Optional[np.ndarray] = None
-        self._history: List[DriftReport] = []
+        self._reference: np.ndarray | None = None
+        self._history: list[DriftReport] = []
 
     def fit_reference(self, features: np.ndarray) -> None:
         """Set the reference distribution from training/validation data.
@@ -168,7 +168,7 @@ class DriftDetector:
         diff = x[:, np.newaxis] - y[np.newaxis, :]
         return np.exp(-gamma * (diff ** 2).sum(-1))
 
-    def get_history(self) -> List[DriftReport]:
+    def get_history(self) -> list[DriftReport]:
         """Return the list of past drift reports."""
         return self._history
 
@@ -195,8 +195,8 @@ class PerformanceTracker:
 
     def __init__(
         self,
-        metrics: Optional[List[str]] = None,
-        storage_path: Optional[Path] = None,
+        metrics: list[str] | None = None,
+        storage_path: Path | None = None,
         alert_on_regression: float = 0.05,
     ) -> None:
         self.metrics = metrics or ["miou", "accuracy", "f1"]
@@ -204,13 +204,13 @@ class PerformanceTracker:
             Path.home() / ".pygeovision" / "performance_history.json"
         )
         self.alert_on_regression = alert_on_regression
-        self._history: List[Dict[str, Any]] = self._load_history()
+        self._history: list[dict[str, Any]] = self._load_history()
 
     def log(
         self,
-        metrics: Dict[str, float],
-        timestamp: Optional[str] = None,
-        model_name: Optional[str] = None,
+        metrics: dict[str, float],
+        timestamp: str | None = None,
+        model_name: str | None = None,
     ) -> None:
         """Log a performance snapshot.
 
@@ -230,7 +230,7 @@ class PerformanceTracker:
         # Check for regression
         self._check_regression(metrics)
 
-    def get_trend(self, metric: str) -> List[float]:
+    def get_trend(self, metric: str) -> list[float]:
         """Return historical values for a metric.
 
         Args:
@@ -241,7 +241,7 @@ class PerformanceTracker:
         """
         return [e[metric] for e in self._history if metric in e]
 
-    def summary(self) -> Dict[str, Dict[str, float]]:
+    def summary(self) -> dict[str, dict[str, float]]:
         """Return summary statistics for all tracked metrics.
 
         Returns:
@@ -259,7 +259,7 @@ class PerformanceTracker:
                 }
         return result
 
-    def _check_regression(self, metrics: Dict[str, float]) -> None:
+    def _check_regression(self, metrics: dict[str, float]) -> None:
         for metric, value in metrics.items():
             trend = self.get_trend(metric)[:-1]  # exclude current
             if len(trend) < 5:
@@ -271,7 +271,7 @@ class PerformanceTracker:
                     metric, baseline, value, 100 * (baseline - value) / baseline,
                 )
 
-    def _load_history(self) -> List[Dict[str, Any]]:
+    def _load_history(self) -> list[dict[str, Any]]:
         if self.storage_path.exists():
             try:
                 return json.loads(self.storage_path.read_text())

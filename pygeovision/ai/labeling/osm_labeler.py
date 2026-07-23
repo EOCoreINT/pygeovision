@@ -12,7 +12,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -219,8 +219,8 @@ class OSMLabeler(BaseLabeler):
         list of dict
             GeoJSON-like feature dicts.
         """
-        import urllib.request  # noqa: PLC0415
         import urllib.parse  # noqa: PLC0415
+        import urllib.request  # noqa: PLC0415
 
         query = self._build_overpass_query(bounds, feature_type)
         data = urllib.parse.urlencode({"data": query}).encode("utf-8")
@@ -321,9 +321,9 @@ out skel qt;
             Label mask of shape (H, W) with integer class IDs.
         """
         try:
+            import shapely.geometry as sg  # noqa: PLC0415
             from rasterio.features import rasterize as rio_rasterize  # noqa: PLC0415
             from rasterio.transform import from_bounds  # noqa: PLC0415
-            import shapely.geometry as sg  # noqa: PLC0415
         except ImportError as exc:
             raise OSMLabelingError(
                 "rasterio and shapely are required for OSM rasterization. "

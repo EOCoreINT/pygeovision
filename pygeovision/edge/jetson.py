@@ -1,8 +1,10 @@
 """NVIDIA Jetson deployment utilities (F3)."""
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,12 +30,12 @@ class JetsonDeployer:
     def convert(
         self,
         model: Any,
-        onnx_path: Union[str, Path],
-        trt_path: Union[str, Path],
+        onnx_path: str | Path,
+        trt_path: str | Path,
         precision: str = "fp16",
         input_shape: tuple = (1, 4, 512, 512),
         workspace_gb: int = 4,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Convert a model to TensorRT for Jetson deployment."""
         if precision not in self.PRECISION_MODES:
             raise ValueError(f"precision must be one of {self.PRECISION_MODES}")
@@ -97,16 +99,20 @@ class JetsonDeployer:
                 "note": "Run the trtexec command on the Jetson device to complete conversion",
             }
 
-    def benchmark(self, trt_path: str, input_shape: tuple = (1, 4, 512, 512)) -> Dict[str, Any]:
+    def benchmark(self, trt_path: str, input_shape: tuple = (1, 4, 512, 512)) -> dict[str, Any]:
         """Benchmark TensorRT engine inference speed."""
         try:
-            import tensorrt as trt, numpy as np, time
+            import time
+
+            import numpy as np
+            import tensorrt as trt
             runtime = trt.Runtime(trt.Logger(trt.Logger.WARNING))
             with open(trt_path, "rb") as f:
                 engine = runtime.deserialize_cuda_engine(f.read())
             context = engine.create_execution_context()
 
-            import pycuda.driver as cuda, pycuda.autoinit
+            import pycuda.autoinit
+            import pycuda.driver as cuda
             dummy = np.random.randn(*input_shape).astype(np.float32)
             d_input = cuda.mem_alloc(dummy.nbytes)
             n_out = input_shape[0] * input_shape[2] * input_shape[3] * 2   # assume 2 classes

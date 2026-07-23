@@ -1,7 +1,10 @@
 """Health checks for the inference server."""
 from __future__ import annotations
-import logging, time
-from typing import Any, Dict
+
+import logging
+import time
+from typing import Any
+
 logger = logging.getLogger(__name__)
 _START_TIME = time.time()
 
@@ -12,7 +15,7 @@ class HealthChecker:
     def __init__(self, models: Any = None) -> None:
         self._models = models or {}
 
-    def check(self) -> Dict[str, Any]:
+    def check(self) -> dict[str, Any]:
         return {
             "status": "healthy",
             "version": "2.1.6",
@@ -22,7 +25,7 @@ class HealthChecker:
             "memory": self._memory_status(),
         }
 
-    def _gpu_status(self) -> Dict:
+    def _gpu_status(self) -> dict:
         try:
             import torch
             if torch.cuda.is_available():
@@ -37,7 +40,7 @@ class HealthChecker:
         except ImportError:
             return {"available": False, "reason": "torch not installed"}
 
-    def _memory_status(self) -> Dict:
+    def _memory_status(self) -> dict:
         try:
             import psutil
             vm = psutil.virtual_memory()

@@ -21,9 +21,9 @@ Example:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -33,7 +33,7 @@ from pygeovision.core.exceptions import LabelingError
 logger = logging.getLogger(__name__)
 
 # Registry of supported foundation models with HuggingFace Hub IDs
-_FOUNDATION_MODELS: Dict[str, Dict[str, Any]] = {
+_FOUNDATION_MODELS: dict[str, dict[str, Any]] = {
     "prithvi": {
         "hub_id": "ibm-nasa-geospatial/Prithvi-100M",
         "input_bands": 6,  # Blue, Green, Red, Narrow NIR, SWIR-1, SWIR-2
@@ -91,13 +91,13 @@ class FoundationLabelConfig:
 
     model: str = "prithvi"
     task: str = "land_cover"
-    text_prompts: Optional[List[str]] = None
+    text_prompts: list[str] | None = None
     num_classes: int = 10
     cluster_method: str = "kmeans"  # 'kmeans' | 'spectral'
     device: str = "cpu"
-    checkpoint_dir: Optional[Path] = None
+    checkpoint_dir: Path | None = None
     batch_size: int = 16
-    input_bands: Optional[List[int]] = None
+    input_bands: list[int] | None = None
 
 
 class FoundationModelLabeler(BaseLabeler):
@@ -142,10 +142,10 @@ class FoundationModelLabeler(BaseLabeler):
         self,
         model: str = "prithvi",
         task: str = "land_cover",
-        text_prompts: Optional[List[str]] = None,
+        text_prompts: list[str] | None = None,
         num_classes: int = 10,
-        device: Optional[str] = None,
-        input_bands: Optional[List[int]] = None,
+        device: str | None = None,
+        input_bands: list[int] | None = None,
         num_workers: int = 1,
         skip_existing: bool = True,
     ) -> None:
@@ -171,8 +171,8 @@ class FoundationModelLabeler(BaseLabeler):
         )
         self.config.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self._model_info = _FOUNDATION_MODELS[model]
-        self._model: Optional[Any] = None
-        self._processor: Optional[Any] = None
+        self._model: Any | None = None
+        self._processor: Any | None = None
 
     # ------------------------------------------------------------------
     # BaseLabeler abstract properties
@@ -326,7 +326,7 @@ class FoundationModelLabeler(BaseLabeler):
     def _load_prithvi(self, hub_id: str) -> None:
         """Load Prithvi model from HuggingFace Hub."""
         try:
-            from transformers import AutoModel, AutoConfig
+            from transformers import AutoConfig, AutoModel
             config = AutoConfig.from_pretrained(hub_id, trust_remote_code=True)
             self._model = AutoModel.from_pretrained(
                 hub_id, config=config, trust_remote_code=True
@@ -433,7 +433,7 @@ class FoundationModelLabeler(BaseLabeler):
 
     def _extract_embeddings(
         self, image: np.ndarray
-    ) -> Tuple[np.ndarray, Tuple[int, int]]:
+    ) -> tuple[np.ndarray, tuple[int, int]]:
         """Extract patch embeddings from the foundation model.
 
         Args:
@@ -450,8 +450,8 @@ class FoundationModelLabeler(BaseLabeler):
         C, H, W = image.shape
 
         # Tile image into img_size x img_size patches
-        patches: List[np.ndarray] = []
-        positions: List[Tuple[int, int]] = []
+        patches: list[np.ndarray] = []
+        positions: list[tuple[int, int]] = []
 
         stride = img_size - patch_size  # Small overlap
         stride = max(stride, img_size // 2)
@@ -471,7 +471,7 @@ class FoundationModelLabeler(BaseLabeler):
             return np.zeros((1, 768)), (1, 1)
 
         # Run in batches
-        all_embeddings: List[np.ndarray] = []
+        all_embeddings: list[np.ndarray] = []
         with torch.no_grad():
             for i in range(0, len(patches), self.config.batch_size):
                 batch = np.stack(patches[i:i + self.config.batch_size])
@@ -511,9 +511,9 @@ class FoundationModelLabeler(BaseLabeler):
         Returns:
             (N,) int array of cluster IDs.
         """
-        from sklearn.cluster import KMeans, MiniBatchKMeans
-        from sklearn.preprocessing import StandardScaler
+        from sklearn.cluster import MiniBatchKMeans
         from sklearn.decomposition import PCA
+        from sklearn.preprocessing import StandardScaler
 
         # PCA dimensionality reduction for clustering stability
         n_components = min(64, embeddings.shape[0] - 1, embeddings.shape[1])
@@ -577,7 +577,7 @@ class FoundationModelLabeler(BaseLabeler):
     def _upsample_patch_labels(
         self,
         patch_labels: np.ndarray,
-        patch_grid: Tuple[int, int],
+        patch_grid: tuple[int, int],
         height: int,
         width: int,
     ) -> np.ndarray:

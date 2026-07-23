@@ -1,9 +1,11 @@
 """Data pipeline optimisation utilities (Phase 8.2)."""
 from __future__ import annotations
+
 import logging
 import os
-from pathlib import Path
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from collections.abc import Callable, Iterator
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +18,7 @@ def optimal_num_workers(safety_factor: float = 0.75) -> int:
 def prefetch_dataloader(
     dataset: Any,
     batch_size: int = 16,
-    num_workers: Optional[int] = None,
+    num_workers: int | None = None,
     pin_memory: bool = True,
     persistent_workers: bool = True,
     prefetch_factor: int = 2,
@@ -41,10 +43,10 @@ def prefetch_dataloader(
 
 
 def parallel_raster_read(
-    paths: List[str],
+    paths: list[str],
     n_workers: int = 4,
-    fn: Optional[Callable] = None,
-) -> List[Any]:
+    fn: Callable | None = None,
+) -> list[Any]:
     """Read multiple raster files in parallel using ThreadPoolExecutor."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     def _read(p: str) -> Any:
@@ -79,17 +81,17 @@ class StreamingRasterDataset:
     def __init__(
         self,
         image_path: str,
-        label_path: Optional[str] = None,
+        label_path: str | None = None,
         chip_size: int = 512,
         overlap: int = 64,
-        transform: Optional[Callable] = None,
+        transform: Callable | None = None,
     ) -> None:
         self.image_path = image_path
         self.label_path = label_path
         self.chip_size = chip_size
         self.overlap = overlap
         self.transform = transform
-        self._chips: Optional[List[Tuple[int, int, int, int]]] = None
+        self._chips: list[tuple[int, int, int, int]] | None = None
         self._compute_chips()
 
     def _compute_chips(self) -> None:
@@ -115,8 +117,8 @@ class StreamingRasterDataset:
 
     def __getitem__(self, idx: int) -> Any:
         try:
-            import rasterio
             import numpy as np
+            import rasterio
             from rasterio.windows import Window
             col_off, row_off, width, height = self._chips[idx]
             window = Window(col_off, row_off, width, height)

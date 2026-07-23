@@ -47,15 +47,11 @@ References
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
 from pygeovision.models.adapters.sar_channel_manager import (
     sar_to_pseudo_rgb,
-    validate_sar_ai_input,
 )
 
 logger = logging.getLogger("pygeovision.adapters.sar_dinov3")
@@ -111,7 +107,7 @@ class SARSpeckleAugmentation:
 
     def __init__(
         self,
-        n_looks_range: Tuple[int, int] = (1, 8),
+        n_looks_range: tuple[int, int] = (1, 8),
         noise_strength: float = 0.15,
     ) -> None:
         """
@@ -126,7 +122,7 @@ class SARSpeckleAugmentation:
         self.noise_strength = noise_strength
 
     def simulate_gamma_speckle(
-        self, image: np.ndarray, n_looks: Optional[int] = None
+        self, image: np.ndarray, n_looks: int | None = None
     ) -> np.ndarray:
         """Apply multiplicative Gamma speckle noise to a linear-scale SAR array.
 
@@ -215,12 +211,12 @@ class SARDINOv3Adapter:
         mode: str = "zero_shot",
         model_size: str = "vitl14",
         task: str = "feature_extraction",
-        weights_path: Optional[str] = None,
+        weights_path: str | None = None,
         pseudo_rgb_arrangement: str = "vv_vh_ratio",
         device: str = "cpu",
     ) -> None:
         if mode not in ("zero_shot", "self_supervised", "supervised"):
-            raise ValueError(f"mode must be 'zero_shot', 'self_supervised', or 'supervised'")
+            raise ValueError("mode must be 'zero_shot', 'self_supervised', or 'supervised'")
         if model_size not in self.MODEL_SIZES:
             raise ValueError(f"model_size must be one of {list(self.MODEL_SIZES.keys())}")
         if task not in self.TASKS:
@@ -238,7 +234,7 @@ class SARDINOv3Adapter:
     def preprocess(
         self,
         vv: np.ndarray,
-        vh: Optional[np.ndarray] = None,
+        vh: np.ndarray | None = None,
     ) -> np.ndarray:
         """Convert SAR arrays to ImageNet-normalised pseudo-RGB for DINOv3.
 
@@ -282,7 +278,7 @@ class SARDINOv3Adapter:
     def extract_features(
         self,
         vv: np.ndarray,
-        vh: Optional[np.ndarray] = None,
+        vh: np.ndarray | None = None,
     ) -> dict:
         """Extract DINOv3 patch features from SAR data.
 

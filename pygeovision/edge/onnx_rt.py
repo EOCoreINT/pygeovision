@@ -1,8 +1,11 @@
 """ONNX Runtime inference — cross-platform, CPU/GPU/Jetson (F2, F3)."""
 from __future__ import annotations
-import logging, time
+
+import logging
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +26,7 @@ class ONNXRuntimeInference:
 
     def __init__(
         self,
-        onnx_path: Union[str, Path],
+        onnx_path: str | Path,
         device: str = "cpu",       # cpu | cuda | tensorrt | coreml
         optimization_level: str = "all",
         intra_op_threads: int = 4,
@@ -106,21 +109,24 @@ class ONNXRuntimeInference:
 
     def infer_geotiff(
         self,
-        image_path: Union[str, Path],
-        output_path: Union[str, Path] = "./output/onnx_pred.tif",
+        image_path: str | Path,
+        output_path: str | Path = "./output/onnx_pred.tif",
         chip_size: int = 512,
         overlap: int = 64,
         num_classes: int = 2,
         blend_mode: str = "gaussian",
         normalise: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run tiled ONNX inference over a full GeoTIFF (B1, B4).
 
         Wraps TiledInference with an ONNX-backed forward pass — handles
         arbitrarily large GeoTIFFs with Gaussian tile blending.
         """
         try:
-            import numpy as np, rasterio, torch, torch.nn as nn
+            import numpy as np
+            import rasterio
+            import torch
+            import torch.nn as nn
         except ImportError as exc:
             return {"success": False, "error": f"rasterio + torch required: {exc}"}
 
@@ -143,7 +149,7 @@ class ONNXRuntimeInference:
         )
         return inf.infer(image_path, output_path, normalise=normalise)
 
-    def benchmark(self, input_shape: Optional[tuple] = None, n_runs: int = 100) -> Dict[str, Any]:
+    def benchmark(self, input_shape: tuple | None = None, n_runs: int = 100) -> dict[str, Any]:
         """Benchmark inference speed.
 
         Args:
@@ -188,7 +194,7 @@ class ONNXRuntimeInference:
             "providers": self._session.get_providers(),
         }
 
-    def model_info(self) -> Dict[str, Any]:
+    def model_info(self) -> dict[str, Any]:
         """Return metadata about the loaded ONNX model."""
         self._load()
         inputs  = [{"name": i.name, "shape": i.shape, "dtype": i.type}
@@ -205,14 +211,14 @@ class ONNXRuntimeInference:
     @staticmethod
     def from_pytorch(
         model: Any,
-        output_path: Union[str, Path],
+        output_path: str | Path,
         input_shape: tuple = (1, 4, 512, 512),
         opset: int = 17,
         simplify: bool = True,
         dynamic_batch: bool = True,
         # alias accepted by tests
         opset_version: int = 0,
-    ) -> "ONNXRuntimeInference":
+    ) -> ONNXRuntimeInference:
         """Export a PyTorch model to ONNX and return an ONNXRuntimeInference wrapper.
 
         Args:
@@ -244,7 +250,7 @@ class ONNXRuntimeInference:
         # Use the legacy torch.onnx.export API (compatible with torch<2.6 and >=2.6)
         # torch>=2.6 moved to a new exporter that requires onnxscript; the legacy
         # path is still available via torch.onnx.export with dynamo=False.
-        _export_kwargs: Dict[str, Any] = dict(
+        _export_kwargs: dict[str, Any] = dict(
             opset_version=effective_opset,
             input_names=["input"],
             output_names=["output"],

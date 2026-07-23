@@ -1,8 +1,10 @@
 """Base classes for all PyGeoVision models."""
 from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,11 +18,11 @@ class GeoModelConfig:
     in_channels: int = 4             # Multispectral default
     pretrained: bool = True
     pretrained_source: str = "imagenet"   # imagenet|sentinel2|prithvi|none
-    input_size: Tuple[int, int] = (512, 512)
+    input_size: tuple[int, int] = (512, 512)
     freeze_backbone: bool = False
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {k: v for k, v in self.__dict__.items()}
 
 
@@ -31,15 +33,15 @@ class GeoModel:
         self.model = model
         self.config = config
 
-    def to(self, device: str) -> "GeoModel":
+    def to(self, device: str) -> GeoModel:
         self.model = self.model.to(device)
         return self
 
-    def eval(self) -> "GeoModel":
+    def eval(self) -> GeoModel:
         self.model.eval()
         return self
 
-    def train(self) -> "GeoModel":
+    def train(self) -> GeoModel:
         self.model.train()
         return self
 
@@ -52,13 +54,13 @@ class GeoModel:
     def state_dict(self):
         return self.model.state_dict()
 
-    def load_state_dict(self, state_dict: Dict, strict: bool = True) -> None:
+    def load_state_dict(self, state_dict: dict, strict: bool = True) -> None:
         self.model.load_state_dict(state_dict, strict=strict)
 
     def __call__(self, *args, **kwargs):
         return self.model(*args, **kwargs)
 
-    def export_onnx(self, output_path: str, input_shape: Tuple = (1, 4, 512, 512)) -> str:
+    def export_onnx(self, output_path: str, input_shape: tuple = (1, 4, 512, 512)) -> str:
         """Export model to ONNX."""
         try:
             import torch
@@ -75,7 +77,6 @@ class GeoModel:
 
     def __repr__(self) -> str:
         try:
-            import torch.nn as nn
             n_params = sum(p.numel() for p in self.model.parameters()) / 1e6
         except Exception:
             n_params = 0

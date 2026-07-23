@@ -8,8 +8,7 @@ Each dataset has 9 core attributes matching EarthNets methodology:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 DOMAINS = [
     "agriculture", "forestry", "urban", "water", "disaster",
@@ -39,17 +38,17 @@ class DatasetInfo:
     modality: str
     resolution_m: float       # ground sampling distance in metres
     volume_gb: float
-    tasks: List[str]          # classification, detection, segmentation, …
+    tasks: list[str]          # classification, detection, segmentation, …
     description: str = ""
     download_url: str = ""
     paper_url: str = ""
     license: str = "CC-BY-4.0"
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
 
     # EarthNets similarity score (computed, not stored)
     _score: float = field(default=0.0, repr=False)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name, "domain": self.domain, "year": self.year,
             "n_samples": self.n_samples, "sample_size": self.sample_size,
@@ -61,9 +60,9 @@ class DatasetInfo:
         }
 
 
-def _build_catalog() -> List[DatasetInfo]:
+def _build_catalog() -> list[DatasetInfo]:
     """Build the 500+ dataset catalog. Grouped by domain."""
-    C: List[DatasetInfo] = []
+    C: list[DatasetInfo] = []
 
     # ── Land Cover / Classification ──────────────────────────────────────
     C += [
@@ -588,7 +587,7 @@ def _build_catalog() -> List[DatasetInfo]:
         DatasetInfo("VisDrone", "urban", 2019, 263, "varies", 10, "rgb", 0.05, 9.0, ["detection"], "Drone-captured object detection"),
         DatasetInfo("SeaDronesSee", "water", 2021, 5000, "varies", 4, "rgb", 0.02, 3.5, ["detection"], "Sea drone search and rescue"),
         DatasetInfo("WiSARD", "disaster", 2023, 8000, "512×512", 3, "sar", 10.0, 6.2, ["detection"], "Wide area SAR disaster"),
-        DatasetInfo("GeoAI-Challenge", "urban", 2021, 24000, "512×512", 15, "multispectral", 0.5, 12.0, ["segmentation"], "GeoAI challenge benchmark"),
+        DatasetInfo("UrbanSeg-Challenge", "urban", 2021, 24000, "512×512", 15, "multispectral", 0.5, 12.0, ["segmentation"], "Urban segmentation challenge benchmark"),
         DatasetInfo("MapAI", "urban", 2022, 4000, "500×500", 2, "rgb", 0.2, 5.5, ["segmentation"], "Norwegian building extraction"),
         DatasetInfo("OpenEarthMap", "land_cover", 2022, 5000, "1024×1024", 8, "rgb", 0.25, 32.0, ["segmentation"], "High-res global land cover"),
         DatasetInfo("CVPRw-GAIA", "land_cover", 2023, 10000, "256×256", 7, "multispectral", 10.0, 8.5, ["segmentation"], "GAIA geospatial benchmark"),
@@ -766,8 +765,8 @@ class DatasetRegistry:
     """
 
     def __init__(self) -> None:
-        self._catalog: List[DatasetInfo] = _build_catalog()
-        self._by_name: Dict[str, DatasetInfo] = {d.name: d for d in self._catalog}
+        self._catalog: list[DatasetInfo] = _build_catalog()
+        self._by_name: dict[str, DatasetInfo] = {d.name: d for d in self._catalog}
 
     def __len__(self) -> int:
         return len(self._catalog)
@@ -780,7 +779,7 @@ class DatasetRegistry:
     def __contains__(self, name: str) -> bool:
         return name in self._by_name
 
-    def all(self) -> List[DatasetInfo]:
+    def all(self) -> list[DatasetInfo]:
         """Return all datasets."""
         return list(self._catalog)
 
@@ -788,7 +787,7 @@ class DatasetRegistry:
         self,
         query: str,
         field: str = "all",
-    ) -> List[DatasetInfo]:
+    ) -> list[DatasetInfo]:
         """Full-text search across dataset names, descriptions, and tags.
 
         Args:
@@ -817,17 +816,17 @@ class DatasetRegistry:
 
     def filter(
         self,
-        domain: Optional[str] = None,
-        modality: Optional[str] = None,
-        task: Optional[str] = None,
-        min_year: Optional[int] = None,
-        max_year: Optional[int] = None,
-        min_samples: Optional[int] = None,
-        max_volume_gb: Optional[float] = None,
-        min_resolution_m: Optional[float] = None,
-        max_resolution_m: Optional[float] = None,
-        n_classes_min: Optional[int] = None,
-    ) -> List[DatasetInfo]:
+        domain: str | None = None,
+        modality: str | None = None,
+        task: str | None = None,
+        min_year: int | None = None,
+        max_year: int | None = None,
+        min_samples: int | None = None,
+        max_volume_gb: float | None = None,
+        min_resolution_m: float | None = None,
+        max_resolution_m: float | None = None,
+        n_classes_min: int | None = None,
+    ) -> list[DatasetInfo]:
         """Filter datasets by any combination of attributes."""
         out = []
         for d in self._catalog:
@@ -844,7 +843,7 @@ class DatasetRegistry:
             out.append(d)
         return out
 
-    def top_for_task(self, task: str, n: int = 5) -> List[DatasetInfo]:
+    def top_for_task(self, task: str, n: int = 5) -> list[DatasetInfo]:
         """Return the top-n datasets for a given task using EarthNets ranking.
 
         Ranking criteria: recency (year), scale (samples), classes, resolution.
@@ -858,7 +857,7 @@ class DatasetRegistry:
             return 0.3 * year_score + 0.35 * scale_score + 0.2 * class_score + 0.15 * res_score
         return sorted(candidates, key=_score, reverse=True)[:n]
 
-    def similar_to(self, name: str, n: int = 10) -> List[DatasetInfo]:
+    def similar_to(self, name: str, n: int = 10) -> list[DatasetInfo]:
         """Rank datasets by EarthNets similarity formula to a reference dataset."""
         ref = self[name]
         others = [d for d in self._catalog if d.name != name]
@@ -879,24 +878,24 @@ class DatasetRegistry:
 
         return sorted(others, key=_sim, reverse=True)[:n]
 
-    def domains(self) -> List[str]:
+    def domains(self) -> list[str]:
         """List all unique domains present in the catalog."""
         return sorted(set(d.domain for d in self._catalog))
 
-    def modalities(self) -> List[str]:
+    def modalities(self) -> list[str]:
         """List all unique modalities present in the catalog."""
         return sorted(set(d.modality for d in self._catalog))
 
-    def tasks(self) -> List[str]:
+    def tasks(self) -> list[str]:
         """List all unique tasks present in the catalog."""
         from itertools import chain
         return sorted(set(chain.from_iterable(d.tasks for d in self._catalog)))
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         """Return a statistical summary of the entire catalog."""
-        domains: Dict[str, int] = {}
-        modalities: Dict[str, int] = {}
-        tasks_count: Dict[str, int] = {}
+        domains: dict[str, int] = {}
+        modalities: dict[str, int] = {}
+        tasks_count: dict[str, int] = {}
         for d in self._catalog:
             domains[d.domain] = domains.get(d.domain, 0) + 1
             modalities[d.modality] = modalities.get(d.modality, 0) + 1
@@ -914,7 +913,7 @@ class DatasetRegistry:
             "total_volume_tb": round(sum(d.volume_gb for d in self._catalog) / 1024, 1),
         }
 
-    def print_table(self, datasets: Optional[List[DatasetInfo]] = None) -> None:
+    def print_table(self, datasets: list[DatasetInfo] | None = None) -> None:
         """Print a formatted table of datasets."""
         items = datasets or self._catalog[:20]
         print(f"\n{'Name':<30} {'Domain':<15} {'Modality':<16} {'Year':>4} {'Samples':>10} {'Res(m)':>8} {'Vol(GB)':>8}")

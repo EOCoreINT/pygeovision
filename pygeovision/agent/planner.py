@@ -47,7 +47,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 logger = logging.getLogger("pygeovision.agent.planner")
 
@@ -59,8 +59,8 @@ class Step:
     """One planned tool call."""
     step_idx:   int
     tool_name:  str
-    args:       Dict[str, Any] = field(default_factory=dict)
-    depends_on: List[int]      = field(default_factory=list)
+    args:       dict[str, Any] = field(default_factory=dict)
+    depends_on: list[int]      = field(default_factory=list)
     rationale:  str            = ""
 
     def to_dict(self) -> dict:
@@ -76,7 +76,7 @@ class Step:
 class Plan:
     """Ordered sequence of steps to fulfil a user request."""
     query:   str
-    steps:   List[Step] = field(default_factory=list)
+    steps:   list[Step] = field(default_factory=list)
     planner: str        = "heuristic"
     sensor:  str        = "unknown"   # "sar" | "optical" | "mixed"
     task:    str        = "unknown"
@@ -156,7 +156,7 @@ def _build_tools_schema(tool_instances: dict) -> str:
 class LLMPlanner:
     """Plans tool sequences using Claude."""
 
-    def __init__(self, tool_instances: dict, api_key: Optional[str] = None,
+    def __init__(self, tool_instances: dict, api_key: str | None = None,
                  model: str = "claude-sonnet-4-6") -> None:
         self._tools      = tool_instances
         self._api_key    = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
@@ -167,7 +167,7 @@ class LLMPlanner:
     def available(self) -> bool:
         return bool(self._api_key)
 
-    def plan(self, query: str, context: Optional[dict] = None) -> Plan:
+    def plan(self, query: str, context: dict | None = None) -> Plan:
         if not self.available:
             raise RuntimeError("No ANTHROPIC_API_KEY — use HeuristicPlanner.")
         try:
@@ -247,7 +247,7 @@ class HeuristicPlanner:
     }
 
     # ── Task signal words ──────────────────────────────────────────────────────
-    TASK_SIGNALS: Dict[str, Set[str]] = {
+    TASK_SIGNALS: dict[str, set[str]] = {
         "flood":        {"flood", "inundation", "submerged", "waterlogged",
                          "floodwater", "inundated", "flooding"},
         "damage":       {"damage", "damaged", "destruction", "collapsed", "rubble",
@@ -291,7 +291,7 @@ class HeuristicPlanner:
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
-    def plan(self, query: str, context: Optional[dict] = None) -> Plan:
+    def plan(self, query: str, context: dict | None = None) -> Plan:
         ctx = context or {}
         ql  = query.lower()
 
@@ -359,7 +359,7 @@ class HeuristicPlanner:
 
     def _infer_task(self, ql: str) -> str:
         """Score every task against the query and return the best match."""
-        scores: Dict[str, int] = {}
+        scores: dict[str, int] = {}
         for task, signals in self.TASK_SIGNALS.items():
             score = sum(1 for kw in signals if kw in ql)
             if score:
@@ -399,8 +399,8 @@ class HeuristicPlanner:
     def _build_plan(
         self, sensor: str, task: str, *,
         od: str, bbox: list, date: str, bands: list,
-        ctx_sar: Optional[str], query: str,
-    ) -> List[Step]:
+        ctx_sar: str | None, query: str,
+    ) -> list[Step]:
         """Route to the correct tool sequence given sensor + task."""
 
         # ── SAR branch ─────────────────────────────────────────────────────────
@@ -461,7 +461,7 @@ class HeuristicPlanner:
 
     # ── SAR plan templates ─────────────────────────────────────────────────────
 
-    def _sar_preprocess_step(self, od: str, bbox: list, ctx_sar: Optional[str]) -> Step:
+    def _sar_preprocess_step(self, od: str, bbox: list, ctx_sar: str | None) -> Step:
         return Step(0, "sar_preprocess", {
             "raw_path":    ctx_sar or "$context_sar_path",
             "output_path": f"{od}/sar_ready.tif",
@@ -472,7 +472,7 @@ class HeuristicPlanner:
             "→ despeckle on LINEAR data → dB → normalise → CRS-aware clip"
         ))
 
-    def _plan_slc_insar(self, od: str, bbox: list) -> List[Step]:
+    def _plan_slc_insar(self, od: str, bbox: list) -> list[Step]:
         """
         Plan true SLC InSAR: requires pre-downloaded SLC .zip products.
         The planner emits placeholder paths that the user must populate
@@ -496,7 +496,7 @@ class HeuristicPlanner:
             )),
         ]
 
-    def _plan_sar_flood(self, od, bbox, ctx_sar) -> List[Step]:
+    def _plan_sar_flood(self, od, bbox, ctx_sar) -> list[Step]:
         return [
             self._sar_preprocess_step(od, bbox, ctx_sar),
             Step(1, "sar_flood_detection", {
@@ -511,7 +511,7 @@ class HeuristicPlanner:
                                    ["sieve","vectorise","cog"], depends_on=[1]),
         ]
 
-    def _plan_sar_damage(self, od, bbox, ctx_sar) -> List[Step]:
+    def _plan_sar_damage(self, od, bbox, ctx_sar) -> list[Step]:
         return [
             self._sar_preprocess_step(od, bbox, ctx_sar),
             Step(1, "change_detection", {
@@ -530,7 +530,7 @@ class HeuristicPlanner:
                                    ["sieve","vectorise","cog"], depends_on=[1]),
         ]
 
-    def _plan_sar_change(self, od, bbox, ctx_sar) -> List[Step]:
+    def _plan_sar_change(self, od, bbox, ctx_sar) -> list[Step]:
         return [
             self._sar_preprocess_step(od, bbox, ctx_sar),
             Step(1, "change_detection", {
@@ -544,7 +544,7 @@ class HeuristicPlanner:
                                    ["sieve","vectorise","cog"], depends_on=[1]),
         ]
 
-    def _plan_sar_oil_spill(self, od, bbox, ctx_sar) -> List[Step]:
+    def _plan_sar_oil_spill(self, od, bbox, ctx_sar) -> list[Step]:
         return [
             self._sar_preprocess_step(od, bbox, ctx_sar),
             Step(1, "sar_flood_detection", {
@@ -560,7 +560,7 @@ class HeuristicPlanner:
                                    ["sieve","vectorise","cog"], depends_on=[1]),
         ]
 
-    def _plan_sar_subsidence(self, od, bbox, ctx_sar) -> List[Step]:
+    def _plan_sar_subsidence(self, od, bbox, ctx_sar) -> list[Step]:
         return [
             self._sar_preprocess_step(od, bbox, ctx_sar),
             Step(1, "change_detection", {
@@ -577,7 +577,7 @@ class HeuristicPlanner:
                                    ["sieve","cog"], depends_on=[1]),
         ]
 
-    def _plan_sar_ship_detection(self, od, bbox, ctx_sar) -> List[Step]:
+    def _plan_sar_ship_detection(self, od, bbox, ctx_sar) -> list[Step]:
         return [
             self._sar_preprocess_step(od, bbox, ctx_sar),
             Step(1, "sar_flood_detection", {
@@ -596,7 +596,7 @@ class HeuristicPlanner:
     # ── Optical plan templates ─────────────────────────────────────────────────
 
     def _optical_search_download_prepare(self, od, bbox, date, bands,
-                                          model_type="foundation") -> List[Step]:
+                                          model_type="foundation") -> list[Step]:
         dr = (f"{date}-01", f"{date}-30") if len(date) == 7 else (date, date)
         return [
             Step(0, "search_satellite_data", {
@@ -613,7 +613,7 @@ class HeuristicPlanner:
             }, depends_on=[1]),
         ]
 
-    def _plan_optical_flood(self, od, bbox, date, bands) -> List[Step]:
+    def _plan_optical_flood(self, od, bbox, date, bands) -> list[Step]:
         steps = self._optical_search_download_prepare(od, bbox, date, bands)
         steps += [
             Step(3, "prithvi_inference", {
@@ -629,7 +629,7 @@ class HeuristicPlanner:
         ]
         return steps
 
-    def _plan_optical_damage(self, od, bbox, date, bands) -> List[Step]:
+    def _plan_optical_damage(self, od, bbox, date, bands) -> list[Step]:
         steps = self._optical_search_download_prepare(od, bbox, date, bands)
         steps += [
             Step(3, "change_detection", {
@@ -647,7 +647,7 @@ class HeuristicPlanner:
         ]
         return steps
 
-    def _plan_optical_change(self, od, bbox, date, task) -> List[Step]:
+    def _plan_optical_change(self, od, bbox, date, task) -> list[Step]:
         pipe = "forest_monitoring" if task == "forest" else "change_detection"
         return [
             Step(0, "run_pipeline", {
@@ -656,7 +656,7 @@ class HeuristicPlanner:
             }, rationale=f"Optimised {pipe} pipeline (search→download→ChangeFormer→postprocess)"),
         ]
 
-    def _plan_optical_land_cover(self, od, bbox, date, bands) -> List[Step]:
+    def _plan_optical_land_cover(self, od, bbox, date, bands) -> list[Step]:
         steps = self._optical_search_download_prepare(od, bbox, date, bands)
         steps += [
             Step(3, "prithvi_inference", {
@@ -670,7 +670,7 @@ class HeuristicPlanner:
         ]
         return steps
 
-    def _plan_optical_crop(self, od, bbox, date, bands) -> List[Step]:
+    def _plan_optical_crop(self, od, bbox, date, bands) -> list[Step]:
         steps = self._optical_search_download_prepare(od, bbox, date, bands)
         steps += [
             Step(3, "prithvi_inference", {
@@ -683,7 +683,7 @@ class HeuristicPlanner:
         ]
         return steps
 
-    def _plan_optical_burn(self, od, bbox, date, bands) -> List[Step]:
+    def _plan_optical_burn(self, od, bbox, date, bands) -> list[Step]:
         steps = self._optical_search_download_prepare(od, bbox, date, bands)
         steps += [
             Step(3, "prithvi_inference", {
@@ -699,7 +699,7 @@ class HeuristicPlanner:
         ]
         return steps
 
-    def _plan_spectral_index(self, od, bbox, date, bands, index) -> List[Step]:
+    def _plan_spectral_index(self, od, bbox, date, bands, index) -> list[Step]:
         steps = self._optical_search_download_prepare(od, bbox, date, bands,
                                                        model_type="segmentation")
         steps += [
@@ -713,7 +713,7 @@ class HeuristicPlanner:
         ]
         return steps
 
-    def _plan_building_footprints(self, od, bbox, date) -> List[Step]:
+    def _plan_building_footprints(self, od, bbox, date) -> list[Step]:
         return [
             Step(0, "run_pipeline", {
                 "pipeline_name": "building_footprints",
@@ -721,7 +721,7 @@ class HeuristicPlanner:
             }, rationale="Optimised building footprint pipeline: SegFormer-B2 → GeoJSON"),
         ]
 
-    def _plan_glacier(self, od, bbox, date) -> List[Step]:
+    def _plan_glacier(self, od, bbox, date) -> list[Step]:
         return [
             Step(0, "run_pipeline", {
                 "pipeline_name": "glacier_monitoring",
@@ -729,7 +729,7 @@ class HeuristicPlanner:
             }, rationale="NDSI time-series + retreat rate calculation"),
         ]
 
-    def _plan_solar(self, od, bbox, date) -> List[Step]:
+    def _plan_solar(self, od, bbox, date) -> list[Step]:
         return [
             Step(0, "run_pipeline", {
                 "pipeline_name": "solar_panels",
@@ -737,7 +737,7 @@ class HeuristicPlanner:
             }, rationale="Solar panel detection + capacity estimation"),
         ]
 
-    def _plan_road(self, od, bbox, date) -> List[Step]:
+    def _plan_road(self, od, bbox, date) -> list[Step]:
         return [
             Step(0, "run_pipeline", {
                 "pipeline_name": "road_network",
@@ -748,7 +748,7 @@ class HeuristicPlanner:
     # ── Shared helpers ─────────────────────────────────────────────────────────
 
     def _postprocess_step(self, idx: int, input_path: str, od: str,
-                           operations: List[str], depends_on: List[int]) -> Step:
+                           operations: list[str], depends_on: list[int]) -> Step:
         return Step(idx, "postprocess", {
             "input_path": input_path,
             "operations": operations,

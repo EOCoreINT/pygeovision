@@ -15,7 +15,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +34,13 @@ class BenchmarkResult:
     mAP50: float = 0.0
     mAP50_95: float = 0.0
     # Per-class IoU
-    per_class_iou: Dict[str, float] = field(default_factory=dict)
+    per_class_iou: dict[str, float] = field(default_factory=dict)
     # Runtime
     inference_ms_per_image: float = 0.0
     n_samples: int = 0
     duration_seconds: float = 0.0
     # Config
-    hyperparams: Dict[str, Any] = field(default_factory=dict)
+    hyperparams: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
 
     @property
@@ -54,7 +54,7 @@ class BenchmarkResult:
             return self.accuracy
         return self.mean_iou
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "model": self.model_name, "dataset": self.dataset_name,
             "task": self.task, "split": self.split,
@@ -98,10 +98,10 @@ class ModelEvaluator:
         dataset_name: str = "unknown",
         model_name: str = "model",
         split: str = "test",
-        device: Optional[str] = None,
+        device: str | None = None,
     ) -> BenchmarkResult:
         """Evaluate a model on a DataLoader and return BenchmarkResult."""
-        from pygeovision.training.metrics import SegmentationMetrics, DetectionMetrics
+        from pygeovision.training.metrics import DetectionMetrics, SegmentationMetrics
 
         result = BenchmarkResult(model_name=model_name, dataset_name=dataset_name,
                                  task=self.task, split=split)
@@ -110,7 +110,7 @@ class ModelEvaluator:
             dev = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
             model = model.to(dev).eval()
             metrics_seg = SegmentationMetrics(self.num_classes) if self.task != "detection" else None
-            metrics_det = DetectionMetrics(self.num_classes) if self.task == "detection" else None
+            DetectionMetrics(self.num_classes) if self.task == "detection" else None
 
             total_images = 0
             total_latency = 0.0
@@ -154,12 +154,12 @@ class ModelEvaluator:
 
     def compare(
         self,
-        models: Dict[str, Any],
+        models: dict[str, Any],
         loader: Any,
         dataset_name: str = "benchmark",
         split: str = "test",
-        device: Optional[str] = None,
-    ) -> List[BenchmarkResult]:
+        device: str | None = None,
+    ) -> list[BenchmarkResult]:
         """Evaluate and compare multiple models on the same dataset."""
         results = []
         for name, model in models.items():
@@ -172,7 +172,7 @@ class ModelEvaluator:
         results.sort(key=lambda x: x.primary_metric, reverse=True)
         return results
 
-    def print_leaderboard(self, results: List[BenchmarkResult]) -> None:
+    def print_leaderboard(self, results: list[BenchmarkResult]) -> None:
         """Print a formatted leaderboard table."""
         if not results:
             print("No results.")
@@ -198,7 +198,7 @@ class ModelEvaluator:
                 print(f"  {i:<3} {r.model_name:<30} {r.accuracy:>10.4f} {r.mean_f1:>8.4f} {r.inference_ms_per_image:>8.1f}")
         print(f"{'═'*90}\n")
 
-    def save_results(self, results: List[BenchmarkResult], path: Union[str, Path]) -> None:
+    def save_results(self, results: list[BenchmarkResult], path: str | Path) -> None:
         """Save benchmark results to JSON."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -207,11 +207,14 @@ class ModelEvaluator:
         logger.info("Results saved → %s", path)
 
     def confusion_matrix_plot(self, model: Any, loader: Any,
-                               class_names: Optional[List[str]] = None,
-                               save_path: Optional[Union[str, Path]] = None) -> Any:
+                               class_names: list[str] | None = None,
+                               save_path: str | Path | None = None) -> Any:
         """Generate and optionally save a confusion matrix plot."""
         try:
-            import torch, matplotlib.pyplot as plt, numpy as np
+            import matplotlib.pyplot as plt
+            import numpy as np
+            import torch
+
             from pygeovision.training.metrics import SegmentationMetrics
             dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             model = model.to(dev).eval()

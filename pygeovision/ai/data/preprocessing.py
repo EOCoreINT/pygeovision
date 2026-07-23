@@ -8,8 +8,7 @@ band computation (NDVI, NDWI) for satellite imagery before AI processing.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -61,9 +60,9 @@ class GeoPreprocessor:
 
     def __init__(
         self,
-        steps: Optional[list[str]] = None,
-        config: Optional[dict[str, Any]] = None,
-        nodata_value: Optional[float] = None,
+        steps: list[str] | None = None,
+        config: dict[str, Any] | None = None,
+        nodata_value: float | None = None,
     ) -> None:
         self.steps = steps or ["clip_percentile", "normalize"]
         self.config = config or {}
@@ -77,17 +76,17 @@ class GeoPreprocessor:
             )
 
         # Per-band statistics (computed during fit())
-        self._mean: Optional[np.ndarray] = None
-        self._std: Optional[np.ndarray] = None
-        self._percentile_min: Optional[np.ndarray] = None
-        self._percentile_max: Optional[np.ndarray] = None
+        self._mean: np.ndarray | None = None
+        self._std: np.ndarray | None = None
+        self._percentile_min: np.ndarray | None = None
+        self._percentile_max: np.ndarray | None = None
 
         logger.debug("GeoPreprocessor steps: %s", self.steps)
 
     def fit(
         self,
-        images: Union[np.ndarray, list[np.ndarray]],
-    ) -> "GeoPreprocessor":
+        images: np.ndarray | list[np.ndarray],
+    ) -> GeoPreprocessor:
         """
         Compute per-band statistics for standardisation/normalisation.
 
@@ -138,7 +137,7 @@ class GeoPreprocessor:
         red_band: int = 3,
         nir_band: int = 4,
         green_band: int = 2,
-        pan_band: Optional[np.ndarray] = None,
+        pan_band: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Apply the preprocessing pipeline to an image.
@@ -216,7 +215,7 @@ class GeoPreprocessor:
         red_band: int,
         nir_band: int,
         green_band: int,
-        pan_band: Optional[np.ndarray],
+        pan_band: np.ndarray | None,
     ) -> np.ndarray:
         """Dispatch to individual step method."""
         if step == "normalize":
@@ -374,7 +373,7 @@ class GeoPreprocessor:
     @staticmethod
     def _pansharpen(
         image: np.ndarray,
-        pan_band: Optional[np.ndarray] = None,
+        pan_band: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Apply Brovey pansharpening to increase spatial resolution.

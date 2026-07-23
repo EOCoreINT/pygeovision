@@ -22,17 +22,20 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
 from pygeovision.ai.training.callbacks import (
-    Callback, CallbackList, EarlyStopping, ModelCheckpoint, ProgressCallback,
+    Callback,
+    CallbackList,
+    ModelCheckpoint,
+    ProgressCallback,
 )
 from pygeovision.ai.training.losses import get_loss
-from pygeovision.ai.training.metrics import ConfusionMatrix, BinaryMetrics, AverageMeter
+from pygeovision.ai.training.metrics import AverageMeter, BinaryMetrics, ConfusionMatrix
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +53,8 @@ class TrainingResult:
     """
     best_epoch: int = 0
     best_metric: float = 0.0
-    best_model_path: Optional[Path] = None
-    history: Dict[str, List[float]] = field(default_factory=dict)
+    best_model_path: Path | None = None
+    history: dict[str, list[float]] = field(default_factory=dict)
     total_time_seconds: float = 0.0
 
 
@@ -103,21 +106,21 @@ class GeoTrainer:
         self,
         model: nn.Module,
         train_dataset: Dataset,
-        val_dataset: Optional[Dataset] = None,
+        val_dataset: Dataset | None = None,
         num_classes: int = 2,
         task: str = "segmentation",
-        loss: Union[str, nn.Module] = "auto",
-        optimizer: Union[str, Any] = "adamw",
+        loss: str | nn.Module = "auto",
+        optimizer: str | Any = "adamw",
         learning_rate: float = 1e-4,
         weight_decay: float = 1e-4,
         batch_size: int = 16,
         num_workers: int = 4,
-        device: Optional[str] = None,
+        device: str | None = None,
         mixed_precision: bool = True,
         gradient_accumulation_steps: int = 1,
         max_grad_norm: float = 1.0,
         output_dir: str = "./training_output",
-        callbacks: Optional[List[Callback]] = None,
+        callbacks: list[Callback] | None = None,
     ) -> None:
         self.model = model
         self.train_dataset = train_dataset
@@ -153,7 +156,7 @@ class GeoTrainer:
         self.optimizer = self._build_optimizer(optimizer)
 
         # Callbacks
-        default_callbacks: List[Callback] = [
+        default_callbacks: list[Callback] = [
             ProgressCallback(),
             ModelCheckpoint(
                 dirpath=str(self.output_dir / "checkpoints"),
@@ -164,7 +167,7 @@ class GeoTrainer:
         self.callbacks = CallbackList(default_callbacks + (callbacks or []))
 
         # History
-        self.history: Dict[str, List[float]] = {}
+        self.history: dict[str, list[float]] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -183,7 +186,7 @@ class GeoTrainer:
         self.callbacks.on_train_begin(self)
         best_metric = float("-inf")
         best_epoch = 0
-        best_model_path: Optional[Path] = None
+        best_model_path: Path | None = None
 
         train_loader = self._make_loader(self.train_dataset, shuffle=True)
         val_loader = (
@@ -203,7 +206,7 @@ class GeoTrainer:
             train_metrics = self._train_epoch(train_loader, epoch)
 
             # Validation phase
-            val_metrics: Dict[str, float] = {}
+            val_metrics: dict[str, float] = {}
             if val_loader:
                 val_metrics = self._validate_epoch(val_loader)
 
@@ -242,7 +245,7 @@ class GeoTrainer:
             total_time_seconds=total_time,
         )
 
-    def evaluate(self, dataset: Optional[Dataset] = None) -> Dict[str, float]:
+    def evaluate(self, dataset: Dataset | None = None) -> dict[str, float]:
         """Run evaluation on a dataset.
 
         Args:
@@ -263,7 +266,7 @@ class GeoTrainer:
 
     def _train_epoch(
         self, loader: DataLoader, epoch: int
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         self.model.train()
         loss_meter = AverageMeter("train_loss")
         self.optimizer.zero_grad()
@@ -305,7 +308,7 @@ class GeoTrainer:
         return {"train_loss": loss_meter.avg}
 
     @torch.no_grad()
-    def _validate_epoch(self, loader: DataLoader) -> Dict[str, float]:
+    def _validate_epoch(self, loader: DataLoader) -> dict[str, float]:
         self.model.eval()
         loss_meter = AverageMeter("val_loss")
 
@@ -375,7 +378,7 @@ class GeoTrainer:
         )
 
     @staticmethod
-    def _resolve_device(device: Optional[str]) -> torch.device:
+    def _resolve_device(device: str | None) -> torch.device:
         if device:
             return torch.device(device)
         if torch.cuda.is_available():
@@ -393,7 +396,7 @@ class GeoTrainer:
         return torch.float16
 
     @staticmethod
-    def _build_loss(loss: Union[str, nn.Module], num_classes: int, task: str) -> nn.Module:
+    def _build_loss(loss: str | nn.Module, num_classes: int, task: str) -> nn.Module:
         if isinstance(loss, nn.Module):
             return loss
         if loss == "auto":
@@ -410,7 +413,7 @@ class GeoTrainer:
             return get_loss("cross_entropy")
         return get_loss(loss)
 
-    def _build_optimizer(self, optimizer: Union[str, Any]) -> Any:
+    def _build_optimizer(self, optimizer: str | Any) -> Any:
         if not isinstance(optimizer, str):
             return optimizer
         params = self.model.parameters()

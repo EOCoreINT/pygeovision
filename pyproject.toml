@@ -185,11 +185,6 @@ enterprise = [
     "sqlalchemy>=2.0",
 ]
 
-# ── GeoAI plugin (optional — not required by core) ───────────────────────────
-# PyGeoVision v2.0 is standalone. Install this only if you specifically need
-# Tessera embeddings, GroundedSAM, Leafmap, or legacy GeoAI-trained weights.
-geoai = ["geoai-py>=0.39.0"]
-
 # ── Development ──────────────────────────────────────────────────────────────
 dev = [
     "pytest>=8.0",

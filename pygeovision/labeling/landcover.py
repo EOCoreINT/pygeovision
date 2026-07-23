@@ -3,9 +3,11 @@ ESA WorldCover + Google Dynamic World Auto-Labelers (E1, E2).
 Free global land cover at 10m resolution.
 """
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 # ESA WorldCover 2021 class map (10m, 11 classes)
@@ -49,11 +51,11 @@ class ESAWorldCoverLabeler:
 
     def label(
         self,
-        bbox: Tuple[float, ...],
-        output_path: Union[str, Path] = "./labels/esa_worldcover.tif",
-        remap_classes: Optional[Dict[int, int]] = None,
+        bbox: tuple[float, ...],
+        output_path: str | Path = "./labels/esa_worldcover.tif",
+        remap_classes: dict[int, int] | None = None,
         clip_to_bbox: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Download and clip ESA WorldCover tiles for the bbox.
 
         Args:
@@ -97,7 +99,8 @@ class ESAWorldCoverLabeler:
             if not asset_url:
                 continue
             try:
-                import pystac_client, planetary_computer as pc
+                import planetary_computer as pc
+                import pystac_client
                 signed_url = pc.sign(asset_url)
                 tile_path = output_path.parent / f"_esa_tile_{item['id']}.tif"
                 _download_cog_window(signed_url, tile_path, bbox)
@@ -133,9 +136,10 @@ class ESAWorldCoverLabeler:
             "class_map": ESA_WORLDCOVER_CLASSES,
         }
 
-    def _count_classes(self, path: str) -> Dict[int, int]:
+    def _count_classes(self, path: str) -> dict[int, int]:
         try:
-            import rasterio, numpy as np
+            import numpy as np
+            import rasterio
             with rasterio.open(path) as src:
                 data = src.read(1)
             unique, counts = np.unique(data, return_counts=True)
@@ -144,7 +148,7 @@ class ESAWorldCoverLabeler:
             return {}
 
     @staticmethod
-    def class_map() -> Dict[int, str]:
+    def class_map() -> dict[int, str]:
         return ESA_WORLDCOVER_CLASSES
 
 
@@ -172,11 +176,11 @@ class DynamicWorldLabeler:
 
     def label(
         self,
-        bbox: Tuple[float, ...],
-        date_range: Tuple[str, str] = ("2024-01-01", "2024-12-31"),
-        output_path: Union[str, Path] = "./labels/dynamic_world.tif",
+        bbox: tuple[float, ...],
+        date_range: tuple[str, str] = ("2024-01-01", "2024-12-31"),
+        output_path: str | Path = "./labels/dynamic_world.tif",
         label_mode: str = "most_likely",  # most_likely | all_probabilities
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate Dynamic World land cover label for a time period.
 
         Args:
@@ -254,13 +258,13 @@ class DynamicWorldLabeler:
             return {"success": False, "error": str(exc)}
 
     @staticmethod
-    def class_map() -> Dict[int, str]:
+    def class_map() -> dict[int, str]:
         return DW_CLASSES
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
 
-def _download_cog_window(url: str, output: Path, bbox: Tuple) -> None:
+def _download_cog_window(url: str, output: Path, bbox: tuple) -> None:
     """Download a window of a COG GeoTIFF from a URL."""
     try:
         import rasterio
@@ -280,21 +284,21 @@ def _download_cog_window(url: str, output: Path, bbox: Tuple) -> None:
 
 
 def _merge_and_clip(
-    tile_paths: List[str],
-    bbox: Tuple,
+    tile_paths: list[str],
+    bbox: tuple,
     output: Path,
-    remap: Optional[Dict[int, int]],
+    remap: dict[int, int] | None,
     clip: bool,
-) -> Optional[Path]:
+) -> Path | None:
     if not tile_paths:
         return None
     try:
-        import numpy as np
-        import rasterio
-        from rasterio.merge import merge
-        from rasterio.mask import mask as rio_mask
-        from shapely.geometry import box
         import json
+
+        import rasterio
+        from rasterio.mask import mask as rio_mask
+        from rasterio.merge import merge
+        from shapely.geometry import box
 
         sources = [rasterio.open(p) for p in tile_paths]
         mosaic, transform = merge(sources)

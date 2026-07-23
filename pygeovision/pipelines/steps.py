@@ -1,8 +1,11 @@
 """Pipeline step definitions."""
 from __future__ import annotations
+
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -10,13 +13,13 @@ logger = logging.getLogger(__name__)
 class Step:
     name: str
     action: str
-    params: Dict[str, Any] = field(default_factory=dict)
-    depends_on: List[str] = field(default_factory=list)
+    params: dict[str, Any] = field(default_factory=dict)
+    depends_on: list[str] = field(default_factory=list)
     retry_on_fail: int = 3
     timeout_s: int = 3600
-    _fn: Optional[Callable] = field(default=None, repr=False)
+    _fn: Callable | None = field(default=None, repr=False)
 
-    def run(self, context: Dict) -> Dict:
+    def run(self, context: dict) -> dict:
         """Execute this step."""
         if self._fn:
             return self._fn(context, **self.params)
@@ -27,7 +30,7 @@ class Step:
 class SearchStep(Step):
     action: str = "search"
 
-    def run(self, context: Dict) -> Dict:
+    def run(self, context: dict) -> dict:
         client = context.get("client")
         if not client:
             return {"error": "No client in context"}
@@ -38,7 +41,7 @@ class SearchStep(Step):
 class DownloadStep(Step):
     action: str = "download"
 
-    def run(self, context: Dict) -> Dict:
+    def run(self, context: dict) -> dict:
         client = context.get("client")
         results = context.get("search_results", [])
         if not client:
@@ -50,11 +53,11 @@ class DownloadStep(Step):
 class InferStep(Step):
     action: str = "infer"
 
-    def run(self, context: Dict) -> Dict:
+    def run(self, context: dict) -> dict:
         downloads = context.get("downloads", [])
         model = context.get("model")
         if not model:
-            return {"note": "No model in context — using geoai subsystem"}
+            return {"note": "No model in context — using native tiled-inference default"}
         from pygeovision.inference.tiled import TiledInference
         results = []
         for dl in downloads:
@@ -69,7 +72,7 @@ class InferStep(Step):
 class ExportStep(Step):
     action: str = "export"
 
-    def run(self, context: Dict) -> Dict:
+    def run(self, context: dict) -> dict:
         predictions = context.get("predictions", [])
         fmt = self.params.get("format", "geojson")
         out_dir = self.params.get("output_dir", "./output/")

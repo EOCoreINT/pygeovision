@@ -13,12 +13,12 @@ Adding a new tool
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("pygeovision.agent.tools")
 
@@ -30,10 +30,10 @@ class ToolResult:
     tool: str
     success: bool
     output: Any = None           # structured output (dict, list, path …)
-    output_path: Optional[str] = None
+    output_path: str | None = None
     error: str = ""
     duration_s: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -57,7 +57,7 @@ class GeoTool:
     category:    str = "general"
 
     # JSON-schema style parameter definitions
-    parameters: List[Dict[str, Any]] = []
+    parameters: list[dict[str, Any]] = []
 
     def __init__(self, pgv_client: Any) -> None:
         self._pgv = pgv_client
@@ -249,12 +249,16 @@ class SARPreprocessTool(GeoTool):
     def run(self, raw_path, output_path, bbox_wgs84, filter_type="enhanced_lee", **_) -> ToolResult:
         t0 = time.perf_counter()
         try:
+            import pathlib as _pl
+
             from pygeovision.data.processors.sar import (
-                verify_sar_downloads, validate_sar_georeference,
-                despeckle_sar, linear_to_db, normalise_sar_for_ai, clip_sar_to_bbox,
+                clip_sar_to_bbox,
+                despeckle_sar,
+                linear_to_db,
+                normalise_sar_for_ai,
+                validate_sar_georeference,
             )
             from pygeovision.data.validators.georeference import check_download_complete
-            import pathlib as _pl
 
             raw = _pl.Path(raw_path)
             out = _pl.Path(output_path)
@@ -321,6 +325,7 @@ class SARFloodTool(GeoTool):
         try:
             import numpy as np
             import rasterio
+
             from pygeovision.models.adapters.sar_prithvi import SARPrithviAdapter
 
             with rasterio.open(sar_ready_path) as src:
@@ -376,10 +381,11 @@ class PrithviInferenceTool(GeoTool):
             source_bands=None, **_) -> ToolResult:
         t0 = time.perf_counter()
         try:
-            import numpy as np
             import rasterio
+
             from pygeovision.models.foundation.prithvi import (
-                PrithviTasks, validate_prithvi_input,
+                PrithviTasks,
+                validate_prithvi_input,
             )
 
             with rasterio.open(input_path) as src:
@@ -435,9 +441,11 @@ class ChangeDetectionTool(GeoTool):
             in_channels=6, **_) -> ToolResult:
         t0 = time.perf_counter()
         try:
-            from pygeovision.models.change_detection.changeformer import ChangeDetection
+            import pathlib as _pl
+            import tempfile
+
             from pygeovision.models.adapters.sar_channel_manager import coregister_sar_pair
-            import pathlib as _pl, tempfile
+            from pygeovision.models.change_detection.changeformer import ChangeDetection
 
             out_dir = _pl.Path(output_path).parent
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -487,7 +495,8 @@ class SpectralIndexTool(GeoTool):
                                   error=f"Unknown index '{index}'",
                                   duration_s=time.perf_counter() - t0)
             fn(input_path, output_path=output_path)
-            import numpy as np, rasterio
+            import numpy as np
+            import rasterio
             with rasterio.open(output_path) as src:
                 data = src.read(1)
                 valid = data[np.isfinite(data)]
@@ -707,7 +716,7 @@ class SLCInSARTool(GeoTool):
 
 # ── Tool registry ──────────────────────────────────────────────────────────────
 
-TOOL_REGISTRY: Dict[str, type] = {
+TOOL_REGISTRY: dict[str, type] = {
     "search_satellite_data":   SearchTool,
     "download_satellite_data": DownloadTool,
     "prepare_for_ai":          PrepareTool,
@@ -722,6 +731,6 @@ TOOL_REGISTRY: Dict[str, type] = {
 }
 
 
-def build_tools(pgv_client: Any) -> Dict[str, GeoTool]:
+def build_tools(pgv_client: Any) -> dict[str, GeoTool]:
     """Instantiate all tools bound to a PyGeoVision client."""
     return {name: cls(pgv_client) for name, cls in TOOL_REGISTRY.items()}

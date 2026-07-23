@@ -1,11 +1,12 @@
 """Class-balancing losses for imbalanced geospatial datasets (D2)."""
 from __future__ import annotations
-from typing import Any, List, Optional
+
+from typing import Any
 
 
 class ClassBalancedCrossEntropy:
     """Cross-entropy with class-frequency-based weight balancing."""
-    def __init__(self, class_counts: Optional[List[int]] = None, beta: float = 0.9999,
+    def __init__(self, class_counts: list[int] | None = None, beta: float = 0.9999,
                  ignore_index: int = 255) -> None:
         self.class_counts = class_counts
         self.beta = beta
@@ -39,7 +40,8 @@ class LabelSmoothingCrossEntropy:
 
     def __call__(self, pred: Any, targets: Any) -> Any:
         try:
-            import torch, torch.nn.functional as F
+            import torch
+            import torch.nn.functional as F
             C = pred.size(1)
             ce = F.cross_entropy(pred, targets.long(), ignore_index=self.ignore_index)
             smooth_loss = -pred.log_softmax(dim=1).mean(dim=1)

@@ -33,8 +33,6 @@ Convention:
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
 
@@ -66,14 +64,14 @@ S1_HEADING_DESCENDING  = 350.0   # degrees from North  (southward track)
 
 def slc_phase_to_displacement(
     unwrapped_phase:      np.ndarray,
-    coherence:            Optional[np.ndarray] = None,
+    coherence:            np.ndarray | None = None,
     wavelength_m:         float = SENTINEL1_WAVELENGTH_M,
     incidence_angle_deg:  float = 38.3,
     coherence_threshold:  float = 0.3,
-    output_path:          Optional[str] = None,
-    geotransform:         Optional[tuple] = None,
-    crs_wkt:              Optional[str] = None,
-) -> Dict[str, np.ndarray]:
+    output_path:          str | None = None,
+    geotransform:         tuple | None = None,
+    crs_wkt:              str | None = None,
+) -> dict[str, np.ndarray]:
     """
     Convert unwrapped SLC InSAR phase to LOS displacement in metres.
 
@@ -143,7 +141,7 @@ def slc_phase_to_displacement(
         100.0 * mask.sum() / mask.size,
     )
 
-    result: Dict[str, np.ndarray] = {
+    result: dict[str, np.ndarray] = {
         "los_m":          los_m.astype(np.float32),
         "vertical_m":     vertical_m.astype(np.float32),
         "masked":         mask,
@@ -198,7 +196,7 @@ def dual_pass_decomposition(
     dsc_inc_deg: float = 38.3,
     asc_head_deg: float = S1_HEADING_ASCENDING,
     dsc_head_deg: float = S1_HEADING_DESCENDING,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Decompose ascending + descending LOS into vertical and east-west.
 
@@ -273,9 +271,9 @@ def dual_pass_decomposition(
 def compute_deformation_rate(
     displacement_stack: list,           # List of np.ndarray (metres)
     time_days:          list,           # Days since first acquisition
-    coherence_stack:    Optional[list] = None,
+    coherence_stack:    list | None = None,
     coh_threshold:      float = 0.3,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Compute linear deformation rate from a time series of displacement maps.
 
@@ -310,7 +308,7 @@ def compute_deformation_rate(
     N, H, W = stack.shape
 
     # Build design matrix [t, 1]
-    A = np.column_stack([t, np.ones(N)])   # (N, 2)
+    np.column_stack([t, np.ones(N)])   # (N, 2)
 
     # Per-pixel weighted least squares
     if coherence_stack is not None:
@@ -374,7 +372,7 @@ def compute_deformation_rate(
 # ── GeoTIFF output ────────────────────────────────────────────────────────────
 
 def _write_displacement_geotiff(
-    result:       Dict[str, np.ndarray],
+    result:       dict[str, np.ndarray],
     output_path:  str,
     geotransform: tuple,
     crs_wkt:      str,
@@ -382,8 +380,8 @@ def _write_displacement_geotiff(
     """Write LOS and vertical displacement as a multi-band GeoTIFF."""
     try:
         import rasterio
-        from rasterio.transform import Affine
         from rasterio.crs import CRS
+        from rasterio.transform import Affine
 
         los_m  = result["los_m"]
         vert_m = result["vertical_m"]

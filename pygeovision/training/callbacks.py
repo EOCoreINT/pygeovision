@@ -1,8 +1,11 @@
 """Training callbacks — EarlyStopping, ModelCheckpoint, RichProgress, LRMonitor."""
 from __future__ import annotations
-import json, logging, time
+
+import logging
+import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -10,7 +13,7 @@ class Callback:
     """Base callback class."""
     def on_train_start(self, trainer: Any) -> None: pass
     def on_epoch_start(self, trainer: Any, epoch: int) -> None: pass
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict) -> None: pass
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict) -> None: pass
     def on_batch_end(self, trainer: Any, batch: int, loss: float) -> None: pass
     def on_train_end(self, trainer: Any) -> None: pass
 
@@ -42,7 +45,7 @@ class EarlyStopping(Callback):
             return value > self.best_value + self.min_delta
         return value < self.best_value - self.min_delta
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict) -> None:
         value = metrics.get(self.monitor)
         if value is None:
             logger.warning("EarlyStopping: metric '%s' not in metrics", self.monitor)
@@ -85,11 +88,11 @@ class ModelCheckpoint(Callback):
         self.mode = mode
         self.save_top_k = save_top_k
         self.save_last = save_last
-        self._best_k: List[tuple] = []
-        self.best_model_path: Optional[str] = None
+        self._best_k: list[tuple] = []
+        self.best_model_path: str | None = None
         self.dirpath.mkdir(parents=True, exist_ok=True)
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict) -> None:
         import torch
         value = metrics.get(self.monitor, 0.0)
         ckpt_name = self.filename.format(epoch=epoch, **metrics) + ".pth"
@@ -128,9 +131,9 @@ class LearningRateMonitor(Callback):
     """Log learning rate changes during training."""
 
     def __init__(self) -> None:
-        self.lr_history: List[Dict] = []
+        self.lr_history: list[dict] = []
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict) -> None:
         if hasattr(trainer, "optimizer"):
             lrs = [pg["lr"] for pg in trainer.optimizer.param_groups]
             entry = {"epoch": epoch, "lrs": lrs}
@@ -151,7 +154,7 @@ class ProgressBar(Callback):
         print(f"  PyGeoVision Training — {self.total} epochs")
         print(f"{'='*60}")
 
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: Dict) -> None:
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict) -> None:
         elapsed = time.time() - (self.t_start or time.time())
         eta = elapsed / max(epoch, 1) * (self.total - epoch)
         bar_len = 30

@@ -1,7 +1,9 @@
 """CLIP and RemoteCLIP for geospatial zero-shot classification and retrieval (G2)."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,7 +30,7 @@ class CLIPGeo:
         "openclip-l14":   "openai/clip-vit-large-patch14",
     }
 
-    def __init__(self, model: str = "openclip-b32", device: Optional[str] = None) -> None:
+    def __init__(self, model: str = "openclip-b32", device: str | None = None) -> None:
         self.model_name = model
         self.model_id = self.HF_MODELS.get(model, model)
         self.device = device or ("cpu")
@@ -44,7 +46,8 @@ class CLIPGeo:
             raise ImportError("transformers required: pip install transformers")
 
     def _load_image(self, image_path: str):
-        import rasterio, numpy as np
+        import numpy as np
+        import rasterio
         from PIL import Image
         with rasterio.open(image_path) as src:
             data = src.read(list(range(1, min(src.count, 4)+1))).astype(float)
@@ -54,7 +57,7 @@ class CLIPGeo:
         if data.shape[0] == 1: data = np.repeat(data, 3, axis=0)
         return Image.fromarray(data[:3].transpose(1, 2, 0).astype(np.uint8))
 
-    def zero_shot(self, image_path: str, categories: List[str]) -> Dict[str, float]:
+    def zero_shot(self, image_path: str, categories: list[str]) -> dict[str, float]:
         """Zero-shot classify an image against text categories."""
         import torch
         self._load()
@@ -86,9 +89,11 @@ class CLIPGeo:
         import torch.nn.functional as F
         return F.normalize(feat, dim=-1).cpu().numpy().squeeze()
 
-    def search(self, query: str, image_dir: str, top_k: int = 5) -> List[Dict]:
+    def search(self, query: str, image_dir: str, top_k: int = 5) -> list[dict]:
         """Search a directory of images by text query."""
-        import pathlib, numpy as np
+        import pathlib
+
+        import numpy as np
         image_paths = list(pathlib.Path(image_dir).rglob("*.tif")) + \
                       list(pathlib.Path(image_dir).rglob("*.png"))
         query_emb = self.embed_text(query)

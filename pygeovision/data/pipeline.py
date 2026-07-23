@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import yaml
 
@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 class PipelineStep:
     """A single step in a PyGeoVision data pipeline."""
     type: str  # 'search', 'filter', 'download', 'export', 'ai'
-    config: Dict[str, Any] = field(default_factory=dict)
+    config: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {self.type: self.config}
 
 
@@ -31,7 +31,7 @@ class DataPipeline:
     """Build and run pygeofetch data pipelines programmatically.
 
     Creates YAML pipeline files compatible with ``pygeofetch pipeline run``
-    and executes them, with optional GeoAI processing steps.
+    and executes them, with optional native AI processing steps.
 
     Example:
         >>> pipeline = DataPipeline("weekly-sentinel2")
@@ -52,27 +52,27 @@ class DataPipeline:
         self,
         name: str,
         description: str = "",
-        schedule: Optional[str] = None,
+        schedule: str | None = None,
     ) -> None:
         self.name = name
         self.description = description
         self.schedule = schedule
-        self.steps: List[PipelineStep] = []
-        self._fetcher: Optional[Any] = None
+        self.steps: list[PipelineStep] = []
+        self._fetcher: Any | None = None
 
     def search(
         self,
-        providers: Optional[List[str]] = None,
-        bbox: Optional[Union[str, tuple]] = None,
-        date_range: Union[str, tuple] = "last_7_days",
+        providers: list[str] | None = None,
+        bbox: str | tuple | None = None,
+        date_range: str | tuple = "last_7_days",
         cloud_cover: str = "0-20",
         max_results: int = 50,
-        satellites: Optional[List[str]] = None,
-        collections: Optional[List[str]] = None,
-        processing_level: Optional[str] = None,
+        satellites: list[str] | None = None,
+        collections: list[str] | None = None,
+        processing_level: str | None = None,
         sort_by: str = "cloud_cover",
-        cql2: Optional[str] = None,
-    ) -> "DataPipeline":
+        cql2: str | None = None,
+    ) -> DataPipeline:
         """Add a search step to the pipeline.
 
         Args:
@@ -91,7 +91,7 @@ class DataPipeline:
         Returns:
             Self (for chaining).
         """
-        config: Dict[str, Any] = {
+        config: dict[str, Any] = {
             "cloud_cover": cloud_cover,
             "max_results": max_results,
             "sort_by": sort_by,
@@ -121,7 +121,7 @@ class DataPipeline:
         self.steps.append(PipelineStep("search", config))
         return self
 
-    def filter(self, expression: str) -> "DataPipeline":
+    def filter(self, expression: str) -> DataPipeline:
         """Add a filter step to the pipeline.
 
         Args:
@@ -144,10 +144,10 @@ class DataPipeline:
         verify_checksum: bool = True,
         resume: bool = True,
         retry: int = 5,
-        post_process: Optional[List[str]] = None,
-        bandwidth_limit: Optional[str] = None,
+        post_process: list[str] | None = None,
+        bandwidth_limit: str | None = None,
         on_failure: str = "skip",
-    ) -> "DataPipeline":
+    ) -> DataPipeline:
         """Add a download step to the pipeline.
 
         Args:
@@ -163,7 +163,7 @@ class DataPipeline:
         Returns:
             Self (for chaining).
         """
-        config: Dict[str, Any] = {
+        config: dict[str, Any] = {
             "output": output,
             "parallel": parallel,
             "verify_checksum": verify_checksum,
@@ -183,7 +183,7 @@ class DataPipeline:
         format: str = "cloud_optimized_geotiff",
         destination: str = "./output/",
         compress: bool = True,
-    ) -> "DataPipeline":
+    ) -> DataPipeline:
         """Add an export step to the pipeline.
 
         Args:
@@ -207,11 +207,11 @@ class DataPipeline:
         task: str = "segmentation",
         output: str = "./predictions/",
         num_classes: int = 2,
-    ) -> "DataPipeline":
-        """Add a GeoAI processing step to the pipeline.
+    ) -> DataPipeline:
+        """Add a native AI processing step to the pipeline.
 
         Args:
-            model: GeoAI model name or HuggingFace Hub ID.
+            model: Model name or HuggingFace Hub ID.
             task: 'segmentation', 'detection', 'classification'.
             output: Output directory for AI predictions.
             num_classes: Number of output classes.
@@ -227,7 +227,7 @@ class DataPipeline:
         }))
         return self
 
-    def set_schedule(self, cron: str) -> "DataPipeline":
+    def set_schedule(self, cron: str) -> DataPipeline:
         """Set a cron schedule for recurring execution.
 
         Args:
@@ -241,7 +241,7 @@ class DataPipeline:
 
     def to_yaml(self) -> str:
         """Convert the pipeline to a pygeofetch-compatible YAML string."""
-        doc: Dict[str, Any] = {
+        doc: dict[str, Any] = {
             "name": self.name,
             "description": self.description,
             "steps": [step.to_dict() for step in self.steps],
@@ -250,7 +250,7 @@ class DataPipeline:
             doc["schedule"] = self.schedule
         return yaml.dump(doc, default_flow_style=False, sort_keys=False)
 
-    def save(self, path: Union[str, Path]) -> Path:
+    def save(self, path: str | Path) -> Path:
         """Save the pipeline YAML to disk.
 
         Args:
@@ -265,7 +265,7 @@ class DataPipeline:
         logger.info("Pipeline saved to %s", path)
         return path
 
-    def validate(self, fetcher: Optional[Any] = None) -> bool:
+    def validate(self, fetcher: Any | None = None) -> bool:
         """Validate the pipeline without running it.
 
         Args:
@@ -292,10 +292,10 @@ class DataPipeline:
 
     def run(
         self,
-        fetcher: Optional[Any] = None,
-        output_dir: Optional[Path] = None,
-        step: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        fetcher: Any | None = None,
+        output_dir: Path | None = None,
+        step: str | None = None,
+    ) -> dict[str, Any]:
         """Execute the pipeline.
 
         Args:
@@ -329,7 +329,7 @@ class DataPipeline:
             tmp.unlink(missing_ok=True)
 
     @classmethod
-    def from_yaml(cls, path: Union[str, Path]) -> "DataPipeline":
+    def from_yaml(cls, path: str | Path) -> DataPipeline:
         """Load a pipeline from an existing YAML file.
 
         Args:

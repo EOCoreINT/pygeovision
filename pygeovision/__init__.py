@@ -1,22 +1,25 @@
 """
 PyGeoVision — World-Class Geospatial AI Platform.
 
-PyGeoVision unifies two world-class open-source packages:
+PyGeoVision is a fully self-contained geospatial AI platform built on two
+native layers:
 
-  🛰️  pygeofetch  — Universal satellite data pipeline (22+ providers)
+  🛰️  data        — Universal satellite data pipeline (22+ providers)
                     CLI: pygeofetch search/download/pipeline/auth/cache
                     Python: SatelliteFetcher (wraps pygeofetch CLI + pystac_client)
 
-  🤖  geoai       — AI for geospatial data (PyTorch, transformers, SMP)
+  🧠  AI layer    — Native AI for geospatial data (PyTorch, transformers, SMP)
                     Segmentation, detection, classification, change detection,
-                    embeddings, SAM, Prithvi, cloud masking, ONNX, and more.
+                    embeddings, SAM, Prithvi, cloud masking, ONNX, and more —
+                    all implemented natively, no external AI platform required.
 
 Architecture:
-  PyGeoVision = pygeofetch (data) + geoai (AI) + integration layer
-
-  client.data.*   → pygeofetch: search, download, pipeline, auth, cache
-  client.geoai.*  → geoai: segment, detect, classify, change, train, infer, ...
-  client.pipeline() → end-to-end: data (pygeofetch) → AI (geoai) → output
+  client.data.*            → search, download, pipeline, auth, cache
+  client.segmentation.*    → buildings, water, SAM, custom models
+  client.detection.*       → generic/ships/cars object detection (YOLO)
+  client.change.*          → bi-temporal change detection (ChangeFormer)
+  client.classification.*  → scene classification, land cover
+  client.pipeline()        → end-to-end: data → AI → output
 
 Quick start:
     >>> import pygeovision as pgv
@@ -43,10 +46,10 @@ Quick start:
     ...     post_process=["unzip", "reproject:EPSG:4326", "compress:lzw", "cog"],
     ... )
     >>>
-    >>> # AI: segment buildings using geoai
-    >>> masks = client.geoai.segment.buildings(
+    >>> # AI: segment buildings natively (SAM auto-segmentation)
+    >>> masks = client.segmentation.buildings(
     ...     downloads[0].path,
-    ...     output_vector="buildings.geojson",
+    ...     output_path="buildings.tif",
     ... )
     >>>
     >>> # End-to-end pipeline: search → download → AI
@@ -65,26 +68,25 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pygeovision._version import __version__
-
 from pygeovision.agent import GeoAgent  # autonomous geospatial AI agent
+from pygeovision.ai.models.zoo import ModelSpec, ModelZoo, model_zoo
+from pygeovision.ai.pipelines.domains import list_pipelines as list_all_pipelines
+from pygeovision.core.config import PyGeoVisionConfig
 from pygeovision.core.exceptions import (  # noqa: F401
-    PyGeoVisionError,
-    PyGeoVisionConfigError,
-    PyGeoVisionAuthError,
     AIEngineError,
     AINotAvailableError,
-    ModelNotFoundError,
-    TrainingError,
     InferenceError,
-    PipelineError,
     LabelingError,
+    ModelNotFoundError,
+    PipelineError,
+    PyGeoVisionAuthError,
+    PyGeoVisionConfigError,
+    PyGeoVisionError,
+    TrainingError,
 )
-from pygeovision.core.config import PyGeoVisionConfig
-from pygeovision.data.fetch import SatelliteFetcher, SearchResult, DownloadResult
+from pygeovision.data.fetch import DownloadResult, SatelliteFetcher, SearchResult
 from pygeovision.data.pipeline import DataPipeline
-from pygeovision.datasets.registry import dataset_registry, DatasetRegistry, DatasetInfo
-from pygeovision.ai.models.zoo import model_zoo, ModelZoo, ModelSpec
-from pygeovision.ai.pipelines.domains import list_pipelines as list_all_pipelines
+from pygeovision.datasets.registry import DatasetInfo, DatasetRegistry, dataset_registry
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +112,10 @@ __all__ = [
 class PyGeoVision:
     """PyGeoVision — World-Class Geospatial AI Platform.
 
-    Unified interface combining pygeofetch (satellite data) and
-    geoai (geospatial AI) into one production-ready platform.
+    Unified interface combining a satellite data layer (pygeofetch) with a
+    fully native geospatial AI layer — segmentation, detection, change
+    detection, classification, training, and inference — in one
+    production-ready platform.
 
     Args:
         config_path: Path to PyGeoVision or pygeofetch config YAML.
@@ -122,7 +126,7 @@ class PyGeoVision:
 
     Attributes:
         data: SatelliteFetcher — full pygeofetch Python API.
-        geoai: GeoAIEngine — full geoai integration layer.
+        segmentation, detection, change, classification: native AI layers.
         config: PyGeoVisionConfig.
 
     Example — complete end-to-end workflow::
@@ -153,11 +157,10 @@ class PyGeoVision:
             post_process=["unzip", "reproject:EPSG:4326", "cog"],
         )
 
-        # GeoAI: segment buildings (delegates to geoai)
-        masks = client.geoai.segment.buildings(
+        # AI: segment buildings natively (SAM auto-segmentation)
+        masks = client.segmentation.buildings(
             downloads[0].path,
             output_path="buildings.tif",
-            output_vector="buildings.geojson",
         )
 
         # End-to-end pipeline
@@ -169,8 +172,8 @@ class PyGeoVision:
 
     def __init__(
         self,
-        config_path: Optional[Union[str, Path]] = None,
-        cache_dir: Optional[Path] = None,
+        config_path: str | Path | None = None,
+        cache_dir: Path | None = None,
         pygeofetch_cmd: str = "pygeofetch",   # kept for backward compat, unused
         log_level: str = "INFO",
     ) -> None:
@@ -187,30 +190,42 @@ class PyGeoVision:
             cache_dir=cache_dir,
         )
 
-        self._ai_engine: Optional[Any] = None
+        self._ai_engine: Any | None = None
 
         # ── Phase 2+ Independent layers ─────────────────────────────────
         # All accessible directly on the client object.
 
         # Auto-labeling — 7+ sources (OSM, MS Buildings, Google, ESA, SAM …)
         from pygeovision.labeling import (
-            OSMLabeler, MicrosoftBuildingsLabeler, GoogleBuildingsLabeler,
-            ESAWorldCoverLabeler, DynamicWorldLabeler,
-            SAMAutoLabeler, FoundationModelLabeler,
-            ActiveLearner, LabelQualityAssessor, AutoLabelPipeline,
+            ActiveLearner,
+            AutoLabelPipeline,
+            DynamicWorldLabeler,
+            ESAWorldCoverLabeler,
+            FoundationModelLabeler,
+            GoogleBuildingsLabeler,
+            LabelQualityAssessor,
+            MicrosoftBuildingsLabeler,
+            OSMLabeler,
+            SAMAutoLabeler,
         )
         self.labeling = _LabelingClientProxy()
 
         # Geospatial losses — Dice, Focal, Tversky, Boundary, Lovász, OHEM
         from pygeovision.losses import (
-            DiceLoss, FocalLoss, TverskyLoss, ComboLoss,
-            BoundaryAwareLoss, LovaszLoss, OhemCrossEntropy,
-            GeospatialMixedLoss, ClassBalancedCrossEntropy,
+            BoundaryAwareLoss,
+            ClassBalancedCrossEntropy,
+            ComboLoss,
+            DiceLoss,
+            FocalLoss,
+            GeospatialMixedLoss,
+            LovaszLoss,
+            OhemCrossEntropy,
+            TverskyLoss,
         )
         self.losses = _LossesClientProxy()
 
         # Advanced inference — Gaussian tiling, batch, streaming, ensemble
-        from pygeovision.inference import TiledInference, BatchInferenceEngine
+        from pygeovision.inference import BatchInferenceEngine, TiledInference
         self.inference = _InferenceClientProxy()
 
         # Explainability — GradCAM, uncertainty, SHAP, attention maps
@@ -232,6 +247,13 @@ class PyGeoVision:
         self.vlm        = _VLMClientProxy()
         self.timeseries = _TimeSeriesClientProxy()
         self.pointcloud = _PointCloudClientProxy()
+
+        # Segmentation, detection, change detection, classification —
+        # native model layers (SAM, YOLO, ChangeFormer, CLIP / ESA WorldCover)
+        self.segmentation  = _SegmentationClientProxy()
+        self.detection     = _DetectionClientProxy()
+        self.change        = _ChangeDetectionClientProxy()
+        self.classification = _ClassificationClientProxy()
 
         # ── NEW: Data Validation + Full Preprocessing Stack ─────────────
         # DataValidator — mandatory before every model run
@@ -271,12 +293,12 @@ class PyGeoVision:
     def add_credentials(
         self,
         provider: str,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        api_key: Optional[str] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-    ) -> "PyGeoVision":
+        username: str | None = None,
+        password: str | None = None,
+        api_key: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+    ) -> PyGeoVision:
         """Add satellite provider credentials (stored via pygeofetch keyring).
 
         Delegates to ``pygeofetch auth add PROVIDER ...`` for secure storage.
@@ -317,23 +339,23 @@ class PyGeoVision:
 
     def search(
         self,
-        bbox: Tuple[float, float, float, float],
-        date_range: Tuple[str, str],
-        collections: Optional[List[str]] = None,
-        providers: Optional[List[str]] = None,
-        satellite: Optional[str] = None,
+        bbox: tuple[float, float, float, float],
+        date_range: tuple[str, str],
+        collections: list[str] | None = None,
+        providers: list[str] | None = None,
+        satellite: str | None = None,
         cloud_cover_max: float = 30.0,
         max_results: int = 100,
-        limit: Optional[int] = None,          # alias for max_results
+        limit: int | None = None,          # alias for max_results
         sort_by: str = "datetime",
         sort_order: str = "desc",
-        processing_level: Optional[str] = None,
-        resolution_range: Optional[Tuple[float, float]] = None,
-        cql2_filter: Optional[str] = None,
+        processing_level: str | None = None,
+        resolution_range: tuple[float, float] | None = None,
+        cql2_filter: str | None = None,
         on_provider_failure: str = "skip",
         timeout: int = 120,
         use_cache: bool = True,
-    ) -> List[SearchResult]:
+    ) -> list[SearchResult]:
         """Search for satellite imagery across 22+ pygeofetch providers.
 
         Delegates to ``pygeofetch search run`` (CLI) with pystac_client
@@ -411,19 +433,19 @@ class PyGeoVision:
 
     def download(
         self,
-        items: Union[List[SearchResult], SearchResult],
-        output_dir: Union[str, Path] = "./data",
+        items: list[SearchResult] | SearchResult,
+        output_dir: str | Path = "./data",
         parallel: int = 4,
         verify_checksum: bool = True,
         resume: bool = True,
         retry_attempts: int = 5,
-        post_process: Optional[List[str]] = None,
-        bandwidth_limit_mb: Optional[float] = None,
+        post_process: list[str] | None = None,
+        bandwidth_limit_mb: float | None = None,
         on_failure: str = "skip",
         overwrite: bool = False,
-        notify_webhook: Optional[str] = None,
-        bands: Optional[List[str]] = None,    # filter assets by band names
-    ) -> List[DownloadResult]:
+        notify_webhook: str | None = None,
+        bands: list[str] | None = None,    # filter assets by band names
+    ) -> list[DownloadResult]:
         """Download satellite scenes via pygeofetch.
 
         Delegates to ``pygeofetch download run`` for resilient, parallel
@@ -495,86 +517,31 @@ class PyGeoVision:
         )
 
     # ------------------------------------------------------------------
-    # GeoAI (delegates to geoai via GeoAIEngine)
-    # ------------------------------------------------------------------
-
-    @property
-    def geoai(self) -> Any:
-        """Access the full GeoAI integration layer.
-
-        All geoai capabilities exposed as organised subsystems.
-        Requires: pip install geoai-py
-
-        Subsystems:
-            .segment    Buildings, solar, water, agriculture, SAM, custom
-            .detect     Cars, ships, parking, grounded SAM, RF-DETR
-            .classify   Scene, land cover, CLIP zero-shot, batch
-            .change     ChangeSTAR bi-temporal change detection
-            .train      Segmentation, detection, classification, chips
-            .infer      Tiled GeoTIFF inference with blend modes
-            .embed      DINOv3, Tessera, patch/pixel embeddings
-            .sam        Segment Anything Model
-            .prithvi    NASA Prithvi foundation model
-            .cloud      Cloud masking and statistics
-            .sr         ESRGAN super-resolution
-            .onnx       ONNX export and inference
-            .download   NAIP, Overture Maps, Planetary Computer
-            .utils      Raster/vector/metrics utilities
-            .pipeline   GeoAI pipeline orchestration
-            .map        Leafmap interactive visualization
-            .caption    Moondream VLM captioning
-            .water      Water body segmentation
-            .rfdetr     RF-DETR real-time detection
-            .timm       timm-based segmentation/regression
-            .landcover  Land cover training
-            .canopy     Canopy height estimation
-            .dinov3     DINOv3 analysis and fine-tuning
-            .tessera    Tessera satellite embeddings
-
-        Example:
-            >>> # Segment buildings (geoai.BuildingFootprintExtractor)
-            >>> client.geoai.segment.buildings(
-            ...     "sentinel2.tif",
-            ...     output_vector="buildings.geojson",
-            ... )
-            >>> # Change detection (geoai.changestar_detect)
-            >>> client.geoai.change.detect("2020.tif", "2024.tif")
-            >>> # Train segmentation model (geoai.train_segmentation_model)
-            >>> client.geoai.train.segmentation(
-            ...     "./chips/", "model.pth", num_classes=5
-            ... )
-        """
-        if self._ai_engine is None:
-            from pygeovision.ai.geoai import GeoAIEngine
-            self._ai_engine = GeoAIEngine(pgv_client=self)
-        return self._ai_engine
-
-    # ------------------------------------------------------------------
     # Pipelines (data + AI end-to-end)
     # ------------------------------------------------------------------
 
     def pipeline(
         self,
         pipeline_name: str,
-        bbox: Tuple[float, float, float, float],
-        output_dir: Union[str, Path] = "./pipeline_output",
+        bbox: tuple[float, float, float, float],
+        output_dir: str | Path = "./pipeline_output",
         **kwargs: Any,
     ) -> Any:
         """Run an end-to-end geospatial pipeline (data + AI).
 
-        Downloads imagery via pygeofetch then runs geoai AI model.
+        Downloads imagery via pygeofetch then runs a native AI model.
 
         Available pipelines:
             change_detection     Bi-temporal change detection
-            land_cover           Global land cover (ESA WorldCover / geoai)
-            building_footprints  Building segmentation (geoai)
-            crop_monitoring      Crop type mapping (geoai)
-            disaster_assessment  Rapid damage assessment (geoai)
-            deforestation        Forest loss detection (geoai)
-            urban_growth         Urban expansion monitoring (geoai)
-            water_bodies         Surface water mapping (geoai/NDWI)
-            solar_detection      Solar panel detection (geoai)
-            carbon_estimation    Biomass/carbon via NDVI (pygeofetch+geoai)
+            land_cover           Global land cover (ESA WorldCover)
+            building_footprints  Building segmentation (SAM)
+            crop_monitoring      Crop type mapping
+            disaster_assessment  Rapid damage assessment
+            deforestation        Forest loss detection
+            urban_growth         Urban expansion monitoring
+            water_bodies         Surface water mapping (NDWI)
+            solar_detection      Solar panel detection
+            carbon_estimation    Biomass/carbon via NDVI
 
         Args:
             pipeline_name: Pipeline name from the list above.
@@ -609,7 +576,7 @@ class PyGeoVision:
         self,
         name: str,
         description: str = "",
-        schedule: Optional[str] = None,
+        schedule: str | None = None,
     ) -> DataPipeline:
         """Create a new pygeofetch YAML data pipeline programmatically.
 
@@ -637,9 +604,9 @@ class PyGeoVision:
 
     def run_pipeline_yaml(
         self,
-        pipeline_yaml: Union[str, Path],
-        step: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        pipeline_yaml: str | Path,
+        step: str | None = None,
+    ) -> dict[str, Any]:
         """Run a pygeofetch YAML pipeline file.
 
         Delegates to ``pygeofetch pipeline run FILE``.
@@ -681,8 +648,8 @@ class PyGeoVision:
         self,
         auth_only: bool = False,
         open_only: bool = False,
-        capabilities: Optional[List[str]] = None,
-    ) -> Dict[str, Dict]:
+        capabilities: list[str] | None = None,
+    ) -> dict[str, dict]:
         """List all 22 pygeofetch satellite data providers.
 
         Args:
@@ -707,8 +674,8 @@ class PyGeoVision:
 
     def clear_cache(
         self,
-        provider: Optional[str] = None,
-        older_than: Optional[str] = None,
+        provider: str | None = None,
+        older_than: str | None = None,
     ) -> None:
         """Clear pygeofetch search result cache.
 
@@ -718,7 +685,7 @@ class PyGeoVision:
         """
         self.data.clear_cache(provider=provider, older_than=older_than)
 
-    def cache_stats(self) -> Dict[str, Any]:
+    def cache_stats(self) -> dict[str, Any]:
         """Get pygeofetch cache statistics."""
         return self.data.cache_stats()
 
@@ -726,13 +693,13 @@ class PyGeoVision:
     # System status
     # ------------------------------------------------------------------
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         """Return full PyGeoVision system status.
 
-        Includes: pygeofetch version, geoai availability, torch,
-        rasterio, registered AI models, and provider count.
+        Includes: pygeofetch version, native AI stack (torch, rasterio),
+        registered AI models, and provider count.
         """
-        info: Dict[str, Any] = {
+        info: dict[str, Any] = {
             "pygeovision_version": __version__,
             "python": platform.python_version(),
             "platform": platform.system(),
@@ -746,16 +713,6 @@ class PyGeoVision:
             "providers": 22,
             "open_providers": len([p for p in pf_status.get("open_providers", [])]),
         }
-
-        # geoai status
-        try:
-            import geoai
-            info["geoai"] = {
-                "available": True,
-                "version": getattr(geoai, "__version__", "unknown"),
-            }
-        except ImportError:
-            info["geoai"] = {"available": False}
 
         # torch status
         try:
@@ -796,8 +753,8 @@ class PyGeoVision:
 
         return info
 
-    def doctor(self) -> Dict[str, Any]:
-        """Run comprehensive diagnostics on pygeofetch + geoai installation."""
+    def doctor(self) -> dict[str, Any]:
+        """Run comprehensive diagnostics on the pygeofetch data layer."""
         return self.data.doctor()
 
     # ------------------------------------------------------------------
@@ -808,20 +765,20 @@ class PyGeoVision:
         self,
         input_path: str,
         *,
-        stack_bands: Optional[List[str]] = None,
-        stack_dir: Optional[str] = None,
-        bbox: Optional[Tuple[float, float, float, float]] = None,
+        stack_bands: list[str] | None = None,
+        stack_dir: str | None = None,
+        bbox: tuple[float, float, float, float] | None = None,
         bbox_crs: str = "EPSG:4326",
-        clip_geojson: Optional[str] = None,
-        cloud_mask_path: Optional[str] = None,
-        scl_path: Optional[str] = None,
+        clip_geojson: str | None = None,
+        cloud_mask_path: str | None = None,
+        scl_path: str | None = None,
         scl_keep_classes: tuple = (4, 5, 6),
-        normalise: Optional[str] = "scale_factor",
+        normalise: str | None = "scale_factor",
         scale_factor: float = 10000.0,
-        resample_m: Optional[float] = None,
+        resample_m: float | None = None,
         model_type: str = "segmentation",
-        output_path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """Complete preprocessing pipeline — raw scene → AI-ready array.
 
         This is the **mandatory gate** between satellite data and AI models.
@@ -925,11 +882,11 @@ class PyGeoVision:
 
     def batch_process(
         self,
-        inputs: List[str],
-        chain: List[Tuple[str, Dict[str, Any]]],
+        inputs: list[str],
+        chain: list[tuple[str, dict[str, Any]]],
         output_dir: str = "./processed/",
         parallel: int = 4,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Run a preprocessing chain on multiple scenes.
 
         Uses PyGeoFetch v2.0's parallel batch engine when available.
@@ -975,16 +932,16 @@ class PyGeoVision:
         pgf    = "✓" if self.data._has_pygeofetch() else "✗"
         pgf_v2 = "✓v2" if self._pgf_bridge._pgf_v2 else "✗"
         try:
-            import geoai
-            ga = "✓+independent"
+            import torch  # noqa: F401
+            ai_stack = "✓torch"
         except ImportError:
-            ga = "independent"
-        from pygeovision.datasets.registry import dataset_registry
+            ai_stack = "torch-not-installed"
         from pygeovision.ai.models.zoo import model_zoo
         from pygeovision.ai.pipelines.domains import list_pipelines
+        from pygeovision.datasets.registry import dataset_registry
         return (
             f"PyGeoVision(v{__version__} | "
-            f"pygeofetch={pgf} | pgf_v2={pgf_v2} | geoai={ga} | "
+            f"pygeofetch={pgf} | pgf_v2={pgf_v2} | ai={ai_stack} | "
             f"datasets={len(dataset_registry)} | models={len(model_zoo)} | "
             f"pipelines={len(list_pipelines())} | "
             f"validator=✓ | preprocess=✓ | indices=22 | postprocess=✓ | "
@@ -1222,6 +1179,123 @@ class _PointCloudClientProxy:
     def __repr__(self): return "PointCloudLayer(processor|canopy_height_model)"
 
 
+class _SegmentationClientProxy:
+    """client.segmentation — raster segmentation (buildings, water, general SAM)."""
+    def buildings(self, image_path, output_path="./output/buildings.tif", **kw):
+        """Segment building footprints via SAM auto-segmentation."""
+        from pygeovision.labeling.sam_auto import SAMAutoLabeler
+        return SAMAutoLabeler().auto_label(image_path, output_path, **kw)
+    def water(self, image_path, output_path="./output/water.tif", ndwi_threshold=0.0, **kw):
+        """Extract water bodies via NDWI thresholding."""
+        import numpy as np
+        import rasterio
+        with rasterio.open(image_path) as src:
+            profile = src.profile.copy()
+            n_bands = src.count
+            green_idx = 2 if n_bands >= 4 else 1
+            nir_idx   = 4 if n_bands >= 4 else min(n_bands, 2)
+            green = src.read(green_idx).astype(np.float32)
+            nir   = src.read(nir_idx).astype(np.float32)
+        ndwi = (green - nir) / (green + nir + 1e-8)
+        water_mask = (ndwi > ndwi_threshold).astype(np.uint8)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        profile.update(count=1, dtype="uint8", compress="lzw")
+        with rasterio.open(output_path, "w", **profile) as dst:
+            dst.write(water_mask[np.newaxis])
+        return {"output_path": output_path, "n_water_pixels": int(water_mask.sum()),
+                "water_fraction": round(float(water_mask.mean()), 4),
+                "method": "ndwi_threshold", "threshold": ndwi_threshold}
+    def sam(self, image_path, output_path="./output/sam.tif", points_per_side=32, **kw):
+        from pygeovision.labeling.sam_auto import SAMAutoLabeler
+        return SAMAutoLabeler().auto_label(image_path, output_path,
+                                            points_per_side=points_per_side, **kw)
+    def custom(self, image_path, model, output_path="./output/pred.tif",
+               chip_size=512, overlap=128, **kw):
+        """Run any custom PyTorch segmentation model with tiled inference."""
+        from pygeovision.inference.tiled import TiledInference
+        return TiledInference(model=model, chip_size=chip_size, overlap=overlap,
+                               **kw).infer(image_path, output_path)
+    def __repr__(self): return "SegmentationLayer(buildings|water|sam|custom)"
+
+
+class _DetectionClientProxy:
+    """client.detection — object detection (generic, ships, cars) via native YOLO."""
+    def generic(self, image_path, num_classes=5, class_names=None, output_path=None, **kw):
+        from pygeovision.models.detection.yolo import GeoYOLO
+        return GeoYOLO(num_classes=num_classes, class_names=class_names).detect(
+            image_path, output_path=output_path, **kw)
+    def ships(self, image_path, output_path=None, **kw):
+        from pygeovision.models.detection.yolo import GeoYOLO
+        return GeoYOLO(num_classes=1, class_names=["ship"]).detect(
+            image_path, output_path=output_path, **kw)
+    def cars(self, image_path, output_path=None, **kw):
+        from pygeovision.models.detection.yolo import GeoYOLO
+        return GeoYOLO(num_classes=1, class_names=["car"]).detect(
+            image_path, output_path=output_path, **kw)
+    def custom(self, image_path, model, output_path="./output/detections.tif", **kw):
+        from pygeovision.inference.tiled import TiledInference
+        return TiledInference(model=model, **kw).infer(image_path, output_path)
+    def __repr__(self): return "DetectionLayer(generic|ships|cars|custom)"
+
+
+class _ChangeDetectionClientProxy:
+    """client.change — bi-temporal change detection (ChangeFormer, with a
+    dependency-free spectral-diff fallback)."""
+    def detect(self, before, after, output_path="./output/change.tif",
+               method="changeformer", **kw):
+        if method == "changeformer":
+            try:
+                from pygeovision.models.change_detection.changeformer import ChangeDetection
+                cd = ChangeDetection(model_variant="changeformer", **kw)
+                cd.build()
+                return cd.detect(before, after, output_path=output_path)
+            except Exception as exc:
+                logging.getLogger(__name__).debug(
+                    "ChangeFormer unavailable (%s) — using spectral-diff fallback", exc)
+        return self._diff_change(before, after, output_path)
+    def _diff_change(self, before, after, output_path):
+        import numpy as np
+        import rasterio
+        with rasterio.open(before) as s1:
+            img1 = s1.read().astype(np.float32)
+            profile = s1.profile
+        with rasterio.open(after) as s2:
+            img2 = s2.read().astype(np.float32)
+        if img1.shape != img2.shape:
+            from scipy.ndimage import zoom as nd_zoom
+            scale = (1.0, img1.shape[1] / img2.shape[1], img1.shape[2] / img2.shape[2])
+            img2 = nd_zoom(img2, scale, order=1)
+        diff = np.abs(img1 - img2).mean(axis=0)
+        threshold = np.percentile(diff, 90)
+        change_mask = (diff > threshold).astype(np.uint8)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        profile.update(count=1, dtype="uint8", compress="lzw")
+        with rasterio.open(output_path, "w", **profile) as dst:
+            dst.write(change_mask[np.newaxis])
+        return {"output_path": output_path, "method": "spectral_diff",
+                "change_fraction": round(float(change_mask.mean()), 4)}
+    def __repr__(self): return "ChangeDetectionLayer(detect)"
+
+
+class _ClassificationClientProxy:
+    """client.classification — scene classification and land-cover mapping."""
+    def scene(self, image_path, categories=None, **kw):
+        """Zero-shot scene classification via CLIP."""
+        from pygeovision.advanced.vlm.clip_geo import CLIPGeo
+        cats = categories or ["forest", "urban", "agriculture", "water", "barren"]
+        return CLIPGeo().zero_shot(image_path, cats)
+    def land_cover(self, image_path, year=2021, output_path="./output/land_cover.tif", **kw):
+        """Land cover classification via ESA WorldCover, clipped to the image's extent."""
+        import rasterio
+        from rasterio.warp import transform_bounds
+
+        from pygeovision.labeling.landcover import ESAWorldCoverLabeler
+        with rasterio.open(image_path) as src:
+            bbox = transform_bounds(src.crs, "EPSG:4326", *src.bounds)
+        return ESAWorldCoverLabeler(year=year).label(bbox, output_path=output_path, **kw)
+    def __repr__(self): return "ClassificationLayer(scene|land_cover)"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SAR processing proxy — routes through PyGeoFetchBridge
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1248,7 +1322,7 @@ class _SARProxy:
         out = client.sar.coherence("slc_20240101.tif", "slc_20240113.tif", window=7)
     """
 
-    def __init__(self, bridge: "Any"):
+    def __init__(self, bridge: Any):
         self._b = bridge
 
     def despeckle(
@@ -1294,7 +1368,7 @@ class _SARProxy:
         self,
         post_path: str,
         threshold: float = -15.0,
-        reference: Optional[str] = None,
+        reference: str | None = None,
         **kwargs,
     ) -> str:
         """Map flood extent from post-event SAR imagery.

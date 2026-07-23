@@ -1,19 +1,23 @@
 """
 20+ Domain-specific production pipelines (Phase 3).
-Each pipeline: PyGeoFetch data → GeoAI model → output.
+Each pipeline: PyGeoFetch data → native AI model → output.
 """
 from __future__ import annotations
+
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class PipelineResult:
     name: str
     success: bool
-    output_path: Optional[Path] = None
-    stats: Dict[str, Any] = field(default_factory=dict)
+    output_path: Path | None = None
+    stats: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     duration_seconds: float = 0.0
 
@@ -30,9 +34,9 @@ class BasePipeline:
     description: str = ""
     domain: str = "other"
     satellite: str = "sentinel-2"
-    default_providers: List[str] = field(default_factory=lambda: ["planetary_computer"])
+    default_providers: list[str] = field(default_factory=lambda: ["planetary_computer"])
     output_format: str = "geotiff"
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
 
     def __init__(self, pgv_client: Any) -> None:
         self._pgv = pgv_client
@@ -47,7 +51,7 @@ class BasePipeline:
             use_cache=False,
         )
 
-    def run(self, bbox: Tuple, output_dir: Any = "./output", **kwargs) -> PipelineResult:
+    def run(self, bbox: tuple, output_dir: Any = "./output", **kwargs) -> PipelineResult:
         raise NotImplementedError
 
 
@@ -75,7 +79,7 @@ class CropTypeMappingPipeline(BasePipeline):
                 return PipelineResult(self.name, False, error="Download failed")
             pred_path = out / "crop_type_map.tif"
             try:
-                self._pgv.geoai.segment.custom(
+                self._pgv.segmentation.custom(
                     str(succeeded[0].path), kwargs.get("model", "crop_type_model"),
                     output_path=str(pred_path), num_classes=kwargs.get("num_classes", 13),
                 )
@@ -128,7 +132,7 @@ class IrrigationDetectionPipeline(BasePipeline):
             if succeeded:
                 water_out = out / "irrigation_map.tif"
                 try:
-                    self._pgv.geoai.water.segment(str(succeeded[0].path), output_path=str(water_out))
+                    self._pgv.segmentation.water(str(succeeded[0].path), output_path=str(water_out))
                 except Exception:
                     water_out = succeeded[0].path
                 return PipelineResult(self.name, True, water_out, duration_seconds=time.time()-t0)
@@ -156,7 +160,8 @@ class CanopyHeightPipeline(BasePipeline):
                 return PipelineResult(self.name, False, error="No data")
             canopy_out = out / "canopy_height.tif"
             try:
-                self._pgv.geoai.canopy.estimate(str(succeeded[0].path), output_path=str(canopy_out))
+                from pygeovision.models.foundation.dinov3 import CHMv2Model
+                CHMv2Model().predict_canopy_height(str(succeeded[0].path), output_path=str(canopy_out))
             except Exception:
                 canopy_out = succeeded[0].path
             return PipelineResult(self.name, True, canopy_out, duration_seconds=time.time()-t0)
@@ -227,8 +232,8 @@ class RoadExtractionPipeline(BasePipeline):
                 return PipelineResult(self.name, False, error="No data")
             roads_out = out / "roads.geojson"
             try:
-                self._pgv.geoai.detect.grounded(
-                    str(succeeded[0].path), "roads and streets",
+                self._pgv.detection.generic(
+                    str(succeeded[0].path), num_classes=1, class_names=["road"],
                     output_path=str(roads_out)
                 )
             except Exception:
@@ -258,7 +263,7 @@ class InfrastructureMonitoringPipeline(BasePipeline):
                 return PipelineResult(self.name, False, error="Need both before and after imagery")
             chg_out = out / "infrastructure_changes.tif"
             try:
-                self._pgv.geoai.change.detect(
+                self._pgv.change.detect(
                     str(b_ok[0].path), str(a_ok[0].path), output_path=str(chg_out)
                 )
             except Exception:
@@ -289,7 +294,7 @@ class FloodMappingPipeline(BasePipeline):
                 return PipelineResult(self.name, False, error="No data")
             flood_out = out / "flood_extent.tif"
             try:
-                self._pgv.geoai.water.segment(str(succeeded[0].path), output_path=str(flood_out))
+                self._pgv.segmentation.water(str(succeeded[0].path), output_path=str(flood_out))
             except Exception:
                 flood_out = succeeded[0].path
             return PipelineResult(self.name, True, flood_out, duration_seconds=time.time()-t0)
@@ -339,7 +344,7 @@ class CoastalMonitoringPipeline(BasePipeline):
             if b_ok and a_ok:
                 chg = out / "shoreline_change.tif"
                 try:
-                    self._pgv.geoai.change.detect(str(b_ok[0].path), str(a_ok[0].path), output_path=str(chg))
+                    self._pgv.change.detect(str(b_ok[0].path), str(a_ok[0].path), output_path=str(chg))
                 except Exception:
                     chg = out
                 return PipelineResult(self.name, True, chg, {"period": f"{date_before}→{date_after}"}, duration_seconds=time.time()-t0)
@@ -367,7 +372,7 @@ class LandslideDetectionPipeline(BasePipeline):
                 return PipelineResult(self.name, False, error="No data")
             ls_out = out / "landslide_map.tif"
             try:
-                self._pgv.geoai.segment.custom(str(succeeded[0].path), "landslide_model", output_path=str(ls_out))
+                self._pgv.segmentation.custom(str(succeeded[0].path), "landslide_model", output_path=str(ls_out))
             except Exception:
                 ls_out = succeeded[0].path
             return PipelineResult(self.name, True, ls_out, duration_seconds=time.time()-t0)
@@ -464,7 +469,7 @@ class OceanShipDetectionPipeline(BasePipeline):
                 return PipelineResult(self.name, False, error="No data")
             ships_out = out / "ships.geojson"
             try:
-                self._pgv.geoai.detect.ships(str(succeeded[0].path), output_path=str(ships_out))
+                self._pgv.detection.ships(str(succeeded[0].path), output_path=str(ships_out))
             except Exception:
                 ships_out = out
             return PipelineResult(self.name, True, ships_out, duration_seconds=time.time()-t0)
@@ -517,7 +522,7 @@ def _make_simple(name: str, description: str, sensors: list, tags: list):
     _SimplePipeline.run = _run
     return _SimplePipeline
 
-_PIPELINE_REGISTRY: Dict[str, type] = {
+_PIPELINE_REGISTRY: dict[str, type] = {
     # ── Original 10 (from ai/pipelines/__init__.py) ─────────────────────
     "building_footprints":          None,
     "change_detection":             None,
@@ -631,7 +636,7 @@ _PIPELINE_REGISTRY: Dict[str, type] = {
 
 
 
-def list_pipelines() -> List[str]:
+def list_pipelines() -> list[str]:
     return sorted(_PIPELINE_REGISTRY.keys())
 
 

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 
 import numpy as np
 
@@ -107,8 +107,8 @@ class GeoSegDataset:
         *,
         chip_size: int = 256,
         augment: bool = False,
-        transform: Optional[Callable] = None,
-        max_chips_per_scene: Optional[int] = None,
+        transform: Callable | None = None,
+        max_chips_per_scene: int | None = None,
         overlap: int = 0,
         skip_nodata: bool = True,
     ) -> None:
@@ -181,7 +181,7 @@ class GeoSegDataset:
 
     def _augment(
         self, img: np.ndarray, lbl: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Random flip + rotation augmentation."""
         if np.random.rand() > 0.5:
             img = img[:, ::-1, :].copy()
@@ -234,7 +234,7 @@ def make_geo_loaders(
     chip_size: int = 256,
     batch_size: int = 8,
     split: float = 0.80,
-    max_chips_per_scene: Optional[int] = 100,
+    max_chips_per_scene: int | None = 100,
     num_workers: int = 0,
 ) -> tuple:
     """Build train + val DataLoaders from a directory of image/label pairs.

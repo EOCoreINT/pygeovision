@@ -2,9 +2,11 @@
 Label Quality Assessment (E4) — Automated validation of training labels.
 """
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,10 +35,10 @@ class LabelQualityAssessor:
 
     def assess(
         self,
-        label_path: Union[str, Path],
-        image_path: Optional[str] = None,
-        checks: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        label_path: str | Path,
+        image_path: str | None = None,
+        checks: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Run quality checks on a label raster.
 
         Args:
@@ -49,7 +51,7 @@ class LabelQualityAssessor:
         """
         checks = checks or ["class_balance", "slivers", "coverage", "connectivity"]
         label_path = Path(label_path)
-        results: Dict[str, Any] = {"label_path": str(label_path), "checks": {}}
+        results: dict[str, Any] = {"label_path": str(label_path), "checks": {}}
 
         try:
             import numpy as np
@@ -172,7 +174,7 @@ class LabelQualityAssessor:
         results["recommendations"] = self._recommendations(results)
         return results
 
-    def _recommendations(self, results: Dict) -> List[str]:
+    def _recommendations(self, results: dict) -> list[str]:
         recs = []
         checks = results.get("checks", {})
         cb = checks.get("class_balance", {})
@@ -191,13 +193,13 @@ class LabelQualityAssessor:
 
     def clean(
         self,
-        label_path: Union[str, Path],
-        output_path: Union[str, Path],
+        label_path: str | Path,
+        output_path: str | Path,
         remove_slivers: bool = True,
         min_area_m2: float = 5.0,
         fill_holes: bool = True,
         smooth: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Clean a label raster by removing slivers and filling holes.
 
         Args:
@@ -267,7 +269,7 @@ class LabelQualityAssessor:
             "after_label_pixels": int((cleaned > 0).sum()),
         }
 
-    def report_html(self, results: Dict) -> str:
+    def report_html(self, results: dict) -> str:
         """Generate an HTML quality report."""
         grade = results.get("quality_grade", "?")
         score = results.get("quality_score", 0)

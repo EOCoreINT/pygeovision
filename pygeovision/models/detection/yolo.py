@@ -1,7 +1,9 @@
-"""YOLOv8/v9 for geospatial object detection — independent of GeoAI."""
+"""YOLOv8/v9 for geospatial object detection — fully native."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +34,7 @@ class GeoYOLO:
     """YOLOv8 wrapper with geospatial pre/post-processing."""
 
     def __init__(self, variant: str = "yolov8-m", num_classes: int = 5,
-                 class_names: Optional[List[str]] = None) -> None:
+                 class_names: list[str] | None = None) -> None:
         self.variant = variant
         self.num_classes = num_classes
         self.class_names = class_names or [f"class_{i}" for i in range(num_classes)]
@@ -43,7 +45,7 @@ class GeoYOLO:
         self._model = build_yolo(self.variant, self.num_classes)
 
     def detect(self, image_path: str, conf: float = 0.25, iou: float = 0.45,
-                output_path: Optional[str] = None) -> Dict[str, Any]:
+                output_path: str | None = None) -> dict[str, Any]:
         """Detect objects in a GeoTIFF and return geo-referenced results.
 
         Returns:
@@ -56,7 +58,6 @@ class GeoYOLO:
             import rasterio
             with rasterio.open(image_path) as src:
                 transform = src.transform
-                crs = src.crs
                 data = src.read(list(range(1, min(src.count, 4) + 1))).astype(float)
                 for b in range(data.shape[0]):
                     p2, p98 = np.percentile(data[b], (2, 98))

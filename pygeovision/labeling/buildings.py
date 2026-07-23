@@ -3,9 +3,11 @@ Microsoft and Google Buildings Auto-Labelers (E1, E2).
 Generate building footprint labels from global open building datasets.
 """
 from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 _MS_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1"
@@ -33,7 +35,7 @@ class MicrosoftBuildingsLabeler:
     def __init__(self, min_confidence: float = 0.5) -> None:
         self.min_confidence = min_confidence
 
-    def _download_quadkey_tiles(self, bbox: Tuple[float, ...]) -> List[Dict]:
+    def _download_quadkey_tiles(self, bbox: tuple[float, ...]) -> list[dict]:
         """Download Microsoft building footprints for the bbox via Planetary Computer."""
         try:
             import requests
@@ -51,9 +53,11 @@ class MicrosoftBuildingsLabeler:
             logger.warning("MS Buildings STAC fetch failed: %s", exc)
         return []
 
-    def _fetch_buildings_geojson(self, bbox: Tuple[float, ...]) -> Dict:
+    def _fetch_buildings_geojson(self, bbox: tuple[float, ...]) -> dict:
         """Fetch MS buildings as GeoJSON using the quadkey tiles API."""
-        import math, requests
+        import math
+
+        import requests
         lon_min, lat_min, lon_max, lat_max = bbox
         features = []
 
@@ -76,7 +80,8 @@ class MicrosoftBuildingsLabeler:
                     resp = requests.get(url, timeout=20)
                     if resp.status_code != 200:
                         continue
-                    import gzip, json
+                    import gzip
+                    import json
                     data = json.loads(gzip.decompress(resp.content))
                     for f in data.get("features", []):
                         conf = f.get("properties", {}).get("confidence", 1.0)
@@ -93,12 +98,12 @@ class MicrosoftBuildingsLabeler:
 
     def label(
         self,
-        bbox: Tuple[float, ...],
-        output_path: Union[str, Path] = "./labels/ms_buildings.tif",
-        reference_raster: Optional[str] = None,
+        bbox: tuple[float, ...],
+        output_path: str | Path = "./labels/ms_buildings.tif",
+        reference_raster: str | None = None,
         resolution_m: float = 1.0,
         save_vector: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate a building label raster from Microsoft ML Buildings."""
         output_path = Path(output_path)
         geojson = self._fetch_buildings_geojson(bbox)
@@ -118,9 +123,10 @@ class MicrosoftBuildingsLabeler:
 
     def _rasterise_buildings(self, geojson, bbox, output_path, resolution_m, reference_raster):
         try:
-            import numpy as np, rasterio
-            from rasterio.transform import from_bounds
+            import numpy as np
+            import rasterio
             from rasterio.features import rasterize
+            from rasterio.transform import from_bounds
             from shapely.geometry import shape
 
             lon_min, lat_min, lon_max, lat_max = bbox
@@ -168,7 +174,7 @@ class GoogleBuildingsLabeler:
     def __init__(self, min_confidence: float = 0.7) -> None:
         self.min_confidence = min_confidence
 
-    def _bbox_to_s2_cells(self, bbox: Tuple[float, ...]) -> List[str]:
+    def _bbox_to_s2_cells(self, bbox: tuple[float, ...]) -> list[str]:
         """Approximate S2 cell IDs for the bbox at level 4."""
         try:
             import s2sphere
@@ -187,18 +193,21 @@ class GoogleBuildingsLabeler:
 
     def label(
         self,
-        bbox: Tuple[float, ...],
-        output_path: Union[str, Path] = "./labels/google_buildings.tif",
-        reference_raster: Optional[str] = None,
+        bbox: tuple[float, ...],
+        output_path: str | Path = "./labels/google_buildings.tif",
+        reference_raster: str | None = None,
         resolution_m: float = 1.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate building labels from Google Open Buildings."""
         output_path = Path(output_path)
         cells = self._bbox_to_s2_cells(bbox)
         if not cells:
             return {"success": False, "error": "pip install s2sphere for Google Buildings"}
 
-        import requests, gzip, io
+        import gzip
+        import io
+
+        import requests
         all_features = []
         for cell in cells[:4]:  # limit to 4 cells
             url = self.S2_CELL_URL.format(cell_id=cell)

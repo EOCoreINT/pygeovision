@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,9 @@ class OptimizerConfig:
     lr: float = 1e-4
     weight_decay: float = 1e-4
     momentum: float = 0.9
-    betas: Tuple[float, float] = (0.9, 0.999)
+    betas: tuple[float, float] = (0.9, 0.999)
     eps: float = 1e-8
-    no_decay_keywords: List[str] = field(
+    no_decay_keywords: list[str] = field(
         default_factory=lambda: ["bias", "norm", "LayerNorm", "layer_norm", "bn"]
     )
     backbone_lr_multiplier: float = 0.1
@@ -79,11 +79,11 @@ def build_optimizer(
     lr: float = 1e-4,
     weight_decay: float = 1e-4,
     momentum: float = 0.9,
-    betas: Tuple[float, float] = (0.9, 0.999),
+    betas: tuple[float, float] = (0.9, 0.999),
     eps: float = 1e-8,
-    no_decay_keywords: Optional[List[str]] = None,
+    no_decay_keywords: list[str] | None = None,
     backbone_lr_multiplier: float = 1.0,
-    layer_decay: Optional[LayerWiseLRDecay] = None,
+    layer_decay: LayerWiseLRDecay | None = None,
     **kwargs: Any,
 ) -> Any:
     """Build an optimizer with parameter group customisation.
@@ -230,8 +230,8 @@ def _build_param_groups(
     lr: float,
     weight_decay: float,
     backbone_lr_multiplier: float,
-    no_decay_keywords: List[str],
-) -> List[Dict[str, Any]]:
+    no_decay_keywords: list[str],
+) -> list[dict[str, Any]]:
     """Split parameters into decay/no-decay groups, with optional backbone LR."""
     _backbone_keys = ("encoder", "backbone", "patch_embed", "segformer.encoder")
 
@@ -272,15 +272,15 @@ def _build_layer_wise_groups(
     lr: float,
     weight_decay: float,
     layer_decay: LayerWiseLRDecay,
-    no_decay_keywords: List[str],
-) -> List[Dict[str, Any]]:
+    no_decay_keywords: list[str],
+) -> list[dict[str, Any]]:
     """Build parameter groups with exponential LR decay per transformer layer."""
     num_layers = layer_decay.num_layers
     decay = layer_decay.decay
 
     # Assign each parameter a layer index
-    layer_groups: Dict[int, List] = {i: [] for i in range(num_layers + 2)}
-    no_decay_groups: Dict[int, List] = {i: [] for i in range(num_layers + 2)}
+    layer_groups: dict[int, list] = {i: [] for i in range(num_layers + 2)}
+    no_decay_groups: dict[int, list] = {i: [] for i in range(num_layers + 2)}
 
     for name, param in model.named_parameters():
         if not param.requires_grad:
@@ -316,7 +316,7 @@ def _get_layer_index(name: str, num_layers: int) -> int:
     return num_layers + 1  # Default to head
 
 
-def _build_lars(param_groups: List[Dict], lr: float, momentum: float, **kwargs: Any) -> Any:
+def _build_lars(param_groups: list[dict], lr: float, momentum: float, **kwargs: Any) -> Any:
     """Build LARS optimizer (requires apex or standalone implementation)."""
     try:
         from apex.optimizers import FusedLARS  # type: ignore[import]
@@ -326,7 +326,6 @@ def _build_lars(param_groups: List[Dict], lr: float, momentum: float, **kwargs: 
 
     # Minimal LARS fallback
     try:
-        import torch
         import torch.optim as optim
 
         class LARS(optim.SGD):
@@ -348,7 +347,7 @@ def _build_lars(param_groups: List[Dict], lr: float, momentum: float, **kwargs: 
         raise ImportError("LARS requires apex or torch. pip install apex") from exc
 
 
-def _build_lion(param_groups: List[Dict], lr: float, betas: Tuple[float, float], **kwargs: Any) -> Any:
+def _build_lion(param_groups: list[dict], lr: float, betas: tuple[float, float], **kwargs: Any) -> Any:
     """Build Lion optimizer (Sign-based gradient descent)."""
     try:
         import torch
@@ -399,7 +398,7 @@ class _CosineWithWarmup:
         self._base_lrs = [g["lr"] for g in optimizer.param_groups]
         self._step = 0
 
-    def step(self, epoch: Optional[int] = None) -> None:
+    def step(self, epoch: int | None = None) -> None:
         import math
         e = epoch if epoch is not None else self._step
         self._step += 1
@@ -413,12 +412,12 @@ class _CosineWithWarmup:
                     1 + math.cos(math.pi * progress)
                 )
 
-    def get_last_lr(self) -> List[float]:
+    def get_last_lr(self) -> list[float]:
         return [g["lr"] for g in self.optimizer.param_groups]
 
-    def state_dict(self) -> Dict:
+    def state_dict(self) -> dict:
         return {"step": self._step, "base_lrs": self._base_lrs}
 
-    def load_state_dict(self, state: Dict) -> None:
+    def load_state_dict(self, state: dict) -> None:
         self._step = state["step"]
         self._base_lrs = state["base_lrs"]

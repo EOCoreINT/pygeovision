@@ -1,7 +1,9 @@
 """GPU optimisation utilities (Phase 8.1)."""
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,13 +20,13 @@ def get_device(prefer: str = "cuda") -> Any:
         return "cpu"
 
 
-def gpu_info() -> Dict[str, Any]:
+def gpu_info() -> dict[str, Any]:
     """Return current GPU memory and utilisation stats."""
     try:
         import torch
         if not torch.cuda.is_available():
             return {"available": False}
-        info: Dict[str, Any] = {
+        info: dict[str, Any] = {
             "available": True,
             "n_gpus": torch.cuda.device_count(),
             "gpus": [],
@@ -48,7 +50,7 @@ def optimal_batch_size(
     input_shape: tuple = (3, 512, 512),
     starting_batch: int = 1,
     max_batch: int = 128,
-    device: Optional[Any] = None,
+    device: Any | None = None,
 ) -> int:
     """Binary-search for the largest batch size that fits in GPU memory."""
     try:

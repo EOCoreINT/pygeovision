@@ -15,11 +15,10 @@ from __future__ import annotations
 
 import csv
 import gzip
-import io
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import requests
@@ -54,7 +53,7 @@ class GoogleBuildingsConfig:
     confidence_threshold: float = 0.65
     building_value: int = 1
     background_value: int = 0
-    cache_dir: Optional[Path] = None
+    cache_dir: Path | None = None
     request_timeout: int = 60
     max_workers: int = 4
 
@@ -84,7 +83,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
     def __init__(
         self,
         confidence_threshold: float = 0.65,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
         num_workers: int = 4,
         skip_existing: bool = True,
     ) -> None:
@@ -104,7 +103,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
             max_workers=num_workers,
         )
         self.config.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._tile_index: Optional[Dict[str, str]] = None
+        self._tile_index: dict[str, str] | None = None
 
     # ------------------------------------------------------------------
     # BaseLabeler abstract properties
@@ -139,11 +138,11 @@ class GoogleBuildingsLabeler(BaseLabeler):
             LabelingResult with success status and statistics.
         """
         try:
+            import pyproj
             import rasterio
             from rasterio.transform import from_bounds
             from shapely.geometry import box, shape
             from shapely.ops import transform as shapely_transform
-            import pyproj
         except ImportError as exc:
             raise LabelingError(
                 "google_buildings labeler requires rasterio, shapely, and pyproj. "
@@ -233,8 +232,8 @@ class GoogleBuildingsLabeler(BaseLabeler):
     # ------------------------------------------------------------------
 
     def _fetch_buildings(
-        self, bbox_wgs84: Tuple[float, float, float, float]
-    ) -> List[Dict[str, Any]]:
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> list[dict[str, Any]]:
         """Fetch building polygons from Google Open Buildings for a bounding box.
 
         Args:
@@ -245,7 +244,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
         """
         # Determine which S2 tiles cover this bbox and download them
         s2_tile_urls = self._get_s2_tile_urls(bbox_wgs84)
-        buildings: List[Dict[str, Any]] = []
+        buildings: list[dict[str, Any]] = []
 
         for url in s2_tile_urls:
             tile_buildings = self._download_tile_csv(url, bbox_wgs84)
@@ -260,8 +259,8 @@ class GoogleBuildingsLabeler(BaseLabeler):
         return buildings
 
     def _get_s2_tile_urls(
-        self, bbox_wgs84: Tuple[float, float, float, float]
-    ) -> List[str]:
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> list[str]:
         """Identify GOB tile CSV URLs that intersect the bounding box.
 
         Google Open Buildings stores data as per-S2-cell CSV.gz files.
@@ -294,8 +293,8 @@ class GoogleBuildingsLabeler(BaseLabeler):
             return self._get_tiles_from_manifest(bbox_wgs84)
 
     def _get_tiles_from_manifest(
-        self, bbox_wgs84: Tuple[float, float, float, float]
-    ) -> List[str]:
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> list[str]:
         """Get tile URLs from the GOB tiles manifest CSV.
 
         Args:
@@ -319,7 +318,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
             logger.info("Manifest cached at %s", manifest_path)
 
         query_box = box(*bbox_wgs84)
-        urls: List[str] = []
+        urls: list[str] = []
 
         with open(manifest_path, newline="") as fh:
             reader = csv.DictReader(fh)
@@ -342,8 +341,8 @@ class GoogleBuildingsLabeler(BaseLabeler):
     def _download_tile_csv(
         self,
         url: str,
-        bbox_wgs84: Tuple[float, float, float, float],
-    ) -> List[Dict[str, Any]]:
+        bbox_wgs84: tuple[float, float, float, float],
+    ) -> list[dict[str, Any]]:
         """Download and parse a single GOB tile CSV.gz.
 
         Args:
@@ -354,6 +353,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
             List of building records intersecting the bbox.
         """
         import json
+
         from shapely.geometry import box, shape
 
         # Check cache
@@ -372,7 +372,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
                 raise
 
         query_box = box(*bbox_wgs84)
-        buildings: List[Dict[str, Any]] = []
+        buildings: list[dict[str, Any]] = []
 
         with gzip.open(cache_path, "rt") as fh:
             reader = csv.DictReader(fh)
@@ -396,8 +396,8 @@ class GoogleBuildingsLabeler(BaseLabeler):
 
     def _rasterize_polygons(
         self,
-        polygons: List[Dict[str, Any]],
-        bbox: Tuple[float, float, float, float],
+        polygons: list[dict[str, Any]],
+        bbox: tuple[float, float, float, float],
         height: int,
         width: int,
         src_crs: Any,
@@ -424,8 +424,8 @@ class GoogleBuildingsLabeler(BaseLabeler):
             return mask
 
         try:
-            from rasterio.features import rasterize as rio_rasterize
             import pyproj
+            from rasterio.features import rasterize as rio_rasterize
             from shapely.ops import transform as shapely_transform
 
             # Reproject polygons from WGS-84 to tile CRS
