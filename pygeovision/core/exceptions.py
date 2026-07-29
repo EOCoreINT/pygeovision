@@ -118,7 +118,7 @@ class ModelNotFoundError(ModelError):
     def __init__(self, model_id: str) -> None:
         super().__init__(
             f"Model '{model_id}' not found in the registry.",
-            details="Use `pygeovision ai models list` to see available models.",
+            details="Use `pygeovision models list` to see available models.",
         )
         self.model_id = model_id
 

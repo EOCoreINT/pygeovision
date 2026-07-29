@@ -233,11 +233,78 @@ class GradCAM:
 
 
 class GradCAMPlusPlus(GradCAM):
-    """GradCAM++ — improved version with better localisation accuracy."""
+    """GradCAM++ — Chattopadhay et al. (2018), "Grad-CAM++: Generalized
+    Gradient-Based Visual Explanations for Deep Convolutional Networks".
+
+    Unlike vanilla GradCAM (which weights each activation channel by the
+    plain average gradient), GradCAM++ computes per-pixel weighting
+    coefficients (alpha) derived from higher-order gradient terms — this
+    gives meaningfully better localisation when a class appears multiple
+    times in one image (e.g. several buildings in a chip), which is
+    exactly the geospatial use case this matters for.
+    """
 
     def explain(self, image: Any, class_idx: int | None = None,
                 normalize: bool = True) -> Any:
-        """Compute GradCAM++ saliency (improved gradient weighting)."""
-        # GradCAM++ uses element-wise square of gradients for weighting
-        # Implementation delegates to parent with modified gradient computation
-        return super().explain(image, class_idx, normalize)
+        try:
+            import numpy as np
+            import torch
+            import torch.nn.functional as F
+        except ImportError:
+            raise ImportError("torch required")
+
+        self.model = self.model.to(self.device).eval()
+        target_layer = self._find_target_layer()
+        self._register_hooks(target_layer)
+
+        if isinstance(image, np.ndarray):
+            image = torch.tensor(image, dtype=torch.float32)
+        if image.ndim == 3:
+            image = image.unsqueeze(0)
+        image = image.to(self.device)
+
+        logits = self.model(image)
+        if class_idx is None:
+            class_idx = int(logits.squeeze().argmax().item())
+
+        self.model.zero_grad()
+        if logits.ndim == 4:
+            score = logits[:, class_idx].sum()
+        else:
+            score = logits[0, class_idx]
+        score.backward()
+        self._remove_hooks()
+
+        if self._gradients is None or self._activations is None:
+            logger.warning("GradCAM++ hooks did not fire. Check target_layer.")
+            return np.zeros((image.shape[-2], image.shape[-1]))
+
+        grads = self._gradients
+        activations = self._activations
+
+        # GradCAM++ alpha coefficients (standard first-order-gradient
+        # practical formulation — see class docstring):
+        #   alpha = grad^2 / (2*grad^2 + sum(activations) * grad^3)
+        grads_2 = grads ** 2
+        grads_3 = grads ** 3
+        sum_activations = activations.sum(dim=(-2, -1), keepdim=True)
+        eps = 1e-8
+        alpha_denom = grads_2 * 2.0 + sum_activations * grads_3
+        alpha_denom = torch.where(
+            alpha_denom != 0.0, alpha_denom, torch.full_like(alpha_denom, eps),
+        )
+        alphas = grads_2 / alpha_denom
+
+        weights = (alphas * F.relu(grads)).sum(dim=(-2, -1), keepdim=True)
+        cam = (weights * activations).sum(dim=1).squeeze()
+        cam = torch.relu(cam).cpu().numpy()
+
+        from PIL import Image as PILImage
+        cam_pil = PILImage.fromarray(cam.astype(np.float32))
+        cam_up = cam_pil.resize((image.shape[-1], image.shape[-2]), PILImage.BILINEAR)
+        cam_np = np.array(cam_up)
+
+        if normalize and cam_np.max() > 0:
+            cam_np = (cam_np - cam_np.min()) / (cam_np.max() - cam_np.min())
+
+        return cam_np

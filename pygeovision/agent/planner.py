@@ -154,13 +154,30 @@ def _build_tools_schema(tool_instances: dict) -> str:
 
 
 class LLMPlanner:
-    """Plans tool sequences using Claude."""
+    """Plans tool sequences using an LLM — Anthropic Claude or Groq.
+
+    Groq is a genuinely different provider (fast open-weight model
+    inference — llama-3.3-70b-versatile, gpt-oss, etc. — not a
+    Claude-compatible wrapper), so this uses Groq's real
+    chat.completions API with JSON mode for reliable structured output,
+    not a shared code path pretending the two APIs are the same shape.
+
+    Example::
+
+        planner = LLMPlanner(tools, provider="groq", api_key="gsk_...")
+        planner = LLMPlanner(tools, provider="anthropic")  # default
+    """
 
     def __init__(self, tool_instances: dict, api_key: str | None = None,
-                 model: str = "claude-sonnet-4-6") -> None:
+                 model: str | None = None, provider: str = "anthropic") -> None:
         self._tools      = tool_instances
-        self._api_key    = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-        self._model      = model
+        self._provider   = provider
+        if provider == "groq":
+            self._api_key = api_key or os.environ.get("GROQ_API_KEY", "")
+            self._model   = model or "llama-3.3-70b-versatile"
+        else:
+            self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+            self._model   = model or "claude-sonnet-4-6"
         self._tools_text = _build_tools_schema(tool_instances)
 
     @property
@@ -169,21 +186,16 @@ class LLMPlanner:
 
     def plan(self, query: str, context: dict | None = None) -> Plan:
         if not self.available:
-            raise RuntimeError("No ANTHROPIC_API_KEY — use HeuristicPlanner.")
-        try:
-            import anthropic
-        except ImportError:
-            raise ImportError("pip install anthropic")
+            env_var = "GROQ_API_KEY" if self._provider == "groq" else "ANTHROPIC_API_KEY"
+            raise RuntimeError(f"No {env_var} — use HeuristicPlanner.")
 
         ctx_str = (f"\n\nContext: {json.dumps(context, indent=2)}" if context else "")
-        client  = anthropic.Anthropic(api_key=self._api_key)
-        message = client.messages.create(
-            model=self._model,
-            max_tokens=2048,
-            system=SYSTEM_PROMPT.format(tools_schema=self._tools_text),
-            messages=[{"role": "user", "content": query + ctx_str}],
-        )
-        raw = message.content[0].text.strip()
+
+        if self._provider == "groq":
+            raw = self._plan_groq(query, ctx_str)
+        else:
+            raw = self._plan_anthropic(query, ctx_str)
+
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()
         try:
             parsed = json.loads(raw)
@@ -200,8 +212,44 @@ class LLMPlanner:
             )
             for i, s in enumerate(parsed.get("steps", []))
         ]
-        return Plan(query=query, steps=steps, planner=f"claude/{self._model}",
+        return Plan(query=query, steps=steps, planner=f"{self._provider}/{self._model}",
                     notes=parsed.get("notes", ""))
+
+    def _plan_anthropic(self, query: str, ctx_str: str) -> str:
+        try:
+            import anthropic
+        except ImportError:
+            raise ImportError("pip install anthropic")
+        client  = anthropic.Anthropic(api_key=self._api_key)
+        message = client.messages.create(
+            model=self._model,
+            max_tokens=2048,
+            system=SYSTEM_PROMPT.format(tools_schema=self._tools_text),
+            messages=[{"role": "user", "content": query + ctx_str}],
+        )
+        return message.content[0].text.strip()
+
+    def _plan_groq(self, query: str, ctx_str: str) -> str:
+        try:
+            from groq import Groq
+        except ImportError:
+            raise ImportError("pip install groq")
+        client = Groq(api_key=self._api_key)
+        completion = client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT.format(tools_schema=self._tools_text)},
+                {"role": "user", "content": query + ctx_str},
+            ],
+            # JSON mode — Groq's recommended way to get reliably-parseable
+            # structured output (the planner's response MUST be valid JSON
+            # to build a Plan; without this, models occasionally wrap
+            # output in prose despite being told not to).
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_completion_tokens=2048,
+        )
+        return completion.choices[0].message.content.strip()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -34,8 +34,15 @@ class SegmentationMetrics:
             indices = self.num_classes * targets + preds
             counts = torch.bincount(indices.long(), minlength=self.num_classes ** 2)
             self._confusion += counts.reshape(self.num_classes, self.num_classes)
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "SegmentationMetrics.update() failed — this batch's "
+                "predictions/targets were NOT counted, so mIoU/F1/accuracy "
+                "will be computed from incomplete data. Common cause: preds "
+                "contains class indices >= num_classes=%d, or preds/targets "
+                "shape mismatch. Error: %s", self.num_classes, exc,
+            )
 
     def compute(self) -> dict[str, float]:
         """Compute IoU, F1, accuracy from accumulated confusion matrix."""
@@ -95,8 +102,14 @@ class DetectionMetrics:
                 "mAP50_95": float(result.get("map", 0.0)),
                 "mAP75":    float(result.get("map_75", 0.0)),
             }
-        except ImportError:
-            return {"mAP50": 0.0, "mAP50_95": 0.0, "note": "pip install torchmetrics"}
+        except ImportError as exc:
+            return {
+                "mAP50": 0.0, "mAP50_95": 0.0,
+                "note": (
+                    f"{exc}. Install with: pip install torchmetrics[detection] "
+                    f"(or pip install pycocotools)"
+                ),
+            }
         except Exception as exc:
             return {"mAP50": 0.0, "error": str(exc)}
 

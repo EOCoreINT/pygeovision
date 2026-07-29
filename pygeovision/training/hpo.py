@@ -245,8 +245,12 @@ class ModelOptimizer:
                     [["conv", "bn", "relu"]],
                     inplace=True,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Module fusion for quantization failed (%s) — proceeding "
+                    "with unfused quantization, which typically gives worse "
+                    "accuracy/less speedup than fused quantization.", exc,
+                )
             qconfig = tq.get_default_qconfig(backend)
             self.model.qconfig = qconfig
             tq.prepare(self.model, inplace=True)

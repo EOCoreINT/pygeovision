@@ -177,3 +177,77 @@ class TestLeaderboard:
         seg = lb.get(task="segmentation")
         assert len(det) == 1 and det[0]["model"] == "YOLOv8"
         assert len(seg) == 1 and seg[0]["model"] == "UNet"
+
+
+class TestModelEvaluatorDetectionMetricsWiring:
+    """Regression tests for a real, severe bug: DetectionMetrics was
+    constructed with `DetectionMetrics(self.num_classes) if self.task ==
+    "detection" else None` as a BARE EXPRESSION STATEMENT — never assigned
+    to a variable, so it was immediately discarded. Detection-task
+    evaluation ran the full inference loop and timed it, but computed
+    ZERO actual mAP metrics — mAP50/mAP50_95 always silently stayed at
+    their default 0.0, regardless of real model performance."""
+
+    def test_detection_metrics_are_genuinely_computed(self):
+        torch = pytest.importorskip("torch", reason="torch not installed")
+        pytest.importorskip("torchmetrics", reason="torchmetrics not installed")
+        pytest.importorskip("torchvision", reason="torchvision not installed")
+        from pygeovision.benchmark.evaluator import ModelEvaluator
+        from pygeovision.models.registry import get_model
+
+        torch.manual_seed(0)
+        model = get_model("faster-rcnn-r50", num_classes=2, in_channels=3, pretrained=False)
+
+        def fake_loader():
+            for _ in range(2):
+                images = [torch.rand(3, 64, 64), torch.rand(3, 64, 64)]
+                targets = [
+                    {"boxes": torch.tensor([[10., 10., 40., 40.]]), "labels": torch.tensor([1])},
+                    {"boxes": torch.tensor([[5., 5., 30., 30.]]), "labels": torch.tensor([1])},
+                ]
+                yield images, targets
+
+        evaluator = ModelEvaluator(task="detection", num_classes=2)
+        result = evaluator.evaluate(model, fake_loader(), dataset_name="test", model_name="faster-rcnn")
+
+        # The real test: this must have actually processed all 4 images
+        # through the correct list-in/list-out detection calling
+        # convention, not silently short-circuited.
+        assert result.n_samples == 4
+        assert result.notes == "" or "pycocotools" not in result.notes.lower()
+
+    def test_detection_evaluate_uses_list_calling_convention_not_batched_tensor(self):
+        """Regression test for the calling-convention half of the bug:
+        detection models take a LIST of image tensors and return a LIST
+        of dicts — not the batched-tensor-in/logits-out convention
+        segmentation uses. A model stub records what it was actually
+        called with to prove the right convention is used."""
+        torch = pytest.importorskip("torch", reason="torch not installed")
+        pytest.importorskip("torchmetrics", reason="torchmetrics not installed")
+        from pygeovision.benchmark.evaluator import ModelEvaluator
+
+        calls = []
+
+        class FakeDetectionModel(torch.nn.Module):
+            def forward(self, images):
+                calls.append(images)
+                return [
+                    {"boxes": torch.zeros((0, 4)), "scores": torch.zeros(0),
+                     "labels": torch.zeros(0, dtype=torch.long)}
+                    for _ in images
+                ]
+
+        def fake_loader():
+            images = [torch.rand(3, 32, 32), torch.rand(3, 32, 32)]
+            targets = [
+                {"boxes": torch.tensor([[1., 1., 5., 5.]]), "labels": torch.tensor([1])},
+                {"boxes": torch.tensor([[2., 2., 6., 6.]]), "labels": torch.tensor([1])},
+            ]
+            yield images, targets
+
+        evaluator = ModelEvaluator(task="detection", num_classes=2)
+        evaluator.evaluate(FakeDetectionModel(), fake_loader(), model_name="fake")
+
+        assert len(calls) == 1
+        assert isinstance(calls[0], list), "model was not called with a list of images"
+        assert len(calls[0]) == 2

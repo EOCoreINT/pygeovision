@@ -57,8 +57,12 @@ class EarlyStopping(Callback):
                 try:
                     import copy
                     self.best_weights = copy.deepcopy(trainer.model.state_dict())
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "EarlyStopping: failed to snapshot best weights (%s) — "
+                        "restore_best_weights=True will NOT actually restore "
+                        "the best checkpoint at the end of training.", exc,
+                    )
         else:
             self.wait += 1
             if self.wait >= self.patience:

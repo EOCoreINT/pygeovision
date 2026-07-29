@@ -83,6 +83,7 @@ class TiledInference:
         dtype: str = "float32",
         tta: bool = False,                 # Test-time augmentation
         half_precision: bool = True,
+        tolerate_chip_failures: bool = False,
     ) -> None:
         self.model = model
         self.chip_size = chip_size
@@ -95,8 +96,10 @@ class TiledInference:
         self.dtype = dtype
         self.tta = tta
         self.half_precision = half_precision
+        self.tolerate_chip_failures = tolerate_chip_failures
         self._device = device or self._auto_device()
         self._model_loaded = False
+        self._chip_failures = 0
 
     @staticmethod
     def _auto_device() -> str:
@@ -137,7 +140,8 @@ class TiledInference:
             import torch
 
             if isinstance(chip, np.ndarray):
-                chip_t = torch.tensor(chip, dtype=torch.float16 if self.half_precision else torch.float32)
+                use_half = self.half_precision and self._device == "cuda"
+                chip_t = torch.tensor(chip, dtype=torch.float16 if use_half else torch.float32)
             else:
                 chip_t = chip
 
@@ -170,7 +174,25 @@ class TiledInference:
 
             return probs[0].cpu().float().numpy()
         except Exception as exc:
-            logger.debug("Chip prediction failed: %s", exc)
+            logger.error(
+                "Chip prediction failed — returning an all-zero chip, which will "
+                "corrupt this region of the output raster. This usually means the "
+                "model's forward() interface doesn't match TiledInference's "
+                "assumption (single image tensor in -> class-logit tensor out). "
+                "Detection models (Mask R-CNN, Faster R-CNN, FCOS, YOLO) and "
+                "change-detection models (BIT, DSAMNet, ChangeFormer) are NOT "
+                "compatible with TiledInference — they need a dedicated wrapper "
+                "with a different calling convention. Root cause: %s", exc,
+                exc_info=True,
+            )
+            self._chip_failures = getattr(self, "_chip_failures", 0) + 1
+            if not getattr(self, "tolerate_chip_failures", False):
+                raise RuntimeError(
+                    f"TiledInference chip prediction failed ({exc}). Set "
+                    f"tolerate_chip_failures=True on TiledInference to instead "
+                    f"log and fill with zeros (NOT recommended — silently "
+                    f"corrupts output)."
+                ) from exc
             import numpy as np
             return np.zeros((self.num_classes, self.chip_size, self.chip_size), dtype=np.float32)
 

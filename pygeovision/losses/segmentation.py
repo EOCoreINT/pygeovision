@@ -271,8 +271,16 @@ class OhemCrossEntropy:
         valid = ce_flat[ce_flat > 0]
         if valid.numel() == 0:
             return ce.mean()
-        # Keep hardest examples above threshold
-        thresh_value = max(self.thresh, valid.topk(min(self.min_kept, valid.numel()))[0].min())
+        # Guarantee at least min_kept pixels are retained: use whichever
+        # threshold is LOWER (min, not max) between the configured thresh
+        # and the loss value of the min_kept-th hardest pixel. Using max()
+        # here inverts the guarantee — it can produce a STRICTER effective
+        # threshold than configured, which in batches with mostly "easy"
+        # pixels can select zero pixels entirely (and NaN the loss via
+        # .mean() on an empty tensor), silently corrupting that training
+        # step's gradient.
+        topk_min = valid.topk(min(self.min_kept, valid.numel()))[0].min()
+        thresh_value = min(self.thresh, topk_min)
         hard_mask = ce_flat >= thresh_value
         return ce_flat[hard_mask].mean()
 

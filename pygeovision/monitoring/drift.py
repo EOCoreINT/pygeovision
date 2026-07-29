@@ -260,7 +260,7 @@ class PerformanceDrift:
             if save_path: plt.savefig(save_path, dpi=120)
             else: plt.show()
         except ImportError:
-            pass
+            logger.warning("plot_history() requires matplotlib: pip install matplotlib")
 
 
 class DriftDetector:

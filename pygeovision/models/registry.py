@@ -125,6 +125,8 @@ _SPECS = [
     ModelSpec("prithvi-300m",    "foundation","prithvi",  300.0, hf_id="ibm-nasa-geospatial/Prithvi-300M",   description="NASA/IBM Prithvi 300M", pretrained_on="HLS"),
     ModelSpec("dofa-base",       "foundation","dofa",      86.0, hf_id="XShadow/DOFA-ViT-base-p16",          description="Dynamic One-For-All (multi-sensor)", pretrained_on="Sentinel-1/2,Landsat"),
     ModelSpec("satlas-pretrain", "foundation","satlas",    86.0, description="SatlasPretrain (Sentinel-2)", pretrained_on="Sentinel-2"),
+    ModelSpec("tessera",         "foundation","tessera",   0.0, description="TESSERA precomputed embeddings (Sentinel-1+2, 128ch/10m) — real, precomputed via the geotessera library, not a locally-run encoder", pretrained_on="Sentinel-1+2"),
+    ModelSpec("alphaearth",      "foundation","alphaearth", 0.0, description="AlphaEarth Foundations / Satellite Embedding (64ch/10m, annual 2017+) — real, precomputed via Google Earth Engine, not a locally-run encoder", pretrained_on="Multi-sensor (Sentinel-1/2, Landsat, etc.)"),
     ModelSpec("scale-mae-l",     "foundation","mae",      307.0, description="Scale-MAE ViT-L", pretrained_on="Sentinel-2"),
     ModelSpec("ssl4eo-resnet50", "foundation","ssl",       25.6, description="SSL4EO ResNet-50", pretrained_on="Sentinel-2"),
     ModelSpec("croma-s1s2",      "foundation","croma",     50.0, description="CROMA (SAR+optical)", pretrained_on="Sentinel-1+2"),
@@ -282,6 +284,32 @@ def get_model(name: str, num_classes: int = 2, in_channels: int = 4,
 def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
                   pretrained: bool, **kwargs) -> Any:
     """Factory: build a model from its spec."""
+    # CLIP-family and Moondream are VLMs with a genuinely different usage
+    # pattern (zero-shot classification, image-text embedding, VQA/caption
+    # — not a single-tensor-in/logits-out forward pass) and, for
+    # RemoteCLIP/GeoRSCLIP specifically, a different loading mechanism
+    # entirely (open_clip checkpoints, not transformers-native). Dedicated,
+    # correct wrappers already exist for these — route to them BEFORE the
+    # generic timm/HF dispatch below, which would otherwise try (and fail,
+    # or silently produce something unusable) a generic AutoModel load.
+    if spec.family == "clip":
+        from pygeovision.advanced.vlm.clip_geo import CLIPGeo
+        return CLIPGeo(model=spec.name)
+    if spec.family == "moondream":
+        from pygeovision.advanced.vlm.moondream_geo import MoondreamGeo
+        return MoondreamGeo()
+    if spec.name == "tessera":
+        # TESSERA's own design philosophy is precomputed embeddings, not
+        # running an encoder — same "not a plain nn.Module" reasoning as
+        # CLIP/Moondream above, routed to the real wrapper before the
+        # generic dispatch below (which has no timm_id/hf_id for this
+        # spec and would otherwise raise NotImplementedError).
+        from pygeovision.advanced.foundation.tessera_geo import TesseraGeo
+        return TesseraGeo()
+    if spec.name == "alphaearth":
+        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        return AlphaEarthGeo()
+
     # Try timm first
     if spec.timm_id:
         try:
@@ -296,6 +324,16 @@ def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
             return model
         except ImportError:
             logger.warning("timm not installed — pip install timm")
+        except AssertionError as exc:
+            if "img_size" in spec.family or spec.family == "swin" or "doesn't match model" in str(exc):
+                raise ValueError(
+                    f"'{spec.name}' uses a fixed-resolution architecture (window-based "
+                    f"attention) and doesn't accept arbitrary chip sizes by default. "
+                    f"Pass img_size=<your chip size> explicitly, e.g. "
+                    f"get_model('{spec.name}', img_size=512, ...) — it must match "
+                    f"whatever chip_size you use for tiled inference. Original error: {exc}"
+                ) from exc
+            logger.warning("timm build failed for %s: %s", spec.name, exc)
         except Exception as exc:
             logger.warning("timm build failed for %s: %s", spec.name, exc)
 
@@ -309,7 +347,7 @@ def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
             logger.warning("HF build failed for %s: %s", spec.name, exc)
 
     # Generic PyTorch fallback for common architectures
-    return _build_pytorch_fallback(spec, num_classes, in_channels, **kwargs)
+    return _build_pytorch_fallback(spec, num_classes, in_channels, pretrained=pretrained, **kwargs)
 
 
 def _build_hf_model(spec: ModelSpec, num_classes: int, in_channels: int,
@@ -347,9 +385,179 @@ def _build_pytorch_fallback(spec: ModelSpec, num_classes: int, in_channels: int,
         # Simple U-Net-like model
         return _simple_unet(in_channels, num_classes)
 
+    elif family == "rcnn":
+        return _build_rcnn(spec, num_classes, in_channels, **kwargs)
+
+    elif family == "anchor_free":
+        return _build_anchor_free_detector(spec, num_classes, in_channels, **kwargs)
+
+    elif family == "bit":
+        from pygeovision.models.change_detection.bit import build_bit
+        return build_bit(
+            num_classes=num_classes, in_channels=in_channels,
+            backbone="resnet50" if "r50" in spec.name else "resnet18",
+            pretrained=kwargs.pop("pretrained", False), **kwargs,
+        )
+
+    elif family == "dsamnet":
+        from pygeovision.models.change_detection.dsamnet import build_dsamnet
+        return build_dsamnet(
+            num_classes=num_classes, in_channels=in_channels,
+            backbone="resnet50" if "r50" in spec.name else "resnet18",
+            pretrained=kwargs.pop("pretrained", False), **kwargs,
+        )
+
+    elif family == "pointnet":
+        from pygeovision.models._3d.pointnet import build_pointnet2
+        kwargs.pop("pretrained", None)  # no pretrained weights — trained from scratch on your LiDAR data
+        return build_pointnet2(
+            num_classes=num_classes, in_channels=in_channels,
+            msg="msg" in spec.name, **kwargs,
+        )
+
+    elif family == "randlanet":
+        from pygeovision.models._3d.randlanet import build_randlanet
+        kwargs.pop("pretrained", None)  # no pretrained weights — trained from scratch on your LiDAR data
+        return build_randlanet(num_classes=num_classes, in_channels=in_channels, **kwargs)
+
+    elif spec.name in ("pointtransformer", "ptv3"):
+        from pygeovision.models._3d.pointtransformer import build_ptv3
+        kwargs.pop("pretrained", None)  # no pretrained weights — trained from scratch on your LiDAR data
+        return build_ptv3(num_classes=num_classes, in_channels=in_channels, **kwargs)
+
+    elif family == "kpconv":
+        from pygeovision.models._3d.kpconv import build_kpconv
+        kwargs.pop("pretrained", None)  # no pretrained weights — trained from scratch on your LiDAR data
+        return build_kpconv(num_classes=num_classes, in_channels=in_channels, **kwargs)
+
     else:
-        logger.warning("No factory for %s/%s — returning simple conv model", spec.family, spec.name)
-        return _simple_conv_classifier(in_channels, num_classes)
+        raise NotImplementedError(
+            f"No real implementation registered for '{spec.name}' (family={family!r}). "
+            f"This architecture has no timm_id/hf_id and no dedicated PyTorch factory — "
+            f"returning a generic conv classifier would silently produce meaningless "
+            f"results, so this raises instead. Either provide your own model and skip "
+            f"get_model() for this architecture, or contribute a real factory in "
+            f"pygeovision/models/registry.py::_build_pytorch_fallback()."
+        )
+
+
+def _adapt_first_conv_channels(conv: Any, in_channels: int, pretrained_loaded: bool):
+    """Replace a Conv2d's input channel count, preserving pretrained RGB
+    weights in the first 3 channels (averaged into any extra channels) when
+    the original weights were loaded — a silent RGB->multispectral swap
+    otherwise discards the pretrained weights entirely without saying so."""
+    import torch
+    import torch.nn as nn
+
+    if in_channels == conv.in_channels:
+        return conv
+
+    new_conv = nn.Conv2d(
+        in_channels, conv.out_channels, kernel_size=conv.kernel_size,
+        stride=conv.stride, padding=conv.padding, bias=(conv.bias is not None),
+    )
+    if pretrained_loaded:
+        with torch.no_grad():
+            if in_channels >= 3:
+                new_conv.weight[:, :3] = conv.weight[:, :3]
+                if in_channels > 3:
+                    mean_w = conv.weight.mean(dim=1, keepdim=True)
+                    new_conv.weight[:, 3:] = mean_w.repeat(1, in_channels - 3, 1, 1)
+            else:
+                new_conv.weight[:] = conv.weight[:, :in_channels]
+        logger.warning(
+            "Adapted first-conv from %d to %d input channels — pretrained RGB "
+            "weights kept in channels 0-2, extra channels initialised from the "
+            "channel-mean of the pretrained weights (not from real pretraining "
+            "on those bands).",
+            conv.in_channels, in_channels,
+        )
+    return new_conv
+
+
+def _build_rcnn(spec: ModelSpec, num_classes: int, in_channels: int, pretrained: bool = False, **kwargs) -> Any:
+    """Real torchvision Mask R-CNN / Faster R-CNN, with detection heads
+    correctly resized to num_classes (torchvision's box/mask predictors are
+    tied to a fixed COCO class count and must be swapped, not just relabeled).
+    """
+    import torchvision
+    from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+    from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
+
+    if in_channels != 3 and pretrained:
+        logger.warning(
+            "%s: pretrained=True with in_channels=%d — ImageNet/COCO backbone "
+            "weights cannot map onto non-RGB channels without adaptation. "
+            "The first conv layer will be widened (see _adapt_first_conv_channels); "
+            "extra channels are NOT pretrained on real multispectral data.",
+            spec.name, in_channels,
+        )
+
+    is_mask = "mask" in spec.name
+    if is_mask:
+        model = torchvision.models.detection.maskrcnn_resnet50_fpn(
+            weights="DEFAULT" if pretrained else None,
+            weights_backbone="DEFAULT" if pretrained else None,
+        )
+    else:
+        model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
+            weights="DEFAULT" if pretrained else None,
+            weights_backbone="DEFAULT" if pretrained else None,
+        )
+
+    if in_channels != 3:
+        backbone_body = model.backbone.body
+        old_conv = backbone_body.conv1
+        backbone_body.conv1 = _adapt_first_conv_channels(old_conv, in_channels, pretrained)
+
+    # +1 for background class, matching torchvision's convention
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes + 1)
+
+    if is_mask:
+        in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+        model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, 256, num_classes + 1)
+
+    return model
+
+
+def _build_anchor_free_detector(spec: ModelSpec, num_classes: int, in_channels: int, pretrained: bool = False, **kwargs) -> Any:
+    """Real torchvision FCOS. CenterNet has no torchvision equivalent and no
+    HF/timm id — raises rather than silently substituting FCOS or a toy CNN,
+    since they are architecturally different detectors."""
+    if "fcos" not in spec.name:
+        raise NotImplementedError(
+            f"'{spec.name}' has no real factory (family=anchor_free but not FCOS). "
+            f"torchvision has no CenterNet implementation, and this spec has no "
+            f"timm_id/hf_id — provide your own model rather than silently getting "
+            f"a different architecture."
+        )
+
+    import torchvision
+    from torchvision.models.detection.fcos import FCOSClassificationHead
+
+    if in_channels != 3 and pretrained:
+        logger.warning(
+            "%s: pretrained=True with in_channels=%d — see _build_rcnn's warning; "
+            "the same caveat applies here.", spec.name, in_channels,
+        )
+
+    model = torchvision.models.detection.fcos_resnet50_fpn(
+        weights="DEFAULT" if pretrained else None,
+        weights_backbone="DEFAULT" if pretrained else None,
+    )
+
+    if in_channels != 3:
+        backbone_body = model.backbone.body
+        old_conv = backbone_body.conv1
+        backbone_body.conv1 = _adapt_first_conv_channels(old_conv, in_channels, pretrained)
+
+    num_anchors = model.head.classification_head.num_anchors
+    out_channels = model.backbone.out_channels
+    model.head.classification_head = FCOSClassificationHead(
+        out_channels, num_anchors, num_classes + 1,
+    )
+    return model
 
 
 def _simple_unet(in_ch: int, n_classes: int) -> Any:

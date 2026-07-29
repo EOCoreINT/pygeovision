@@ -31,9 +31,7 @@ geospatial AI inference. Built on top of `pygeofetch` [@appiahkubi2025pygeofetch
 that abstracts data access across 22+ satellite data providers — `pygeovision`
 covers the complete EO workflow from raw satellite acquisition to AI-derived
 geospatial intelligence: preprocessing pipelines for optical and SAR imagery,
-spectral index computation, cloud masking, change detection, flood mapping,
-InSAR deformation analysis, and inference via foundation models including
-Prithvi-EO-2.0 [@jakubik2023prithvi] and DINOv3 [@oquab2023dinov2].
+spectral index computation, cloud masking, change detection, classification,segmentation,InSAR deformation analysis, and inference via foundation models including Prithvi-EO-2.0 [@jakubik2023prithvi] and DINOv3 [@oquab2023dinov2].
 
 A natural-language query interface (GeoAgent) allows users to describe an
 analysis in plain English and have the system automatically select the

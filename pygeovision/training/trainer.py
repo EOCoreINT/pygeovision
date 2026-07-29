@@ -281,8 +281,13 @@ class GeoTrainer:
             if precision in ("fp16", "bf16") and str(device) != "cpu":
                 dtype = torch.float16 if precision == "fp16" else torch.bfloat16
                 return torch.amp.autocast(device_type=str(device).split(":")[0], dtype=dtype)
-        except (ImportError, Exception):
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Mixed-precision (%s) setup failed — falling back to full "
+                "precision (fp32). Training will be correct but likely "
+                "slower/more memory-hungry than expected. Error: %s",
+                getattr(self.cfg, "precision", "?"), exc,
+            )
         import contextlib
         return contextlib.nullcontext()
 
@@ -319,8 +324,8 @@ class GeoTrainer:
         if self._tracker_obj is not None:
             try:
                 self._tracker_obj.log_metrics(metrics, step=step)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracker log_metrics() failed at step %d: %s", step, exc)
 
     def _setup_distributed(self) -> Any:
         """Set up DDP or FSDP if multiple GPUs available."""
@@ -382,8 +387,13 @@ class GeoTrainer:
         # Move model to device
         try:
             model = model.to(device)
-        except Exception:
-            pass
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to move model to device={device!r}: {exc}. "
+                f"Training cannot continue safely on an unknown/partial "
+                f"device state — check device availability (e.g. "
+                f"torch.cuda.is_available()) and free memory."
+            ) from exc
 
         # Compile model (PyTorch 2.x)
         if self.cfg.compile_model:
@@ -466,8 +476,14 @@ class GeoTrainer:
                     try:
                         images = images.to(device, non_blocking=True)
                         targets = targets.to(device, non_blocking=True)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "Skipping batch %d — failed to move to device=%r: %s. "
+                            "If this happens repeatedly, check your dataset/collate_fn "
+                            "for malformed samples (e.g. a missing 'mask'/'label' key).",
+                            batch_idx, device, exc,
+                        )
+                        continue
 
                     # Forward + backward
                     with autocast_ctx:
@@ -532,8 +548,12 @@ class GeoTrainer:
                         try:
                             preds = outputs.argmax(dim=1)
                             metrics_obj.update(preds, targets)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.warning(
+                                "Validation metrics update failed for a batch "
+                                "(val_loss is still accumulated correctly, but "
+                                "other metrics may be incomplete): %s", exc,
+                            )
 
                 computed = metrics_obj.compute()
                 val_metrics = {

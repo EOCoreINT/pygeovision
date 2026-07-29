@@ -671,11 +671,13 @@ def ai_train(task, data_dir, output, num_classes, epochs, backbone):
     from pygeovision.training.trainer import TrainingConfig
 
     click.echo(f"Preparing native {task} training config...")
-    click.echo(f"  Data: {data_dir} | Classes: {num_classes} | Epochs: {epochs}")
+    click.echo(f"  Data: {data_dir} | Classes: {num_classes} | Epochs: {epochs} | Backbone: {backbone}")
 
-    cfg = TrainingConfig(task=task, num_classes=num_classes, max_epochs=epochs)
-    click.echo(f"✓ Config ready. Initialise GeoTrainer(model, cfg).fit(train_ds, val_ds) "
-               f"to train — output will be saved to {output}")
+    cfg = TrainingConfig(num_classes=num_classes, max_epochs=epochs)
+    click.echo(f"✓ Config ready. Build your model with the chosen backbone, then train:")
+    click.echo(f"    model = get_model({backbone!r}, num_classes={num_classes}, pretrained=True)")
+    click.echo(f"    GeoTrainer(model, cfg).fit(train_ds, val_ds)")
+    click.echo(f"  Output will be saved to {output}")
     click.echo(f"  Config: {cfg.__dict__}")
 
 
@@ -1978,7 +1980,6 @@ def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1
     """
     from pygeovision.data.indices import SpectralIndices
     ix = SpectralIndices()
-    dict(blue=blue, green=green, red=red, nir=nir, swir1=swir1, swir2=swir2)
 
     fn_map = {
         "ndvi": lambda: ix.ndvi(input_path, red, nir, output),
@@ -2008,9 +2009,18 @@ def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1
     result = fn_map[idx]()
     if isinstance(result, str):
         click.echo(f"  ✓ {index_name.upper()} → {result}")
+        if validate:
+            from pygeovision import PyGeoVision
+            report = PyGeoVision().validator.validate(result)
+            status = "PASSED" if report.passed else "FIXED (issues auto-corrected)"
+            click.echo(f"  Validation: {status}")
+            click.echo(f"  {report.summary()}")
     else:
         click.echo(f"  ✓ {index_name.upper()}  shape={result.shape}  "
                    f"range=[{float(result.min()):.4f}, {float(result.max()):.4f}]")
+        if validate:
+            click.echo("  Validation skipped: --validate requires a file output "
+                       "(pass --output to write a GeoTIFF instead of an in-memory array).")
 
 
 @indices_grp.command("all")
@@ -2097,8 +2107,22 @@ def post_vectorise(input_path, output, target_class, min_area, simplify, validat
                           min_area_m2=min_area, simplify_tolerance=simplify)
     import json
     with open(out) as f:
-        n = len(json.load(f).get("features", []))
+        features = json.load(f).get("features", [])
+    n = len(features)
     click.echo(f"  ✓ Vectorised → {out}  ({n} features)")
+
+    if validate:
+        from shapely.geometry import shape as shp_shape
+        n_invalid = 0
+        for feat in features:
+            try:
+                geom = shp_shape(feat["geometry"])
+                if not geom.is_valid:
+                    n_invalid += 1
+            except Exception:
+                n_invalid += 1
+        status = "PASSED" if n_invalid == 0 else f"FAILED ({n_invalid}/{n} invalid geometries)"
+        click.echo(f"  Validation: {status}")
 
 
 @postprocess_grp.command("sieve")

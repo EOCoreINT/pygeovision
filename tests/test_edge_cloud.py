@@ -1,4 +1,5 @@
 """Tests for edge deployment and cloud deployment modules."""
+import importlib.util
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -35,7 +36,7 @@ class TestONNXRuntimeInference:
                 ONNXRuntimeInference.from_pytorch(None, "out.onnx")
             return  # pass if torch not available
 
-    @pytest.mark.skipif(not pytest.importorskip("torch", reason="torch"), reason="needs torch")
+    @pytest.mark.skipif(importlib.util.find_spec("torch") is None, reason="needs torch")
     def test_from_pytorch_exports(self, tmp_path):
         import torch.nn as nn
 
@@ -53,9 +54,8 @@ class TestONNXRuntimeInference:
         assert out.exists()
         assert isinstance(eng, ONNXRuntimeInference)
 
-    @pytest.mark.skipif(not pytest.importorskip("onnxruntime", reason="onnxruntime"),
-                         reason="needs onnxruntime")
-    @pytest.mark.skipif(not pytest.importorskip("torch", reason="torch"), reason="needs torch")
+    @pytest.mark.skipif(importlib.util.find_spec("onnxruntime") is None, reason="needs onnxruntime")
+    @pytest.mark.skipif(importlib.util.find_spec("torch") is None, reason="needs torch")
     def test_infer_after_export(self, tmp_path):
         import numpy as np
         import torch.nn as nn
@@ -231,3 +231,47 @@ class TestCloudDeployer:
         from pygeovision.cloud.deploy import CloudDeployer
         with pytest.raises(ValueError):
             CloudDeployer.from_provider("unknown_xyz")
+
+
+class TestAWSDeployerInstanceFamilyDetection:
+    """Regression tests for a real bug: 'g' in instance_type / 'p' in
+    instance_type matched on the SIZE suffix (every 'large'/'xlarge'/
+    '2xlarge' contains the letter 'g'), not the actual instance family —
+    misclassifying common CPU-only instances like ml.c5.xlarge and
+    ml.m5.large as needing the GPU container image."""
+
+    def test_common_cpu_instances_get_cpu_image(self):
+        from pygeovision.cloud.deploy import AWSDeployer
+        dep = AWSDeployer(region="us-east-1")
+        for instance_type in ("ml.c5.xlarge", "ml.m5.large", "ml.t2.medium", "ml.r5.2xlarge"):
+            image = dep._get_inference_image("pytorch", instance_type)
+            assert "-gpu-" not in image, f"{instance_type} incorrectly got a GPU image: {image}"
+            assert "-cpu-" in image
+
+    def test_real_gpu_instances_get_gpu_image(self):
+        from pygeovision.cloud.deploy import AWSDeployer
+        dep = AWSDeployer(region="us-east-1")
+        for instance_type in ("ml.g4dn.xlarge", "ml.p3.2xlarge", "ml.p4d.24xlarge", "ml.g5.xlarge"):
+            image = dep._get_inference_image("pytorch", instance_type)
+            assert "-gpu-" in image, f"{instance_type} did not get a GPU image: {image}"
+
+
+class TestEdgeNoOrphanedDuplicateClass:
+    """Regression test: ONNXRuntimeInference was defined twice — once as
+    the real, full-featured version in onnx_rt.py, and again as a thinner
+    duplicate in jetson.py that nothing actually imported. Confirm the
+    duplicate is gone and the package-level export resolves to the real one."""
+
+    def test_jetson_module_no_longer_defines_a_duplicate(self):
+        import pygeovision.edge.jetson as jetson_mod
+        assert not hasattr(jetson_mod, "ONNXRuntimeInference")
+
+    def test_package_export_is_the_full_featured_version(self):
+        from pygeovision.edge import ONNXRuntimeInference
+        from pygeovision.edge.onnx_rt import ONNXRuntimeInference as RealOne
+        assert ONNXRuntimeInference is RealOne
+        # the real version has infer_geotiff/benchmark/model_info/from_pytorch;
+        # the old duplicate only had __init__/_load/infer
+        assert hasattr(ONNXRuntimeInference, "infer_geotiff")
+        assert hasattr(ONNXRuntimeInference, "benchmark")
+        assert hasattr(ONNXRuntimeInference, "from_pytorch")

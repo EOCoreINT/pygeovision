@@ -166,17 +166,39 @@ class ChangeFormer:
         return {"output_path": output_path, "change_pct": round(change_pct, 3), "model": "ChangeFormer"}
 
 
-class ChangeDetection(ChangeFormer):
-    """Alias for ChangeFormer that accepts a ``model_variant`` keyword argument.
+class ChangeDetection:
+    """Dispatches to a real change-detection model by `model_variant`.
 
     Used in project notebooks where ``ChangeDetection(model_variant='changeformer',
-    in_channels=N)`` was the original API.  The ``model_variant`` kwarg is accepted
-    but ignored — ChangeFormer is the only supported variant.
+    in_channels=N)`` was the original API. Unlike the previous version, this
+    now genuinely routes to a different architecture per variant instead of
+    always using ChangeFormer regardless of what was requested.
+
+    Supported variants: 'changeformer' (default), 'bit' / 'bitemporal', 'dsamnet'.
+    'changestar' is not yet implemented — raises rather than silently
+    substituting a different architecture.
     """
-    def __init__(self, model_variant: str = "changeformer", **kwargs):
-        if model_variant not in ("changeformer", "changestar", "bitemporal"):
-            logger.warning(
-                "ChangeDetection: model_variant=%r not recognised; "
-                "defaulting to ChangeFormer architecture.", model_variant
+
+    _VARIANTS = ("changeformer", "bit", "bitemporal", "dsamnet")
+
+    def __new__(cls, model_variant: str = "changeformer", **kwargs):
+        variant = model_variant.lower()
+        if variant == "changeformer":
+            return ChangeFormer(**kwargs)
+        elif variant in ("bit", "bitemporal"):
+            from pygeovision.models.change_detection.bit import BITChangeDetector
+            return BITChangeDetector(**kwargs)
+        elif variant == "dsamnet":
+            from pygeovision.models.change_detection.dsamnet import DSAMNetChangeDetector
+            return DSAMNetChangeDetector(**kwargs)
+        elif variant == "changestar":
+            raise NotImplementedError(
+                "ChangeSTAR is not yet implemented in pygeovision — use "
+                "model_variant='changeformer', 'bit', or 'dsamnet' instead, "
+                "or contribute a real ChangeSTAR port."
             )
-        super().__init__(**kwargs)
+        else:
+            raise ValueError(
+                f"Unknown model_variant={model_variant!r}. "
+                f"Choose from: {cls._VARIANTS}."
+            )

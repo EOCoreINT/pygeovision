@@ -2010,8 +2010,8 @@ class SatelliteFetcher:
         # cache
         try:
             report["cache"] = self.cache_stats()
-        except Exception:
-            pass
+        except Exception as exc:
+            report["cache"] = {"error": str(exc)}
 
         n_ok  = sum(1 for v in report.values() if isinstance(v, dict) and v.get("ok"))
         n_all = sum(1 for v in report.values() if isinstance(v, dict) and "ok" in v)

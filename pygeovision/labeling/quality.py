@@ -177,18 +177,34 @@ class LabelQualityAssessor:
     def _recommendations(self, results: dict) -> list[str]:
         recs = []
         checks = results.get("checks", {})
+
+        # ── Class balance ──────────────────────────────────────────────────────
         cb = checks.get("class_balance", {})
         if cb.get("status") in ("warning", "critical"):
-            ratio = cb.get("imbalance_ratio", 0)
-            recs.append(f"Class imbalance ratio {ratio:.0f}x — use weighted loss or oversampling minority class")
+            ratio = cb.get("imbalance_ratio")
+            if ratio is not None and ratio > 0:
+                recs.append(f"Class imbalance ratio {ratio:.0f}x — use weighted loss or oversampling minority class")
+            else:
+                recs.append("Class imbalance detected — consider weighted loss or oversampling")
+
+        # ── Slivers ────────────────────────────────────────────────────────────
         slivers = checks.get("slivers", {})
         if slivers.get("status") == "warning":
-            recs.append(f"{slivers.get('n_slivers',0)} sliver labels detected — run clean() to remove them")
+            n_slivers = slivers.get("n_slivers", 0)
+            if n_slivers > 0:
+                recs.append(f"{n_slivers} sliver labels detected — run clean() to remove them")
+            else:
+                recs.append("Sliver labels detected — run clean() to remove them")
+
+        # ── Coverage ───────────────────────────────────────────────────────────
         cov = checks.get("coverage", {})
         if cov.get("valid_fraction", 1.0) < 0.5:
             recs.append("Less than 50% of pixels labeled — consider expanding label coverage")
+
+        # ── Overall quality ────────────────────────────────────────────────────
         if results.get("quality_score", 1.0) < 0.7:
             recs.append("Quality score < 0.7 — recommend manual review of low-quality regions")
+
         return recs
 
     def clean(

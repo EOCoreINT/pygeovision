@@ -59,10 +59,10 @@ class JetsonDeployer:
         # Step 2: Convert to TensorRT
         try:
             import tensorrt as trt
-            logger.TRT = trt.Logger(trt.Logger.WARNING)
-            builder = trt.Builder(logger.TRT)
+            trt_logger = trt.Logger(trt.Logger.WARNING)
+            builder = trt.Builder(trt_logger)
             network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
-            parser = trt.OnnxParser(network, logger.TRT)
+            parser = trt.OnnxParser(network, trt_logger)
 
             with open(str(onnx_path), "rb") as f:
                 if not parser.parse(f.read()):
@@ -136,34 +136,3 @@ class JetsonDeployer:
             return {"error": "TensorRT + PyCUDA required. Install on Jetson: pip install tensorrt pycuda"}
         except Exception as exc:
             return {"error": str(exc)}
-
-
-class ONNXRuntimeInference:
-    """Cross-platform ONNX Runtime inference (F2, F3)."""
-
-    def __init__(self, onnx_path: str, device: str = "cpu") -> None:
-        self.onnx_path = onnx_path
-        self.device = device
-        self._session = None
-
-    def _load(self) -> None:
-        if self._session: return
-        try:
-            import onnxruntime as ort
-            providers = (["CUDAExecutionProvider", "CPUExecutionProvider"]
-                         if self.device == "cuda" else ["CPUExecutionProvider"])
-            opts = ort.SessionOptions()
-            opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            self._session = ort.InferenceSession(self.onnx_path, sess_options=opts, providers=providers)
-        except ImportError:
-            raise ImportError("onnxruntime required: pip install onnxruntime-gpu")
-
-    def infer(self, input_array: Any) -> Any:
-        import numpy as np
-        self._load()
-        if hasattr(input_array, "numpy"):
-            input_array = input_array.numpy()
-        if input_array.ndim == 3:
-            input_array = input_array[np.newaxis]
-        inp_name = self._session.get_inputs()[0].name
-        return self._session.run(None, {inp_name: input_array.astype(np.float32)})[0]

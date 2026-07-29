@@ -674,11 +674,13 @@ class PyGeoFetchBridge:
             current = str(r.output_path)
             steps.append("pgf.cloud_mask_scl")
 
-        if kw.get("normalise") == "scale_factor":
-            kw.get("scale_factor", 10000.0)
-            r  = pgf_pre.atmos(current, method="dos1")
-            current = str(r.output_path)
-            steps.append("pgf.atmos_dos1")
+        if kw.get("normalise"):
+            current = self._normalise_raster(
+                current,
+                method=kw["normalise"],
+                scale_factor=kw.get("scale_factor", 10000.0),
+            )
+            steps.append(f"normalise({kw['normalise']})")
 
         if kw.get("resample_m"):
             r = pgf_pre.resample(current, resolution=int(kw["resample_m"]))
@@ -698,11 +700,87 @@ class PyGeoFetchBridge:
             report = self._v.validate(op)
             steps.append(f"validate({model_type})")
 
+        resolution_m = None
+        try:
+            import rasterio
+            with rasterio.open(op) as _src:
+                resolution_m = abs(_src.transform.a)
+        except Exception:
+            pass
+
         return {
             "array": arr, "output_path": op,
             "shape": arr.shape if arr is not None else None,
-            "resolution_m": None, "report": report, "steps": steps,
+            "resolution_m": resolution_m, "report": report, "steps": steps,
         }
+
+    def _normalise_raster(
+        self, input_path: str, method: str, scale_factor: float = 10000.0,
+    ) -> str:
+        """Normalise a raster's pixel values to a model-ready range.
+
+        This is deliberately NOT atmospheric correction — `atmos()` (Dark
+        Object Subtraction etc.) is a physically different operation that
+        estimates and removes a per-band atmospheric offset. Sentinel-2 L2A
+        data is already atmospherically corrected (via ESA's Sen2Cor), so
+        running DOS1 again here would double-correct and distort reflectance
+        values. "Normalise" here means exactly what it says: rescale pixel
+        values into the range a model expects.
+
+        Methods:
+            'scale_factor': divide by `scale_factor` (10000 for Sentinel-2
+                L2A reflectance, already in [0, 10000] -> [0, 1]).
+            'minmax': rescale each band to [0, 1] using its own min/max.
+            'zscore': standardise each band to zero mean, unit variance.
+            'percentile': rescale each band using its 2nd/98th percentile
+                as the [0, 1] bounds (robust to outliers).
+        """
+        import rasterio
+        import numpy as np
+
+        inp = pathlib.Path(input_path)
+        out_path = inp.parent / f"{inp.stem}_norm_{method}.tif"
+
+        with rasterio.open(inp) as src:
+            data = src.read().astype("float32")
+            profile = src.profile.copy()
+            nodata = src.nodata
+
+        valid = np.ones_like(data, dtype=bool) if nodata is None else (data != nodata)
+
+        if method == "scale_factor":
+            normed = data / float(scale_factor)
+        elif method == "minmax":
+            normed = np.empty_like(data)
+            for b in range(data.shape[0]):
+                v = data[b][valid[b]]
+                lo, hi = (float(v.min()), float(v.max())) if v.size else (0.0, 1.0)
+                denom = max(hi - lo, 1e-6)
+                normed[b] = (data[b] - lo) / denom
+        elif method == "zscore":
+            normed = np.empty_like(data)
+            for b in range(data.shape[0]):
+                v = data[b][valid[b]]
+                mean_, std_ = (float(v.mean()), float(v.std())) if v.size else (0.0, 1.0)
+                normed[b] = (data[b] - mean_) / max(std_, 1e-6)
+        elif method == "percentile":
+            normed = np.empty_like(data)
+            for b in range(data.shape[0]):
+                v = data[b][valid[b]]
+                p2, p98 = np.percentile(v, (2, 98)) if v.size else (0.0, 1.0)
+                denom = max(float(p98 - p2), 1e-6)
+                normed[b] = np.clip((data[b] - p2) / denom, 0.0, 1.0)
+        else:
+            logger.warning("Unknown normalise method %r — skipping", method)
+            return str(inp)
+
+        normed = normed.astype("float32")
+        profile.update(dtype="float32", nodata=None)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with rasterio.open(out_path, "w", **profile) as dst:
+            dst.write(normed)
+
+        return str(out_path)
 
     # ------------------------------------------------------------------
     # Preprocessing proxy (v2.0 native / PGV fallback)
@@ -1149,8 +1227,8 @@ class PyGeoFetchBridge:
             try:
                 pgf_status = self._pgf.status()
                 info["pgf_status"] = pgf_status
-            except Exception:
-                pass
+            except Exception as exc:
+                info["pgf_status"] = {"error": str(exc)}
         return info
 
 

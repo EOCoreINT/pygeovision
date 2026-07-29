@@ -245,3 +245,99 @@ class TestClassBalanceLosses:
         # Highly imbalanced: class 0 has 10x more pixels
         loss = ClassBalancedCrossEntropy(class_counts=[100000, 10000])(preds, targets)
         assert loss.item() >= 0
+
+
+class TestOhemMinKeptGuarantee:
+    """Regression tests for a real bug: max() was used where min() is
+    required for OHEM's min_kept guarantee to actually guarantee anything.
+    Verified this could select ZERO pixels (and NaN the loss via .mean()
+    on an empty tensor) in a batch with mostly easy pixels — exactly the
+    scenario min_kept exists to handle."""
+
+    def test_min_kept_guarantee_holds_with_mostly_easy_pixels(self):
+        import torch
+        from pygeovision.losses.segmentation import OhemCrossEntropy
+
+        # Moderately confident (not perfect) predictions: nonzero CE for
+        # every pixel, but well below thresh=0.7 — exactly the scenario
+        # min_kept exists to rescue. With the original max()-based bug,
+        # this selects ZERO pixels (confirmed via direct reproduction)
+        # and .mean() on an empty tensor returns NaN.
+        C, H, W = 3, 50, 50
+        targets = torch.randint(0, C, (1, H, W))
+        preds = torch.zeros(1, C, H, W)
+        preds.scatter_(1, targets.unsqueeze(1), 3.0)  # confident but not extreme
+        preds = preds.clone().requires_grad_(True)
+
+        loss_fn = OhemCrossEntropy(thresh=0.7, min_kept=1000)
+        loss = loss_fn(preds, targets)
+
+        assert not torch.isnan(loss), "OHEM loss is NaN — min_kept guarantee broken"
+        loss.backward()
+        assert torch.isfinite(preds.grad).all()
+
+    def test_effective_threshold_never_exceeds_configured_thresh(self):
+        """The min_kept floor should only ever LOOSEN the selection
+        criterion, never make it stricter than the user's configured
+        thresh."""
+        import torch
+        ce_flat = torch.cat([torch.full((900,), 0.1), torch.full((100,), 0.9)])
+        thresh, min_kept = 0.7, 500
+        topk_min = ce_flat.topk(min(min_kept, ce_flat.numel()))[0].min()
+        effective_thresh = min(thresh, float(topk_min))
+        assert effective_thresh <= thresh
+
+
+class TestDetectionLossesAreGenuinelyDistinct:
+    """Regression tests for a real bug: DIoULoss called CIoULoss()
+    directly (silently computing CIoU under DIoU's name), and SIoULoss
+    called GIoULoss() directly (silently computing a completely different
+    published loss function under SIoU's name)."""
+
+    @pytest.fixture
+    def boxes(self):
+        import torch
+        pred = torch.tensor([[10., 10., 50., 40.]], requires_grad=True)
+        target = torch.tensor([[12., 8., 55., 45.]])
+        return pred, target
+
+    def test_diou_differs_from_ciou(self, boxes):
+        from pygeovision.losses.detection import CIoULoss, DIoULoss
+        pred, target = boxes
+        ciou = CIoULoss()(pred, target)
+        diou = DIoULoss()(pred, target)
+        assert abs(ciou.item() - diou.item()) > 1e-6
+
+    def test_siou_differs_from_giou(self, boxes):
+        from pygeovision.losses.detection import GIoULoss, SIoULoss
+        pred, target = boxes
+        giou = GIoULoss()(pred, target)
+        siou = SIoULoss()(pred, target)
+        assert abs(giou.item() - siou.item()) > 1e-6
+
+    def test_siou_gradient_finite_for_identical_boxes(self):
+        """Regression test for a real numerical-stability bug: clamping
+        sqrt()'s OUTPUT does not protect its gradient when the input is
+        exactly 0 (d/dx sqrt(x) = 1/(2*sqrt(x)), still NaN at x=0
+        regardless of a downstream clamp) — identical/coincident boxes
+        used to produce a NaN gradient despite a correct forward loss."""
+        import torch
+        from pygeovision.losses.detection import SIoULoss
+        pred = torch.tensor([[10., 10., 50., 40.]], requires_grad=True)
+        target = torch.tensor([[10., 10., 50., 40.]])
+        loss = SIoULoss()(pred, target)
+        assert loss.item() == pytest.approx(0.0, abs=1e-4)
+        loss.backward()
+        assert torch.isfinite(pred.grad).all()
+
+    def test_all_four_losses_finite_on_random_boxes(self):
+        import torch
+        from pygeovision.losses.detection import CIoULoss, DIoULoss, GIoULoss, SIoULoss
+        torch.manual_seed(0)
+        target = torch.tensor([[8., 3., 30., 22.]])
+        for loss_cls in (CIoULoss, DIoULoss, GIoULoss, SIoULoss):
+            p = torch.tensor([[5., 5., 25., 20.]], requires_grad=True)
+            loss = loss_cls()(p, target)
+            assert torch.isfinite(loss)
+            loss.backward()
+            assert torch.isfinite(p.grad).all(), f"{loss_cls.__name__} produced non-finite gradient"

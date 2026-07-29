@@ -74,4 +74,8 @@ class AttentionMapExtractor:
         except Exception as exc:
             import numpy as np
             logger.warning("Attention extraction failed: %s", exc)
-            return np.zeros((64, 64))
+            try:
+                h, w = image.shape[-2], image.shape[-1]
+            except Exception:
+                h, w = 64, 64  # only if we couldn't even determine the real input shape
+            return np.zeros((h, w))

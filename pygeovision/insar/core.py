@@ -1253,9 +1253,24 @@ class SLCInSARPipeline:
         wrapped_path   = str(wrapped_files[0])
         coherence_path = str(coherence_files[0])
 
-        # Get image width from SNAP header
+        # Get image width from SNAP header — required for correctly
+        # reshaping the raw binary SAR data; there is no safe default
+        # to guess if it's missing (see _read_envi_width's docstring).
         hdr_files = list(snaphu_dir.glob("*.hdr"))
-        width = self._read_envi_width(str(hdr_files[0])) if hdr_files else 5000
+        if not hdr_files:
+            result.errors.append(
+                f"No .hdr file found in {snaphu_dir} — cannot determine "
+                f"image width for SNAPHU unwrapping. Check SNAP "
+                f"SnaphuExport output."
+            )
+            result.success = False
+            return result
+        try:
+            width = self._read_envi_width(str(hdr_files[0]))
+        except RuntimeError as exc:
+            result.errors.append(str(exc))
+            result.success = False
+            return result
 
         result.processing_log.append(
             f"Running SNAPHU (DEFO mode, coherence mask >= {self.coherence_threshold})..."
@@ -1427,12 +1442,27 @@ class SLCInSARPipeline:
 
     @staticmethod
     def _read_envi_width(hdr_path: str) -> int:
-        """Read image width from ENVI .hdr file."""
+        """Read image width from ENVI .hdr file.
+
+        Raises rather than guessing: this value is used to reshape raw
+        binary SAR data (e.g. for SNAPHU phase unwrapping) — a wrong
+        width doesn't just reduce accuracy, it silently corrupts the
+        entire reshape into a meaningless interferogram that may not
+        even look obviously broken. There is no scientifically valid
+        "default" width to fall back to.
+        """
         try:
             with open(hdr_path) as f:
                 for line in f:
                     if line.strip().startswith("samples"):
                         return int(line.split("=")[1].strip())
-        except Exception:
-            pass
-        return 5000  # default fallback
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to read ENVI header {hdr_path}: {exc}. Cannot "
+                f"determine image width — proceeding with a guessed value "
+                f"would silently corrupt the SAR data reshape."
+            ) from exc
+        raise RuntimeError(
+            f"ENVI header {hdr_path} has no 'samples' field — cannot "
+            f"determine image width for reshaping raw SAR data."
+        )

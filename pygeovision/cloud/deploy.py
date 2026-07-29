@@ -132,7 +132,17 @@ class AWSDeployer(CloudDeployer):
 
     def _get_inference_image(self, framework: str, instance_type: str) -> str:
         """Get the appropriate SageMaker inference container URI."""
-        gpu = "gpu" if "g" in instance_type or "p" in instance_type else "cpu"
+        # Determine GPU vs CPU from the actual instance FAMILY (the
+        # segment between "ml." and the size, e.g. "g4dn" in
+        # "ml.g4dn.xlarge") — not a naive substring search. The previous
+        # check ("g" in instance_type) matched on the SIZE suffix instead
+        # (every "large"/"xlarge"/"2xlarge" contains the letter "g"),
+        # misclassifying common CPU-only instances like "ml.c5.xlarge" and
+        # "ml.m5.large" as needing the GPU container image.
+        gpu_families = ("g", "p", "inf", "trn")  # g4dn/g5, p2/p3/p4d, inf1/inf2, trn1
+        parts = instance_type.split(".")
+        family = parts[1] if len(parts) >= 3 else ""
+        gpu = "gpu" if family.startswith(gpu_families) else "cpu"
         images = {
             "onnx": f"763104351884.dkr.ecr.{self.region}.amazonaws.com/pytorch-inference:2.1-{gpu}-py310",
             "pytorch": f"763104351884.dkr.ecr.{self.region}.amazonaws.com/pytorch-inference:2.1-{gpu}-py310",
@@ -378,10 +388,15 @@ class GCPDeployer(CloudDeployer):
             logger.info("Model uploaded: %s", model_gcs_uri)
 
             # Upload model to Vertex AI
+            container_image = (
+                "us-docker.pkg.dev/vertex-ai/prediction/pytorch-gpu.2-1:latest"
+                if accelerator_count > 0
+                else "us-docker.pkg.dev/vertex-ai/prediction/pytorch-cpu.2-1:latest"
+            )
             model = aiplatform.Model.upload(
                 display_name=endpoint_name,
                 artifact_uri=model_gcs_uri,
-                serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/pytorch-gpu.2-1:latest",
+                serving_container_image_uri=container_image,
             )
 
             # Create endpoint and deploy
@@ -389,8 +404,8 @@ class GCPDeployer(CloudDeployer):
             model.deploy(
                 endpoint=endpoint,
                 machine_type=machine_type,
-                accelerator_type=accelerator_type,
-                accelerator_count=accelerator_count,
+                accelerator_type=accelerator_type if accelerator_count > 0 else None,
+                accelerator_count=accelerator_count if accelerator_count > 0 else None,
                 min_replica_count=1,
                 max_replica_count=5,
             )

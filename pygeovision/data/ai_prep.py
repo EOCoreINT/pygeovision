@@ -363,8 +363,12 @@ def prepare_optical_for_ai(
     if fix_georeference_first:
         try:
             working_path = fix_georeference(file_path)
-        except ValueError:
-            pass
+        except ValueError as exc:
+            logger.warning(
+                "fix_georeference_first=True was requested but the fix "
+                "failed (%s) — proceeding with the ORIGINAL file, which "
+                "may still have a broken/corrupted georeference.", exc,
+            )
 
     validator = DataValidator()
     arr, report = validator.validate_for_ai(

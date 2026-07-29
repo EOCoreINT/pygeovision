@@ -95,8 +95,8 @@ class ExperimentTracker:
             try:
                 import mlflow
                 mlflow.log_metrics(metrics, step=step)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
 
         if self._wandb_run:
             try:
@@ -105,16 +105,16 @@ class ExperimentTracker:
                 if step is not None:
                     log_data["_step"] = step
                 wandb.log(log_data)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
 
         if self._tb_writer:
             try:
                 s = step or len(next(iter(self._history.values()), []))
                 for k, v in metrics.items():
                     self._tb_writer.add_scalar(k, v, global_step=s)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
 
     def log_model(self, model_path: str | Path, artifact_name: str = "model") -> None:
         """Log a model artifact."""
@@ -122,16 +122,16 @@ class ExperimentTracker:
             try:
                 import mlflow
                 mlflow.log_artifact(str(model_path), artifact_path=artifact_name)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
         if self._wandb_run:
             try:
                 import wandb
                 artifact = wandb.Artifact(artifact_name, type="model")
                 artifact.add_file(str(model_path))
                 wandb.log_artifact(artifact)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
 
     def log_image(self, key: str, image: Any, step: int | None = None) -> None:
         """Log an image (numpy array or PIL) to tracking backends."""
@@ -140,14 +140,14 @@ class ExperimentTracker:
                 if hasattr(image, "numpy"):
                     image = image.numpy()
                 self._tb_writer.add_image(key, image, global_step=step)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
         if self._wandb_run:
             try:
                 import wandb
                 wandb.log({key: wandb.Image(image)}, step=step)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
 
     def end_run(self) -> dict[str, Any]:
         """End all tracking runs and return final summary."""
@@ -163,18 +163,18 @@ class ExperimentTracker:
                 import mlflow
                 mlflow.log_metric("duration_seconds", duration)
                 mlflow.end_run()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
         if self._wandb_run:
             try:
                 self._wandb_run.finish()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
         if self._tb_writer:
             try:
                 self._tb_writer.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Experiment tracking call failed (continuing training): %s", exc)
         logger.info("Experiment '%s/%s' completed in %.1fs",
                     self.experiment_name, self.run_name, duration)
         return summary

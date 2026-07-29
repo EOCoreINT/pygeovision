@@ -111,8 +111,10 @@ class PlanExecutor:
 
             # Emit start event
             if self._on_start:
-                try: self._on_start(step.step_idx, step.tool_name, resolved_args)
-                except Exception: pass
+                try:
+                    self._on_start(step.step_idx, step.tool_name, resolved_args)
+                except Exception as exc:
+                    logger.warning("on_start callback raised (continuing execution): %s", exc)
 
             # Find and call the tool
             tool = self._tools.get(step.tool_name)
@@ -134,8 +136,10 @@ class PlanExecutor:
 
             # Emit done event
             if self._on_done:
-                try: self._on_done(step.step_idx, result)
-                except Exception: pass
+                try:
+                    self._on_done(step.step_idx, result)
+                except Exception as exc:
+                    logger.warning("on_done callback raised (continuing execution): %s", exc)
 
             if not result.success and self._stop_on_failure:
                 logger.warning("Step %d failed — stopping plan execution.", step.step_idx)

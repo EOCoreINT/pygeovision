@@ -78,7 +78,8 @@ class GeoAgent:
         pgv_client: Any,
         *,
         api_key:         str | None = None,
-        model:           str = "claude-sonnet-4-6",
+        model:           str | None = None,
+        provider:        str | None = None,   # "anthropic" | "groq"; auto-detected if None
         stop_on_failure: bool = True,
         verbose:         bool = True,
         output_dir:      str  = "./agent_output/",
@@ -96,11 +97,29 @@ class GeoAgent:
 
         self._tools = build_tools(pgv_client)
 
-        # ── Planner (LLM when key available, heuristic otherwise) ─────────────
-        _key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        # ── Planner (LLM when a key is available, heuristic otherwise) ────────
+        # Provider auto-detection: explicit `provider` wins; otherwise use
+        # whichever of ANTHROPIC_API_KEY/GROQ_API_KEY is actually set
+        # (Anthropic first if both are present, for backwards compatibility
+        # with existing behaviour).
+        _anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        _groq_key      = os.environ.get("GROQ_API_KEY", "")
+
+        if provider == "groq" or (provider is None and not _anthropic_key and _groq_key):
+            _provider = "groq"
+            _key = api_key or _groq_key
+            _default_model = "llama-3.3-70b-versatile"
+        else:
+            _provider = "anthropic"
+            _key = api_key or _anthropic_key
+            _default_model = "claude-sonnet-4-6"
+
         if _key:
-            self._planner   = LLMPlanner(self._tools, api_key=_key, model=model)
-            self._plan_mode = "llm"
+            self._planner   = LLMPlanner(
+                self._tools, api_key=_key, model=model or _default_model, provider=_provider,
+            )
+            self._plan_mode = f"llm/{_provider}"
+            self._model = model or _default_model
         else:
             self._planner   = HeuristicPlanner(self._tools)
             self._plan_mode = "heuristic"

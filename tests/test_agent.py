@@ -685,6 +685,46 @@ class TestGeoAgent:
         planner2 = LLMPlanner(tools, api_key="sk-ant-fake-key")
         assert planner2.available is True
 
+    def test_groq_provider_selection(self, tools):
+        from pygeovision.agent.planner import LLMPlanner
+        planner = LLMPlanner(tools, api_key="gsk-fake", provider="groq")
+        assert planner._provider == "groq"
+        assert planner._model == "llama-3.3-70b-versatile"
+        assert planner.available is True
+
+    def test_groq_sends_correct_request_shape(self, tools):
+        """Regression test confirming Groq is a real, distinct backend —
+        not a stub reusing Anthropic's code path. Verifies the actual
+        request sent uses Groq's real API shape (JSON mode, correct
+        message roles, correct model)."""
+        pytest.importorskip("groq", reason="groq not installed")
+        import groq
+        from unittest.mock import MagicMock, patch
+        from pygeovision.agent.planner import LLMPlanner
+
+        planner = LLMPlanner(tools, api_key="gsk-fake", provider="groq")
+
+        fake_completion = MagicMock()
+        fake_completion.choices = [MagicMock(message=MagicMock(content='{"steps": [], "notes": "ok"}'))]
+
+        with patch.object(groq.Groq, "__init__", return_value=None), \
+             patch.object(groq.Groq, "chat", create=True) as mock_chat:
+            mock_chat.completions.create.return_value = fake_completion
+            plan = planner.plan("test query")
+
+            call_kwargs = mock_chat.completions.create.call_args.kwargs
+            assert call_kwargs["model"] == "llama-3.3-70b-versatile"
+            assert call_kwargs["response_format"] == {"type": "json_object"}
+            assert [m["role"] for m in call_kwargs["messages"]] == ["system", "user"]
+            assert plan.planner == "groq/llama-3.3-70b-versatile"
+
+    def test_missing_groq_key_raises_clear_error(self, tools):
+        from pygeovision.agent.planner import LLMPlanner
+        planner = LLMPlanner(tools, api_key="", provider="groq")
+        assert planner.available is False
+        with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+            planner.plan("test query")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

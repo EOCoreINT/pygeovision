@@ -175,7 +175,16 @@ class ChangeViewer:
 
     def statistics(self, mask_path: str | None = None,
                    pixel_area_m2: float = 100.0) -> dict[str, Any]:
-        """Compute and display change statistics."""
+        """Compute and display change statistics.
+
+        Args:
+            mask_path: optional separate change-mask raster; if given, its
+                own transform is used to compute a real pixel area.
+            pixel_area_m2: fallback pixel area (m²) used for area-based
+                stats when mask_path isn't given, or if its transform
+                can't be read — e.g. pixel_area_m2=100.0 for 10m
+                Sentinel-2 pixels (10*10=100 m²).
+        """
         plt = _mpl()
 
         b_data = self._read_band(self._before)
@@ -203,7 +212,27 @@ class ChangeViewer:
                 stats["changed_area_ha"]  = round(changed_pix * pix_m2 / 1e4, 2)
                 stats["changed_area_km2"] = round(changed_pix * pix_m2 / 1e6, 4)
             except Exception as exc:
-                logger.warning("Mask stats error: %s", exc)
+                logger.warning(
+                    "Mask stats error (%s) — falling back to pixel_area_m2=%.2f "
+                    "with the before/after diff as the change indicator "
+                    "instead of the (unreadable) mask.", exc, pixel_area_m2,
+                )
+                changed_pix = int((np.abs(diff) > 0.05).sum())
+                stats["changed_pixels"] = changed_pix
+                stats["changed_area_m2"]  = changed_pix * pixel_area_m2
+                stats["changed_area_ha"]  = round(changed_pix * pixel_area_m2 / 1e4, 2)
+                stats["changed_area_km2"] = round(changed_pix * pixel_area_m2 / 1e6, 4)
+        else:
+            # No separate mask file — use the before/after diff itself
+            # (already computed above) as the change indicator, with the
+            # fallback pixel_area_m2 for area conversion. This is what
+            # pixel_area_m2 is actually for; previously it was accepted
+            # and silently ignored in this no-mask case entirely.
+            changed_pix = int((np.abs(diff) > 0.05).sum())
+            stats["changed_pixels"] = changed_pix
+            stats["changed_area_m2"]  = changed_pix * pixel_area_m2
+            stats["changed_area_ha"]  = round(changed_pix * pixel_area_m2 / 1e4, 2)
+            stats["changed_area_km2"] = round(changed_pix * pixel_area_m2 / 1e6, 4)
 
         # Bar chart — close previous figure before creating new one
         if getattr(self, "_fig", None) is not None:

@@ -26,8 +26,16 @@ class GeospatialSHAP:
         self.device = device or "cpu"
         self.background_samples = background_samples
 
-    def band_importance(self, image: Any, n_samples: int = 100) -> dict[str, Any]:
-        """Compute spectral band importance using SHAP."""
+    def band_importance(self, image: Any, n_samples: int | None = None) -> dict[str, Any]:
+        """Compute spectral band importance using SHAP.
+
+        Args:
+            n_samples: number of background samples for the SHAP
+                DeepExplainer's reference distribution (overrides
+                `background_samples` from the constructor for this call).
+                More samples give a more stable baseline expectation at
+                the cost of more compute.
+        """
         try:
             import numpy as np
             import shap
@@ -41,14 +49,25 @@ class GeospatialSHAP:
         if image.ndim == 3:
             image = image.unsqueeze(0)
 
-        def predict_fn(x):
-            with torch.no_grad():
-                out = self.model(torch.tensor(x, dtype=torch.float32).to(self.device))
-                return torch.softmax(out, dim=1).cpu().numpy()
-
-        background = torch.zeros_like(image).numpy()
-        explainer = shap.DeepExplainer(self.model, torch.tensor(background).to(self.device))
-        shap_values = explainer.shap_values(image.to(self.device))
+        n_bg = n_samples if n_samples is not None else self.background_samples
+        # Background distribution: n_bg all-zero reference images. SHAP's
+        # DeepExplainer needs a background SET (not a single sample) to
+        # estimate a stable baseline expectation — using just one zero
+        # image (as this previously did, silently ignoring
+        # background_samples/n_samples entirely) gives a noisier,
+        # less-representative baseline.
+        background = torch.zeros(
+            (n_bg, *image.shape[1:]), dtype=torch.float32,
+        )
+        explainer = shap.DeepExplainer(self.model, background.to(self.device))
+        # check_additivity=False: SHAP's DeepExplainer additivity check has
+        # known false-positive failures with newer PyTorch versions (SHAP's
+        # PyTorch backend hooks lag behind PyTorch's op internals) —
+        # confirmed via direct testing, failing even for a minimal
+        # Linear-only model. This is SHAP's own documented workaround; it
+        # skips only the internal consistency verification, not the actual
+        # SHAP value computation itself.
+        shap_values = explainer.shap_values(image.to(self.device), check_additivity=False)
 
         band_importance = {}
         for b in range(image.shape[1]):

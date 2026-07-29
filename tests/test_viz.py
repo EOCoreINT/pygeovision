@@ -314,6 +314,37 @@ class TestChangeViewer:
         assert cv._after  == "after.tif"
         assert cv._band   == 0
 
+    def test_statistics_uses_pixel_area_m2_fallback_without_mask(self, tmp_path):
+        """Regression test for a real bug: pixel_area_m2 was accepted but
+        never referenced anywhere in the function body — statistics()
+        called without a mask_path never produced any area-based stats
+        at all, regardless of what pixel_area_m2 was set to."""
+        rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
+        pytest.importorskip("matplotlib", reason="matplotlib not installed")
+        import numpy as np
+        from rasterio.transform import from_bounds
+        from pygeovision.viz import ChangeViewer
+
+        before_p = tmp_path / "before.tif"
+        after_p = tmp_path / "after.tif"
+        transform = from_bounds(0, 0, 500, 500, 50, 50)
+        rng = np.random.default_rng(0)
+        before_data = rng.random((1, 50, 50)).astype("float32")
+        after_data = before_data.copy()
+        after_data[0, :10, :10] += 0.5
+
+        for p, d in [(before_p, before_data), (after_p, after_data)]:
+            with rasterio.open(p, "w", driver="GTiff", height=50, width=50, count=1,
+                                dtype="float32", crs="EPSG:32630", transform=transform) as dst:
+                dst.write(d)
+
+        cv = ChangeViewer(str(before_p), str(after_p))
+        stats = cv.statistics(mask_path=None, pixel_area_m2=100.0)
+
+        assert "changed_area_m2" in stats, "pixel_area_m2 fallback not wired in"
+        assert stats["changed_area_m2"] > 0
+        assert stats["changed_area_m2"] == stats["changed_pixels"] * 100.0
+
     def test_split_sets_figure(self):
         from pygeovision.viz import ChangeViewer
         with tempfile.TemporaryDirectory() as tmp:

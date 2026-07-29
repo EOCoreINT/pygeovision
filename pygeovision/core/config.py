@@ -116,8 +116,13 @@ class PyGeoVisionConfig(BaseModel):
                             data[k].update(v)
                         else:
                             data[k] = v
-                except Exception:
-                    pass
+                except Exception as exc:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "Failed to load config file %s (%s) — its settings "
+                        "will NOT be applied. Check the file for YAML syntax "
+                        "errors.", path, exc,
+                    )
 
         # Apply environment overrides
         env_map = {

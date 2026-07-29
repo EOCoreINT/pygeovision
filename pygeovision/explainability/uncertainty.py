@@ -71,6 +71,15 @@ class UncertaintyEstimator:
             image = src.read().astype(np.float32)
 
         stride = chip_size - overlap
+        if stride <= 0:
+            return {
+                "success": False,
+                "error": (
+                    f"chip_size ({chip_size}) must be greater than overlap "
+                    f"({overlap}) — got stride={stride}. Reduce overlap or "
+                    f"increase chip_size."
+                ),
+            }
         # Store all MC samples
         n_classes = None
 
@@ -109,11 +118,14 @@ class UncertaintyEstimator:
         mean_probs = pred_accum.mean(axis=0).astype(np.float32)     # (C, H, W)
         # Predictive entropy
         entropy = -np.sum(mean_probs * np.log(mean_probs + 1e-10), axis=0)  # (H, W)
-        # Epistemic = variance across passes
+        # Epistemic = variance across passes (model uncertainty — high
+        # where different dropout samples disagree with each other)
         epistemic = pred_accum.var(axis=0).mean(axis=0)              # (H, W)
-        # Aleatoric = mean entropy of individual passes
+        # Aleatoric = mean entropy of individual passes (data uncertainty —
+        # high where the input itself is ambiguous, present even if all
+        # passes agree with each other)
         per_pass_entropy = -np.sum(pred_accum * np.log(pred_accum + 1e-10), axis=1)  # (n_passes, H, W)
-        per_pass_entropy.mean(axis=0)
+        aleatoric = per_pass_entropy.mean(axis=0).astype(np.float32)  # (H, W)
 
         # Prediction (mean across passes)
         label = np.argmax(mean_probs, axis=0).astype(np.uint8)
@@ -124,6 +136,7 @@ class UncertaintyEstimator:
             "n_mc_passes": self.n_passes,
             "mean_entropy": float(entropy.mean()),
             "mean_epistemic": float(epistemic.mean()),
+            "mean_aleatoric": float(aleatoric.mean()),
             "high_uncertainty_fraction": float((entropy > 0.5).mean()),
         }
 
@@ -132,12 +145,25 @@ class UncertaintyEstimator:
             op = Path(output_path)
             op.parent.mkdir(parents=True, exist_ok=True)
 
-            # Save 3-band uncertainty raster: label, entropy, epistemic
+            # Save uncertainty raster: label + entropy always, epistemic/
+            # aleatoric bands included per the save_epistemic/save_aleatoric
+            # flags (previously both were accepted but ignored — epistemic
+            # was always saved and aleatoric was never savable at all,
+            # since it used to be discarded before reaching this point).
+            bands = [label.astype(np.float32), entropy]
+            band_names = ["label", "entropy"]
+            if save_epistemic:
+                bands.append(epistemic)
+                band_names.append("epistemic")
+            if save_aleatoric:
+                bands.append(aleatoric)
+                band_names.append("aleatoric")
+
             out_profile = profile.copy()
-            out_profile.update(count=3, dtype="float32", compress="lzw")
+            out_profile.update(count=len(bands), dtype="float32", compress="lzw")
             with rasterio.open(str(op), "w", **out_profile) as dst:
-                dst.write(np.stack([label.astype(np.float32), entropy, epistemic]))
-                dst.update_tags(bands="label|entropy|epistemic", n_mc_passes=str(self.n_passes))
+                dst.write(np.stack(bands))
+                dst.update_tags(bands="|".join(band_names), n_mc_passes=str(self.n_passes))
             result["output_path"] = str(op)
 
         return result

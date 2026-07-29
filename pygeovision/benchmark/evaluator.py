@@ -109,8 +109,8 @@ class ModelEvaluator:
             import torch
             dev = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
             model = model.to(dev).eval()
-            metrics_seg = SegmentationMetrics(self.num_classes) if self.task != "detection" else None
-            DetectionMetrics(self.num_classes) if self.task == "detection" else None
+            metrics_seg = SegmentationMetrics(self.num_classes) if self.task not in ("detection",) else None
+            metrics_det = DetectionMetrics(self.num_classes) if self.task == "detection" else None
 
             total_images = 0
             total_latency = 0.0
@@ -118,6 +118,39 @@ class ModelEvaluator:
 
             with torch.no_grad():
                 for batch in loader:
+                    if self.task == "detection":
+                        # Standard torchvision detection convention: a
+                        # (list_of_image_tensors, list_of_target_dicts)
+                        # batch (from a DataLoader using the usual
+                        # `collate_fn=lambda b: tuple(zip(*b))`) — models
+                        # like Mask R-CNN/Faster R-CNN/FCOS take a LIST of
+                        # images, not a stacked 4D tensor, and return a
+                        # LIST of {'boxes','scores','labels'} dicts, not
+                        # logits — a different calling convention than
+                        # segmentation/classification entirely.
+                        images_list, targets_list = batch
+                        images_list = [img.to(dev) for img in images_list]
+                        targets_list = [
+                            {k: v.to(dev) if hasattr(v, "to") else v for k, v in t.items()}
+                            for t in targets_list
+                        ]
+
+                        t_inf = time.time()
+                        outputs = model(images_list)
+                        total_latency += (time.time() - t_inf) * 1000
+                        total_images += len(images_list)
+
+                        preds_cpu = [
+                            {k: v.detach().cpu() if hasattr(v, "detach") else v for k, v in o.items()}
+                            for o in outputs
+                        ]
+                        targets_cpu = [
+                            {k: v.detach().cpu() if hasattr(v, "detach") else v for k, v in t.items()}
+                            for t in targets_list
+                        ]
+                        metrics_det.update(preds_cpu, targets_cpu)
+                        continue
+
                     if isinstance(batch, (list, tuple)):
                         images, targets = batch[0].to(dev), batch[1].to(dev)
                     else:
@@ -145,6 +178,12 @@ class ModelEvaluator:
                 result.per_class_iou = {
                     k: v for k, v in computed.items() if k.startswith("iou_class_")
                 }
+            if metrics_det is not None:
+                computed = metrics_det.compute()
+                result.mAP50 = computed.get("mAP50", 0.0)
+                result.mAP50_95 = computed.get("mAP50_95", 0.0)
+                if "error" in computed or "note" in computed:
+                    result.notes = computed.get("error") or computed.get("note", "")
         except ImportError:
             logger.warning("torch required for evaluation")
         except Exception as exc:
