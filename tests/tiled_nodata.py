@@ -275,13 +275,28 @@ class TiledInference:
             profile = src.profile.copy()
             H, W    = src.height, src.width
             n_bands = src.count
+            src_nodata = src.nodata
 
             bands = band_selection or list(range(1, n_bands + 1))
             image = src.read(bands).astype(np.float32)
 
+        # Real nodata value: explicit nodata_value wins, else fall back
+        # to the raster's own metadata. Used below to (1) keep nodata
+        # pixels from skewing percentile-based normalisation, and (2) mask
+        # the output so nodata regions don't get a spurious predicted
+        # class — previously accepted and documented but never referenced
+        # anywhere in this function's actual logic.
+        effective_nodata = nodata_value if nodata_value is not None else src_nodata
+        valid_mask = None
+        if effective_nodata is not None:
+            valid_mask = ~np.any(image == effective_nodata, axis=0)  # (H, W), True = real data
+
         if normalise:
             for b in range(image.shape[0]):
-                p2, p98 = np.percentile(image[b], (2, 98))
+                band_valid = image[b][valid_mask] if valid_mask is not None else image[b]
+                if band_valid.size == 0:
+                    continue  # entire band is nodata — nothing to normalise against
+                p2, p98 = np.percentile(band_valid, (2, 98))
                 image[b] = (image[b] - p2) / (p98 - p2 + 1e-8)
 
         # Build accumulation buffers
@@ -334,11 +349,22 @@ class TiledInference:
             out_data = (accum * 255).clip(0, 255).astype(np.uint8)
             out_profile = profile.copy()
             out_profile.update(count=self.num_classes, dtype="uint8", compress="lzw")
+            if valid_mask is not None:
+                out_data[:, ~valid_mask] = 0
+                out_profile["nodata"] = 0
         else:
             label = np.argmax(accum, axis=0).astype(np.uint8)
             out_data = label[np.newaxis]
             out_profile = profile.copy()
             out_profile.update(count=1, dtype="uint8", compress="lzw")
+            if valid_mask is not None:
+                # 255 (not 0) as the output nodata sentinel — 0 is very
+                # often itself a real, meaningful class label (e.g.
+                # "background"/"no-change"), so reusing it for nodata
+                # would make genuine class-0 predictions indistinguishable
+                # from masked-out regions.
+                out_data[0][~valid_mask] = 255
+                out_profile["nodata"] = 255
 
         with rasterio.open(str(output_path), "w", **out_profile) as dst:
             dst.write(out_data)

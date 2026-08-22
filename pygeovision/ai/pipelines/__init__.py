@@ -481,6 +481,9 @@ class CarbonEstimationPipeline(BasePipeline):
             agb = np.clip(50.0 * ndvi ** 2, 0, 500).astype(np.float32)
             carbon = agb * 0.47
 
+            #lets implement with a trained model
+            
+
             out = output_dir / "carbon_map.tif"
             profile.update(dtype="float32", count=1, compress="lzw")
             with rasterio.open(out, "w", **profile) as dst:

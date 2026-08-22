@@ -797,7 +797,7 @@ def ai_cloud_mask(input_path, output, brightness_threshold):
 # End-to-end PIPELINE commands (pygeofetch data + native AI)
 # =========================================================================
 
-@cli.command("pipeline")
+@cli.command("channel")
 @click.argument("pipeline_name", type=click.Choice([
     "change_detection", "land_cover", "building_footprints",
     "crop_monitoring", "disaster_assessment", "deforestation",
@@ -808,17 +808,17 @@ def ai_cloud_mask(input_path, output, brightness_threshold):
               metavar="MIN_LON MIN_LAT MAX_LON MAX_LAT")
 @click.option("--output", "-o", default="./pipeline_output", show_default=True)
 @click.option("--date", default="2024-06", help="YYYY-MM acquisition date.")
-@click.option("--date-before", default=None, help="Before date (bi-temporal pipelines).")
-@click.option("--date-after", default=None, help="After date (bi-temporal pipelines).")
+@click.option("--date-before", default=None, help="Before date (bi-temporal channel).")
+@click.option("--date-after", default=None, help="After date (bi-temporal channel).")
 @click.option("--model", default=None, help="Override default AI model.")
 @click.option("--source", default=None, help="Data source override (e.g. worldcover).")
 def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, model, source):
-    """Run a complete end-to-end geospatial AI pipeline.
+    """Run a complete end-to-end geospatial AI channel.
 
     Downloads satellite data via pygeofetch then applies a native AI model.
 
     \b
-    Available pipelines:
+    Available channel:
         building_footprints    Segment buildings (SAM)
         land_cover             Land cover classification (ESA WorldCover)
         change_detection       Bi-temporal change detection (ChangeFormer)
@@ -829,18 +829,18 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
         deforestation          Forest loss detection
         urban_growth           Urban expansion monitoring
         carbon_estimation      Biomass/carbon via NDVI
-        list                   Show all available pipelines
+        list                   Show all available channel
 
     \b
     Examples:
-        pygeovision pipeline building_footprints \\
+        pygeovision channel building_footprints \\
             --bbox -0.15 51.47 -0.10 51.52 --date 2024-06
 
-        pygeovision pipeline change_detection \\
+        pygeovision channel change_detection \\
             --bbox -74.1 40.6 -73.7 40.9 \\
             --date-before 2020-01 --date-after 2024-01
 
-        pygeovision pipeline water_bodies \\
+        pygeovision channel water_bodies \\
             --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --source ndwi
     """
     from pygeovision.ai.pipelines import list_pipelines
@@ -864,13 +864,13 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
     if model: kwargs["model"] = model
     if source: kwargs["source"] = source
 
-    click.echo(f"Running pipeline '{pipeline_name}'...")
+    click.echo(f"Running channel '{pipeline_name}'...")
     click.echo(f"  bbox={tuple(bbox)} | date={date} | output={output}")
 
     result = client.pipeline(pipeline_name, bbox=tuple(bbox), output_dir=output, **kwargs)
 
     if result.success:
-        click.echo("\n✓ Pipeline complete!")
+        click.echo("\n✓ channel complete!")
         if result.output_path:
             click.echo(f"  Output: {result.output_path}")
         if result.stats:
@@ -879,7 +879,7 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
                 fmt_v = f"{v:.4f}" if isinstance(v, float) else v
                 click.echo(f"    {k}: {fmt_v}")
     else:
-        click.echo(f"\n✗ Pipeline failed: {result.error}", err=True)
+        click.echo(f"\n✗ channel failed: {result.error}", err=True)
         sys.exit(1)
 
 

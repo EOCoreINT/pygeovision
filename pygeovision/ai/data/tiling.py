@@ -314,6 +314,7 @@ class TilingEngine:
         except rasterio.errors.RasterioIOError as exc:
             raise TilingError(f"Failed to open raster {raster_path}: {exc}") from exc
 
+
     def compute_grid(
         self,
         raster_height: int,

@@ -353,15 +353,23 @@ class Preprocessor:
         return output_path
 
     def clip_to_polygon(
-        self,
+    self,
         input_path: str,
         geojson: str | dict,
         output_path: str | None = None,
         crop: bool = True,
         all_touched: bool = False,
         nodata: float | None = None,
+        geojson_crs: str = "EPSG:4326",   # <-- new param, WGS84 default (standard GeoJSON convention)
     ) -> str:
         """Clip a raster to one or more GeoJSON polygons.
+
+        The geometry is automatically reprojected to the raster's own CRS
+        before clipping. GeoJSON is WGS84 (EPSG:4326) by convention — if the
+        raster has been reprojected (e.g. to a UTM zone), passing WGS84
+        coordinates straight to rasterio.mask without reprojecting first
+        either clips to the wrong extent or fails outright, since mask()
+        requires geometry and raster to share a CRS.
 
         Args:
             input_path: Source GeoTIFF path.
@@ -371,20 +379,17 @@ class Preprocessor:
             crop: Crop the output extent to the geometry bounds.
             all_touched: Include pixels touching the polygon edge.
             nodata: Override nodata value for masked pixels.
+            geojson_crs: CRS of the input geojson geometry (default EPSG:4326,
+                the standard for GeoJSON). Set this if your geojson is already
+                in a projected CRS.
 
         Returns:
             Path of the clipped raster.
-
-        Example::
-
-            pre.clip_to_polygon(
-                "s2_6band.tif",
-                geojson="study_area.geojson",
-                output_path="s2_study.tif",
-            )
         """
         rasterio = _require_rasterio()
         from rasterio.mask import mask as rio_mask
+        from rasterio.warp import transform_geom
+        from rasterio.crs import CRS
         _shape, _box, _mapping = _require_shapely()
 
         import json
@@ -407,6 +412,20 @@ class Preprocessor:
         output_path = _safe_output(input_path, output_path, "_clipped")
 
         with rasterio.open(input_path) as src:
+            # Reproject geometry to the raster's CRS if they differ. GeoJSON is
+            # WGS84 by convention, but the raster may have been reprojected
+            # (e.g. to UTM during mosaicking) — clipping requires both to match.
+            src_crs = CRS.from_user_input(geojson_crs)
+            if src.crs and src_crs != src.crs:
+                geoms = [
+                    transform_geom(src_crs, src.crs, geom)
+                    for geom in geoms
+                ]
+                logger.debug(
+                    "clip_to_polygon: reprojected geometry %s → %s",
+                    geojson_crs, src.crs,
+                )
+
             _nodata = nodata if nodata is not None else src.nodata
             data, transform = rio_mask(
                 src, geoms,
@@ -427,8 +446,86 @@ class Preprocessor:
             dst.write(data)
 
         logger.info("Clipped to polygon → %s (%dx%d px)",
-                     output_path, data.shape[2], data.shape[1])
+                    output_path, data.shape[2], data.shape[1])
         return output_path
+
+    # def clip_to_polygon(
+    #     self,
+    #     input_path: str,
+    #     geojson: str | dict,
+    #     output_path: str | None = None,
+    #     crop: bool = True,
+    #     all_touched: bool = False,
+    #     nodata: float | None = None,
+    # ) -> str:
+    #     """Clip a raster to one or more GeoJSON polygons.
+
+    #     Args:
+    #         input_path: Source GeoTIFF path.
+    #         geojson: Path to a ``.geojson`` / ``.json`` file, or a
+    #             Python dict (GeoJSON FeatureCollection or Geometry).
+    #         output_path: Destination path. Defaults to ``"_clipped"``.
+    #         crop: Crop the output extent to the geometry bounds.
+    #         all_touched: Include pixels touching the polygon edge.
+    #         nodata: Override nodata value for masked pixels.
+
+    #     Returns:
+    #         Path of the clipped raster.
+
+    #     Example::
+
+    #         pre.clip_to_polygon(
+    #             "s2_6band.tif",
+    #             geojson="study_area.geojson",
+    #             output_path="s2_study.tif",
+    #         )
+    #     """
+    #     rasterio = _require_rasterio()
+    #     from rasterio.mask import mask as rio_mask
+    #     _shape, _box, _mapping = _require_shapely()
+
+    #     import json
+
+    #     # Load GeoJSON
+    #     if isinstance(geojson, str):
+    #         with open(geojson) as f:
+    #             gj = json.load(f)
+    #     else:
+    #         gj = geojson
+
+    #     # Extract geometries (support FeatureCollection, Feature, or Geometry)
+    #     if gj.get("type") == "FeatureCollection":
+    #         geoms = [f["geometry"] for f in gj["features"]]
+    #     elif gj.get("type") == "Feature":
+    #         geoms = [gj["geometry"]]
+    #     else:
+    #         geoms = [gj]  # plain Geometry
+
+    #     output_path = _safe_output(input_path, output_path, "_clipped")
+
+    #     with rasterio.open(input_path) as src:
+    #         _nodata = nodata if nodata is not None else src.nodata
+    #         data, transform = rio_mask(
+    #             src, geoms,
+    #             crop=crop,
+    #             all_touched=all_touched,
+    #             nodata=_nodata,
+    #         )
+    #         profile = src.profile.copy()
+    #         profile.update(
+    #             height=data.shape[1],
+    #             width=data.shape[2],
+    #             transform=transform,
+    #             nodata=_nodata,
+    #             compress="lzw",
+    #         )
+
+    #     with rasterio.open(output_path, "w", **profile) as dst:
+    #         dst.write(data)
+
+    #     logger.info("Clipped to polygon → %s (%dx%d px)",
+    #                  output_path, data.shape[2], data.shape[1])
+    #     return output_path
 
     def mosaic(
         self,

@@ -186,6 +186,7 @@ class InSARProcessingResult:
     errors:              list[str] = field(default_factory=list)
     warnings:            list[str] = field(default_factory=list)
     processing_log:      list[str] = field(default_factory=list)
+    metadata:            dict = field(default_factory=dict)
 
 
 # ── Step 1: Pair selection ────────────────────────────────────────────────────
@@ -200,12 +201,25 @@ def select_insar_pair(
     """
     Select the optimal primary/secondary SLC pair from a list of scenes.
 
-    Selection criteria (in order of priority):
+    Selection criteria actually applied here, in order:
     1. Same relative orbit and pass direction (mandatory — different orbits
        have completely different viewing geometry and cannot form interferograms)
-    2. Temporal baseline ≤ max_temporal_baseline_days (shorter = more coherence)
-    3. Perpendicular baseline within [5, 200] m — avoids both geometric
-       decorrelation (too long) and poor topographic sensitivity (too short)
+    2. Temporal baseline <= max_temporal_baseline_days (shorter = more coherence)
+
+    HONEST LIMITATION — perpendicular baseline is NOT checked here, despite
+    `max_perpendicular_baseline_m` being accepted: computing a real
+    perpendicular baseline requires orbit state vectors (satellite
+    position/velocity at acquisition time), which this function's
+    lightweight scene dicts (path/date/relative_orbit/pass_direction) do
+    not carry — that data only becomes available after downloading and
+    coregistering the actual SLC products. `max_perpendicular_baseline_m`
+    is accepted here for forward compatibility with callers who already
+    have it precomputed, but is NOT applied as a filter in this function.
+    The REAL, computed perpendicular baseline is checked post-hoc in
+    `SLCInSARPipeline.run_native()` (via pygeofetch's
+    InterferogramGenerator, which computes it for real from actual orbit
+    data after coregistration) — see its `max_perpendicular_baseline_m`
+    warning there for the genuine check.
 
     For tropical West Africa (Accra):
     - Vegetation decorrelates rapidly — prefer 6 or 12 day baseline
@@ -216,7 +230,8 @@ def select_insar_pair(
         scenes:                      List of scene dicts with 'path', 'date',
                                      'relative_orbit', 'pass_direction' keys.
         max_temporal_baseline_days:  Maximum temporal separation.
-        max_perpendicular_baseline_m: Maximum perpendicular baseline.
+        max_perpendicular_baseline_m: NOT currently applied here — see the
+                                     honest limitation note above.
         preferred_subswath:          'IW1', 'IW2', or 'IW3'.
         land_cover:                  'urban', 'vegetation', 'tropical_forest', 'mixed'.
 
@@ -228,6 +243,16 @@ def select_insar_pair(
     if len(scenes) < 2:
         logger.warning("select_insar_pair: need at least 2 scenes")
         return None
+
+    if max_perpendicular_baseline_m != 200.0:
+        logger.warning(
+            "select_insar_pair: max_perpendicular_baseline_m=%.1f was "
+            "requested but is NOT applied as a filter here (this function's "
+            "scene dicts don't carry orbit state vector data) — the real, "
+            "computed perpendicular baseline is only available and checked "
+            "post-hoc in SLCInSARPipeline.run_native().",
+            max_perpendicular_baseline_m,
+        )
 
     # Sort by date
     def parse_date(s):
@@ -942,6 +967,87 @@ def los_to_vertical_displacement(
     return result
 
 
+def apply_linear_aps_correction(
+    d_los: np.ndarray,
+    coherence_arr: np.ndarray,
+    width: int,
+    dem_path: str,
+    coherence_threshold: float,
+) -> tuple[np.ndarray, dict]:
+    """Fit and remove the elevation-correlated (tropospheric) component
+    of LOS displacement — the standard "linear APS" correction.
+
+    Tropospheric delay correlates with elevation (moist troposphere is
+    denser at low elevation); this fits d_LOS = a*elevation + b via
+    least-squares regression over coherent pixels and removes only the
+    elevation-dependent slope term — the constant term isn't atmospheric
+    noise, it's whatever reference-point convention the caller already
+    uses.
+
+    Args:
+        d_los: Flat LOS displacement array (metres), from
+            phase_to_los_displacement().
+        coherence_arr: Flat coherence array, same length as d_los.
+        width: Image width (columns) for reshaping the flat arrays —
+            get this from a verified source (e.g. a real ENVI header's
+            "samples" field), never a guessed/default value; a wrong
+            width silently corrupts the reshape.
+        dem_path: DEM GeoTIFF covering the same real-world extent as the
+            interferogram (resampled to match its grid if the DEM's
+            native resolution differs — a real, if approximate, use of
+            the same DEM already used for coregistration upstream).
+        coherence_threshold: Minimum coherence for a pixel to be used in
+            the regression.
+
+    Returns:
+        (corrected_d_los, log) where log = {"applied": bool, "message": str}.
+        If correction wasn't possible or failed, corrected_d_los is the
+        original, unmodified array and log["applied"] is False.
+    """
+    try:
+        height = len(d_los) // width
+        d_los_2d = d_los[: height * width].reshape(height, width)
+        coh_2d = coherence_arr[: height * width].reshape(height, width)
+
+        import rasterio as _rasterio
+        with _rasterio.open(dem_path) as dem_src:
+            dem_arr = dem_src.read(1).astype(np.float32)
+        if dem_arr.shape != d_los_2d.shape:
+            from scipy.ndimage import zoom
+            zoom_factors = (d_los_2d.shape[0] / dem_arr.shape[0],
+                            d_los_2d.shape[1] / dem_arr.shape[1])
+            dem_arr = zoom(dem_arr, zoom_factors, order=1)
+
+        valid = (coh_2d >= coherence_threshold) & np.isfinite(dem_arr) & np.isfinite(d_los_2d)
+        if valid.sum() <= 100:  # need enough points for a meaningful fit
+            return d_los, {
+                "applied": False,
+                "message": (
+                    "Linear APS correction skipped — too few coherent "
+                    f"pixels ({int(valid.sum())}) for a reliable elevation regression."
+                ),
+            }
+
+        elev_valid = dem_arr[valid]
+        phase_valid = d_los_2d[valid]
+        A = np.vstack([elev_valid, np.ones_like(elev_valid)]).T
+        slope, _intercept = np.linalg.lstsq(A, phase_valid, rcond=None)[0]
+        aps_trend = slope * dem_arr  # elevation-correlated component only
+        corrected = (d_los_2d - aps_trend).flatten()
+        return corrected, {
+            "applied": True,
+            "message": (
+                f"Linear APS correction applied (slope={slope*1000:.3f} "
+                f"mm/m elevation, {int(valid.sum())} valid pixels)"
+            ),
+        }
+    except Exception as exc:
+        return d_los, {
+            "applied": False,
+            "message": f"Linear APS correction failed, using uncorrected phase: {exc}",
+        }
+
+
 def compute_sensitivity_to_noise(
     incidence_angle_deg: float,
     wavelength_m: float = SENTINEL1_WAVELENGTH_M,
@@ -1180,6 +1286,200 @@ class SLCInSARPipeline:
         self.goldstein_alpha     = goldstein_alpha
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def run_native(
+        self,
+        primary_zip: str,
+        secondary_zip: str,
+        bbox: tuple[float, float, float, float],
+        dem_path: str | None = None,
+        apply_atmospheric_correction: bool = True,
+        goldstein_filter: bool = True,
+        max_perpendicular_baseline_m: float = 200.0,
+    ) -> InSARProcessingResult:
+        """Run the InSAR chain using pygeofetch's real, pure-Python InSAR
+        suite — no ESA SNAP required at all (unlike `run()`, which shells
+        out to SNAP's `gpt` binary for coregistration/interferogram
+        formation, and only takes over for the final SNAPHU unwrapping
+        step).
+
+        This is an ADDITIVE alternative to `run()`, not a replacement —
+        `run()` keeps working exactly as before for anyone with an
+        existing SNAP-based workflow. Every pygeofetch method call below
+        was verified against the actual installed package's real
+        signatures before being written (not assumed from documentation).
+
+        Honest scope: verified structurally (imports, signatures, object
+        construction) in this environment, but NOT yet run end-to-end
+        against a real Sentinel-1 SLC pair — this sandbox has neither a
+        real SLC test fixture nor the `snaphu` binary installed. Treat
+        this as a real, carefully-built implementation that still needs
+        validation against a known InSAR benchmark scene (e.g. the
+        ERS-2 Etna or a real Sentinel-1 ascending-pair test case) before
+        it becomes anyone's default path, the same way pygeofetch's own
+        L-band module is honestly flagged as "real and tested against a
+        synthetic fixture, not yet validated against a real product."
+
+        Args:
+            bbox: (min_lon, min_lat, max_lon, max_lat), WGS84 — the AOI
+                used to extract only the relevant burst(s)/subswath from
+                each full SLC product. Replaces `subswath`/`bursts` (the
+                SNAP path's region-selection mechanism) with a plain
+                geographic box, since pygeofetch's extractor determines
+                the right burst/subswath automatically from it.
+        """
+        result = InSARProcessingResult(success=False)
+
+        try:
+            from pygeofetch.insar.extraction import SLCExtractor
+            from pygeofetch.insar.interferogram import InterferogramGenerator
+            from pygeofetch.insar.unwrap import PhaseUnwrapper
+            from pygeofetch.models.search_query import BoundingBox
+        except ImportError as exc:
+            result.errors.append(f"pygeofetch InSAR suite unavailable: {exc}")
+            return result
+
+        aoi = BoundingBox(min_lon=bbox[0], min_lat=bbox[1], max_lon=bbox[2], max_lat=bbox[3])
+
+        # Stage 1: extract only the relevant burst(s) from each full SLC
+        # product — replaces SNAP's TOPSAR-Split + Apply-Orbit-File steps.
+        result.processing_log.append("Extracting SLC pair (pygeofetch, SNAP-free)...")
+        extractor = SLCExtractor(polarisation=self.polarisation)
+        extract_dir = self.output_dir / "native_extract"
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            ref_path, sec_path = extractor.extract_pair(
+                reference=primary_zip, secondary=secondary_zip,
+                aoi=aoi, output_dir=str(extract_dir),
+            )
+        except Exception as exc:
+            result.errors.append(f"SLC extraction failed: {exc}")
+            return result
+        if ref_path is None or sec_path is None:
+            result.errors.append(
+                "SLC extraction returned no overlapping burst for this AOI — "
+                "check that the AOI genuinely falls within both scenes."
+            )
+            return result
+        result.processing_log.append(f"Extracted: {ref_path.name}, {sec_path.name}")
+
+        # Stage 2: coregistration + interferogram formation + ESD +
+        # Goldstein filtering — replaces SNAP's Back-Geocoding, ESD,
+        # Interferogram, and Goldstein-Filter steps in one real call.
+        result.processing_log.append("Forming interferogram (coregister + ESD + filter)...")
+        ifg_gen = InterferogramGenerator(
+            esd_enabled=True,
+            use_real_burst_processing=True,
+            remove_flat_earth_phase=True,
+        )
+        try:
+            ifg_result = ifg_gen.process_pair(
+                reference=ref_path, secondary=sec_path, dem=dem_path,
+                apply_goldstein_filter=goldstein_filter,
+                goldstein_alpha=self.goldstein_alpha,
+            )
+        except Exception as exc:
+            result.errors.append(f"Interferogram formation failed: {exc}")
+            return result
+        result.processing_log.append(
+            f"Interferogram formed (perp. baseline={ifg_result.perpendicular_baseline_m}, "
+            f"temporal baseline={ifg_result.temporal_baseline_days}d)"
+        )
+
+        # The REAL perpendicular baseline check — this is the actual
+        # point in the pipeline where a genuine, computed value exists
+        # (from real orbit data, via InterferogramGenerator). Unlike
+        # select_insar_pair()'s parameter of the same name, this one is
+        # genuinely applied, not just accepted and ignored.
+        if (ifg_result.perpendicular_baseline_m is not None
+                and abs(ifg_result.perpendicular_baseline_m) > max_perpendicular_baseline_m):
+            result.warnings.append(
+                f"Perpendicular baseline {ifg_result.perpendicular_baseline_m:.1f}m "
+                f"exceeds max_perpendicular_baseline_m={max_perpendicular_baseline_m}m "
+                f"— expect reduced topographic/coherence quality for this pair."
+            )
+
+        # Stage 3: phase unwrapping via SNAPHU (auto-installed by
+        # pygeofetch on first use — see the integration doc's section 8.5
+        # — genuinely no separate SNAP or manual SNAPHU install needed).
+        result.processing_log.append("Unwrapping phase (SNAPHU, DEFO mode)...")
+        unwrapper = PhaseUnwrapper(cost_mode="defo", init_method="mcf")
+        try:
+            unwrap_result = unwrapper.unwrap_pair(
+                interferogram=ifg_result.interferogram,
+                coherence=ifg_result.coherence,
+                profile=ifg_result.profile,
+                reference_date=ifg_result.reference_date,
+                secondary_date=ifg_result.secondary_date,
+            )
+        except Exception as exc:
+            result.warnings.append(f"Unwrapping failed — LOS displacement not computed: {exc}")
+            result.success = True  # interferogram was still produced successfully
+            return result
+
+        result.unwrapping_success = True
+        result.processing_log.append("Unwrapping complete")
+
+        def _write_array_geotiff(arr, profile: dict, out_path: Path) -> str:
+            """Write an array to a real GeoTIFF, handling complex-valued
+            interferogram data correctly (real+imaginary as two bands)
+            rather than assuming every array here is real-valued."""
+            import numpy as _np
+            import rasterio
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            prof = dict(profile)
+            if _np.iscomplexobj(arr):
+                prof.update(count=2, dtype="float32")
+                with rasterio.open(out_path, "w", **prof) as dst:
+                    dst.write(_np.real(arr).astype("float32"), 1)
+                    dst.write(_np.imag(arr).astype("float32"), 2)
+                    dst.set_band_description(1, "real")
+                    dst.set_band_description(2, "imaginary")
+            else:
+                prof.update(count=1, dtype="float32")
+                with rasterio.open(out_path, "w", **prof) as dst:
+                    dst.write(_np.asarray(arr).astype("float32"), 1)
+            return str(out_path)
+
+        native_dir = self.output_dir / "native_products"
+        result.interferogram = _write_array_geotiff(
+            ifg_result.interferogram, ifg_result.profile, native_dir / "interferogram.tif",
+        )
+        result.coherence = _write_array_geotiff(
+            ifg_result.coherence, ifg_result.profile, native_dir / "coherence.tif",
+        )
+
+        # Stage 4 (optional): tropospheric phase correction.
+        corrected_phase = None
+        if apply_atmospheric_correction:
+            try:
+                from pygeofetch.insar.atmosphere import AtmosphericCorrector
+                corrector = AtmosphericCorrector(method="elevation")
+                corrected_phase = corrector.correct(
+                    phase=unwrap_result.unwrapped_phase,
+                    dem=dem_path,
+                    reference_datetime=ifg_result.reference_date,
+                    secondary_datetime=ifg_result.secondary_date,
+                    profile=ifg_result.profile,
+                    unwrapped=True,
+                )
+                result.processing_log.append("Atmospheric (tropospheric) correction applied")
+                result.metadata["atmospheric_correction"] = "elevation"
+            except Exception as exc:
+                result.warnings.append(f"Atmospheric correction failed, using uncorrected phase: {exc}")
+
+        # If atmospheric correction ran successfully, the corrected phase
+        # is what should actually be written out — using the raw
+        # uncorrected phase regardless would silently discard the
+        # correction just computed above.
+        final_phase = corrected_phase if corrected_phase is not None else unwrap_result.unwrapped_phase
+        result.unwrapped_phase = _write_array_geotiff(
+            final_phase, ifg_result.profile, native_dir / "unwrapped_phase.tif",
+        )
+
+        result.success = True
+        result.metadata["backend"] = "pygeofetch-native"
+        return result
+
     def run(
         self,
         primary_zip:   str,
@@ -1305,6 +1605,20 @@ class SLCInSARPipeline:
 
             # Convert phase to LOS displacement
             d_los = phase_to_los_displacement(unwrapped_arr)
+
+            # Linear atmospheric phase screen (APS) correction —
+            # previously accepted (apply_linear_aps, DEFAULTING TO TRUE)
+            # and never referenced anywhere in this method, meaning every
+            # normal call silently skipped tropospheric correction while
+            # appearing to have it enabled by default.
+            if apply_linear_aps and dem_path:
+                d_los, aps_log = apply_linear_aps_correction(
+                    d_los, coherence_arr, width, dem_path, self.coherence_threshold,
+                )
+                if aps_log["applied"]:
+                    result.processing_log.append(aps_log["message"])
+                else:
+                    result.warnings.append(aps_log["message"])
 
             # LOS → vertical (pure vertical assumption)
             decomp = los_to_vertical_displacement(d_los, incidence_angle_deg)
@@ -1445,11 +1759,11 @@ class SLCInSARPipeline:
         """Read image width from ENVI .hdr file.
 
         Raises rather than guessing: this value is used to reshape raw
-        binary SAR data (e.g. for SNAPHU phase unwrapping) — a wrong
-        width doesn't just reduce accuracy, it silently corrupts the
-        entire reshape into a meaningless interferogram that may not
-        even look obviously broken. There is no scientifically valid
-        "default" width to fall back to.
+        binary SAR data (e.g. for SNAPHU phase unwrapping and the linear
+        APS correction) — a wrong width doesn't just reduce accuracy, it
+        silently corrupts the entire reshape into a meaningless
+        interferogram that may not even look obviously broken. There is
+        no scientifically valid "default" width to fall back to.
         """
         try:
             with open(hdr_path) as f:

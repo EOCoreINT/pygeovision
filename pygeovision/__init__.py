@@ -109,6 +109,7 @@ __all__ = [
 ]
 
 
+
 class PyGeoVision:
     """PyGeoVision — World-Class Geospatial AI Platform.
 
@@ -868,66 +869,20 @@ class PyGeoVision:
         resample_m: float | None = None,
         model_type: str = "segmentation",
         output_path: str | None = None,
+        use_pgf_preprocess: bool = True,   # <-- add this
     ) -> dict[str, Any]:
         """Complete preprocessing pipeline — raw scene → AI-ready array.
-
-        This is the **mandatory gate** between satellite data and AI models.
-        Routes through the :class:`PyGeoFetchBridge` which uses PyGeoFetch
-        v2.0 preprocessing natively when available, falling back to
-        PyGeoVision's own Preprocessor.
-
-        Pipeline order:
-            1. **Stack** — find + combine individual band files
-            2. **Clip** — crop to study area (bbox or polygon)
-            3. **Cloud mask** — apply cloud / SCL mask
-            4. **Normalise** — scale pixel values to model range
-            5. **Resample** — match model input resolution
-            6. **Validate** — :class:`DataValidator` auto-fixes nulls,
-               outliers, dtype, range
-
+        ...
         Args:
-            input_path: Stacked GeoTIFF **or** scene directory path.
-            stack_bands: Band names to discover + stack
-                (e.g. ``["B02","B03","B04","B08","B11","B12"]``).
-            stack_dir: Alternative directory for band discovery.
-            bbox: Clip bbox ``(minlon, minlat, maxlon, maxlat)`` WGS84.
-            bbox_crs: CRS of the bbox (default EPSG:4326).
-            clip_geojson: Path to GeoJSON polygon for clipping.
-            cloud_mask_path: Binary cloud mask (1=cloud, 0=clear).
-            scl_path: Sentinel-2 SCL band for cloud/shadow masking.
-            scl_keep_classes: SCL classes to keep (default 4,5,6 =
-                vegetation, bare soil, water).
-            normalise: ``"scale_factor"`` | ``"minmax"`` | ``"zscore"``
-                | ``"percentile"`` | ``None``.
-            scale_factor: Divisor for ``"scale_factor"`` normalisation
-                (10000 for Sentinel-2 L2A reflectance).
-            resample_m: Target pixel size in metres.
-            model_type: Hint for :class:`DataValidator` —
-                ``"segmentation"``, ``"detection"``,
-                ``"change_detection"``, ``"foundation"``, etc.
+            ...
             output_path: Save preprocessed file here.
-
-        Returns:
-            Dict with:
-              ``"array"``         — float32 numpy array ``(C, H, W)``
-              ``"output_path"``   — path of the preprocessed file
-              ``"shape"``         — ``(C, H, W)``
-              ``"resolution_m"``  — pixel size in metres
-              ``"report"``        — :class:`ValidationReport`
-              ``"steps"``         — list of steps applied
-
-        Example::
-
-            result = client.prepare_for_ai(
-                "./downloads/S2C_20240628/",
-                stack_bands = ["B02","B03","B04","B08","B11","B12"],
-                bbox        = (-74.1, 40.6, -73.7, 40.9),
-                scl_path    = "./downloads/S2C_20240628/SCL.tif",
-                normalise   = "scale_factor",
-                model_type  = "segmentation",
-                output_path = "ready.tif",
-            )
-            arr = result["array"]   # float32 (6, H, W), validated, AI-ready
+            use_pgf_preprocess: Use PyGeoFetch v2.0's native preprocessing
+                engine when available (default True). Set False to force
+                PyGeoVision's own pure-rasterio Preprocessor instead — useful
+                when PyGeoFetch's native clip/reproject has a known bug for
+                your CRS/geometry combination (e.g. a double-reprojection
+                issue causing "PROJ: utm: Invalid latitude").
+        ...
         """
         return self._pgf_bridge.prepare_for_ai(
             input_path,
@@ -944,6 +899,7 @@ class PyGeoVision:
             resample_m       = resample_m,
             model_type       = model_type,
             output_path      = output_path,
+            use_pgf_preprocess = use_pgf_preprocess,   # <-- and forward it
         )
 
     def pgf_pipeline(self, name: str) -> Any:

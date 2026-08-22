@@ -77,6 +77,19 @@ def _require_shapely():
         raise ImportError("pip install shapely>=2.0") from None
 
 
+def _pygeofetch_postprocessor():
+    """Real pygeofetch.processing.postprocessor.PostProcessor, or None if
+    genuinely unavailable (pygeofetch is a required dependency of
+    pygeovision — a broken/partial install shouldn't hard-crash
+    postprocessing, but this should essentially never return None in a
+    correct install)."""
+    try:
+        from pygeofetch.processing.postprocessor import PostProcessor as _PgfPost
+        return _PgfPost()
+    except ImportError:
+        return None
+
+
 class PostProcessor:
     """Validated postprocessing for satellite AI predictions.
 
@@ -314,13 +327,18 @@ class PostProcessor:
             output_path: Defaults to ``"_filled"``.
             band: Band to process.
             nodata: Override nodata value from file.
-            method: ``"nearest"`` | ``"bilinear"`` (scipy required).
+            method: ``"nearest"`` — GDAL/rasterio's inverse-distance-
+                weighted conic-search fill (fast, good for small gaps and
+                fairly continuous rasters like elevation models). Or
+                ``"bilinear"`` — real scipy-based linear interpolation
+                over the valid-pixel grid (`scipy.interpolate.griddata`,
+                requires scipy) — generally better for larger, more
+                irregular gaps.
 
         Returns:
             Output path.
         """
         rasterio = _require_rasterio()
-        from rasterio.fill import fillnodata as rio_fill
 
         if output_path is None:
             p = pathlib.Path(input_path)
@@ -336,14 +354,43 @@ class PostProcessor:
         else:
             mask = np.isfinite(data).astype(np.uint8)
 
-        filled = rio_fill(data, mask=mask, max_search_distance=100)
+        if method == "bilinear":
+            try:
+                from scipy.interpolate import griddata
+            except ImportError:
+                raise ImportError("scipy required for method='bilinear': pip install scipy")
+
+            valid_rows, valid_cols = np.where(mask > 0)
+            hole_rows, hole_cols = np.where(mask == 0)
+            if valid_rows.size == 0:
+                raise ValueError("fill_holes: no valid pixels to interpolate from")
+            if hole_rows.size > 0:
+                valid_points = np.column_stack([valid_rows, valid_cols])
+                valid_values = data[valid_rows, valid_cols]
+                hole_points = np.column_stack([hole_rows, hole_cols])
+                interpolated = griddata(valid_points, valid_values, hole_points, method="linear")
+                # linear interpolation leaves NaN outside the convex hull
+                # of valid points — fall back to nearest for those, so
+                # every hole genuinely gets filled, not left as NaN.
+                nan_mask = np.isnan(interpolated)
+                if nan_mask.any():
+                    interpolated[nan_mask] = griddata(
+                        valid_points, valid_values, hole_points[nan_mask], method="nearest",
+                    )
+                filled = data.copy()
+                filled[hole_rows, hole_cols] = interpolated
+            else:
+                filled = data
+        else:
+            from rasterio.fill import fillnodata as rio_fill
+            filled = rio_fill(data, mask=mask, max_search_distance=100)
 
         profile.update(count=1, dtype="float32", compress="lzw")
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(filled[np.newaxis])
 
-        logger.info("No-data holes filled → %s", output_path)
+        logger.info("No-data holes filled (%s) → %s", method, output_path)
         return output_path
 
     def apply_confidence_threshold(
@@ -394,18 +441,33 @@ class PostProcessor:
         tolerance: float = 0.5,
         preserve_topology: bool = True,
     ) -> str:
-        """Smooth polygon boundaries using Douglas-Peucker simplification.
+        """Smooth polygon boundaries.
 
         Args:
             input_path: GeoJSON input.
             output_path: GeoJSON output.
             tolerance: Simplification tolerance in map units (metres for
                 projected CRS, degrees for geographic CRS).
-            preserve_topology: Avoid introducing self-intersections.
+            preserve_topology: Avoid introducing self-intersections
+                (only affects the native fallback path — pygeofetch's
+                real implementation always preserves topology).
 
         Returns:
             ``output_path``
         """
+        pgf = _pygeofetch_postprocessor()
+        if pgf is not None:
+            try:
+                result = pgf.smooth(input=input_path, tolerance=tolerance,
+                                     output=output_path, method="simplify")
+                if result.success:
+                    logger.info("Smoothed %d features (tol=%.2f) → %s (via pygeofetch)",
+                                result.metadata.get("n_features", -1), tolerance, output_path)
+                    return str(result.output_path)
+                logger.warning("pygeofetch.smooth failed (%s) — falling back to native.", result.error)
+            except Exception as exc:
+                logger.warning("pygeofetch.smooth delegation failed (%s) — falling back to native.", exc)
+
         geom_mod, _, _ = _require_shapely()
 
         with open(input_path) as f:
@@ -435,20 +497,71 @@ class PostProcessor:
         the dominant orientation.
 
         Detects the main orientation of each building polygon, then
-        rotates, rectangularises, and rotates back.  Useful for
-        cleaning ML-extracted footprints.
+        rotates, snaps near-axis-aligned edges to be exactly axis-aligned
+        (within angle_tolerance_deg), and rotates back — this preserves
+        the building's real footprint shape (L-shapes, courtyards,
+        multi-wing structures), unlike a plain minimum-rotated-rectangle
+        approximation, which replaces the whole footprint with its
+        bounding box and can inflate area by 30%+ for non-rectangular
+        buildings. Useful for cleaning ML-extracted footprints, where
+        segmentation edges are often slightly off-axis from pixel-grid
+        noise even though the real building is rectilinear.
 
         Args:
             input_path: GeoJSON with building polygons.
             output_path: Regularised GeoJSON.
-            angle_tolerance_deg: Snap edges within this angle to the
-                dominant direction.
+            angle_tolerance_deg: Snap edges within this angle of the
+                dominant direction (or its perpendicular) to be exactly
+                axis-aligned. Edges further off than this are left as-is.
             min_area_m2: Drop polygons smaller than this.
 
         Returns:
             ``output_path``
         """
         geom_mod, affinity_mod, _ = _require_shapely()
+        import math
+
+        def _dominant_angle_deg(geom) -> float:
+            """Estimate the building's dominant orientation from its
+            minimum rotated rectangle's longest edge — a legitimate,
+            standard use of MRR as an orientation estimator (not as the
+            output geometry itself)."""
+            mrr = geom.minimum_rotated_rectangle
+            coords = list(mrr.exterior.coords)[:-1]
+            if len(coords) != 4:
+                return 0.0
+            edges = [
+                (coords[(i + 1) % 4][0] - coords[i][0], coords[(i + 1) % 4][1] - coords[i][1])
+                for i in range(4)
+            ]
+            longest = max(edges, key=lambda e: e[0] ** 2 + e[1] ** 2)
+            return math.degrees(math.atan2(longest[1], longest[0]))
+
+        def _snap_axis_aligned(geom, tolerance_deg: float):
+            """Snap each edge that's within tolerance of horizontal or
+            vertical (in the already-rotated frame) to be exactly
+            horizontal/vertical, adjusting the shared vertex coordinate —
+            preserves the polygon's real shape, only straightens edges
+            that were already close to axis-aligned."""
+            coords = list(geom.exterior.coords)
+            n = len(coords) - 1  # last point duplicates the first
+            new_coords = [list(c) for c in coords[:-1]]
+            for i in range(n):
+                x1, y1 = new_coords[i]
+                x2, y2 = new_coords[(i + 1) % n]
+                dx, dy = x2 - x1, y2 - y1
+                edge_len = math.hypot(dx, dy)
+                if edge_len < 1e-9:
+                    continue
+                angle = math.degrees(math.atan2(dy, dx)) % 180
+                if angle <= tolerance_deg or angle >= 180 - tolerance_deg:
+                    # near-horizontal — snap y2 to y1
+                    new_coords[(i + 1) % n][1] = y1
+                elif abs(angle - 90) <= tolerance_deg:
+                    # near-vertical — snap x2 to x1
+                    new_coords[(i + 1) % n][0] = x1
+            new_coords.append(new_coords[0])
+            return geom_mod.Polygon(new_coords)
 
         with open(input_path) as f:
             gj = json.load(f)
@@ -459,10 +572,16 @@ class PostProcessor:
                 geom = geom_mod.shape(feat["geometry"])
                 if geom.area < min_area_m2:
                     continue
-                # Minimum rotated rectangle approximation
-                mrr     = geom.minimum_rotated_rectangle
-                reg_geom = mrr if mrr else geom
-                feat    = dict(feat)
+
+                centroid = geom.centroid
+                angle = _dominant_angle_deg(geom)
+                rotated = affinity_mod.rotate(geom, -angle, origin=centroid, use_radians=False)
+                snapped = _snap_axis_aligned(rotated, angle_tolerance_deg)
+                if not snapped.is_valid:
+                    snapped = snapped.buffer(0)  # standard shapely self-intersection repair
+                reg_geom = affinity_mod.rotate(snapped, angle, origin=centroid, use_radians=False)
+
+                feat = dict(feat)
                 feat["geometry"] = geom_mod.mapping(reg_geom)
                 feat.setdefault("properties", {})["regularised"] = True
                 regularised.append(feat)
@@ -619,11 +738,28 @@ class PostProcessor:
             input_path: GeoJSON input.
             output_path: Buffered GeoJSON.
             distance: Buffer distance in map units (metres for projected).
-            resolution: Number of segments per quarter-circle.
+            resolution: Number of segments per quarter-circle. Only
+                affects the native path — pygeofetch's real buffer() has
+                no way to receive a custom resolution (it relies on
+                shapely's own default of 16, which is why delegation is
+                only used when resolution==16, the shared default).
 
         Returns:
             ``output_path``
         """
+        if resolution == 16:  # shapely's own real default — verified match
+            pgf = _pygeofetch_postprocessor()
+            if pgf is not None:
+                try:
+                    result = pgf.buffer(input=input_path, distance=distance, output=output_path)
+                    if result.success:
+                        logger.info("Buffered %d features (d=%.1f) → %s (via pygeofetch)",
+                                    result.metadata.get("n_features", -1), distance, output_path)
+                        return str(result.output_path)
+                    logger.warning("pygeofetch.buffer failed (%s) — falling back to native.", result.error)
+                except Exception as exc:
+                    logger.warning("pygeofetch.buffer delegation failed (%s) — falling back to native.", exc)
+
         geom_mod, _, _ = _require_shapely()
 
         with open(input_path) as f:
@@ -723,50 +859,113 @@ class PostProcessor:
                 stats=["mean","std","min","max"],
             )
         """
-        rasterio = _require_rasterio()
-        from rasterio.mask import mask as rio_mask
-        from shapely.geometry import shape
+        def _native():
+            rasterio = _require_rasterio()
+            from rasterio.mask import mask as rio_mask
+            from shapely.geometry import shape
 
-        with rasterio.open(raster_path) as src:
-            pass
+            with open(vector_path) as f:
+                gj = json.load(f)
 
-        with open(vector_path) as f:
-            gj = json.load(f)
+            results = []
+            for feat in gj.get("features", []):
+                geom = shape(feat["geometry"])
+                props = dict(feat.get("properties") or {})
+                try:
+                    with rasterio.open(raster_path) as src:
+                        data, _ = rio_mask(src, [geom.__geo_interface__], crop=True)
+                        arr = data[band - 1].astype(np.float32)
+                        valid = arr[np.isfinite(arr) & (arr != (src.nodata or -9999))]
 
-        results = []
-        for feat in gj.get("features", []):
-            geom = shape(feat["geometry"])
-            props = dict(feat.get("properties") or {})
+                    if valid.size > 0:
+                        for s in stats:
+                            if s == "mean":   props["stat_mean"]   = float(valid.mean())
+                            elif s == "std":  props["stat_std"]    = float(valid.std())
+                            elif s == "min":  props["stat_min"]    = float(valid.min())
+                            elif s == "max":  props["stat_max"]    = float(valid.max())
+                            elif s == "count":props["stat_count"]  = int(valid.size)
+                            elif s == "median": props["stat_median"] = float(np.median(valid))
+                            elif s == "sum":  props["stat_sum"]    = float(valid.sum())
+                    else:
+                        for s in stats:
+                            props[f"stat_{s}"] = None
+                except Exception as e:
+                    logger.warning("Zonal stats failed for feature: %s", e)
+
+                results.append({"type": "Feature", "geometry": feat["geometry"], "properties": props})
+
+            if output_path:
+                pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                with open(output_path, "w") as f:
+                    json.dump({"type": "FeatureCollection", "features": results}, f)
+                logger.info("Zonal statistics → %s", output_path)
+                return output_path
+            return results
+
+        pgf = _pygeofetch_postprocessor()
+        if pgf is None:
+            return _native()
+
+        try:
+            import csv
+            import tempfile
+
+            with open(vector_path) as f:
+                gj = json.load(f)
+            features = gj.get("features", [])
+
+            tmp_dir = tempfile.mkdtemp(prefix="pygeovision_zonal_")
             try:
-                with rasterio.open(raster_path) as src:
-                    data, _ = rio_mask(src, [geom.__geo_interface__], crop=True)
-                    arr = data[band - 1].astype(np.float32)
-                    valid = arr[np.isfinite(arr) & (arr != (src.nodata or -9999))]
+                csv_path = str(pathlib.Path(tmp_dir) / "zonal.csv")
+                result = pgf.zonal_stats(
+                    raster=raster_path, zones=vector_path, output=csv_path,
+                    stats=list(stats), band=band,
+                )
+                if not result.success:
+                    logger.warning(
+                        "pygeofetch.zonal_stats failed (%s) — falling back to "
+                        "pygeovision's native implementation.", result.error,
+                    )
+                    return _native()
 
-                if valid.size > 0:
+                # zone_id in pygeofetch's CSV is the input GeoDataFrame's
+                # iteration order (confirmed from its real implementation:
+                # `for idx, row in gdf.iterrows()`), which matches the
+                # input GeoJSON's feature order — safe to correlate rows
+                # back to the original features by that index, not by
+                # re-deriving geometry equality (fragile) or trusting a
+                # naive positional zip without verifying the contract.
+                stats_by_zone_id: dict[int, dict] = {}
+                with open(result.output_path) as f:
+                    for row in csv.DictReader(f):
+                        zone_id = int(row["zone_id"])
+                        stats_by_zone_id[zone_id] = row
+
+                results = []
+                for i, feat in enumerate(features):
+                    props = dict(feat.get("properties") or {})
+                    row = stats_by_zone_id.get(i, {})
                     for s in stats:
-                        if s == "mean":   props["stat_mean"]   = float(valid.mean())
-                        elif s == "std":  props["stat_std"]    = float(valid.std())
-                        elif s == "min":  props["stat_min"]    = float(valid.min())
-                        elif s == "max":  props["stat_max"]    = float(valid.max())
-                        elif s == "count":props["stat_count"]  = int(valid.size)
-                        elif s == "median": props["stat_median"] = float(np.median(valid))
-                        elif s == "sum":  props["stat_sum"]    = float(valid.sum())
-                else:
-                    for s in stats:
-                        props[f"stat_{s}"] = None
-            except Exception as e:
-                logger.warning("Zonal stats failed for feature: %s", e)
+                        val = row.get(s)
+                        props[f"stat_{s}"] = float(val) if val not in (None, "", "nan") else None
+                    results.append({"type": "Feature", "geometry": feat["geometry"], "properties": props})
 
-            results.append({"type": "Feature", "geometry": feat["geometry"], "properties": props})
-
-        if output_path:
-            pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "w") as f:
-                json.dump({"type": "FeatureCollection", "features": results}, f)
-            logger.info("Zonal statistics → %s", output_path)
-            return output_path
-        return results
+                if output_path:
+                    pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                    with open(output_path, "w") as f:
+                        json.dump({"type": "FeatureCollection", "features": results}, f)
+                    logger.info("Zonal statistics → %s (via pygeofetch)", output_path)
+                    return output_path
+                return results
+            finally:
+                import shutil
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception as exc:
+            logger.warning(
+                "pygeofetch delegation for zonal_statistics failed (%s) — "
+                "falling back to pygeovision's native implementation.", exc,
+            )
+            return _native()
 
     def accuracy_assessment(
         self,
@@ -874,7 +1073,10 @@ class PostProcessor:
     # ------------------------------------------------------------------
 
     def to_cog(self, input_path: str, output_path: str | None = None) -> str:
-        """Convert any GeoTIFF to a Cloud-Optimized GeoTIFF.
+        """Convert any GeoTIFF to a real Cloud-Optimized GeoTIFF, with
+        genuine overview pyramids (not just a tiled/compressed copy —
+        without overviews, a file isn't actually a COG, just a file that
+        looks similar).
 
         Args:
             input_path: Source GeoTIFF.
@@ -883,20 +1085,68 @@ class PostProcessor:
         Returns:
             ``output_path``
         """
-        import subprocess
-
         if output_path is None:
             p = pathlib.Path(input_path)
             output_path = str(p.parent / f"{p.stem}_cog{p.suffix}")
 
-        # Use gdal_translate if available, else rasterio copy
+        pgf = _pygeofetch_postprocessor()
+        if pgf is not None:
+            try:
+                result = pgf.cog(input=input_path, output=output_path)
+                if result.success:
+                    # KNOWN BUG in pygeofetch's own cog(): its
+                    # copy_src_overviews=True is a no-op in the code path
+                    # it actually uses (manual rasterio.open('w')+.write(),
+                    # not rasterio.shutil.copy() — copy_src_overviews only
+                    # takes effect via GDAL's CreateCopy, which that write
+                    # pattern doesn't invoke). Confirmed directly: calling
+                    # pygeofetch's cog() produces success=True with ZERO
+                    # overviews in the output. Don't trust the upstream
+                    # success flag as proof the file is a genuine COG —
+                    # verify, and complete the job here if it silently
+                    # didn't.
+                    rasterio = _require_rasterio()
+                    with rasterio.open(result.output_path) as check:
+                        has_overviews = len(check.overviews(1)) > 0
+                    if not has_overviews:
+                        logger.warning(
+                            "pygeofetch.cog() reported success but built no "
+                            "overview pyramids (known upstream bug — "
+                            "copy_src_overviews doesn't take effect via its "
+                            "write path) — building them directly so the "
+                            "output is a genuine COG."
+                        )
+                        with rasterio.open(result.output_path, "r+") as fix_dst:
+                            fix_dst.build_overviews(
+                                [2, 4, 8, 16, 32], rasterio.enums.Resampling.average,
+                            )
+                    logger.info("COG → %s (via pygeofetch)", output_path)
+                    return str(result.output_path)
+                logger.warning(
+                    "pygeofetch.cog failed (%s) — falling back to gdal_translate/"
+                    "native tiling (no overview pyramids in the native fallback).",
+                    result.error,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "pygeofetch.cog delegation failed (%s) — falling back to "
+                    "gdal_translate/native tiling.", exc,
+                )
+
+        import subprocess
+
+        # Use gdal_translate if available, else rasterio copy.
+        # NOTE: this rasterio fallback does NOT build overview pyramids —
+        # it produces a tiled/compressed GeoTIFF, not a genuine COG. It
+        # exists only for the (should be rare, since pygeofetch is a
+        # required dependency) case where pygeofetch's own cog() call
+        # above failed too.
         try:
             subprocess.run(
                 ["gdal_translate", "-of", "COG", input_path, output_path],
                 check=True, capture_output=True,
             )
         except (subprocess.CalledProcessError, FileNotFoundError):
-            # Fallback: rasterio copy with tiling
             rasterio = _require_rasterio()
             pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with rasterio.open(input_path) as src:
@@ -911,7 +1161,13 @@ class PostProcessor:
                 with rasterio.open(output_path, "w", **profile) as dst:
                     for i in range(1, src.count + 1):
                         dst.write(src.read(i), i)
-        logger.info("COG → %s", output_path)
+            logger.warning(
+                "COG → %s written WITHOUT overview pyramids (neither pygeofetch "
+                "nor gdal_translate were available) — this is a tiled GeoTIFF, "
+                "not a genuine COG.", output_path,
+            )
+            return output_path
+        logger.info("COG → %s (via gdal_translate)", output_path)
         return output_path
 
     def export(
@@ -1000,7 +1256,7 @@ th,td{{border:1px solid #e2e8f0;padding:8px 12px;}}th{{background:#f1f5f9;}}</st
 <h2>Class Statistics</h2>
 <table><tr><th>Class</th><th>Pixels</th><th>Area (ha)</th><th>Coverage</th></tr>
 {stat_rows}</table>
-{acc_html}
+{acc_html} 
 </body></html>"""
             with open(output_path, "w") as f:
                 f.write(html)

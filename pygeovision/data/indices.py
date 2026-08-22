@@ -83,6 +83,97 @@ def _validate_arr(arr: np.ndarray, name: str) -> np.ndarray:
     return arr
 
 
+def _pygeofetch_indices():
+    """Real pygeofetch.processing.indices.SpectralIndices, or None if
+    genuinely unavailable (pygeofetch is a required dependency of
+    pygeovision — this should essentially never return None in a correct
+    install, but a broken/partial install shouldn't hard-crash index
+    computation)."""
+    try:
+        from pygeofetch.processing.indices import SpectralIndices as _PgfIndices
+        return _PgfIndices()
+    except ImportError:
+        return None
+
+
+def _delegate_or_native(
+    source: str | np.ndarray | list,
+    band_specs: dict[str, int],
+    pgf_method: str,
+    native_fn,
+    output_path: str | None,
+    name: str,
+    **pgf_kwargs,
+) -> str | np.ndarray:
+    """Run a spectral index via pygeofetch's real implementation when the
+    source is a file (the common case — pygeofetch IS the data layer's
+    real indices engine), falling back to pygeovision's own verified
+    formula only when the input is already an in-memory array (pygeofetch's
+    API is file-path-only, with no array mode at all) or if pygeofetch is
+    genuinely unavailable.
+
+    Args:
+        band_specs: {pygeofetch_param_name: pygeovision_band_index}, e.g.
+            {"red": 3, "nir": 4} — the actual band indices to extract from
+            a stacked source into the single-band temp files pygeofetch's
+            file-path-only API requires.
+        native_fn: pygeovision's own (verified) array-based computation,
+            used for array inputs and as a defensive fallback.
+    """
+    is_file_source = isinstance(source, (str, pathlib.Path))
+    pgf = _pygeofetch_indices() if is_file_source else None
+
+    if pgf is None:
+        return native_fn()
+
+    import tempfile
+    r = _require_rasterio()
+    tmp_dir = tempfile.mkdtemp(prefix="pygeovision_indices_")
+    tmp_paths: dict[str, str] = {}
+    try:
+        with r.open(str(source)) as src:
+            profile = src.profile.copy()
+            for param_name, band_idx in band_specs.items():
+                band_arr = src.read(band_idx)
+                band_profile = profile.copy()
+                band_profile.update(count=1, dtype=band_arr.dtype)
+                band_path = str(pathlib.Path(tmp_dir) / f"{param_name}.tif")
+                with r.open(band_path, "w", **band_profile) as dst:
+                    dst.write(band_arr, 1)
+                tmp_paths[param_name] = band_path
+
+        pgf_output = str(pathlib.Path(tmp_dir) / f"{name}_out.tif")
+        method = getattr(pgf, pgf_method)
+        result = method(**tmp_paths, output=pgf_output, **pgf_kwargs)
+
+        if not result.success:
+            logger.warning(
+                "pygeofetch.%s failed (%s) — falling back to pygeovision's "
+                "native formula for this call.", pgf_method, result.error,
+            )
+            return native_fn()
+
+        with r.open(result.output_path) as res_src:
+            arr = res_src.read(1).astype(np.float32)
+
+        if output_path:
+            pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copy(result.output_path, output_path)
+            logger.info("Saved %s → %s (via pygeofetch)", name.upper(), output_path)
+            return output_path
+        return arr
+    except Exception as exc:
+        logger.warning(
+            "pygeofetch delegation for %s failed (%s) — falling back to "
+            "pygeovision's native formula for this call.", name, exc,
+        )
+        return native_fn()
+    finally:
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 # ===========================================================================
 # SpectralIndices class
 # ===========================================================================
@@ -144,10 +235,16 @@ class SpectralIndices:
         Returns:
             float32 numpy array or path string.
         """
-        red, nir, ref = self._get_two_bands(source, red_band, nir_band)
-        result = (nir - red) / (nir + red + _EPS)
-        result = np.clip(_validate_arr(result, "NDVI"), -1.0, 1.0)
-        return self._out(result, ref, output_path, "ndvi")
+        def _native():
+            red, nir, ref = self._get_two_bands(source, red_band, nir_band)
+            result = (nir - red) / (nir + red + _EPS)
+            result = np.clip(_validate_arr(result, "NDVI"), -1.0, 1.0)
+            return self._out(result, ref, output_path, "ndvi")
+
+        return _delegate_or_native(
+            source, {"red": red_band, "nir": nir_band}, "ndvi", _native,
+            output_path, "ndvi",
+        )
 
     def evi(
         self,
@@ -336,10 +433,16 @@ class SpectralIndices:
 
         Detects open water bodies.  Values > 0 indicate water.
         """
-        green, nir, ref = self._get_two_bands(source, green_band, nir_band)
-        result = (green - nir) / (green + nir + _EPS)
-        result = np.clip(_validate_arr(result, "NDWI"), -1.0, 1.0)
-        return self._out(result, ref, output_path, "ndwi")
+        def _native():
+            green, nir, ref = self._get_two_bands(source, green_band, nir_band)
+            result = (green - nir) / (green + nir + _EPS)
+            result = np.clip(_validate_arr(result, "NDWI"), -1.0, 1.0)
+            return self._out(result, ref, output_path, "ndwi")
+
+        return _delegate_or_native(
+            source, {"green": green_band, "nir": nir_band}, "ndwi", _native,
+            output_path, "ndwi",
+        )
 
     def mndwi(
         self,

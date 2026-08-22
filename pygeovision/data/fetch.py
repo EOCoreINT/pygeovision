@@ -650,8 +650,27 @@ class SatelliteFetcher:
                     except (ValueError, TypeError):
                         pass
 
+                # geometry_file: real polygon-based spatial filtering,
+                # not just the coarse bbox approximation. Uses query.geometry
+                # (NOT query.geometry_geojson) — confirmed against pygeofetch's
+                # own source that nothing reads geometry_geojson at all; every
+                # provider and SearchQuery.to_stac_params()/has_spatial_filter()
+                # reads query.geometry. This is the exact pattern pygeofetch's
+                # own CLI uses (with a comment there documenting this same
+                # trap after they found and fixed it themselves).
+                geometry_geojson = None
+                if geometry_file:
+                    import json
+                    with open(geometry_file) as gf:
+                        gj = json.load(gf)
+                    geometry_geojson = (
+                        gj if gj.get("type") in ("Polygon", "MultiPolygon")
+                        else gj.get("geometry") or (gj.get("features") or [{}])[0].get("geometry")
+                    )
+
                 query = SearchQuery(
                     bbox               = pgf_bbox,
+                    geometry           = geometry_geojson,
                     start_date         = start_d,
                     end_date           = end_d,
                     cloud_cover_min    = 0.0,
@@ -662,13 +681,13 @@ class SatelliteFetcher:
                     satellites         = [],
                     sensors            = [],
                     collections        = collections or [],
-                    processing_levels  = [],
+                    processing_levels  = [processing_level] if processing_level else [],
                     providers          = active_providers or [],
                     provider_filters   = {},
                     ids                = [],
                     cql2_filter        = cql2_filter,
-                    on_provider_failure= "skip",
-                    timeout_seconds    = 60,
+                    on_provider_failure= on_provider_failure,
+                    timeout_seconds    = timeout,
                 )
 
                 satellite_data_list = self._engine.search(
@@ -881,6 +900,7 @@ class SatelliteFetcher:
         notify_webhook: str | None = None,
         max_items: int | None = None,
         priority: str = "normal",
+        bands: list[str] | None = None,   # <-- new
     ) -> list[DownloadResult]:
         """Download satellite scenes with progress display."""
         import sys
@@ -891,6 +911,42 @@ class SatelliteFetcher:
             items = items[:max_items]
         if not items:
             return []
+
+        # ── Band filtering — applied to BOTH the SearchResult wrapper's assets
+        # (used by the pystac-fallback download path) AND the native
+        # satellite_data.assets (what engine.download() actually reads for real
+        # PyGeoFetch providers). Mutating only the wrapper silently does nothing
+        # for real downloads — this was the root cause of full-scene downloads
+        # even when `bands=[...]` was passed.
+        #
+        # Uses pygeofetch's own resolve_band_keys() rather than a naive substring
+        # match, since it handles alias resolution (B02 <-> blue, B4 <-> B04)
+        # that real provider asset keys may require.
+        from pygeofetch.models.satellite_data import resolve_band_keys
+        if bands:
+            for item in items:
+                if item.assets:
+                    available = list(item.assets.keys())
+                    matched = resolve_band_keys(bands, available)
+                    item.assets = {k: v for k, v in item.assets.items() if k in matched}
+
+                sd = item.satellite_data
+                if sd is not None and getattr(sd, "assets", None):
+                    available = list(sd.assets.keys())
+                    matched = resolve_band_keys(bands, available)
+                    if set(matched) == set(available):
+                        # resolve_band_keys() falls back to "return everything"
+                        # when nothing matches — that's a real mismatch, not a
+                        # successful filter, so surface it loudly rather than
+                        # silently downloading the full scene.
+                        logger.warning(
+                            "Band filter %s did not match any asset key for %s "
+                            "(available: %s) — resolve_band_keys() fell back to "
+                            "returning all assets. Check the provider's actual "
+                            "asset key naming (e.g. via item.satellite_data.assets.keys()).",
+                            bands, item.id, available,
+                        )
+                    sd.assets = {k: v for k, v in sd.assets.items() if k in matched}
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -953,6 +1009,7 @@ class SatelliteFetcher:
             on_failure         = on_failure,
             overwrite          = overwrite,
             notify_webhook     = notify_webhook,
+            bands=bands
         )
 
         # ── Separate native PyGeoFetch items from pystac-fallback items ──────

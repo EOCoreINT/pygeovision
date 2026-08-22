@@ -450,8 +450,44 @@ class EOPipeline:
         return self
 
     def select(self, n: int = 1, strategy: str = "best") -> EOPipeline:
-        """Select n scenes from search results."""
-        self._scenes = self._scenes[:n]
+        """Select n scenes from search results.
+
+        Args:
+            n: Number of scenes to keep.
+            strategy: How to choose which n to keep —
+                "best": lowest cloud cover first (optical quality);
+                    scenes with no cloud_cover (e.g. SAR) sort last.
+                "newest": most recent acquisition date first.
+                "oldest": least recent acquisition date first.
+                "score": highest search relevance score first, if the
+                    provider returned one; falls back to "best" for
+                    scenes with no score.
+                anything else (or unrecognised): keep search-result
+                    order as-is — the previous, honest default behaviour.
+        """
+        scenes = self._scenes
+        if strategy == "best":
+            scenes = sorted(
+                scenes, key=lambda s: s.cloud_cover if s.cloud_cover is not None else float("inf"),
+            )
+        elif strategy == "newest":
+            scenes = sorted(scenes, key=lambda s: s.datetime or "", reverse=True)
+        elif strategy == "oldest":
+            scenes = sorted(scenes, key=lambda s: s.datetime or "")
+        elif strategy == "score":
+            scenes = sorted(
+                scenes,
+                key=lambda s: s.score if s.score is not None
+                else -(s.cloud_cover if s.cloud_cover is not None else 100),
+                reverse=True,
+            )
+        elif strategy != "as_is":
+            logger.warning(
+                "EOPipeline.select: unrecognised strategy=%r — keeping "
+                "search-result order. Choose from: best, newest, oldest, "
+                "score, as_is.", strategy,
+            )
+        self._scenes = scenes[:n]
         return self
 
     def download(

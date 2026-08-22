@@ -206,6 +206,65 @@ def _pgf_download_result_to_pgv(dr) -> DownloadResult:
     )
 
 
+
+class AIReadyRaster(str):
+    """A file path (str) that also carries prepare_for_ai()'s rich metadata.
+
+    Behaves exactly like a plain path string everywhere a path is expected
+    (rasterio.open(), pathlib.Path(), etc.) — via str subclassing — while
+    still exposing the preprocessing results as attributes and dict-style
+    access for backward compatibility.
+
+    Example::
+
+        ready = client.prepare_for_ai(scene.path, ...)
+        # Works directly as a path:
+        client.classification.land_cover(ready, output_path="./data/lc.tif")
+        # Rich data still available:
+        arr = ready.array
+        print(ready.shape, ready.steps)
+        # Legacy dict-style access still works:
+        arr = ready["array"]
+    """
+
+    def __new__(cls, output_path: str, **extra):
+        if not output_path:
+            raise ValueError(
+                "AIReadyRaster requires a real output_path — prepare_for_ai() "
+                "must be called with output_path set (or a default one resolved) "
+                "so downstream steps have a file to read."
+            )
+        obj = super().__new__(cls, output_path)
+        obj._extra = extra
+        return obj
+
+    def __getattr__(self, name):
+        # Only called when normal attribute lookup fails (str has no
+        # "array"/"shape"/etc.), so this doesn't interfere with str's own API.
+        try:
+            return self._extra[name]
+        except KeyError:
+            raise AttributeError(
+                f"{name!r} not found on AIReadyRaster (available: "
+                f"{list(self._extra.keys())})"
+            ) from None
+
+    def __getitem__(self, key):
+        # Backward compatibility for code written against the old dict return
+        if key == "output_path":
+            return str(self)
+        return self._extra[key]
+
+    def get(self, key, default=None):
+        if key == "output_path":
+            return str(self)
+        return self._extra.get(key, default)
+
+    def keys(self):
+        return {"output_path", *self._extra.keys()}
+
+    def __repr__(self):
+        return f"AIReadyRaster({str(self)!r}, shape={self._extra.get('shape')})"
 # ---------------------------------------------------------------------------
 # PyGeoFetchBridge
 # ---------------------------------------------------------------------------
@@ -587,6 +646,16 @@ class PyGeoFetchBridge:
             )
             arr = result["array"]   # float32 (C,H,W), validated, AI-ready
         """
+        """..."""
+        if not input_path:
+            raise ValueError(
+                "prepare_for_ai() got input_path=None — the upstream download "
+                "likely failed. Check DownloadResult.success and .error before "
+                "calling prepare_for_ai()."
+            )
+        if not pathlib.Path(input_path).exists():
+            raise FileNotFoundError(f"prepare_for_ai(): input path does not exist: {input_path}")
+    
         steps_applied = []
 
         # ── PyGeoFetch v2.0 native preprocessing (future-proof path) ────
@@ -636,17 +705,35 @@ class PyGeoFetchBridge:
             report = self._v.validate(output_path)
             steps_applied.append(f"validate({model_type})")
 
-        return {
-            "array":        arr,
-            "output_path":  output_path,
-            "shape":        result.get("shape"),
-            "resolution_m": result.get("resolution_m"),
-            "report":       report,
-            "steps":        steps_applied,
-        }
+        if not output_path:
+            raise ValueError(
+                "prepare_for_ai() could not resolve an output_path — "
+                "pass output_path explicitly."
+            )
+        return AIReadyRaster(
+            output_path,
+            array=arr,
+            shape=result.get("shape"),
+            resolution_m=result.get("resolution_m"),
+            report=report,
+            steps=steps_applied,
+        )
+
+        # return {
+        #     "array":        arr,
+        #     "output_path":  output_path,
+        #     "shape":        result.get("shape"),
+        #     "resolution_m": result.get("resolution_m"),
+        #     "report":       report,
+        #     "steps":        steps_applied,
+        # }
 
     def _prepare_via_pgf_v2(self, input_path, **kw) -> dict[str, Any]:
         """Use PyGeoFetch v2.0 native preprocessing when available."""
+        
+        if not input_path or not pathlib.Path(input_path).exists():
+            raise ValueError(f"_prepare_via_pgf_v2: invalid input_path={input_path!r}")
+        
         pgf_pre  = self._pgf.preprocess
         steps    = []
         current  = input_path
@@ -708,11 +795,20 @@ class PyGeoFetchBridge:
         except Exception:
             pass
 
-        return {
-            "array": arr, "output_path": op,
-            "shape": arr.shape if arr is not None else None,
-            "resolution_m": resolution_m, "report": report, "steps": steps,
-        }
+        return AIReadyRaster(
+            op,
+            array=arr,
+            shape=arr.shape if arr is not None else None,
+            resolution_m=resolution_m,
+            report=report,
+            steps=steps,
+        )
+
+        # return {
+        #     "array": arr, "output_path": op,
+        #     "shape": arr.shape if arr is not None else None,
+        #     "resolution_m": resolution_m, "report": report, "steps": steps,
+        # }
 
     def _normalise_raster(
         self, input_path: str, method: str, scale_factor: float = 10000.0,

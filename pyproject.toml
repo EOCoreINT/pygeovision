@@ -29,9 +29,16 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies    = [
-    # pygeofetch — satellite data layer (search, download, auth)
-    "pygeofetch>=1.9.2",
-    # STAC fallback when pygeofetch unavailable
+    # pygeofetch — the full data layer: search, download, auth, optical
+    # preprocessing/indices/postprocessing, and SAR/InSAR processing.
+    # >=1.1.0 predates most of this (SpectralIndices, Preprocessor,
+    # PostProcessor, SARProcessor, the full pygeofetch.insar.* suite,
+    # DataLoader/BandStacker) — pinned to the version actually verified
+    # to have them, not an earlier one assumed to also have them.
+    "pygeofetch>=2.4.0",
+    # STAC fallback for the rare case pygeofetch's import genuinely fails
+    # at runtime despite being a required dependency (e.g. broken venv) —
+    # not a normal operating path.
     "pystac>=1.9",
     "pystac-client>=0.7",
     "planetary-computer>=1.0",
@@ -156,7 +163,7 @@ geo3d = [
     "laspy>=2.0",
     "scipy>=1.12",
     "pandas>=2.0",
-    
+   
 ]
 
 # ── Drift monitoring ─────────────────────────────────────────────────────────
@@ -184,6 +191,11 @@ enterprise = [
     "pydantic>=2.0",
     "sqlalchemy>=2.0",
 ]
+
+# ── GeoAI plugin (optional — not required by core) ───────────────────────────
+# PyGeoVision v2.0 is standalone. Install this only if you specifically need
+# Tessera embeddings, GroundedSAM, Leafmap, or legacy GeoAI-trained weights.
+geoai = ["geoai-py>=0.39.0"]
 
 # ── Development ──────────────────────────────────────────────────────────────
 dev = [
