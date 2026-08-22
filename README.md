@@ -394,10 +394,9 @@ PyGeoVision's satellite data layer is built on top of **[PyGeoFetch](https://app
 
  -->
 
-
+<div align="center">
 <img src="icon/pygeovision_logo.png" alt="PyGeoFetch Logo" width="350">
 
-# PyGeoVision
 
 [![image](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![image](https://img.shields.io/pypi/l/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)

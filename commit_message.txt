@@ -1,153 +1,37 @@
-Remove GeoAI dependency, fix SAR/InSAR pipeline bugs, audit stub
-implementations, and clean up lint debt
+fix: close ~20 real correctness gaps found via systematic audit against pygeofetch
 
-This is a large, multi-phase pass over the codebase: (1) a
-test-driven correctness pass on the SAR/InSAR pipeline, (2) full
-removal of the geoai-py dependency in favor of native implementations,
-(3) a deep audit for stub/placeholder code, and (4) a ruff lint
-cleanup that surfaced several additional real bugs. Full test suite:
-674 -> 620 tests (620 passed, 0 failed, 23 skipped without torch
-installed; 864 passed with torch installed).
+A recurring pattern across this pass: functions whose parameters implied
+real behavior (strategy switches, correction toggles, format options)
+that had zero actual effect - accepted, documented, and silently
+ignored or overridden. Confirmed each with a concrete before/after
+measurement, not just passing tests:
 
-SAR / InSAR pipeline fixes
----------------------------
-- data/processors/sar.py: fix calculate_default_transform import
-  (lives in rasterio.warp, not rasterio.transform) — was breaking 15
-  tests and any code path through prep_sar()
-- insar/processor.py (new): implement InSARProcessor/InSARResult, the
-  facade documented in insar/__init__.py's own docstring but never
-  actually built, wiring together the existing
-  interferogram/displacement/interpretation/viz modules
-- data/processors/sar.py: genuinely implement the refined Lee filter
-  (directional half-window edge selection across 4 orientations) —
-  it was silently aliasing enhanced_lee despite promising better edge
-  preservation
-- models/adapters/sar_channel_manager.py:
-  - add missing "replicate" channel-mapping mode
-  - support vh=None (approximate from VV) instead of crashing
-  - add vv_vh_diff/vv_vh_geomean pseudo-RGB arrangements; unknown
-    arrangements now raise ValueError instead of silently
-    defaulting
-  - detect any-NaN (not just all-NaN) in validate_sar_ai_input
-  - rewrite coregister_sar_pair from a mismatched array-based API to
-    the file-path-based one every real caller (agent/tools.py,
-    sar_approach_list.py) already assumed — this was a live bug in
-    the change-detection agent tool, not just a test failure
-- data/processors/sar.py:
-  - normalise_sar_for_ai now returns the ndarray (was returning the
-    output path, which no caller used)
-  - linear_to_db now marks physically-invalid zero/negative pixels
-    as NaN instead of flooring them to the dB clip bound
-  - despeckle_sar now validates window_size/filter_type instead of
-    silently defaulting
-  - verify_sar_downloads rewritten from list-based to the
-    dict-keyed-by-polarization API with fallback_policy, matching
-    every real call site and the documented usage example
-- data/validators/georeference.py:
-  - check_download_complete accepts total_tiles/file_size hints
-  - GeoreferenceResult gains repaired/pixel_width_m/srid/origin_x
-    (as properties/fields) — agent/tools.py already read these
-  - add raw-reference repair path (repair from a separate known-good
-    file via file_path=/repair=)
-  - gate the Accra-bounds heuristic behind an explicit
-    allow_heuristic_recovery opt-in instead of firing automatically
-    for any identity-transform raster
+  - EOPipeline.select(strategy=...) was a naive positional slice
+  - search()'s processing_level/on_provider_failure/timeout were
+    overridden with hardcoded values; geometry_file did nothing
+  - regularise_buildings() replaced non-rectangular buildings with their
+    bounding box (33% area inflation on a simple L-shape)
+  - fill_holes(method=bilinear) was identical to nearest
+  - TiledInference.infer(nodata_value=...) let nodata pixels skew
+    percentile normalisation (2nd percentile computed as literally
+    -9999 with 30% nodata coverage) and leak into output predictions
+  - InSAR run()'s apply_linear_aps defaulted to True but was never
+    applied; the real correction now recovers a known injected
+    elevation trend to within 0.12mm of truth (from 15mm)
+  - select_insar_pair()'s baseline check was undocumented as
+    inapplicable at that stage - now honest, with a real check added
+    where genuine baseline data exists (run_native())
+  - a severed import chain (models.foundation -> a nonexistent
+    advanced.foundation path) was cascading into ~90 test failures
 
-Remove geoai-py dependency
----------------------------
-- Delete pygeovision/ai/geoai/ (the GeoAIEngine delegation shim)
-- Add native client layers following the existing LabelingLayer/
-  InferenceLayer pattern: client.segmentation (SAM), client.detection
-  (native YOLO), client.change (ChangeFormer + spectral-diff
-  fallback), client.classification (CLIP zero-shot + ESA WorldCover)
-- Rewire every real call site: 9 pipeline steps in
-  ai/pipelines/domains.py, the CLI's entire ai command group in
-  cli/main.py (segment/detect/classify/change/train/infer/chips/
-  cloud-mask — chips and cloud-mask gain real implementations where
-  they previously called nonexistent geoai methods), api/__init__.py
-- Strip geoai from pyproject.toml (extra, keyword, mypy override) and
-  every docstring/comment mention across ~15 files; rename the
-  "GeoAI-Challenge" dataset registry entry
-- tests: delete test_geoai_integration.py; remove 3 test classes that
-  duplicated coverage of the deleted shim
-  (TestDINOv3ProxyInEngine, TestPrithviProxy,
-  TestGeoAIEngineFoundation); rewire mocks/assertions in
-  test_pipelines.py, test_data_layer.py, test_live.py
+Also: bridges indices.py/postprocess.py to pygeofetch's real
+implementations where interfaces genuinely match (keeping native code
+where pygeofetch's equivalent uses a different algorithm or drops data);
+adds a SNAP-free InSAR path (run_native()) and Groq LLM backend; adds
+real TESSERA/AlphaEarth embedding wrappers; removes stale tests for a
+previously-removed subsystem.
 
-Stub/placeholder audit
------------------------
-- labeling/pipeline.py: wire the sam_auto and foundation sources into
-  AutoLabelPipeline's dispatcher — both were declared valid sources
-  but fell through to "not implemented"
-- labeling/sam_auto.py: fix grounded_label() passing model=None to
-  GroundingDINO's predict() (load_model was imported but never
-  called); add real model loading with checkpoint auto-download
-- enterprise/auth.py: replace SSOProvider's self-labeled stub (fake
-  auth URL, NotImplementedError on token exchange) with a real
-  generic OIDC Authorization Code flow (discovery, token exchange,
-  JWKS verification)
-- serving/api.py:
-  - /predict/batch actually processes every image now (was always
-    returning a fake "queued" status and doing nothing)
-  - /metrics requests_total is a real counter (was hardcoded 0)
-  - /ws/stream runs real inference per message (was echoing input)
-  - fix endpoint imports being scoped inside create_app() instead of
-    module level — with "from __future__ import annotations" active,
-    FastAPI's get_type_hints() can't resolve names from an enclosing
-    function's local scope, so every endpoint using PredictRequest
-    etc. was broken, not just the new batch code
-- serving/models.py: add model_rebuild() calls pydantic v2 needs to
-  resolve deferred string annotations — same root cause as above
-
-Ruff lint cleanup
-------------------
-- Apply 3631 safe auto-fixes (PEP585/604 modernization, import
-  sorting, unused imports) plus 88 unsafe-but-verified F841
-  (unused-variable) fixes, scoped to that rule only
-- Fix a real regression the auto-fix exposed: ai/training/__init__.py
-  only caught ImportError around its torch-optional import chain, but
-  losses.py raises AttributeError when torch is absent (nn set to
-  None, then DiceLoss subclasses nn.Module at module scope); widen
-  the guard to except (ImportError, AttributeError)
-- Fix real NameError bugs found via F821: DownloadOptions
-  instantiated but never imported in ai/data/dataloader.py; logger
-  used but never defined in ai/pipelines/domains.py; add
-  TYPE_CHECKING imports for SearchResult/DownloadResult/
-  SatelliteFetcher and fix a nonexistent ParsedPipeline return-type
-  annotation (should be Pipeline) in pipelines/yaml_parser.py
-- Fix a real Click CLI bug found via F811: two separate command
-  groups were both registered as "models" directly on the top-level
-  cli group, so the second silently shadowed the first in Click's
-  command registry — the first group's cache subcommand and its
-  list/info variants were permanently unreachable. Rename the shadowed
-  group to "ai-models"; verified both are independently reachable via
-  CliRunner. Also disambiguate an incidental (non-breaking) Python
-  function-name collision: pipeline_run -> data_pipeline_run
-
-Documentation
--------------
-- README.md: full rewrite — remove all GeoAI branding/badges/
-  citations, update to reflect the native AI architecture, correct
-  stale numbers (119+ models, 51 pipelines, 864/620 test counts vs.
-  previously-stated 14/10/208), add CLI, inference server, and testing
-  sections, add a dedicated SAR & InSAR section covering the GRD
-  pipeline, foundation-model channel bridging, and both InSAR paths
-
-New tests
----------
-- test_sar_pipeline.py: refined Lee filter regression test (asserts
-  it's not an alias for enhanced Lee)
-- test_enterprise.py: 4 tests for SSOProvider's OIDC flow
-- test_serving.py (new): 9 tests for the serving API, including
-  regression tests for the batch/metrics bugs above
-
-BREAKING CHANGE: pygeovision.data.processors.sar.verify_sar_downloads
-now takes/returns a dict keyed by polarization instead of a list;
-coregister_sar_pair in models/adapters/sar_channel_manager.py now
-takes file paths + an output dir instead of arrays, returning
-(ref_path, secondary_path) instead of (array, info_dict);
-normalise_sar_for_ai now returns an ndarray instead of a path string;
-client.geoai is removed — use client.segmentation/.detection/.change/
-.classification instead; the CLI's "pygeovision models" group now
-refers only to the newer native registry, with the older AI-engine
-registry moved to "pygeovision ai-models".
+Full suite: 837 passed, 0 failed, 3 skipped. Every fix here was verified
+via revert-check - confirmed the corresponding test fails with the
+original bug's exact symptom before trusting it as a real regression
+test.
