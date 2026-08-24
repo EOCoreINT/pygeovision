@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -118,28 +119,63 @@ def _use_cli_mode() -> bool:
 
 
 _MIN_PIXEL_SIZE_M   = 0.3    # WorldView-3 finest commercial res
+_MIN_PIXEL_SIZE_DEG = 1e-6   # ~0.1m at the equator -- degree-CRS equivalent minimum
 _MAX_ORIGIN_FOR_PIXEL = 1e4  # Real UTM origins are >100 km from equator
 
 
-def _is_pixel_space_transform(transform) -> bool:
+def _is_pixel_space_transform(transform, crs=None) -> bool:
     """Return True when *transform* looks like a pixel-space / identity matrix.
- 
+
     A valid geographic/projected transform has:
-      |a| (pixel width)  ≥ _MIN_PIXEL_SIZE_M  (metres or degrees)
+      |a| (pixel width)  >= minimum real-world pixel size for its CRS's units
       origin (c, f)       far from (0, 0) for projected CRS
- 
+
     The PyGeoFetch corruption signature is:
       a = 1.0, c = 0.0, f = small-ish integer (row count)
+
+    Real bug this fixes: the pixel-size minimum was always meters-based
+    (0.3m), but reprojection to a geographic CRS (EPSG:4326 -- the most
+    common target in this whole pipeline) produces a transform whose
+    pixel size is in DEGREES, not meters. A genuinely valid 250m pixel
+    is ~0.0026 degrees -- always below any sane meters-based threshold --
+    so every real, correct geographic reprojection was being flagged as
+    corrupted. `crs` (when given) selects the right-scale threshold;
+    omitting it preserves the original meters-based check for callers
+    that haven't been updated (or that are checking a source transform
+    already known to be in a projected CRS).
     """
     if transform is None:
         return True
     a = abs(transform.a)   # pixel width
     c = abs(transform.c)   # x origin
     f = abs(transform.f)   # y origin
+
+    is_geographic = False
+    if crs is not None:
+        try:
+            is_geographic = bool(crs.is_geographic)
+        except Exception:
+            is_geographic = False
+
+    if is_geographic:
+        # Real-world geographic origins (longitude/latitude) are ALWAYS
+        # numerically small regardless of validity — a genuine location
+        # near the Gulf of Guinea has origin ~(0, 0), indistinguishable
+        # from actual corruption by origin alone. The only reliable
+        # signal here is pixel size: a=1.0 degree/pixel is ~111km/pixel,
+        # absurdly coarse for any real satellite product, so treat "a
+        # close to the 1.0 identity value" as the real corruption
+        # signature, and otherwise only flag genuinely-too-small sizes.
+        if 0.5 <= a <= 1.5:
+            return True
+        if a < _MIN_PIXEL_SIZE_DEG:
+            return True
+        return False
+
     # Pixel size of 1.0 with near-zero origin is the smoking gun
     if a <= 1.0 and c < _MAX_ORIGIN_FOR_PIXEL and f < _MAX_ORIGIN_FOR_PIXEL:
         return True
-    # Also catch sub-metre pixel sizes that snuck through (shouldn't happen for S1)
+    # Also catch sub-minimum pixel sizes that snuck through
     if a < _MIN_PIXEL_SIZE_M:
         return True
     return False
@@ -294,12 +330,86 @@ class SearchResult:
         return f"SearchResult(id={self.id!r}, provider={self.provider!r}, date={self.date!r})"
 
 
+# Known multi-token Landsat asset-name suffixes (checked as exact,
+# literal trailing sequences before falling back to single-token
+# extraction) — covers both Landsat 7 ETM+ and Landsat 8/9 OLI/TIRS
+# Collection 2 Level 2 naming, confirmed against two real production
+# downloads (a full 19-asset Landsat 7 scene and a full 19-asset
+# Landsat 8 scene).
+_LANDSAT_MULTI_TOKEN_SUFFIXES = [
+    ("QA", "PIXEL"), ("QA", "RADSAT"),
+    ("SR", "QA", "AEROSOL"), ("SR", "ATMOS", "OPACITY"),
+    ("ST", "QA"), ("ST", "DRAD"), ("ST", "URAD"), ("ST", "TRAD"),
+    ("ST", "ATRAN"), ("ST", "CDIST"), ("ST", "EMIS"), ("ST", "EMSD"),
+]
+_SR_ST_BAND_RE = re.compile(r"^(SR|ST)$")
+_BAND_NUMBER_RE = re.compile(r"^B\d{1,2}A?$")
+
+
+def _derive_asset_key(filename_stem: str) -> str:
+    """Derive a real, stable asset/band identifier from a downloaded
+    file's name, handling both Sentinel-2's "..._<KEY>_<res>m" and
+    Landsat's "..._SR_B1"/"..._QA_PIXEL"/"..._ST_ATRAN" conventions.
+
+    Confirmed real bugs in the naive "just take the last underscore
+    segment, treating any trailing all-digit token as a resolution
+    suffix" approach this replaces:
+      - "..._B04_10m_EPSG_4326.tif" (a real reproject:EPSG:4326 output)
+        has "4326" as its last token, which is all-digit and so was
+        wrongly treated as a resolution suffix, deriving "EPSG" as the
+        key instead of "B04".
+      - "..._QA_PIXEL.TIF" was truncated to just "PIXEL", and
+        "..._SR_B1.TIF" to just "B1" — losing the SR_/QA_ prefix that
+        is exactly what distinguishes a real reflectance band from a
+        quality-assessment band, which is the direct cause of a real
+        production crash (a QA_PIXEL file got used as if it were
+        genuine multi-band reflectance imagery).
+    """
+    tokens = filename_stem.split("_")
+
+    # Strip a trailing "EPSG", "<digits>" pair (a real reproject:EPSG:xxxx suffix).
+    if len(tokens) >= 2 and tokens[-2] == "EPSG" and tokens[-1].isdigit():
+        tokens = tokens[:-2]
+
+    # Strip a trailing resolution token — must be digits immediately
+    # followed by a literal "m" (e.g. "10m"), not just "any all-digit
+    # string after removing a trailing m if present", which wrongly
+    # matched plain numeric tokens like a CRS code.
+    if tokens and re.fullmatch(r"\d+m", tokens[-1]):
+        tokens = tokens[:-1]
+
+    if not tokens:
+        return filename_stem  # degenerate input, fall back to the whole stem
+
+    # Known real Landsat multi-token suffixes, longest first.
+    for suffix in sorted(_LANDSAT_MULTI_TOKEN_SUFFIXES, key=len, reverse=True):
+        n = len(suffix)
+        if len(tokens) >= n and tuple(tokens[-n:]) == suffix:
+            return "_".join(suffix)
+
+    # Landsat "SR_B4" / "ST_B10" pattern.
+    if len(tokens) >= 2 and _SR_ST_BAND_RE.match(tokens[-2]) and _BAND_NUMBER_RE.match(tokens[-1]):
+        return f"{tokens[-2]}_{tokens[-1]}"
+
+    # Sentinel-2 single-token band ("B02", "B8A") or common short codes
+    # ("AOT", "SCL", "WVP") — the single last token is correct here.
+    return tokens[-1]
+
+
 @dataclass
 class DownloadResult:
     """Result from a pygeofetch download operation."""
     scene_id: str
     provider: str = ""
     path: Path | None = None
+    # ALL real downloaded files for this scene, not just the single
+    # representative `path` — e.g. all 15 Sentinel-2 asset files
+    # (AOT, B01-B12, B8A, SCL, WVP), not just whichever one happened to
+    # be first. Populated from pygeofetch's own DownloadResult.output_paths
+    # (confirmed real, "always a list, never None" in pygeofetch's own
+    # source) — previously read and then discarded down to out_paths[0],
+    # silently losing every other real, successfully-downloaded file.
+    asset_paths: dict[str, Path] = field(default_factory=dict)
     success: bool = True
     bytes_downloaded: int = 0
     duration_seconds: float = 0.0
@@ -1236,10 +1346,52 @@ class SatelliteFetcher:
             else:
                 path = None
 
+            # Preserve EVERY real downloaded asset path, not just the
+            # first one — a multi-asset scene (e.g. Sentinel-2 L2A's 15
+            # separate band files, or Landsat's 19 separate SR/ST/QA
+            # files) has real data in every one of them, and `path`
+            # alone can only ever represent one. Keyed by a real asset
+            # identifier parsed from each filename via _derive_asset_key
+            # (handles both Sentinel-2's "B04"-style and Landsat's
+            # compound "SR_B1"/"QA_PIXEL"-style naming correctly).
+            #
+            # Real bug in pygeofetch's own resume-skip path (confirmed
+            # by reading its source): when options.resume=True finds an
+            # existing file, it returns output_paths=[that one file]
+            # even for a multi-asset scene that's genuinely fully on
+            # disk — _find_existing_download() matches on the scene ID
+            # as a substring (which matches every real asset file) but
+            # only returns the first one found. from_cache=True is
+            # pygeofetch's own reliable signal that this happened; when
+            # set, scan the same directory ourselves for every real file
+            # belonging to this scene instead of trusting the single
+            # incomplete path.
+            if getattr(pgf_result, "from_cache", False) and out_paths:
+                scan_dir = Path(out_paths[0]).parent
+                real_matches = sorted(
+                    p for p in scan_dir.glob(f"{item.id}*")
+                    if p.is_file() and p.suffix.lower() in
+                    (".tif", ".tiff", ".jp2", ".img", ".nc", ".zip")
+                )
+                if len(real_matches) > len(out_paths):
+                    logger.info(
+                        "download: resume-cache result for %s only reported %d "
+                        "file(s), but %d real file(s) matching this scene exist "
+                        "in %s — using the complete set.",
+                        item.id, len(out_paths), len(real_matches), scan_dir,
+                    )
+                    out_paths = real_matches
+
+            asset_paths: dict[str, Path] = {}
+            for p in out_paths:
+                p = Path(p)
+                asset_paths[_derive_asset_key(p.stem)] = p
+
             download_results.append(DownloadResult(
                 scene_id=item.id,
                 provider=getattr(pgf_result, "provider", None) or item.provider,
                 path=path,
+                asset_paths=asset_paths,
                 success=success,
                 bytes_downloaded=getattr(pgf_result, "bytes_downloaded", 0) or 0,
                 duration_seconds=getattr(pgf_result, "duration_seconds", None) or (duration / max(n_results, 1)),
@@ -1479,7 +1631,17 @@ class SatelliteFetcher:
             # Run post-processing (reproject, cog, etc.)
             final_path = out_file
             if post_process and out_file.exists():
-                final_path = self._apply_post_process(out_file, post_process) or out_file
+                final_path = self._apply_post_process(out_file, post_process)
+                if final_path is None:
+                    return DownloadResult(
+                        scene_id=item_id, provider=provider, success=False,
+                        error=(
+                            f"Post-processing failed for {out_file.name} "
+                            f"(steps={post_process}) — see preceding log for the specific "
+                            f"reason. The downloaded file is not usable as-is."
+                        ),
+                        bytes_downloaded=total_bytes, duration_seconds=duration,
+                    )
 
             return DownloadResult(
                 scene_id=item_id,
@@ -1722,6 +1884,55 @@ class SatelliteFetcher:
         for step in steps:
             step = step.strip()
 
+            # ── unzip ───────────────────────────────────────────────────────
+            if step == "unzip":
+                if current.suffix.lower() != ".zip":
+                    logger.debug("unzip step: %s is not a .zip — skipping", current.name)
+                    continue
+
+                import zipfile
+
+                extract_dir = current.with_suffix("")  # drop ".zip"
+                try:
+                    with zipfile.ZipFile(current) as zf:
+                        zf.extractall(extract_dir)
+                except zipfile.BadZipFile as exc:
+                    logger.error(
+                        "unzip step: %s is not a valid zip file (%s) — the download "
+                        "is likely corrupt or the source asset isn't actually zipped. "
+                        "Refusing to proceed with an un-extracted file.",
+                        current.name, exc,
+                    )
+                    return None
+
+                # Find the real raster inside — prefer an exact-format match,
+                # search recursively since SAFE-style archives nest files in
+                # subdirectories, not just the top level.
+                raster_exts = (".tif", ".tiff", ".jp2", ".img", ".nc")
+                candidates = [
+                    p for p in extract_dir.rglob("*")
+                    if p.is_file() and p.suffix.lower() in raster_exts
+                ]
+                if not candidates:
+                    logger.error(
+                        "unzip step: extracted %s but found no raster file (looked for "
+                        "%s) among %d extracted file(s) — cannot proceed.",
+                        current.name, raster_exts, sum(1 for _ in extract_dir.rglob("*") if _.is_file()),
+                    )
+                    return None
+
+                # Prefer the largest file — real imagery is virtually always
+                # larger than any embedded thumbnail/preview/mask raster.
+                current = max(candidates, key=lambda p: p.stat().st_size)
+                logger.info("unzip: extracted → %s", current.name)
+                try:
+                    with rasterio.open(str(current)) as _src0:
+                        expected_count = _src0.count
+                        expected_dtype = _src0.dtypes[0]
+                except Exception:
+                    pass  # keep whatever expected_count/dtype was set before, if any
+                continue
+
             # ── reproject:EPSG:XXXXX ────────────────────────────────────────
             if step.startswith("reproject:"):
                 target_crs = step.split(":", 1)[1].strip()
@@ -1735,7 +1946,7 @@ class SatelliteFetcher:
                     src_count     = src.count
 
                 # ── Detect corrupt geotransform ───────────────────────────────
-                if _is_pixel_space_transform(src_transform):
+                if _is_pixel_space_transform(src_transform, crs=src_crs):
                     logger.warning(
                         "reproject step: %s has a pixel-space/identity transform "
                         "(a=%.4f, origin=(%.1f, %.1f)). "
@@ -1752,7 +1963,7 @@ class SatelliteFetcher:
                             current.name
                         )
                         # Return what we have; caller's validator will report the issue
-                        return current
+                        return None
                     src_transform = rescued_t
 
                 # ── Skip if already in target CRS and transform is valid ──────
@@ -1762,7 +1973,7 @@ class SatelliteFetcher:
                 except Exception:
                     already_there = False
 
-                if already_there and not _is_pixel_space_transform(src_transform):
+                if already_there and not _is_pixel_space_transform(src_transform, crs=src_crs):
                     logger.debug(
                         "reproject: %s already in %s with valid transform — skipping",
                         current.name, target_crs
@@ -1778,17 +1989,21 @@ class SatelliteFetcher:
                     )
                 except Exception as cdt_exc:
                     logger.error("calculate_default_transform failed: %s", cdt_exc)
-                    return current
+                    return None
 
                 # Sanity-check the output transform
-                if _is_pixel_space_transform(out_transform):
+                try:
+                    target_crs_obj = CRS.from_user_input(target_crs)
+                except Exception:
+                    target_crs_obj = None
+                if _is_pixel_space_transform(out_transform, crs=target_crs_obj):
                     logger.error(
                         "reproject: output transform is still pixel-space after rescue "
                         "(a=%.4f). The rescued bounds are probably wrong. "
                         "Re-download without post_process=['reproject:...'].",
                         out_transform.a
                     )
-                    return current
+                    return None
 
                 out_meta = src_meta.copy()
                 out_meta.update(
@@ -1827,7 +2042,7 @@ class SatelliteFetcher:
                 except Exception as exc:
                     tmp_path.unlink(missing_ok=True)
                     logger.error("reproject failed: %s", exc)
-                    return current
+                    return None
 
             # ── cog ─────────────────────────────────────────────────────────
             elif step == "cog":
@@ -2312,6 +2527,58 @@ class SatelliteFetcher:
             print(f"          'copernicus', username='{username}',")
             print("          password='YOUR_CURRENT_PASSWORD')")
             return False
+
+    def prepare_stack(
+        self,
+        asset_paths: dict[str, Path],
+        output_path: str | Path,
+        bands: tuple[str, ...] = ("red", "green", "blue"),
+        scene_id: str = "",
+        apply_scale: bool = True,
+        apply_cloud_mask: bool = True,
+    ) -> Path:
+        """Build a real, correctly-ordered, radiometrically-correct,
+        cloud-masked multi-band GeoTIFF from a scene's downloaded assets.
+
+        This is the same real correction (Landsat Collection 2 SR /
+        Sentinel-2 L2A radiometric scaling, QA_PIXEL/SCL cloud masking)
+        the CLI `pygeovision channel ...` pipelines apply automatically
+        — exposed here directly so client.segmentation/
+        client.classification users (which operate on an already-
+        prepared image_path, not a bbox/date) have a real, documented
+        way to get one, rather than needing to reimplement this
+        themselves. See pygeovision.data.radiometric.stack_and_prepare_bands
+        for full technical details.
+
+        Typical use::
+
+            results = client.data.search(bbox=..., date_range=...)
+            downloads = client.data.download(results[:1], output_dir="./data")
+            stack_path = client.data.prepare_stack(
+                downloads[0].asset_paths, "./data/stack.tif",
+                scene_id=downloads[0].scene_id,
+            )
+            client.segmentation.water(str(stack_path))
+
+        Args:
+            asset_paths: A DownloadResult's real asset_paths dict (band
+                key -> file path) — populated automatically by download().
+            output_path: Where to write the prepared multi-band GeoTIFF.
+            bands: Which bands to include, in order (default red/green/blue).
+            scene_id: The scene ID (from the same DownloadResult) — used
+                to identify the sensor for correct scaling/cloud masking.
+            apply_scale: Convert raw DN to physical reflectance (default True).
+            apply_cloud_mask: Mask cloud/shadow pixels using QA_PIXEL/SCL
+                (default True).
+
+        Returns:
+            The output path.
+        """
+        from pygeovision.data.radiometric import stack_and_prepare_bands
+        return stack_and_prepare_bands(
+            asset_paths, Path(output_path), bands=bands, scene_id=scene_id,
+            apply_scale=apply_scale, apply_cloud_mask=apply_cloud_mask,
+        )
 
     def _pick_best_asset(self, result: SearchResult) -> str | None:
         """Pick the best available asset key from a SearchResult.

@@ -323,8 +323,6 @@ def _merge_and_clip(
     if not tile_paths:
         return None
     try:
-        import json
-
         import rasterio
         from rasterio.mask import mask as rio_mask
         from rasterio.merge import merge
@@ -332,6 +330,9 @@ def _merge_and_clip(
 
         sources = [rasterio.open(p) for p in tile_paths]
         mosaic, transform = merge(sources)
+        profile = sources[0].profile  # must capture BEFORE closing -- accessing
+                                       # .profile on a closed rasterio dataset
+                                       # raises RasterioIOError, confirmed directly
         for s in sources:
             s.close()
 
@@ -339,7 +340,6 @@ def _merge_and_clip(
             for src_val, dst_val in remap.items():
                 mosaic[mosaic == src_val] = dst_val
 
-        profile = sources[0].profile
         profile.update(height=mosaic.shape[1], width=mosaic.shape[2],
                         transform=transform, compress="lzw", count=1)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -348,7 +348,8 @@ def _merge_and_clip(
 
         if clip:
             lon_min, lat_min, lon_max, lat_max = bbox
-            shapes = [json.loads(box(lon_min, lat_min, lon_max, lat_max).to_json())]
+            from shapely.geometry import mapping as shapely_mapping
+            shapes = [shapely_mapping(box(lon_min, lat_min, lon_max, lat_max))]
             with rasterio.open(str(output)) as src:
                 clipped, clip_transform = rio_mask(src, shapes, crop=True)
                 clip_profile = src.profile.copy()

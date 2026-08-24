@@ -304,10 +304,10 @@ def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
         # CLIP/Moondream above, routed to the real wrapper before the
         # generic dispatch below (which has no timm_id/hf_id for this
         # spec and would otherwise raise NotImplementedError).
-        from pygeovision.advanced.foundation.tessera_geo import TesseraGeo
+        from pygeovision.models.foundation.tessera import TesseraGeo
         return TesseraGeo()
     if spec.name == "alphaearth":
-        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         return AlphaEarthGeo()
 
     # Try timm first

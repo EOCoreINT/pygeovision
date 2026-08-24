@@ -19,8 +19,13 @@ def build_siamese_unet(in_channels: int = 3, num_classes: int = 2, encoder: str 
     class SiameseUNet(nn.Module):
         def __init__(self):
             super().__init__()
-            self.encoder = smp.Unet(encoder_name=encoder, encoder_weights="imagenet" if pretrained else None, in_channels=in_channels, classes=num_classes)
-            # Difference-based: concat t1 and t2 then feed through decoder
+            # Difference-based: separate weight-sharing-free encoders for
+            # t1/t2, concatenated feature maps decoded together. (A
+            # standalone self.encoder = smp.Unet(...) used to be built
+            # here too -- an entire second, unrelated encoder+decoder
+            # that forward() never referenced at all: pure dead weight,
+            # plus a real, unnecessary pretrained-weight download every
+            # time this model was constructed.)
             self.encoder_t1 = smp.encoders.get_encoder(encoder, in_channels=in_channels, depth=5, weights="imagenet" if pretrained else None)
             self.encoder_t2 = smp.encoders.get_encoder(encoder, in_channels=in_channels, depth=5, weights="imagenet" if pretrained else None)
             enc_ch = self.encoder_t1.out_channels
@@ -34,7 +39,7 @@ def build_siamese_unet(in_channels: int = 3, num_classes: int = 2, encoder: str 
             feats1 = self.encoder_t1(t1)
             feats2 = self.encoder_t2(t2)
             diff_feats = [torch.cat([f1, f2], dim=1) for f1, f2 in zip(feats1, feats2)]
-            dec = self.decoder(*diff_feats)
+            dec = self.decoder(diff_feats)  # UnetDecoder.forward(features: List[Tensor]) -- one list arg, not unpacked
             return self.head(dec)
 
     model = SiameseUNet()

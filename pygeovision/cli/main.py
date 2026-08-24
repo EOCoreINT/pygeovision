@@ -812,7 +812,13 @@ def ai_cloud_mask(input_path, output, brightness_threshold):
 @click.option("--date-after", default=None, help="After date (bi-temporal channel).")
 @click.option("--model", default=None, help="Override default AI model.")
 @click.option("--source", default=None, help="Data source override (e.g. worldcover).")
-def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, model, source):
+@click.option("--provider", multiple=True,
+              help="Restrict search to this provider (repeatable, e.g. "
+                   "--provider planetary_computer --provider aws_earth). "
+                   "Real, recognised providers depend on your PyGeoFetch "
+                   "installation and credentials — an unrecognised name is "
+                   "rejected by the search layer itself, not validated here.")
+def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, model, source, provider):
     """Run a complete end-to-end geospatial AI channel.
 
     Downloads satellite data via pygeofetch then applies a native AI model.
@@ -842,6 +848,10 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
 
         pygeovision channel water_bodies \\
             --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --source ndwi
+
+        pygeovision channel land_cover \\
+            --bbox -0.45 5.50 0.05 5.75 --date 2024-01 \\
+            --provider planetary_computer
     """
     from pygeovision.ai.pipelines import list_pipelines
 
@@ -863,6 +873,7 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
     if date_after: kwargs["date_after"] = date_after
     if model: kwargs["model"] = model
     if source: kwargs["source"] = source
+    if provider: kwargs["providers"] = list(provider)
 
     click.echo(f"Running channel '{pipeline_name}'...")
     click.echo(f"  bbox={tuple(bbox)} | date={date} | output={output}")

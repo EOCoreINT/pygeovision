@@ -7,7 +7,7 @@ name        = "pygeovision"
 dynamic     = ["version"]
 description = "The World-Class Geospatial AI Platform — standalone 119-model registry, DINOv3, Prithvi-EO-2.0, FastAPI serving, edge/cloud deploy, 51 pipelines, 25 notebooks"
 readme      = "README.md"
-license     = {text = "Apache-2.0"}
+license     = {text = "MIT"}
 authors     = [{name = "PyGeoVision Contributors"}]
 keywords    = [
     "satellite", "geospatial", "remote-sensing", "geoai", "pygeofetch",
@@ -18,7 +18,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

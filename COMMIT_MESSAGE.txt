@@ -1,0 +1,96 @@
+fix: data pipeline, radiometric, and inference correctness; relicense to MIT
+
+Deep audit and fix pass across the download/processing pipeline,
+radiometric correctness, WorldCover labeling, and tiled inference
+memory usage, plus a relicense from Apache-2.0 to MIT.
+
+Download and asset resolution (pygeovision/data/fetch.py)
+-----------------------------------------------------------
+- Fix _derive_asset_key() misparsing EPSG/resolution suffixes and
+  compound Landsat band names (e.g. QA_PIXEL, SR_B1), which caused a
+  QA band to be silently substituted for reflectance imagery.
+- Add mission-aware Landsat band aliases (ETM+/TM vs OLI) so red/
+  green/blue map to the correct bands per sensor generation.
+- _stack_bands() now raises clearly instead of silently falling back
+  to an arbitrary single asset when stacking fails.
+- Add real unzip support to the pystac-fallback download path's
+  post-processing (previously silently skipped, leaving a still-
+  zipped file fed into reprojection).
+- Fix silent-failure paths in _apply_post_process() to propagate
+  real failure instead of returning a corrupt file as if it succeeded.
+- Fix _is_pixel_space_transform()'s corruption heuristic, which used
+  a meters-only threshold applied to geographic (degree-based) output,
+  incorrectly flagging every valid EPSG:4326 reprojection as corrupt.
+- Add cache-hit asset recovery: work around a real bug in PyGeoFetch's
+  own resume-skip logic that reports only one asset path for an
+  already-downloaded multi-asset scene.
+
+Radiometric correctness (pygeovision/data/radiometric.py, new module)
+-----------------------------------------------------------------------
+- Extract band stacking/scaling into a public module (stack_and_
+  prepare_bands, crop_to_bbox, identify_sensor) so it's reachable
+  outside the ai.pipelines system, not just duplicated per caller.
+- Add real radiometric scaling: Landsat Collection 2 SR (DN * 0.0000275
+  - 0.2) and Sentinel-2 L2A (DN / 10000) formulas, converting raw
+  sensor DN to physical reflectance instead of passing raw values
+  through unmodified.
+- Add real cloud/shadow masking via QA_PIXEL (Landsat bit flags) and
+  SCL (Sentinel-2 class values).
+- Add crop_to_bbox(): the requested bbox was previously used only to
+  search for scenes, never to crop the downloaded/stacked imagery, so
+  every pipeline ran inference over the full scene/tile rather than
+  the requested area.
+- Sensor identification now refuses to guess: an unrecognised sensor
+  previously fell through to the Sentinel-2 formula by default,
+  silently producing wrong reflectance values with no error.
+
+Pipeline fixes (pygeovision/ai/pipelines/__init__.py)
+--------------------------------------------------------
+- Add _align_to_common_grid() so bi-temporal (before/after) pairs from
+  different scenes/footprints are cropped and resampled to a shared
+  pixel grid before change-detection inference.
+- Fix a severe bug in CarbonEstimationPipeline: NDVI was requested via
+  a post_process step that never actually ran for any real multi-asset
+  scene, so red-band reflectance was silently read and used as if it
+  were NDVI. Now requests real red+nir bands and computes NDVI directly.
+- Fix the identical bug in WaterBodiesPipeline for NDWI (green+nir).
+- Wire a --provider CLI option through the full stack: added the
+  option itself, and threaded `providers` through all 10 pipelines'
+  run() methods and both _search_and_download/_search_and_download_pair.
+
+WorldCover labeling (pygeovision/ai/labeling/esa_worldcover.py,
+base_labeler.py)
+-----------------------------------------------------------------
+- Fix KeyError on real WorldCover nodata pixels: nodata_value defaulted
+  to 255, not WorldCover's real nodata value of 0, so nodata pixels
+  near tile edges were never filtered and crashed on lookup.
+- Fix class-distribution stats keyed by raw numeric strings ('10',
+  '50') instead of real class names ('tree_cover', 'built_up') --
+  class_id < len(class_names) is only a valid check for a list, not
+  the dict every real caller actually passes.
+- Fix int-to-float promotion in WorldCover tile-origin computation:
+  accumulating tile origins with a float tile_size (3.0) silently
+  promoted them to float from the second tile onward, crashing
+  _download_tile's integer-only filename formatting for any bbox
+  needing more than one tile.
+
+Tiled inference memory usage (pygeovision/ai/inference/tiled_inference.py)
+------------------------------------------------------------------------------
+- Replace full-image upfront reads with real per-tile windowed reads;
+  normalization stats now come from a cheap decimated read instead of
+  requiring the whole image in memory.
+- Switch to torch.inference_mode() for inference batches.
+- Add memory-aware automatic batch_size selection (real psutil-based
+  available-memory tiering, with a safe fixed fallback when psutil
+  isn't installed) instead of a fixed batch_size=8 for every machine.
+  Explicit batch_size values always take precedence.
+
+Licensing
+---------
+- Relicense from Apache-2.0 to MIT (LICENSE, pyproject.toml license
+  field and classifier).
+- Add psutil as an optional "memory-aware" extra in pyproject.toml.
+
+Tests: extensive new coverage added alongside each fix above, all
+verified via revert-check (confirming each test fails against the
+pre-fix code) and a full local test-suite run.

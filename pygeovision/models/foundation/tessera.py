@@ -1,5 +1,5 @@
 """
-pygeovision.advanced.foundation.tessera_geo
+pygeovision.models.foundation.tessera
 =============================================
 TESSERA (Temporal Embeddings of Surface Spectra for Earth Representation
 and Analysis) — Feng et al. 2025, University of Cambridge.

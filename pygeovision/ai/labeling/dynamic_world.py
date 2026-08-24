@@ -199,16 +199,16 @@ class DynamicWorldLabeler(BaseLabeler):
                     bbox_wgs84, self.config.start_date, self.config.end_date
                 )
                 mask = np.zeros((height, width), dtype=np.uint8)
-                self._write_label_geotiff(
+                self._write_mask_geotiff(
                     mask, output_path,
                     {"driver": "GTiff", "dtype": "uint8", "width": width,
                      "height": height, "count": 1, "crs": crs,
                      "transform": transform, "compress": "lzw"}
                 )
+                logger.warning("No Dynamic World scenes found for bbox %s", bbox_wgs84)
                 return LabelingResult(
-                    tile_path=tile_path, label_path=output_path,
-                    success=True, labeler="dynamic_world",
-                    metadata={"warning": "no_scenes_found"},
+                    tile_id=str(tile_path), label_path=output_path,
+                    source="dynamic_world",
                 )
 
             # Create composite and reproject to tile CRS/extent
@@ -232,23 +232,20 @@ class DynamicWorldLabeler(BaseLabeler):
                 "transform": transform,
                 "compress": "lzw",
             }
-            self._write_label_geotiff(mask, output_path, meta)
+            self._write_mask_geotiff(mask, output_path, meta)
 
             stats = self._compute_class_distribution(mask, DW_CLASSES)
 
+            logger.info(
+                "DynamicWorld labeling complete: start=%s end=%s method=%s num_scenes=%d bbox_wgs84=%s",
+                self.config.start_date, self.config.end_date, self.config.composite_method,
+                len(dw_paths), bbox_wgs84,
+            )
             return LabelingResult(
-                tile_path=tile_path,
+                tile_id=str(tile_path),
                 label_path=output_path,
-                success=True,
-                labeler="dynamic_world",
+                source="dynamic_world",
                 class_distribution=stats,
-                metadata={
-                    "start_date": self.config.start_date,
-                    "end_date": self.config.end_date,
-                    "composite_method": self.config.composite_method,
-                    "num_scenes": len(dw_paths),
-                    "bbox_wgs84": bbox_wgs84,
-                },
             )
 
         except Exception as exc:
@@ -256,10 +253,9 @@ class DynamicWorldLabeler(BaseLabeler):
                 "DynamicWorldLabeler failed for %s: %s", tile_path, exc
             )
             return LabelingResult(
-                tile_path=tile_path,
+                tile_id=str(tile_path),
                 label_path=output_path,
-                success=False,
-                labeler="dynamic_world",
+                source="dynamic_world",
                 error=str(exc),
             )
 

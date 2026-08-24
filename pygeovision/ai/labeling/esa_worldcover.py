@@ -189,16 +189,15 @@ class ESAWorldCoverLabeler(BaseLabeler):
                 # Return background mask if no tiles found
                 logger.warning("No WorldCover tiles found for bbox %s", bbox_wgs84)
                 mask = np.zeros((height, width), dtype=np.uint8)
-                self._write_label_geotiff(
+                self._write_mask_geotiff(
                     mask, output_path,
                     {"driver": "GTiff", "dtype": "uint8", "width": width,
                      "height": height, "count": 1, "crs": crs,
                      "transform": transform, "compress": "lzw"}
                 )
                 return LabelingResult(
-                    tile_path=tile_path, label_path=output_path,
-                    success=True, labeler="esa_worldcover",
-                    metadata={"warning": "no_worldcover_tiles_found"},
+                    tile_id=str(tile_path), label_path=output_path,
+                    source="esa_worldcover",
                 )
 
             # Mosaic and reproject WorldCover data to tile CRS/extent
@@ -225,7 +224,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
                 "transform": transform,
                 "compress": "lzw",
             }
-            self._write_label_geotiff(mask, output_path, meta)
+            self._write_mask_geotiff(mask, output_path, meta)
 
             active_classes = {
                 v: WORLDCOVER_CLASSES.get(v, f"class_{v}")
@@ -234,20 +233,17 @@ class ESAWorldCoverLabeler(BaseLabeler):
             }
             if self.config.remap:
                 active_classes = {v: f"class_{v}" for v in np.unique(mask)}
-            stats = self._compute_class_distribution(mask, active_classes)
+            stats = self._compute_class_distribution(mask, active_classes, nodata_value=0)
 
+            logger.info(
+                "ESAWorldCover labeling complete: year=%s num_classes=%d remapped=%s bbox_wgs84=%s",
+                self.config.year, len(active_classes), self.config.remap is not None, bbox_wgs84,
+            )
             return LabelingResult(
-                tile_path=tile_path,
+                tile_id=str(tile_path),
                 label_path=output_path,
-                success=True,
-                labeler="esa_worldcover",
+                source="esa_worldcover",
                 class_distribution=stats,
-                metadata={
-                    "year": self.config.year,
-                    "num_classes": len(active_classes),
-                    "remapped": self.config.remap is not None,
-                    "bbox_wgs84": bbox_wgs84,
-                },
             )
 
         except Exception as exc:
@@ -255,10 +251,9 @@ class ESAWorldCoverLabeler(BaseLabeler):
                 "ESAWorldCoverLabeler failed for %s: %s", tile_path, exc
             )
             return LabelingResult(
-                tile_path=tile_path,
+                tile_id=str(tile_path),
                 label_path=output_path,
-                success=False,
-                labeler="esa_worldcover",
+                source="esa_worldcover",
                 error=str(exc),
             )
 
@@ -283,18 +278,25 @@ class ESAWorldCoverLabeler(BaseLabeler):
         minx, miny, maxx, maxy = bbox_wgs84
         tile_size = _TILE_SIZE_DEG
 
-        # Find all 3°×3° tile origins that overlap the bbox
+        # Find all 3°×3° tile origins that overlap the bbox. WorldCover's
+        # real tile grid is always whole-degree (confirmed by its own
+        # "N03W003"-style naming) -- accumulating with a float tile_size
+        # (3.0) silently promotes lat/lon to float from the second
+        # iteration onward (int + float = float), which then crashes
+        # _download_tile's ":02d"/":03d" formatting. int(tile_size) here
+        # keeps every tile origin a genuine int throughout.
+        tile_size_int = int(tile_size)
         lat_starts = []
         lat = int(np.floor(miny / tile_size) * tile_size)
         while lat <= maxy:
             lat_starts.append(lat)
-            lat += tile_size
+            lat += tile_size_int
 
         lon_starts = []
         lon = int(np.floor(minx / tile_size) * tile_size)
         while lon <= maxx:
             lon_starts.append(lon)
-            lon += tile_size
+            lon += tile_size_int
 
         local_paths: list[Path] = []
         for lat_s in lat_starts:

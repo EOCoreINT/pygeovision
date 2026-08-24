@@ -275,9 +275,29 @@ class BaseLabeler(ABC):
         return output_path
 
     @staticmethod
+    def _write_mask_geotiff(mask: np.ndarray, output_path: Path, profile: dict) -> Path:
+        """Write a label mask to an EXACT output path using a caller-
+        supplied rasterio profile dict — the convention
+        esa_worldcover.py/dynamic_world.py actually need (they already
+        build a complete profile and know their exact output path),
+        distinct from _write_label_geotiff's TileMetadata+output-DIRECTORY
+        convention above. Both labelers previously called
+        _write_label_geotiff with these (path, dict) arguments directly,
+        which doesn't match its real (TileMetadata, directory) signature
+        at all — a real, confirmed bug (AttributeError: 'PosixPath'
+        object has no attribute 'tile_id'), not a naming nitpick.
+        """
+        import rasterio
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with rasterio.open(output_path, "w", **profile) as dst:
+            dst.write(mask.astype(profile.get("dtype", "uint8")), 1)
+        return output_path
+
+    @staticmethod
     def _compute_class_distribution(
         mask: np.ndarray,
-        class_names: list[str] | None = None,
+        class_names: dict[int, str] | list[str] | None = None,
         nodata_value: int = 255,
     ) -> dict[str, float]:
         """
@@ -299,12 +319,14 @@ class BaseLabeler(ABC):
 
         result = {}
         for class_id in np.unique(valid_mask):
+            class_id_int = int(class_id)
+            if isinstance(class_names, dict):
+                name = class_names.get(class_id_int, str(class_id_int))
+            elif class_names and class_id_int < len(class_names):
+                name = class_names[class_id_int]
+            else:
+                name = str(class_id_int)
             fraction = float(np.mean(valid_mask == class_id))
-            name = (
-                class_names[class_id]
-                if class_names and class_id < len(class_names)
-                else str(class_id)
-            )
             result[name] = fraction
         return result
 

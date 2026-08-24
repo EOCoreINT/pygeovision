@@ -1,5 +1,5 @@
 """
-pygeovision.advanced.foundation.alphaearth_geo
+pygeovision.models.foundation.alphaearth_geo
 ================================================
 AlphaEarth Foundations — Brown et al. (2025), Google DeepMind.
 "AlphaEarth Foundations: An embedding field model for accurate and

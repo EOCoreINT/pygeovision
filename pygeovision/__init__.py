@@ -1255,6 +1255,7 @@ class _SegmentationClientProxy:
         from pygeovision.labeling.sam_auto import SAMAutoLabeler
         return SAMAutoLabeler().auto_label(image_path, output_path,
                                             points_per_side=points_per_side, **kw)
+    
     def custom(self, image_path, model, output_path="./output/pred.tif",
                chip_size=512, overlap=128, **kw):
         """Run any custom PyTorch segmentation model with tiled inference."""

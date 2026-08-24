@@ -194,6 +194,15 @@ class SAMAutoLabeler:
                     m["bbox_full"] = (col, row, col+cw, row+ch)
                 all_masks.extend(chip_masks)
 
+        # Merge masks that were independently detected in the overlapping
+        # region between adjacent tiles — without this, the same real
+        # object gets counted as two separate mask instances near every
+        # tile boundary, corrupting count/area statistics. Previously
+        # accepted (merge_overlapping, defaulting to True) but never
+        # referenced anywhere in this function.
+        if merge_overlapping and overlap > 0:
+            all_masks = self._merge_overlapping_masks(all_masks)
+
         # Filter by area
         pixel_area_m2 = abs(transform.a * transform.e)
         filtered_masks = []
@@ -246,6 +255,60 @@ class SAMAutoLabeler:
                 ),
             },
         }
+
+    def _merge_overlapping_masks(self, masks: list[dict], iou_threshold: float = 0.3) -> list[dict]:
+        """Merge masks that are almost certainly the same real object,
+        independently detected once per overlapping tile.
+
+        A cheap bounding-box intersection check first (avoiding real
+        IoU computation, which needs the full boolean arrays, for mask
+        pairs nowhere near each other), then real IoU on the actual
+        boolean masks for genuine candidates. Merging is a logical OR
+        of the two masks (the union of both detections) rather than
+        picking one arbitrarily — keeps whichever detection was more
+        complete rather than truncating either.
+        """
+        if len(masks) < 2:
+            return masks
+
+        import numpy as np
+
+        def _bbox_overlap(a, b):
+            ax1, ay1, ax2, ay2 = a["bbox_full"]
+            bx1, by1, bx2, by2 = b["bbox_full"]
+            return not (ax2 <= bx1 or bx2 <= ax1 or ay2 <= by1 or by2 <= ay1)
+
+        merged_flags = [False] * len(masks)
+        result = []
+        for i in range(len(masks)):
+            if merged_flags[i]:
+                continue
+            current = masks[i]
+            for j in range(i + 1, len(masks)):
+                if merged_flags[j]:
+                    continue
+                candidate = masks[j]
+                if not _bbox_overlap(current, candidate):
+                    continue
+                inter = np.logical_and(current["full_mask"], candidate["full_mask"]).sum()
+                union = np.logical_or(current["full_mask"], candidate["full_mask"]).sum()
+                iou = inter / union if union > 0 else 0.0
+                if iou >= iou_threshold:
+                    current = dict(current)
+                    current["full_mask"] = np.logical_or(current["full_mask"], candidate["full_mask"])
+                    current["predicted_iou"] = max(
+                        current.get("predicted_iou", 0), candidate.get("predicted_iou", 0),
+                    )
+                    current["stability_score"] = max(
+                        current.get("stability_score", 0), candidate.get("stability_score", 0),
+                    )
+                    merged_flags[j] = True
+            result.append(current)
+
+        n_merged = len(masks) - len(result)
+        if n_merged > 0:
+            logger.info("SAM: merged %d duplicate mask(s) from tile overlap regions", n_merged)
+        return result
 
     def _process_chip(
         self, chip: Any, points_per_side: int,
