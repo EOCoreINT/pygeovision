@@ -1,6 +1,4 @@
 
- -->
-
 <div align="center">
 <img src="icon/pygeovision_logo.png" alt="PyGeoFetch Logo" width="350">
 
