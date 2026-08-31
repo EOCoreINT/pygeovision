@@ -2,7 +2,7 @@ site_name: PyGeoVision
 site_description: "AI-powered geospatial intelligence platform — satellite data + AI in one API"
 site_url: https://appiahkubis14.github.io/pygeovision-docs/
 site_author: PyGeoVision Contributors
-repo_url: https://github.com/appiahkubis14/PyGeoVision
+repo_url: https://github.com/EOCoreINT/pygeovision
 repo_name: appiahkubis14/PyGeoVision
 copyright: "Copyright © 2026 PyGeoVision Contributors. Apache 2.0 License."
 

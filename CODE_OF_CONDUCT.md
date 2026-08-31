@@ -26,7 +26,7 @@ We pledge to act and interact in ways that contribute to an open, welcoming, div
 
 Community maintainers are responsible for clarifying and enforcing our standards of acceptable behavior and will take appropriate and fair corrective action in response to any behavior they deem inappropriate, threatening, offensive, or harmful.
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the maintainers at **conduct@pygeovision.org**. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the maintainers at **info@eocoreint.com**. All complaints will be reviewed and investigated promptly and fairly.
 
 ## Attribution
 

@@ -67,7 +67,7 @@ The following are **in scope** for security reports:
 - Dependency vulnerabilities with CVE scores ≥ 7.0
 
 The following are **out of scope**:
-- Vulnerabilities in optional dependencies (GeoAI, PyGeoFetch) — report to those projects
+- Vulnerabilities in optional dependencies (PyGeoFetch) — report to those projects
 - Social engineering
 - Physical security
 - Issues requiring physical access to user machines

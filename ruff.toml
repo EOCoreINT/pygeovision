@@ -26,7 +26,7 @@ unfixable = []
 
 [lint.isort]
 known-first-party  = ["pygeovision"]
-known-third-party  = ["pygeofetch", "geoai", "rasterio", "torch", "numpy"]
+known-third-party  = ["pygeofetch","rasterio", "torch", "numpy"]
 force-sort-within-sections = true
 
 [format]

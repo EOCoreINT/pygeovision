@@ -13,7 +13,7 @@ PyGeoVision welcomes contributions of all kinds:
 ## Development Setup
 
 ```bash
-git clone https://github.com/appiahkubis14/PyGeoVision
+git clone https://github.com/EOCoreINT/pygeovision
 cd PyGeoVision
 pip install -e ".[dev]"
 pre-commit install

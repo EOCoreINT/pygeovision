@@ -40,7 +40,7 @@ pip install "pygeovision[all]"
 
 ## From source
 ```bash
-git clone https://github.com/appiahkubis14/PyGeoVision
+git clone https://github.com/EOCoreINT/pygeovision
 cd PyGeoVision
 pip install -e ".[dev]"
 ```

@@ -112,7 +112,7 @@ Optional extras are available for training (`[train]`), foundation models
 (`[foundation]`), InSAR processing (`[insar]`), and the full stack (`[all]`). The
 source code, issue tracker, and comprehensive documentation — including 25 runnable
 end-to-end Jupyter notebooks — are hosted at
-https://github.com/appiahkubis14/pygeovision under the Apache 2.0 license.
+https://github.com/EOCoreINT/pygeovision under the Apache 2.0 license.
 
 # State of the Field
 

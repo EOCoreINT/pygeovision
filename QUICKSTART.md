@@ -140,12 +140,6 @@ result = client.pipeline("building_footprints",
     bbox=(-0.15,51.47,-0.10,51.52), date="2024-06")
 ```
 
-## 10. Open the notebooks
-
-```bash
-cd projects/
-jupyter lab
-```
 
 All 25 notebooks run without GPU and without satellite credentials.
 

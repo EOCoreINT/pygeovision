@@ -1,6 +1,6 @@
 # PyGeoVision — .dockerignore
 # Exclude files from Docker build context to keep images small and secure.
-
+.new/
 # Version control
 .git/
 .github/

@@ -11,7 +11,7 @@ license     = {text = "MIT"}
 authors     = [{name = "PyGeoVision Contributors"}]
 
 keywords    = [
-    "satellite", "geospatial", "remote-sensing", "geoai", "pygeofetch",
+    "satellite", "geospatial", "remote-sensing", "pygeofetch",
     "earthnets", "deep-learning", "foundation-models", "sentinel", "landsat",
     "segmentation", "change-detection", "vegetation-index", "SAR",
 ]
@@ -176,16 +176,6 @@ monitoring = [
     "requests>=2.31",
 ]
 
-# ── InSAR processing chain ──────────────────────────────────────────────────
-insar = [
-    "scipy>=1.12",
-    "statsmodels>=0.14",
-    "matplotlib>=3.8",
-    # For true SLC InSAR: install snaphu and isce2 separately (not on PyPI)
-    # pip install git+https://github.com/isce-framework/isce2
-    # conda install -c conda-forge snaphu
-]
-
 # ── Enterprise (auth, audit, compliance) ─────────────────────────────────────
 enterprise = [
     "cryptography>=42.0",
@@ -194,11 +184,6 @@ enterprise = [
     "pydantic>=2.0",
     "sqlalchemy>=2.0",
 ]
-
-# ── GeoAI plugin (optional — not required by core) ───────────────────────────
-# PyGeoVision v2.0 is standalone. Install this only if you specifically need
-# Tessera embeddings, GroundedSAM, Leafmap, or legacy GeoAI-trained weights.
-geoai = ["geoai-py>=0.39.0"]
 
 # ── Development ──────────────────────────────────────────────────────────────
 dev = [
@@ -213,7 +198,7 @@ dev = [
     "types-requests",
 ]
 
-# ── All (excluding cloud/edge/geoai — install those explicitly) ──────────────
+# ── All (excluding cloud/edge — install those explicitly) ──────────────
 all = [
     "pygeovision[geo,viz,train,serve,labeling,vlm,xai,foundation,advanced,monitoring,geo3d,insar,enterprise]",
 ]
@@ -288,6 +273,6 @@ no_implicit_optional  = true
 strict_optional       = true
 
 [[tool.mypy.overrides]]
-module = ["pygeofetch.*", "geoai.*", "rasterio.*", "torch.*",
+module = ["pygeofetch.*","rasterio.*", "torch.*",
           "transformers.*", "geopandas.*", "shapely.*"]
 ignore_missing_imports = true

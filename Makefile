@@ -156,7 +156,7 @@ release-check: ## Verify everything before a release
 	@echo "Running pre-release checks…"
 	@pytest tests/ -q --tb=short
 	@ruff check pygeovision/
-	@black --check pygeovision/ --line-length 100
+	@black --check pygeovision/ --line-length 120
 	@python -c "from pygeovision import __version__; print(f'  Version: {__version__}')"
 	@echo "✓ Pre-release checks passed"
 
