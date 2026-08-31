@@ -19,7 +19,7 @@ affiliations:
   - name: EOCoreINT, Accra, Ghana
     index: 1
 date: 10 August 2026
-version: 2.1.6
+version: 2.1.7
 bibliography: paper.bib
 ---
 

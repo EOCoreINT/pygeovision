@@ -29,7 +29,7 @@ Verify:
 
 ```bash
 python -c "import pygeovision; print(pygeovision.__version__)"
-# 2.1.6
+# 2.1.7
 ```
 
 ---

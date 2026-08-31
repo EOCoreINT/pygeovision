@@ -22,7 +22,7 @@ services:
     build:
       context: .
       target: production
-    image: pygeovision:2.1.6
+    image: pygeovision:2.1.7
     container_name: pgv-api
     ports:
       - "${PGV_PORT:-8080}:8080"
@@ -61,7 +61,7 @@ services:
     build:
       context: .
       target: gpu
-    image: pygeovision:2.1.6-gpu
+    image: pygeovision:2.1.7-gpu
     container_name: pgv-api-gpu
     ports:
       - "${PGV_GPU_PORT:-8081}:8080"
@@ -132,7 +132,7 @@ services:
     build:
       context: .
       target: source
-    image: pygeovision:2.1.6
+    image: pygeovision:2.1.7
     container_name: pgv-jupyter
     command: >
       jupyter lab

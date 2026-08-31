@@ -91,7 +91,7 @@ def generate_report(study_area, results):
         "study_area":  study_area,
         "generated":   datetime.datetime.utcnow().isoformat(),
         "results":     results,
-        "data_source": "Sentinel-2 L2A / PyGeoVision v2.1.6",
+        "data_source": "Sentinel-2 L2A / PyGeoVision v2.1.7",
     }
     with open("./outputs/report.json","w") as f:
         json.dump(report, f, indent=2, default=str)

@@ -14,7 +14,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 1000}
       containers:
         - name: api
-          image: ghcr.io/appiahkubis14/pygeovision:2.1.6
+          image: ghcr.io/appiahkubis14/pygeovision:2.1.7
           ports: [{containerPort: 8080}]
           env:
             - name: ANTHROPIC_API_KEY

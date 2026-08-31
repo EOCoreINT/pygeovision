@@ -56,7 +56,7 @@ def create_app(auth_keys: dict | None = None, enable_metrics: bool = True):
     from pygeovision.serving.auth import APIKeyAuth
     from pygeovision.serving.health import HealthChecker
 
-    app   = FastAPI(title="PyGeoVision Inference API", version="2.1.6",
+    app   = FastAPI(title="PyGeoVision Inference API", version="2.1.7",
                      description="Geospatial AI inference server")
     _auth = APIKeyAuth(keys=auth_keys or {})
     _models: dict[str, Any] = {}
@@ -82,7 +82,7 @@ def create_app(auth_keys: dict | None = None, enable_metrics: bool = True):
 
     @app.get("/", tags=["System"])
     async def root():
-        return {"name": "PyGeoVision API", "version": "2.1.6",
+        return {"name": "PyGeoVision API", "version": "2.1.7",
                 "docs": "/docs", "models": list(_models.keys())}
 
     # ── Model management ──────────────────────────────────────────────────────

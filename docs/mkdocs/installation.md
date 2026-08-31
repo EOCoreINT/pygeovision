@@ -48,7 +48,7 @@ pip install -e ".[dev]"
 ## Verify
 ```python
 import pygeovision as pgv
-print(pgv.__version__)   # 2.1.6
+print(pgv.__version__)   # 2.1.7
 client = pgv.PyGeoVision()
 print(client)
 ```

@@ -110,13 +110,13 @@ docs-serve: ## Serve docs locally with live reload
 
 ## ── Docker ───────────────────────────────────────────────────────────────────
 docker-build: ## Build PyGeoVision Docker image
-	docker build -t pygeovision:2.1.6 .
+	docker build -t pygeovision:2.1.7 .
 
 docker-build-gpu: ## Build GPU Docker image
-	docker build --target gpu -t pygeovision:2.1.6-gpu .
+	docker build --target gpu -t pygeovision:2.1.7-gpu .
 
 docker-run: ## Run inference server in Docker (CPU)
-	docker run -p 8080:8080 -v $(PWD)/models:/models pygeovision:2.1.6
+	docker run -p 8080:8080 -v $(PWD)/models:/models pygeovision:2.1.7
 
 docker-compose-up: ## Start full stack (API + MLflow + Redis)
 	docker-compose up -d

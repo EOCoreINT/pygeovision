@@ -9,7 +9,7 @@ User Query
     │
     ▼
 ┌─────────────────────────────────────────────┐
-│            PyGeoVision v2.1.6               │
+│            PyGeoVision v2.1.7               │
 │                                             │
 │  GeoAgent ──── natural language interface   │
 │    │                                        │

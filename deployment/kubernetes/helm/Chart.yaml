@@ -2,8 +2,8 @@ apiVersion: v2
 name: pygeovision
 description: AI-powered geospatial intelligence platform
 type: application
-version: 2.1.6
-appVersion: "2.1.6"
+version: 2.1.7
+appVersion: "2.1.7"
 home: https://github.com/EOCoreINT/pygeovision
 sources:
   - https://github.com/EOCoreINT/pygeovision

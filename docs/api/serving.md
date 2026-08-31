@@ -200,7 +200,7 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "healthy",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "uptime_s": 3600.1,
   "models_loaded": 2,
   "gpu": {
