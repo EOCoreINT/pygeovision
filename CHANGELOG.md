@@ -39,15 +39,6 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **NB26: GeoAgent Complete Walkthrough** — end-to-end demo notebook showing
   heuristic + LLM planning, all 10 tools, session memory, and streaming.
 
-#### SAR pipeline fixes (from v2.0.8 hotfix, now stable)
-- `pygeovision.data.processors.sar` — S0–S9 Sentinel-1 GRD pipeline with 3 bug-fixes
-  (georeference corruption, partial download detection, CRS-aware clip)
-- `pygeovision.data.validators.georeference` — `validate_georeference()`,
-  `check_download_complete()`, `reproject_bbox_to_raster_crs()`
-- `pygeovision.models.adapters.sar_prithvi` — Prithvi SAR adapter (zero-shot / fine-tune / SPT)
-- `pygeovision.models.adapters.sar_dinov3` — DINOv3 SAR adapter + `SARSpeckleAugmentation`
-- `pygeovision.models.adapters.sar_channel_manager` — multi-pol channel mapping
-
 #### Other fixes
 - `pygeovision.models.change_detection.changeformer` — `ChangeDetection` alias added
   (accepts `model_variant='changeformer'` kwarg used in project notebooks 04, 06, 09)
