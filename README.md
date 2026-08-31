@@ -5,6 +5,12 @@
 <img src="icon/pygeovision_logo.png" alt="PyGeoFetch Logo" width="350">
 
 
+## ⚠️ Important Note
+
+This project is **actively under development**. While the core functionality 
+is production-ready and thoroughly tested, some advanced features are still 
+being refined.
+
 [![image](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![image](https://img.shields.io/pypi/l/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![image](https://img.shields.io/pypi/pyversions/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
