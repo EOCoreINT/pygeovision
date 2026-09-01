@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://raw.githubusercontent.com/EOCoreINT/pygeovision/main/icon/pygeovision_logo.png?token=GHSAT0AAAAAAD4555HVK6OWPFHJQEWMTAKY2UVO7KQ" alt="PyGeoFetch Logo" width="350">
+<img src="icon/pygeovision_logo.png" alt="PyGeoFetch Logo" width="350">
 
 
 ## ⚠️ Important Note
