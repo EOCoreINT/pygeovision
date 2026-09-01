@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name        = "pygeovision"
 dynamic     = ["version"]
-description = "The World-Class Geospatial AI Platform — standalone 119-model registry, DINOv3, Prithvi-EO-2.0, FastAPI serving, edge/cloud deploy, 51 pipelines, 25 notebooks"
+description = "Unified geospatial AI platform with foundation models, FastAPI serving, and end-to-end pipelines for satellite data analysis."
 readme      = "README.md"
 license     = {text = "MIT"}
 authors     = [{name = "PyGeoVision Contributors"}]
@@ -200,7 +200,7 @@ dev = [
 
 # ── All (excluding cloud/edge — install those explicitly) ──────────────
 all = [
-    "pygeovision[geo,viz,train,serve,labeling,vlm,xai,foundation,advanced,monitoring,geo3d,insar,enterprise]",
+    "pygeovision[geo,viz,train,serve,labeling,vlm,xai,foundation,advanced,monitoring,geo3d,enterprise]",
 ]
 
 # ── Minimal install ───────────────────────────────────────────────────────────

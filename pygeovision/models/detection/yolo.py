@@ -6,6 +6,34 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Real, standard COCO 80-class ordering (Ultralytics' pretrained YOLOv8/v9
+# checkpoints use this exact index order). Needed because a confirmed,
+# severe bug relabeled EVERY detection with whatever class_names the
+# caller passed, regardless of what the model actually detected -- e.g.
+# client.detection.ships() labeled a detected "person" and "car" both as
+# "ship", since class_names=["ship"] has only one entry and every
+# detection's class index got clamped to it.
+COCO_CLASS_NAMES = [
+    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
+    "truck", "boat", "traffic light", "fire hydrant", "stop sign",
+    "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
+    "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
+    "sports ball", "kite", "baseball bat", "baseball glove", "skateboard",
+    "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork",
+    "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
+    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
+    "couch", "potted plant", "bed", "dining table", "toilet", "tv",
+    "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
+    "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
+    "scissors", "teddy bear", "hair drier", "toothbrush",
+]
+# Real, relevant COCO class indices for the specific detection targets
+# this module exposes -- not every COCO class, just the ones that
+# genuinely correspond to "ship"/"car" from an overhead view.
+COCO_SHIP_CLASSES = {8}   # "boat" -- the closest real COCO class to "ship"
+COCO_CAR_CLASSES = {2, 7}  # "car", "truck"
+
 
 def build_yolo(variant: str = "yolov8-m", num_classes: int = 5, **kwargs) -> Any:
     """Build YOLOv8/v9 for satellite object detection.
@@ -31,13 +59,29 @@ def build_yolo(variant: str = "yolov8-m", num_classes: int = 5, **kwargs) -> Any
 
 
 class GeoYOLO:
-    """YOLOv8 wrapper with geospatial pre/post-processing."""
+    """YOLOv8 wrapper with geospatial pre/post-processing.
+
+    Honest limitation: the underlying model is a generic, COCO-pretrained
+    YOLOv8/v9 checkpoint, trained on ground-level photos -- not a
+    satellite/aerial-specific detector. Even with correct class labeling
+    (see coco_class_filter below), real-world accuracy on overhead
+    imagery may be low due to this domain shift; this wrapper fixes a
+    labeling bug, not the underlying accuracy-on-overhead-imagery gap.
+    """
 
     def __init__(self, variant: str = "yolov8-m", num_classes: int = 5,
-                 class_names: list[str] | None = None) -> None:
+                 class_names: list[str] | None = None,
+                 coco_class_filter: set[int] | None = None) -> None:
         self.variant = variant
         self.num_classes = num_classes
         self.class_names = class_names or [f"class_{i}" for i in range(num_classes)]
+        # Real fix for a confirmed, severe bug: every detection previously
+        # got relabeled with class_names regardless of what COCO class the
+        # model actually detected. When a real, relevant COCO subset is
+        # known (coco_class_filter), only detections in that subset are
+        # kept, and they're labeled with the caller's requested name.
+        # Without a filter, detections keep their REAL COCO class name.
+        self.coco_class_filter = coco_class_filter
         self._model = None
 
     def _load(self) -> None:
@@ -75,13 +119,31 @@ class GeoYOLO:
                 r.boxes.cls.cpu().numpy().astype(int),
                 r.boxes.conf.cpu().numpy(),
             ):
+                cls = int(cls)
+                if self.coco_class_filter is not None and cls not in self.coco_class_filter:
+                    continue  # not a real match for the requested target -- skip, don't relabel
+
                 x1, y1, x2, y2 = box
                 # Convert pixel to geo coordinates
                 geo_x1, geo_y1 = rasterio.transform.xy(transform, y1, x1)
                 geo_x2, geo_y2 = rasterio.transform.xy(transform, y2, x2)
+
+                if self.coco_class_filter is not None:
+                    # A genuine match for a filtered target (e.g. ships,
+                    # cars) -- label with the caller's requested name.
+                    label = self.class_names[0] if self.class_names else COCO_CLASS_NAMES[cls]
+                else:
+                    # No filter (generic detection) -- use the real COCO
+                    # class name, not a meaningless "class_0" placeholder,
+                    # unless the caller genuinely overrode class_names.
+                    label = (self.class_names[cls] if cls < len(self.class_names)
+                              and self.class_names[cls] != f"class_{cls}"
+                              else (COCO_CLASS_NAMES[cls] if cls < len(COCO_CLASS_NAMES)
+                                    else f"class_{cls}"))
+
                 detections.append({
-                    "class": self.class_names[min(cls, len(self.class_names) - 1)],
-                    "class_id": int(cls),
+                    "class": label,
+                    "class_id": cls,
                     "confidence": round(float(conf_score), 4),
                     "bbox_px": [int(x1), int(y1), int(x2), int(y2)],
                     "bbox_geo": [float(geo_x1), float(geo_y1), float(geo_x2), float(geo_y2)],

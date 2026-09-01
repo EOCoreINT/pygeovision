@@ -1,5 +1,9 @@
 # Advanced AI
 
+**Verification status**: the primary import (`from pygeovision.advanced.few_shot import FewShotLearner`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 Few-shot learning, multi-task training, AutoML, and advanced model capabilities for specialised geospatial applications.
 
 ---

@@ -1,5 +1,5 @@
-site_name: PyGeoVision v2.0
-site_description: Complete Geospatial AI Platform — 50+ models, 503 datasets, 15 CLI commands
+site_name: PyGeoVision
+site_description: Geospatial AI platform — satellite data via PyGeoFetch, native AI inference, 10 verified pipelines
 site_author: PyGeoVision Team
 site_url: https://pygeovision.org
 repo_url: https://github.com/pygeovision/pygeovision
@@ -86,6 +86,8 @@ nav:
     - Dataset Registry: api/datasets.md
     - CLI Reference: api/cli.md
     - Foundation Models: api/foundation.md
+    - Agent: api/agent.md
+    - Visualization: api/viz.md
   - Tutorials:
     - Overview: tutorials/index.md
     - Getting Started: tutorials/getting_started.md

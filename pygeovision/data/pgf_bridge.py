@@ -1158,55 +1158,6 @@ class PyGeoFetchBridge:
         return ""
 
     # ------------------------------------------------------------------
-    # SAR proxy (v2.0 native only — no PGV fallback)
-    # ------------------------------------------------------------------
-
-    def sar_despeckle(
-        self, input_path: str, filter: str = "enhanced_lee",
-        window: int = 5, **kw
-    ) -> str:
-        """SAR speckle filtering."""
-        if self._pgf_v2 and hasattr(self._pgf, "sar"):
-            r = self._pgf.sar.despeckle(input_path, filter=filter, window=window, **kw)
-            return str(r.output_path)
-        logger.warning("sar.despeckle() requires PyGeoFetch v2.0")
-        return input_path
-
-    def sar_calibrate(
-        self, input_path: str, output_type: str = "sigma0",
-        in_db: bool = True, **kw
-    ) -> str:
-        """SAR radiometric calibration."""
-        if self._pgf_v2 and hasattr(self._pgf, "sar"):
-            r = self._pgf.sar.calibrate(
-                input_path, output_type=output_type, in_db=in_db, **kw)
-            return str(r.output_path)
-        logger.warning("sar.calibrate() requires PyGeoFetch v2.0")
-        return input_path
-
-    def sar_flood_map(
-        self, post_path: str, threshold: float = -15.0,
-        reference: str | None = None, **kw
-    ) -> str:
-        """SAR flood extent mapping."""
-        if self._pgf_v2 and hasattr(self._pgf, "sar"):
-            r = self._pgf.sar.flood_map(
-                post_path, threshold=threshold, reference=reference, **kw)
-            return str(r.output_path)
-        logger.warning("sar.flood_map() requires PyGeoFetch v2.0")
-        return post_path
-
-    def sar_coherence(
-        self, slc1: str, slc2: str, window: int = 7, **kw
-    ) -> str:
-        """InSAR coherence map."""
-        if self._pgf_v2 and hasattr(self._pgf, "sar"):
-            r = self._pgf.sar.coherence(slc1, slc2, window=window, **kw)
-            return str(r.output_path)
-        logger.warning("sar.coherence() requires PyGeoFetch v2.0")
-        return slc1
-
-    # ------------------------------------------------------------------
     # Pipeline builder proxy
     # ------------------------------------------------------------------
 

@@ -1,5 +1,9 @@
 # Dataset Registry
 
+**Verification status**: the primary import (`from pygeovision.datasets.registry import dataset_registry`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 503-entry benchmark database spanning 14 geospatial AI research domains — the most comprehensive open registry of remote sensing datasets.
 
 ---

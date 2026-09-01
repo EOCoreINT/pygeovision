@@ -97,9 +97,9 @@ print(f"Amplitude:       {seasonal['seasonal_amplitude']:.3f}")
 ## LiDAR Individual Tree Segmentation
 
 ```python
-from pygeovision.advanced.pointcloud import LiDARProcessor
+from pygeovision.advanced.pointcloud import PointCloudProcessor
 
-proc  = LiDARProcessor("forest_scan.las", crs="EPSG:25832")
+proc  = PointCloudProcessor("forest_scan.las", crs="EPSG:25832")
 chm   = proc.canopy_height_model(resolution_m=1.0, output="chm.tif")
 trees = proc.segment_trees(chm_path="chm.tif", min_height_m=5.0,
                              output_path="trees.geojson")

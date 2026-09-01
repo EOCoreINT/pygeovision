@@ -1,5 +1,9 @@
 # Explainability (XAI)
 
+**Verification status**: the primary import (`from pygeovision.explainability.gradcam import GradCAM`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 Four techniques for understanding what geospatial AI models are "looking at": GradCAM saliency maps, SHAP values, Monte Carlo Dropout uncertainty, and transformer attention maps.
 
 ---

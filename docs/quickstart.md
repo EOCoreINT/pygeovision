@@ -2,6 +2,12 @@
 
 Get from zero to your first geospatial AI prediction in 5 minutes.
 
+**Verification status**: steps 1-4 (search/download) and step 6 (tiled
+inference, using the audited class) are confirmed real and tested this
+cycle. Step 5 (`client.labeling.osm`) and step 7 (GradCAM) use code paths
+not independently verified this cycle — see [Architecture](architecture.md)
+for the full picture.
+
 ---
 
 ## 1. Install
@@ -19,7 +25,8 @@ import pygeovision as pgv
 
 client = pgv.PyGeoVision()
 print(client)
-# PyGeoVision(v2.0 | datasets=503 | models=119 | geoai=independent)
+# PyGeoVision(v2.1.8 | pygeofetch=✓ | pgf_v2=✓v2 | ai=✓torch | datasets=503 |
+#             models=98 | pipelines=51 | ...)
 ```
 
 ---
@@ -76,16 +83,15 @@ print(f"Generated {labels['n_features']} labelled features")
 
 ```python
 from pygeovision.models import get_model
-from pygeovision.inference.tiled import TiledInference
+from pygeovision.ai.inference.tiled_inference import TiledInference
 
 # Load SegFormer-B2 for 7-class land cover
 model = get_model("segformer-b2", num_classes=7, in_channels=4)
 
-# Tiled inference with Gaussian blending (handles any image size)
-inf    = TiledInference(model=model, chip_size=512, overlap=64, blend_mode="gaussian")
-result = inf.infer(scene_path, "./output/prediction.tif")
-
-print(f"Processed {result['n_chips']} tiles in {result['duration_seconds']:.1f}s")
+# Tiled inference: memory-efficient windowed reads, automatic batch sizing
+# based on available memory (both confirmed and tested this audit cycle)
+inf = TiledInference(model, tile_size=512, overlap=64, blend_mode="gaussian")
+pred = inf.run(scene_path, "./output/prediction.tif", num_classes=7)
 ```
 
 ---

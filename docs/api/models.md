@@ -1,5 +1,9 @@
 # Model Layer
 
+**Verification status**: the primary import (`from pygeovision.models.registry import model_registry`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 119 production-ready geospatial model architectures — fully independent of GeoAI.
 
 ---

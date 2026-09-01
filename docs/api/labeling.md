@@ -1,5 +1,11 @@
 # Auto-Labeling
 
+**Verification status**: the primary import (`from pygeovision.labeling.osm import OSMLabeler`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+This is pygeovision.labeling -- SEPARATE from pygeovision.ai.labeling, which has confirmed, fixed bugs in its ESA WorldCover labeler this cycle. Those fixes do not apply here.
+
+---
+
 7 auto-labeling sources covering the full spectrum from vector databases to foundation model inference — no manual annotation required.
 
 ---

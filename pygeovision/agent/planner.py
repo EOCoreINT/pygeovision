@@ -13,32 +13,30 @@ Without an API key (demo mode):  uses an intent-understanding heuristic
 
 Decision hierarchy (heuristic mode)
 ------------------------------------
-1. SENSOR — is this a SAR or optical task?
-      SAR signals: "sar", "sentinel-1", "radar", "cloud cover", "night",
-                   "cloud-independent", "microwave"
-      Optical signals (override): "sentinel-2", "landsat", "optical",
-                   "multispectral", "clear sky", "cloud-free"
-
-2. TASK TYPE — what does the user actually want to produce?
+1. TASK TYPE — what does the user actually want to produce?
       Flood / inundation mapping
       Building / structural damage assessment
       Change detection (generic temporal comparison)
       Land cover / land use classification
       Crop / agriculture analysis
       Forest / deforestation monitoring
-      Oil spill / marine pollution detection
-      Subsidence / deformation monitoring
       Wildfire / burn severity
       Spectral index computation (NDVI, NDWI, …)
-      Object detection (buildings, roads, ships, solar panels)
+      Object detection (buildings, roads, solar panels)
       Named pipeline (building_footprints, glacier_monitoring, …)
 
-3. APPROACH TIER — within the chosen task, which model tier?
+2. APPROACH TIER — within the chosen task, which model tier?
       (Currently selects zero-shot; upgrade path shown in rationale)
-      zero_shot → fine_tune → spt (SAR) / benchmark → domain (optical)
+      zero_shot → fine_tune → benchmark → domain
 
 The planner always returns a list of ``Step`` objects — the executor
 doesn't care how they were generated.
+
+Note: SAR/InSAR-specific processing tools and routing have been
+removed from pygeovision — that processing is handled directly by
+pygeofetch's own real SAR/InSAR modules (pygeofetch.sar / pygeofetch.insar).
+SAR/InSAR data acquisition itself is unaffected; only pygeovision's
+duplicate processing wrapper was removed.
 """
 from __future__ import annotations
 
@@ -103,38 +101,25 @@ PyGeoVision tool calls that will produce the requested output (map, GeoJSON, Geo
 statistics, etc.).
 
 Decision rules you MUST follow:
-1. SENSOR CHOICE
-   • "SAR", "Sentinel-1", "S1C", "S1D", "radar", "cloud cover", "night",
-     "cloud-independent", "insar", "interferogram", "slc" → prefer SAR tools
-   • "Sentinel-2", "Landsat", "optical", "multispectral", "clear sky" → prefer optical tools
-   • When neither is specified, choose SAR for disaster/emergency and optical otherwise.
-   • Sentinel-1C and Sentinel-1D are the active constellation (2025+); treat identically to Sentinel-1.
-
-2. TASK ROUTING
-   • flood / inundation + SAR → sar_preprocess then sar_flood_detection
-   • flood / inundation + optical → search → download → prepare_for_ai → prithvi_inference(task=flood_detection)
-   • building DAMAGE / earthquake damage / structural collapse → change_detection (NOT sar_flood_detection)
+1. TASK ROUTING
+   • flood / inundation → search → download → prepare_for_ai → prithvi_inference(task=flood_detection)
+   • building DAMAGE / earthquake damage / structural collapse → change_detection
    • deforestation / forest change → change_detection or run_pipeline(forest_monitoring)
    • land cover / LULC / classification → prithvi_inference(task=land_cover)
    • crop type / crop mapping → prithvi_inference(task=crop_mapping)
    • burn scar / wildfire mapping → prithvi_inference(task=burn_scar)
    • NDVI / NDWI / NDBI / spectral index → compute_spectral_index
    • building footprints / extraction → run_pipeline(building_footprints)
-   • oil spill → sar_preprocess then sar_flood_detection (dark-pixel applies to oil too)
-   • subsidence / deformation + millimetre / insar / slc / precise → slc_insar
-   • subsidence / deformation (no precision keyword, quick result needed) → sar_preprocess then change_detection
-   • InSAR / interferogram / phase unwrapping / LOS displacement / deformation rate → slc_insar
 
-3. SLC InSAR rules (slc_insar tool)
-   • slc_insar needs master_zip and slave_zip: use $context_master_slc_zip and $context_slave_slc_zip
-   • slc_insar is ONE step — it produces the final displacement GeoTIFF directly
-   • Do NOT chain sar_preprocess before slc_insar — SLC processing is entirely different
-   • Emit slc_insar for: "millimetre", "mm precision", "insar", "interferogram",
-     "slc", "phase", "los displacement", "deformation rate", "coherence"
+2. Always end with postprocess if the user wants a map, GeoJSON, or downloadable output.
+3. Use run_pipeline for standard named tasks when a pipeline matches well.
+4. Output ONLY a valid JSON object with key "steps". No prose before or after.
 
-4. Always end with postprocess if the user wants a map, GeoJSON, or downloadable output.
-5. Use run_pipeline for standard named tasks when a pipeline matches well.
-6. Output ONLY a valid JSON object with key "steps". No prose before or after.
+Note: SAR/InSAR-specific processing tools (sar_preprocess, sar_flood_detection,
+slc_insar) have been removed — that processing is handled directly by
+pygeofetch's own real SAR/InSAR modules (pygeofetch.sar / pygeofetch.insar),
+not through this planner. Route SAR/InSAR-flavored queries to a direct
+pygeofetch call instead of emitting a step for any of these tool names.
 7. Each step: {{"step": int, "tool": str, "args": {{}}, "depends_on": [int], "rationale": str}}
 
 Available tools:
@@ -261,38 +246,19 @@ class HeuristicPlanner:
     Intent-understanding heuristic planner.
 
     Unlike a simple keyword→template map, this planner explicitly reasons
-    through three decisions in order:
+    through two decisions in order:
 
-        1. SENSOR  — SAR vs optical (from explicit mentions or implicit task context)
-        2. TASK    — what the user wants to produce (flood map, damage map, land cover…)
-        3. APPROACH — tool sequence that delivers that task via the chosen sensor
+        1. TASK     — what the user wants to produce (flood map, damage map, land cover…)
+        2. APPROACH — tool sequence that delivers that task
 
     The agent thus gives different answers to:
-        "Map flood extent — cloud cover is 100%"    → SAR pipeline
         "Map flood extent using Sentinel-2"         → optical Prithvi pipeline
         "Map building damage after earthquake"      → change_detection (not flood!)
-        "Detect oil spill with Sentinel-1 at night" → SAR dark-pixel pipeline
-    """
 
-    # ── Sensor signal words ────────────────────────────────────────────────────
-    SAR_SIGNALS = {
-        "sar", "sentinel-1", "sentinel 1", "s1", "s1a", "s1b",
-        # Sentinel-1C and 1D (new constellation, active from 2025)
-        "s1c", "s1d", "sentinel-1c", "sentinel-1d",
-        "sentinel 1c", "sentinel 1d", "sentinel-1 c", "sentinel-1 d",
-        # SAR-specific terms
-        "radar", "backscatter", "cloud-independent", "cloud independent",
-        "cloud cover", "cloud-free not available", "no optical",
-        "night", "microwave", "c-band", "iw mode", "grd", "slc",
-        # InSAR-specific — queries with these almost always want SAR
-        "insar", "interferogram", "phase unwrap", "coherence",
-        "los displacement", "line of sight", "deformation rate",
-    }
-    OPTICAL_SIGNALS = {
-        "sentinel-2", "sentinel 2", "s2", "landsat", "optical",
-        "multispectral", "rgb", "clear sky", "cloud-free", "naip",
-        "planet", "worldview", "maxar",
-    }
+    Note: SAR/InSAR-specific routing (sensor choice, SAR-flavored task
+    variants) has been removed — that processing is handled directly by
+    pygeofetch's own real SAR/InSAR modules, not through this planner.
+    """
 
     # ── Task signal words ──────────────────────────────────────────────────────
     TASK_SIGNALS: dict[str, set[str]] = {
@@ -320,12 +286,6 @@ class HeuristicPlanner:
                          "building detection"},
         "oil_spill":    {"oil spill", "oil slick", "hydrocarbon", "petroleum",
                          "marine pollution", "dark patch sea"},
-        "insar":        {"insar", "interferogram", "phase unwrapping",
-                         "slc interferometry", "millimetre", "mm precision",
-                         "millimeter", "deformation rate", "surface displacement",
-                         "los displacement", "line of sight displacement",
-                         "subsidence rate", "uplift rate", "coherence map",
-                         "displacement time series", "phase unwrap"},
         "subsidence":   {"subsidence", "settlement", "sinking", "deformation",
                          "ground movement", "displacement", "uplift"},
         "glacier":      {"glacier", "ice", "snow", "cryosphere", "permafrost"},
@@ -369,38 +329,15 @@ class HeuristicPlanner:
     # ── Sensor inference ───────────────────────────────────────────────────────
 
     def _infer_sensor(self, ql: str, ctx: dict) -> str:
-        """Decide whether the task calls for SAR, optical, or mixed data."""
-        sar_score     = sum(1 for kw in self.SAR_SIGNALS     if kw in ql)
-        optical_score = sum(1 for kw in self.OPTICAL_SIGNALS if kw in ql)
+        """Sensor selection for planning purposes.
 
-        # Explicit file path in context → trust it
-        if ctx.get("sar_path"):
-            return "sar"
-        if optical_score > sar_score:
-            return "optical"
-        if sar_score > 0:
-            return "sar"
-
-        # Implicit SAR for tasks where radar is clearly superior or standard
-        SAR_NATIVE_TASKS = {
-            "oil_spill", "subsidence", "ship",
-        }
-        task = self._infer_task(ql)
-        if task in SAR_NATIVE_TASKS:
-            return "sar"
-
-        # Implicit SAR for disaster contexts when cloud cover is mentioned
-        if any(w in ql for w in ("cloud", "night", "storm", "rain", "typhoon")):
-            if any(w in ql for w in ("flood", "damage", "disaster", "emergency")):
-                return "sar"
-
-        # Implicit SAR for earthquake/disaster damage — SAR is standard for rapid
-        # damage assessment because it works through clouds and at night
-        if any(w in ql for w in ("earthquake", "seismic", "tsunami", "typhoon",
-                                  "hurricane", "cyclone")) and task == "damage":
-            return "sar"
-
-        # Default to optical
+        SAR/InSAR-specific processing tools have been removed from
+        pygeovision (that processing is handled directly by pygeofetch's
+        own real SAR/InSAR modules — see pygeofetch.sar / pygeofetch.insar).
+        This always resolves to the optical planning path now; SAR/InSAR
+        data acquisition itself is unaffected and still available via
+        the normal search/download tools.
+        """
         return "optical"
 
     # ── Task inference ─────────────────────────────────────────────────────────
@@ -430,16 +367,6 @@ class HeuristicPlanner:
         if "forest" in scores and "change" in scores:
             best = "change"  # deforestation = change detection
 
-        # insar beats subsidence when precision signals are present
-        if "insar" in scores and "subsidence" in scores:
-            best = "insar"
-
-        # Anything with millimetre/InSAR keywords → insar task
-        if any(w in ql for w in ("insar", "interferogram", "millimetre", "millimeter",
-                                  "slc", "phase unwrap", "coherence map")):
-            if "insar" in scores:
-                best = "insar"
-
         return best
 
     # ── Plan builder ───────────────────────────────────────────────────────────
@@ -449,197 +376,38 @@ class HeuristicPlanner:
         od: str, bbox: list, date: str, bands: list,
         ctx_sar: str | None, query: str,
     ) -> list[Step]:
-        """Route to the correct tool sequence given sensor + task."""
+        """Route to the correct tool sequence given task.
 
-        # ── SAR branch ─────────────────────────────────────────────────────────
-        if sensor == "sar":
-            if task == "insar":
-                return self._plan_slc_insar(od, bbox)
-            elif task == "flood":
-                return self._plan_sar_flood(od, bbox, ctx_sar)
-            elif task == "damage":
-                return self._plan_sar_damage(od, bbox, ctx_sar)
-            elif task == "change":
-                return self._plan_sar_change(od, bbox, ctx_sar)
-            elif task == "oil_spill":
-                return self._plan_sar_oil_spill(od, bbox, ctx_sar)
-            elif task == "subsidence":
-                # Precision-aware routing:
-                # "millimetre" / "insar" / "slc" → true SLC InSAR pipeline
-                # "proxy" / "quick" / no precision keyword → GRD amplitude proxy
-                needs_precision = any(w in query for w in (
-                    "millimetre", "millimeter", "mm", "insar",
-                    "interferogram", "slc", "precise", "precision",
-                ))
-                if needs_precision:
-                    return self._plan_slc_insar(od, bbox)
-                return self._plan_sar_subsidence(od, bbox, ctx_sar)
-            elif task == "ship":
-                return self._plan_sar_ship_detection(od, bbox, ctx_sar)
-            else:
-                return self._plan_sar_flood(od, bbox, ctx_sar)
-
-        # ── Optical branch ─────────────────────────────────────────────────────
+        SAR/InSAR-specific processing branches have been removed --
+        that processing is handled directly by pygeofetch's own real
+        SAR/InSAR modules. `sensor` is always "optical" now (see
+        _infer_sensor); the parameter is kept for call-site compatibility.
+        """
+        if task == "flood":
+            return self._plan_optical_flood(od, bbox, date, bands)
+        elif task == "damage":
+            return self._plan_optical_damage(od, bbox, date, bands)
+        elif task == "change" or task == "forest":
+            return self._plan_optical_change(od, bbox, date, task)
+        elif task == "land_cover":
+            return self._plan_optical_land_cover(od, bbox, date, bands)
+        elif task == "crop":
+            return self._plan_optical_crop(od, bbox, date, bands)
+        elif task == "burn":
+            return self._plan_optical_burn(od, bbox, date, bands)
+        elif task == "spectral":
+            index = self._extract_index(query)
+            return self._plan_spectral_index(od, bbox, date, bands, index)
+        elif task == "building":
+            return self._plan_building_footprints(od, bbox, date)
+        elif task == "glacier":
+            return self._plan_glacier(od, bbox, date)
+        elif task == "solar":
+            return self._plan_solar(od, bbox, date)
+        elif task == "road":
+            return self._plan_road(od, bbox, date)
         else:
-            if task == "flood":
-                return self._plan_optical_flood(od, bbox, date, bands)
-            elif task == "damage":
-                return self._plan_optical_damage(od, bbox, date, bands)
-            elif task == "change" or task == "forest":
-                return self._plan_optical_change(od, bbox, date, task)
-            elif task == "land_cover":
-                return self._plan_optical_land_cover(od, bbox, date, bands)
-            elif task == "crop":
-                return self._plan_optical_crop(od, bbox, date, bands)
-            elif task == "burn":
-                return self._plan_optical_burn(od, bbox, date, bands)
-            elif task == "spectral":
-                index = self._extract_index(query)
-                return self._plan_spectral_index(od, bbox, date, bands, index)
-            elif task == "building":
-                return self._plan_building_footprints(od, bbox, date)
-            elif task == "glacier":
-                return self._plan_glacier(od, bbox, date)
-            elif task == "solar":
-                return self._plan_solar(od, bbox, date)
-            elif task == "road":
-                return self._plan_road(od, bbox, date)
-            else:
-                return self._plan_optical_land_cover(od, bbox, date, bands)
-
-    # ── SAR plan templates ─────────────────────────────────────────────────────
-
-    def _sar_preprocess_step(self, od: str, bbox: list, ctx_sar: str | None) -> Step:
-        return Step(0, "sar_preprocess", {
-            "raw_path":    ctx_sar or "$context_sar_path",
-            "output_path": f"{od}/sar_ready.tif",
-            "bbox_wgs84":  bbox,
-            "filter_type": "enhanced_lee",
-        }, rationale=(
-            "BUG 1/2/3-aware SAR pipeline: verify download → validate georeference "
-            "→ despeckle on LINEAR data → dB → normalise → CRS-aware clip"
-        ))
-
-    def _plan_slc_insar(self, od: str, bbox: list) -> list[Step]:
-        """
-        Plan true SLC InSAR: requires pre-downloaded SLC .zip products.
-        The planner emits placeholder paths that the user must populate
-        via context before execution.
-        """
-        return [
-            Step(0, "slc_insar", {
-                "master_zip":          "$context_master_slc_zip",
-                "slave_zip":           "$context_slave_slc_zip",
-                "output_dir":          f"{od}/slc_insar/",
-                "subswath":            "IW2",
-                "bursts":              [1, 9],
-                "polarisation":        "VV",
-                "coherence_threshold": 0.3,
-            }, rationale=(
-                "True SLC InSAR: SNAP co-registration → interferogram → "
-                "Goldstein filter → SNAPHU unwrapping → phase-to-displacement → "
-                "terrain correction. Achieves millimetre-precision LOS displacement. "
-                "Supply master_zip and slave_zip via context before running. "
-                "Temporal baseline 6–24 days optimal for Sentinel-1 IW coherence."
-            )),
-        ]
-
-    def _plan_sar_flood(self, od, bbox, ctx_sar) -> list[Step]:
-        return [
-            self._sar_preprocess_step(od, bbox, ctx_sar),
-            Step(1, "sar_flood_detection", {
-                "sar_ready_path": f"{od}/sar_ready.tif",
-                "output_path":    f"{od}/flood_mask.tif",
-                "mode":           "zero_shot",
-            }, depends_on=[0], rationale=(
-                "VH threshold flood mask (Prithvi zero-shot adapter). "
-                "Upgrade: set mode='fine_tune' after Sen1Floods11 training."
-            )),
-            self._postprocess_step(2, f"{od}/flood_mask.tif", od,
-                                   ["sieve","vectorise","cog"], depends_on=[1]),
-        ]
-
-    def _plan_sar_damage(self, od, bbox, ctx_sar) -> list[Step]:
-        return [
-            self._sar_preprocess_step(od, bbox, ctx_sar),
-            Step(1, "change_detection", {
-                "pre_path":    "$context_pre_sar_path",
-                "post_path":   f"{od}/sar_ready.tif",
-                "output_path": f"{od}/damage_map.tif",
-                "num_classes": 4,
-                "in_channels": 2,
-            }, depends_on=[0], rationale=(
-                "SAR amplitude change between pre-event and post-event "
-                "for structural damage classification (4 classes: "
-                "stable/minor/moderate/severe). SAR is cloud-independent — "
-                "results within hours of a new Sentinel-1 pass."
-            )),
-            self._postprocess_step(2, f"{od}/damage_map.tif", od,
-                                   ["sieve","vectorise","cog"], depends_on=[1]),
-        ]
-
-    def _plan_sar_change(self, od, bbox, ctx_sar) -> list[Step]:
-        return [
-            self._sar_preprocess_step(od, bbox, ctx_sar),
-            Step(1, "change_detection", {
-                "pre_path":    "$context_pre_sar_path",
-                "post_path":   f"{od}/sar_ready.tif",
-                "output_path": f"{od}/change_mask.tif",
-                "num_classes": 2,
-                "in_channels": 2,
-            }, depends_on=[0], rationale="Bi-temporal SAR amplitude change detection"),
-            self._postprocess_step(2, f"{od}/change_mask.tif", od,
-                                   ["sieve","vectorise","cog"], depends_on=[1]),
-        ]
-
-    def _plan_sar_oil_spill(self, od, bbox, ctx_sar) -> list[Step]:
-        return [
-            self._sar_preprocess_step(od, bbox, ctx_sar),
-            Step(1, "sar_flood_detection", {
-                "sar_ready_path": f"{od}/sar_ready.tif",
-                "output_path":    f"{od}/dark_patch_mask.tif",
-                "mode":           "zero_shot",
-            }, depends_on=[0], rationale=(
-                "Oil slicks suppress SAR backscatter (specular reflection) "
-                "— the same VH dark-pixel algorithm that detects open water "
-                "also detects oil spills. Night and cloud-proof."
-            )),
-            self._postprocess_step(2, f"{od}/dark_patch_mask.tif", od,
-                                   ["sieve","vectorise","cog"], depends_on=[1]),
-        ]
-
-    def _plan_sar_subsidence(self, od, bbox, ctx_sar) -> list[Step]:
-        return [
-            self._sar_preprocess_step(od, bbox, ctx_sar),
-            Step(1, "change_detection", {
-                "pre_path":    "$context_pre_sar_path",
-                "post_path":   f"{od}/sar_ready.tif",
-                "output_path": f"{od}/subsidence_proxy.tif",
-                "num_classes": 4,
-                "in_channels": 2,
-            }, depends_on=[0], rationale=(
-                "SAR backscatter change proxy for ground deformation. "
-                "For centimetre-precision use SLC + pyroSAR + SNAP InSAR."
-            )),
-            self._postprocess_step(2, f"{od}/subsidence_proxy.tif", od,
-                                   ["sieve","cog"], depends_on=[1]),
-        ]
-
-    def _plan_sar_ship_detection(self, od, bbox, ctx_sar) -> list[Step]:
-        return [
-            self._sar_preprocess_step(od, bbox, ctx_sar),
-            Step(1, "sar_flood_detection", {
-                "sar_ready_path": f"{od}/sar_ready.tif",
-                "output_path":    f"{od}/bright_target_mask.tif",
-                "mode":           "zero_shot",
-            }, depends_on=[0], rationale=(
-                "Ships appear as bright (high VV) targets on dark sea. "
-                "Inverted VH threshold approximates vessel detection. "
-                "Production ship detection: use DINOv3 SAR adapter."
-            )),
-            self._postprocess_step(2, f"{od}/bright_target_mask.tif", od,
-                                   ["sieve","vectorise","cog"], depends_on=[1]),
-        ]
+            return self._plan_optical_land_cover(od, bbox, date, bands)
 
     # ── Optical plan templates ─────────────────────────────────────────────────
 
@@ -670,7 +438,8 @@ class HeuristicPlanner:
                 "output_path": f"{od}/flood_mask.tif",
             }, depends_on=[2], rationale=(
                 "Prithvi-EO-2.0 flood mask (cloud-free optical). "
-                "For cloud-cover situations use SAR pipeline instead."
+                "For cloud-cover situations, use pygeofetch's SAR flood "
+                "mapping directly (pygeofetch.processing.sar.SARProcessor)."
             )),
             self._postprocess_step(4, f"{od}/flood_mask.tif", od,
                                    ["sieve","vectorise","cog"], depends_on=[3]),
@@ -688,7 +457,8 @@ class HeuristicPlanner:
                 "in_channels": len(bands),
             }, depends_on=[2], rationale=(
                 "Optical 4-class damage (no damage / minor / moderate / severe) "
-                "using ChangeFormer. Pair with SAR pipeline for cloud-independent results."
+                "using ChangeFormer. For cloud-independent results, use "
+                "pygeofetch's SAR processing directly instead."
             )),
             self._postprocess_step(4, f"{od}/damage_map.tif", od,
                                    ["sieve","vectorise","cog"], depends_on=[3]),

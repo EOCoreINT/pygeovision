@@ -1,5 +1,12 @@
 # Domain Examples
 
+**Verification status**: these examples were not independently re-verified
+this cycle. Where they use `client.pipeline(name)`, note that this is
+PyGeoFetch's data-processing chain builder, not an AI pipeline runner —
+see [PyGeoVision Client](../api/pygeovision.md). Where they reference SAR
+processing, use [pygeofetch](https://pypi.org/project/pygeofetch/) directly
+instead — pygeovision's own SAR/InSAR layer was removed this cycle.
+
 Complete end-to-end workflows for the six primary geospatial AI application domains.
 
 | Domain | Use Cases | Key Models |

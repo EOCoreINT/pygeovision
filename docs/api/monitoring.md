@@ -1,5 +1,9 @@
 # Monitoring
 
+**Verification status**: the primary import (`from pygeovision.monitoring.drift import DriftDetector`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 Production monitoring for deployed geospatial AI models — detect data distribution drift before it silently degrades prediction quality.
 
 ---

@@ -1,5 +1,15 @@
 # Tutorials
 
+**Verification status**: the markdown tutorials below and the 22 Jupyter
+notebooks in `docs/tutorials/*.ipynb` were not independently re-run or
+verified this cycle — that would mean actually executing each notebook
+against real data, a separate, larger undertaking from the markdown-page
+audit this cycle covered. Treat their code the way you'd treat any
+unverified example: check it against the real, current API before relying
+on it, particularly anywhere it touches SAR/InSAR (removed this cycle —
+see [Architecture](../architecture.md)) or the `client.pipeline()` /
+`client.geoai` namespaces (the latter does not exist).
+
 Step-by-step guides for common geospatial AI workflows. Each tutorial is self-contained and includes working code.
 
 | Tutorial | Time | Difficulty |

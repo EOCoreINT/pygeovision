@@ -1,5 +1,9 @@
 # Vision-Language Models
 
+**Verification status**: the primary import (`from pygeovision.advanced.vlm.clip_geo import CLIPGeo`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 CLIP-based geo retrieval, Moondream VQA, and zero-shot scene understanding for satellite imagery.
 
 ---

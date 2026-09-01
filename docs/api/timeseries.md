@@ -1,5 +1,9 @@
 # Time Series Analysis
 
+**Verification status**: the primary import (`from pygeovision.advanced.timeseries import GeoTimeSeries`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 Compute spectral index time series from multi-date satellite imagery, detect anomalies, and analyse vegetation and land-cover dynamics.
 
 ---

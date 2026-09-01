@@ -1,15 +1,21 @@
 # Point Cloud (3D)
 
+**Verification status**: the primary import (`from pygeovision.advanced.pointcloud import PointCloudProcessor`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+The original version of this page named the wrong class (LiDARProcessor) -- fixed to the real class name, PointCloudProcessor, confirmed against the code.
+
+---
+
 LiDAR processing, Canopy Height Model generation, and 3D segmentation from airborne and terrestrial point clouds.
 
 ---
 
-## `LiDARProcessor`
+## `PointCloudProcessor`
 
 ```python
-from pygeovision.advanced.pointcloud import LiDARProcessor
+from pygeovision.advanced.pointcloud import PointCloudProcessor
 
-proc = LiDARProcessor(
+proc = PointCloudProcessor(
     input_path="scan.las",    # LAS, LAZ, PLY, PCD, NPZ
     crs="EPSG:25833",
     device="cuda",

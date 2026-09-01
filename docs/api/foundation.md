@@ -1,5 +1,9 @@
 # Foundation Models
 
+**Verification status**: the primary import (`from pygeovision.models.foundation.dinov3 import DINOv3Backbone`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 PyGeoVision provides first-class integration of two leading geospatial foundation models: **DINOv3** (12 variants) and **Prithvi-EO-2.0** (600M). Both are completely independent of GeoAI — pure PyTorch + HuggingFace Transformers.
 
 ---

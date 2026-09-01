@@ -1,6 +1,14 @@
 # PyGeoVision Client
 
-The main entry point for all PyGeoVision functionality.
+The main entry point for most PyGeoVision functionality.
+
+**Verification status**: `search()`, `download()`, and construction (`cache_dir`,
+`log_level` parameters) are confirmed real and match the code exactly.
+Several method calls below use code paths this audit cycle did not reach —
+each is flagged individually. Where a method has a namespace conflict with
+a separately-audited version elsewhere in the codebase (a real, confirmed
+pattern this cycle — see [Architecture](../architecture.md)), that's called
+out explicitly rather than assumed to inherit the other path's fixes.
 
 ---
 
@@ -10,234 +18,149 @@ The main entry point for all PyGeoVision functionality.
 import pygeovision as pgv
 
 client = pgv.PyGeoVision(
-    cache_dir="~/.cache/pygeovision",   # Weight and data cache
-    log_level="INFO",                   # Logging verbosity
+    cache_dir="~/.cache/pygeovision",   # optional, real parameter
+    log_level="INFO",                   # optional, real parameter
 )
 ```
 
----
-
-## Authentication
-
-### `add_credentials(provider, **kwargs)`
-
-Register API credentials for a satellite data provider.
-
-```python
-# Planetary Computer
-client.add_credentials("planetary_computer", api_key="YOUR_KEY")
-
-# AWS Open Data
-client.add_credentials("aws_earth",
-    access_key="AKIAIOSFODNN7EXAMPLE",
-    secret_key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-    region="us-west-2"
-)
-
-# Copernicus Open Access Hub
-client.add_credentials("copernicus",
-    username="your_username",
-    password="your_password"
-)
-
-# Maxar SecureWatch
-client.add_credentials("maxar", api_key="YOUR_KEY")
-
-# Planet
-client.add_credentials("planet", api_key="YOUR_PLANET_KEY")
-```
+`repr(client)` reports real, current counts: `datasets=503 | models=98 |
+pipelines=51` — but "51 pipelines" includes pipelines that don't yet do
+what their names claim. See [Pipelines](pipelines.md) for the honest
+breakdown, or the [Home page](../index.md) verification table.
 
 ---
 
 ## Data Search
 
-### `search(bbox, date_range, providers, **kwargs)`
+### `search(bbox, date_range, providers=None, **kwargs)`
 
-Search satellite imagery with STAC and CQL2 filters.
+Confirmed real, matching signature:
 
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `bbox` | `list[float]` | `[min_lon, min_lat, max_lon, max_lat]` in WGS84 |
-| `date_range` | `list[str]` | `["YYYY-MM-DD", "YYYY-MM-DD"]` |
-| `providers` | `list[str]` | Provider names (e.g. `["planetary_computer"]`) |
-| `cloud_cover_max` | `float` | Maximum cloud cover % (default `20`) |
-| `collections` | `list[str]` | STAC collection IDs (e.g. `["sentinel-2-l2a"]`) |
-| `cql2_filter` | `str` | Advanced CQL2 filter expression |
-| `sort_by` | `str` | Sort field: `"cloud_cover"`, `"date"` |
-| `limit` | `int` | Maximum results per provider (default `50`) |
-
-**Returns:** `list[SceneResult]`
+| Parameter | Type | Notes |
+|---|---|---|
+| `bbox` | `tuple[float, float, float, float]` | `(min_lon, min_lat, max_lon, max_lat)`, WGS84 |
+| `date_range` | `tuple[str, str]` | `(start, end)` |
+| `collections` | `list[str] \| None` | STAC collection IDs |
+| `providers` | `list[str] \| None` | Restricts search — see the real `--provider` CLI flag |
+| `cloud_cover_max` | `float` | Default `30.0` |
+| `max_results` / `limit` | `int` | `limit` is an alias for `max_results` |
+| `cql2_filter` | `str \| None` | Advanced CQL2 filter |
 
 ```python
 results = client.search(
-    bbox=[-74.1, 40.6, -73.7, 40.9],
-    date_range=["2024-06-01", "2024-08-31"],
+    bbox=(-74.1, 40.6, -73.7, 40.9),
+    date_range=("2024-06-01", "2024-08-31"),
     providers=["planetary_computer"],
     cloud_cover_max=10,
-    sort_by="cloud_cover",
 )
-
-for r in results:
-    print(f"{r.date}  cloud={r.cloud_cover:.0f}%  platform={r.platform}")
 ```
-
----
-
-## Data Download
 
 ### `download(results, output_dir, **kwargs)`
 
-Download and post-process satellite scenes.
-
-**Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `results` | `list[SceneResult]` | Results from `search()` |
-| `output_dir` | `str` | Output directory |
-| `post_process` | `list[str]` | Processing steps (see below) |
-| `parallel` | `int` | Concurrent downloads (default `4`) |
-| `bands` | `list[str]` | Specific bands to download |
-
-**Post-processing options:**
-
-- `reproject:EPSG:XXXX` — Reproject to a target CRS
-- `cog` — Convert to Cloud-Optimised GeoTIFF
-- `cloud_mask` — Apply cloud mask using QA band
-- `clip` — Clip to the search bbox
+Confirmed real this cycle — extensively fixed and tested (real unzip
+handling, real cache-hit asset recovery, mission-aware Landsat band
+aliases, CRS-aware reprojection validation). See [Architecture](../architecture.md)
+for the specific bugs found and fixed.
 
 ```python
-downloads = client.download(
-    results[:3],
-    output_dir="./data/nyc/",
-    post_process=["reproject:EPSG:32618", "cog", "cloud_mask"],
-    parallel=4,
-)
-
-for d in downloads:
-    print(f"Downloaded: {d.path}  size={d.size_mb:.1f}MB")
+downloads = client.download(results[:3], output_dir="./data/nyc/")
 ```
 
 ---
 
-## Auto-Labeling
+## Auto-Labeling — `client.labeling`
 
-Access via `client.labeling`:
+**Verification status**: `client.labeling.esa_worldcover()` calls
+`pygeovision.labeling.landcover.ESAWorldCoverLabeler` — a **separate class**
+from `pygeovision.ai.labeling.esa_worldcover.ESAWorldCoverLabeler`, which
+is the one with confirmed, fixed bugs this cycle (nodata handling,
+class-name mapping, tile-origin int/float promotion). Those fixes do
+**not** apply to this code path; it has not been independently audited.
 
 ```python
-# OpenStreetMap
-labels = client.labeling.osm(bbox, categories=["buildings","roads","water"])
-
-# Microsoft Building Footprints
+labels = client.labeling.osm(bbox, categories=["buildings", "roads", "water"])
 labels = client.labeling.microsoft_buildings(bbox)
-
-# Google Open Buildings
 labels = client.labeling.google_buildings(bbox)
-
-# ESA WorldCover 2021 (11 classes, 10m)
-labels = client.labeling.esa_worldcover(bbox)
-
-# Dynamic World real-time (9 classes)
-labels = client.labeling.dynamic_world(bbox, date_range=["2024-01-01","2024-12-31"])
-
-# SAM automatic segmentation
-labels = client.labeling.sam_auto("scene.tif", points_per_side=32)
-
-# Foundation model (DINOv2 + k-means)
-labels = client.labeling.foundation("scene.tif", n_clusters=8)
-
-# Multi-source fusion (majority vote)
-fused = client.labeling.pipeline(bbox,
-    sources=["osm","esa_worldcover","microsoft_buildings"])
-
-# Label quality assessment
-report = client.labeling.quality("labels.tif")
-print(f"Grade: {report['quality_grade']}  Score: {report['quality_score']:.0%}")
+labels = client.labeling.esa_worldcover(bbox)   # see verification note above
+labels = client.labeling.dynamic_world(bbox, date_range=("2024-01-01", "2024-12-31"))
 ```
 
 ---
 
-## Inference
+## Inference — `client.inference`
 
-Access via `client.inference`:
+**Verification status**: `client.inference.tiled()` calls
+`pygeovision.inference.tiled.TiledInference` — a **separate class** from
+`pygeovision.ai.inference.tiled_inference.TiledInference`, which is the one
+with the memory-efficiency fixes confirmed this cycle (windowed reads,
+memory-aware automatic batch sizing). Those fixes do **not** apply here;
+this class has a different default (`overlap=128` vs. the audited class's
+`overlap=64`) confirming it's genuinely separate code, not a re-export.
 
 ```python
-from pygeovision.models import get_model
-
-model = get_model("segformer-b2", num_classes=7)
-
-# Tiled inference (Gaussian blend)
-inf    = client.inference.tiled(model, chip_size=512, overlap=64)
+inf    = client.inference.tiled(model, chip_size=512, overlap=128)
 result = inf.infer("scene.tif", "prediction.tif")
+```
 
-# Batch directory processing
-batch  = client.inference.batch(model, n_workers=4)
-result = batch.run_directory("./data/", "./predictions/")
+For the audited, memory-efficient version, use `pygeovision.ai.inference.tiled_inference.TiledInference` directly — see [Inference](inference.md).
 
-# Ensemble (multiple models)
-ens    = client.inference.ensemble([model1, model2], weights=[0.6, 0.4])
-result = ens.infer("scene.tif", "ensemble_pred.tif")
+---
+
+## Monitoring — `client.monitoring`
+
+**Verification status**: not independently audited this cycle. Signatures below are confirmed real (checked directly against the code).
+
+```python
+drift = client.monitoring.drift_detector(model=None)
+tracker = client.monitoring.performance_tracker(model_name="my_model")
+alerts = client.monitoring.alert_manager(channels=None)
 ```
 
 ---
 
-## Monitoring
+## Pipelines — `client.pipeline`
+
+**Important**: `client.pipeline(name)` is **not** an AI pipeline runner — it
+returns a PyGeoFetch-style chainable *data processing* builder (cloud
+masking, clipping, reprojection, spectral indices, vectorization), for
+raw imagery, not a way to run a named AI task like "land_cover" or
+"building_footprints."
 
 ```python
-# Drift detection
-drift   = client.monitoring.drift_detector()
-drift.fit(reference_images)
-report  = drift.check(new_images)
-print(f"Drift level: {report['data_drift']['drift_level']}")
+result = (
+    client.pipeline("my_chain")
+    .cloud_mask(method="scl", scl_band="SCL.tif")
+    .clip(bbox=(-74.1, 40.6, -73.7, 40.9))
+    .reproject(crs="EPSG:4326")
+    .ndvi(red="B04.tif", nir="B08.tif")
+    .run(input="scene.tif", output_dir="./processed/")
+)
+```
 
-# Performance tracking
-tracker = client.monitoring.performance_tracker()
-tracker.log(epoch=5, metrics={"val_iou": 0.84, "val_f1": 0.88})
-trend   = tracker.trend("val_iou")
-print(f"Trend: {trend['direction']}")
+To run a real, audited AI pipeline, use the CLI or the pipeline class directly:
+
+```bash
+pygeovision channel land_cover --bbox -74.1 40.6 -73.7 40.9 --date 2024-01
+```
+
+```python
+from pygeovision.ai.pipelines import LandCoverPipeline
+result = LandCoverPipeline(client).run(bbox=(-74.1, 40.6, -73.7, 40.9), output_dir="./out", date="2024-01")
 ```
 
 ---
 
-## GeoAI Engine
+## SAR / InSAR — removed
 
-Access foundation models and advanced AI via `client.geoai`:
-
-```python
-# DINOv3
-client.geoai.dinov3.load("dinov3_vitl16_sat")
-features = client.geoai.dinov3.extract_features("sentinel2.tif")
-height   = client.geoai.dinov3.canopy_height("forest.tif")
-mask     = client.geoai.dinov3.zero_shot("image.tif", "solar panels")
-
-# Prithvi
-client.geoai.prithvi.load("prithvi_eo_2_0")
-lc     = client.geoai.prithvi.land_cover("hls.tif")
-change = client.geoai.prithvi.change_detection("2021.tif", "2024.tif")
-
-# All foundation models
-models = client.geoai.foundation_models.list()
-```
-
----
-
-## Pipelines
+`client.sar` has been removed. This functionality is handled directly by
+[pygeofetch](https://pypi.org/project/pygeofetch/):
 
 ```python
-from pygeovision.pipelines import Pipeline
+from pygeofetch.processing.sar import SARProcessor
 
-# Load a YAML pipeline
-p      = Pipeline.from_yaml("agriculture.yaml")
-result = p.run(context={"client": client})
-
-# Or build programmatically
-from pygeovision.pipelines.steps import SearchStep, DownloadStep, InferStep
-
-p = Pipeline("my_workflow")
-p.add(SearchStep("search", params={"bbox": bbox, "providers": ["planetary_computer"]}))
-p.add(DownloadStep("download", depends_on=["search"], params={"output_dir": "./data/"}))
-p.add(InferStep("infer", depends_on=["download"], params={"model": "segformer-b2"}))
-result = p.run(context={"client": client})
+sar = SARProcessor()
+despeckled = sar.despeckle("s1_raw.tif", filter="lee")
+calibrated = sar.calibrate(despeckled.output_path, output_type="sigma0", in_db=True)
 ```
+
+See [Architecture](../architecture.md) for the full reasoning behind this removal.

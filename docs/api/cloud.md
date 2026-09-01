@@ -1,5 +1,9 @@
 # Cloud Deployment
 
+**Verification status**: the primary import (`from pygeovision.cloud.deploy import AWSDeployer`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 One-command deployment of PyGeoVision models to AWS SageMaker, Azure ML, and GCP Vertex AI.
 
 ---

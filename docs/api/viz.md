@@ -1,5 +1,10 @@
 # Visualization API Reference
 
+**Verification status**: class and method signatures confirmed real against
+the installed code this cycle (`Map`, `RasterViewer`, `add_raster`,
+`add_vector`, `export`, `split_view` all exist with matching signatures).
+Rendering output has not been visually verified this cycle.
+
 ## `Map`
 
 Interactive map viewer with raster/vector overlays.

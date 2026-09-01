@@ -1,5 +1,11 @@
 # Inference Engine
 
+**Verification status**: the primary import (`from pygeovision.inference.tiled import TiledInference`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+This is pygeovision.inference.tiled -- a SEPARATE, unaudited TiledInference class from pygeovision.ai.inference.tiled_inference.TiledInference, which has the confirmed memory-efficiency fixes (windowed reads, automatic batch sizing). See Architecture for the real distinction between them.
+
+---
+
 Four inference modes for arbitrarily large GeoTIFFs: tiled, batch, streaming, and ensemble. All preserve geospatial metadata (CRS, transform, nodata) in the output.
 
 ---

@@ -104,7 +104,7 @@ a { color: var(--accent); }
   <h1>The PyGeoVision Book</h1>
   <div class="subtitle">The Definitive Guide to AI-Powered Geospatial Intelligence</div>
   <div class="meta">
-    Version 2.1.7 &bull; PyGeoVision Contributors &bull; Apache 2.0 &bull; 28 Chapters + 6 Appendices + 28 Notebooks
+    Version 2.1.8 &bull; PyGeoVision Contributors &bull; Apache 2.0 &bull; 28 Chapters + 6 Appendices + 28 Notebooks
   </div>
 </div>
 
@@ -312,12 +312,12 @@ pip install "pygeovision[all]"
 <h3>Verify installation</h3>
 <br>
 <pre><code class="language-python">import pygeovision as pgv
-print(pgv.__version__)   # 2.1.7
+print(pgv.__version__)   # 2.1.8
 
 # Check available components
 client = pgv.PyGeoVision()
 print(client)
-# PyGeoVision(v2.1.7, providers=22, models=119, datasets=503)
+# PyGeoVision(v2.1.8, providers=22, models=119, datasets=503)
 </code></pre>
 <br>
 <h2>1.6 Quick Start: Your First Analysis</h2>
@@ -2767,7 +2767,7 @@ def generate_report(study_area, results):
         "study_area":  study_area,
         "generated":   datetime.datetime.utcnow().isoformat(),
         "results":     results,
-        "data_source": "Sentinel-2 L2A / PyGeoVision v2.1.7",
+        "data_source": "Sentinel-2 L2A / PyGeoVision v2.1.8",
     }
     with open("./outputs/report.json","w") as f:
         json.dump(report, f, indent=2, default=str)
@@ -3055,7 +3055,7 @@ TOOL_REGISTRY["population_at_risk"] = PopulationRiskTool
 <h2>22.1 Docker Deployment</h2>
 <br>
 <pre><code class="language-bash"># Build production image
-docker build -t pygeovision:2.1.7 \
+docker build -t pygeovision:2.1.8 \
   -f deployment/docker/Dockerfile.prod .
 
 # Run with volume mount for data persistence
@@ -3065,7 +3065,7 @@ docker run -d \
   -v ./results:/app/results \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e PGV_LOG_LEVEL=INFO \
-  pygeovision:2.1.7
+  pygeovision:2.1.8
 
 # Verify
 curl http://localhost:8080/health
@@ -3840,7 +3840,7 @@ checker.report(config)
 <h1>Appendix B: CLI Reference</h1>
 <h2>Installation</h2>
 <pre><code class="language-bash">pip install pygeovision
-pygeovision --version   # 2.1.7
+pygeovision --version   # 2.1.8
 </code></pre>
 <h2>Data Commands</h2>
 <pre><code class="language-bash"># Search satellite imagery
@@ -3958,7 +3958,7 @@ pygeovision viz animate --inputs "ndvi_*.tif" --dates dates.json --output ndvi.g
 <tr><td>`COPERNICUS_CDSE_PASS`</td><td>(none)</td><td>Copernicus CDSE password</td></tr>
 <h2>Configuration File</h2>
 <p>Create <code>~/.pygeovision/config.yml</code>:</p>
-<pre><code class="language-yaml">version: "2.1.7"
+<pre><code class="language-yaml">version: "2.1.8"
 
 data:
   cache_dir: /data/pgv_cache

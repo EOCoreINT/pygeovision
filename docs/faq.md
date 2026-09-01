@@ -6,7 +6,7 @@
 
 **Does PyGeoVision require geoai-py?**
 
-No. PyGeoVision v2.0 is 100% independent of geoai-py. All model implementations are self-contained in pure PyTorch + HuggingFace Transformers. You can verify this yourself:
+No. PyGeoVision is independent of geoai-py. All model implementations are self-contained in pure PyTorch + HuggingFace Transformers. You can verify this yourself:
 
 ```python
 import pygeovision as pgv
@@ -23,7 +23,7 @@ Yes, with minor caveats: GDAL/rasterio on Windows requires installing from the [
 
 **Is a GPU required?**
 
-No. All models support CPU inference (slow but functional). A GPU with ≥8GB VRAM is recommended for training. For inference on large GeoTIFFs, tiled processing keeps GPU memory bounded regardless of image size.
+No. All models support CPU inference (slow but functional). A GPU with ≥8GB VRAM is recommended for training. For inference on large GeoTIFFs, `pygeovision.ai.inference.tiled_inference.TiledInference` uses real, tested windowed reads and automatic memory-aware batch sizing (confirmed this cycle) — the separate `pygeovision.inference.tiled.TiledInference` used by `client.inference.tiled()` has not been verified for the same memory behavior. See [Architecture](architecture.md).
 
 ---
 
@@ -39,13 +39,13 @@ Any format rasterio supports: GeoTIFF, Cloud-Optimized GeoTIFF (COG), NetCDF, HD
 
 **How do I handle large GeoTIFFs (>1 GB)?**
 
-Use `TiledInference` — it processes the image in overlapping chips and reassembles the result:
+Use `TiledInference` — it processes the image in overlapping tiles and reassembles the result. The `ai.inference` version has confirmed, tested memory-efficiency fixes (real windowed reads, automatic memory-aware batch sizing):
 
 ```python
-from pygeovision.inference.tiled import TiledInference
+from pygeovision.ai.inference.tiled_inference import TiledInference
 
-inf = TiledInference(model=model, chip_size=512, overlap=64)
-result = inf.infer("large_100km.tif", "output.tif")
+inf = TiledInference(model, tile_size=512, overlap=64)
+pred = inf.run("large_100km.tif", "output.tif", num_classes=5)
 ```
 
 **What CRS does PyGeoVision use?**

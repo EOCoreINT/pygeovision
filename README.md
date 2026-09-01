@@ -1,6 +1,5 @@
-
 <div align="center">
-<img src="icon/pygeovision_logo.png" alt="PyGeoFetch Logo" width="350">
+<img src="https://raw.githubusercontent.com/EOCoreINT/pygeovision/main/icon/pygeovision_logo.png?token=GHSAT0AAAAAAD4555HVK6OWPFHJQEWMTAKY2UVO7KQ" alt="PyGeoFetch Logo" width="350">
 
 
 ## ⚠️ Important Note
@@ -55,7 +54,7 @@ Instead of learning a different API for every satellite provider, you search and
 - Unified search and download across Sentinel, Landsat, Planet, Maxar, Airbus, USGS, Copernicus, NASA, JAXA, and more
 - Credentials handled once via system keyring — no scattered API keys in scripts
 - Parallel downloads with checksum verification, resume support, and bandwidth throttling
-- Full optical and SAR preprocessing built in: atmospheric correction, cloud masking, topographic correction, pan-sharpening, mosaicking, re-projection — so you don't write this yourself
+- Full optical preprocessing built in: atmospheric correction, cloud masking, topographic correction, pan-sharpening, mosaicking, re-projection — so you don't write this yourself. SAR/InSAR processing (despeckle, calibration, flood mapping, interferometry) is handled by calling [pygeofetch](https://pypi.org/project/pygeofetch/)'s real, native SAR/InSAR modules directly — see the SAR & InSAR section below
 - Post-processing chains (reproject → compress → NDVI/NDWI → Cloud Optimized GeoTIFF) as one call
 - YAML pipelines with cron scheduling for recurring jobs
 
@@ -106,14 +105,13 @@ If the built-in models aren't enough, you can train your own without leaving the
 
 Training data is usually the real bottleneck. PyGeoVision can generate labels for you from seven sources — OpenStreetMap, Microsoft Global Buildings, Google Open Buildings, ESA WorldCover, Google Dynamic World, SAM auto-labeling, and foundation-model labeling — so you can get a first training set without annotating from scratch.
 
-### 🛰️ SAR & InSAR — Ground Motion, Not a SNAP Wrapper
+### 🛰️ SAR & InSAR — via PyGeoFetch, Not a Duplicate Wrapper
 
-A full Sentinel-1 processing chain is implemented natively — you don't need ESA SNAP installed for the core pipeline (only full SLC InSAR requires it).
+SAR/InSAR processing (despeckle, radiometric calibration, flood mapping, InSAR coherence, interferogram generation, phase unwrapping, SLC InSAR) is handled by [pygeofetch](https://pypi.org/project/pygeofetch/) directly — a real, independently-verified implementation, not something PyGeoVision duplicates. Install it (`pip install pygeofetch`) and call `pygeofetch.processing.sar.SARProcessor` / `pygeofetch.sar.*` / `pygeofetch.insar.*` directly for despeckling, calibration, flood mapping, coherence, and the full InSAR pipeline.
 
-- **GRD preprocessing** — a documented pipeline from raw download through despeckling (including a genuine refined Lee filter) to AI-ready, normalized output
-- **SAR-to-foundation-model bridging** — correctly maps 2-band SAR into the band formats Prithvi and DINOv3 expect
-- **InSAR displacement mapping** — interferogram generation, coherence estimation, and an interpretation layer that flags subsidence/uplift zones from a displacement map, in three method calls
-- **Full SLC InSAR** for centimetre-precision deformation monitoring, when you need the real phase-based pipeline (requires ESA SNAP + snaphu)
+What PyGeoVision *does* still own on the SAR side, since it's genuinely model-integration work, not raw signal processing:
+
+- **SAR-to-foundation-model bridging** — maps 2-band SAR (VV/VH) into the band formats Prithvi and DINOv3 expect, via `pygeovision.models.adapters.sar_prithvi` / `sar_dinov3` / `sar_channel_manager`, including pre/post co-registration for change detection and input validation before model calls
 
 ---
 
@@ -126,7 +124,6 @@ pip install "pygeovision[train]"              # + PyTorch, SMP, transformers, ti
 pip install "pygeovision[foundation]"         # + Prithvi-EO-2.0, DINOv3
 pip install "pygeovision[vlm]"                # + CLIP, Moondream
 pip install "pygeovision[labeling]"           # + auto-labeling sources
-pip install "pygeovision[insar]"              # + InSAR (SLC InSAR also needs ESA SNAP + snaphu)
 pip install "pygeovision[xai]"                # + explainability
 pip install "pygeovision[timeseries]"         # + time-series analysis
 pip install "pygeovision[serve]"              # + FastAPI inference server
@@ -172,13 +169,15 @@ client.detection.ships("port.tif", output_path="ships.tif")
 client.change.detect(before="2020.tif", after="2024.tif", output_path="change.tif")
 ```
 
-...and SAR/InSAR follows the same pattern — despeckle and calibrate a Sentinel-1 scene, then run the full displacement pipeline:
+...and SAR/InSAR uses pygeofetch directly — despeckle and calibrate a Sentinel-1 scene, then run interferogram/coherence processing:
 
 ```python
-from pygeovision.insar import InSARProcessor
+from pygeofetch.processing.sar import SARProcessor
 
-calibrated = client.sar.calibrate(client.sar.despeckle("s1_raw.tif"), in_db=True)
-result = InSARProcessor(output_dir="./insar/").full_pipeline("pre.tif", "post.tif")
+sar = SARProcessor()
+despeckled = sar.despeckle("s1_raw.tif", filter="lee")
+calibrated = sar.calibrate(despeckled.output_path, output_type="sigma0", in_db=True)
+# Full InSAR pipeline (interferogram, unwrapping, timeseries): see pygeofetch.insar.*
 ```
 
 ---
@@ -201,7 +200,7 @@ pygeovision status   # what's installed and working
 pygeovision doctor   # diagnose a broken setup
 ```
 
-Run `pygeovision --help` for the full command tree — it also covers `models`, `label`, `explain`, `monitor`, `edge`, `cloud`, `vlm`, `timeseries`, `validate`, `preprocess`, `indices`, `postprocess`, `benchmark`, and `datasets`. SAR/InSAR preprocessing is currently available via `client.sar` / `pygeovision.insar` in Python rather than as its own CLI group.
+Run `pygeovision --help` for the full command tree — it also covers `models`, `label`, `explain`, `monitor`, `edge`, `cloud`, `vlm`, `timeseries`, `validate`, `preprocess`, `indices`, `postprocess`, `benchmark`, and `datasets`. SAR/InSAR preprocessing is via pygeofetch directly (`pygeofetch.processing.sar.SARProcessor`, `pygeofetch.insar.*`) rather than through PyGeoVision.
 
 ---
 

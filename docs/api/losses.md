@@ -1,5 +1,9 @@
 # Loss Functions
 
+**Verification status**: the primary import (`from pygeovision.losses.segmentation import DiceLoss`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 10 geospatial-specific loss functions for segmentation, detection, and classification. All are `torch.nn.Module` subclasses that integrate directly into any PyTorch training loop.
 
 ---

@@ -6,7 +6,7 @@ message: >
 
 type: software
 title: "pygeovision: A Unified Open-Source Python Platform for Satellite Earth Observation AI"
-version: 2.1.7
+version: 2.1.8
 date-released: "2026-07-10"
 license: MIT
 repository-code: "https://github.com/eocoreint/pygeovision"

@@ -1,5 +1,9 @@
 # Serving API
 
+**Verification status**: the primary import (`from pygeovision.serving import InferenceServer`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 FastAPI-based inference server with JWT authentication, WebSocket streaming, Prometheus metrics, and batch endpoints.
 
 ---
@@ -200,7 +204,7 @@ curl http://localhost:8080/health
 ```json
 {
   "status": "healthy",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "uptime_s": 3600.1,
   "models_loaded": 2,
   "gpu": {

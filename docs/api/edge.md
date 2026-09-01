@@ -1,5 +1,9 @@
 # Edge Deployment
 
+**Verification status**: the primary import (`from pygeovision.edge.onnx_rt import ONNXRuntimeInference`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 Deploy PyGeoVision models to edge hardware: ONNX Runtime (CPU/CUDA/TensorRT/CoreML) and NVIDIA Jetson (TensorRT).
 
 ---

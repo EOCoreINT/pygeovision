@@ -125,5 +125,6 @@ import pygeovision as pgv
 
 client = pgv.PyGeoVision()
 print(client)
-# PyGeoVision(v2.0 | datasets=503 | models=119 | geoai=independent)
+# PyGeoVision(v2.1.8 | pygeofetch=✓ | pgf_v2=✓v2 | ai=✓torch | datasets=503 |
+#             models=98 | pipelines=51 | ...)
 ```

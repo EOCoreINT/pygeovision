@@ -284,8 +284,6 @@ class PyGeoVision:
             pgv_postprocessor= self.postprocess,
         )
 
-        # ── SAR processing proxy (via PyGeoFetch v2.0 / bridge) ─────────
-        self.sar = _SARProxy(self._pgf_bridge)
 
     # ------------------------------------------------------------------
     # Authentication (delegates to PyGeoFetch via self.data)
@@ -991,7 +989,6 @@ class PyGeoVision:
             f"datasets={len(dataset_registry)} | models={len(model_zoo)} | "
             f"pipelines={len(list_pipelines())} | "
             f"validator=✓ | preprocess=✓ | indices=22 | postprocess=✓ | "
-            f"sar={'✓' if self._pgf_bridge._pgf_v2 else 'pgf_v2_pending'} | "
             f"labeling=7src | losses=10 | inference=4 | "
             f"xai=4 | monitoring=3 | cloud=3·aws·azure·gcp | "
             f"edge=ONNX+Jetson | vlm=CLIP+Moon | few_shot | timeseries | 3D)"
@@ -1272,12 +1269,14 @@ class _DetectionClientProxy:
         return GeoYOLO(num_classes=num_classes, class_names=class_names).detect(
             image_path, output_path=output_path, **kw)
     def ships(self, image_path, output_path=None, **kw):
-        from pygeovision.models.detection.yolo import GeoYOLO
-        return GeoYOLO(num_classes=1, class_names=["ship"]).detect(
+        from pygeovision.models.detection.yolo import GeoYOLO, COCO_SHIP_CLASSES
+        return GeoYOLO(num_classes=1, class_names=["ship"],
+                        coco_class_filter=COCO_SHIP_CLASSES).detect(
             image_path, output_path=output_path, **kw)
     def cars(self, image_path, output_path=None, **kw):
-        from pygeovision.models.detection.yolo import GeoYOLO
-        return GeoYOLO(num_classes=1, class_names=["car"]).detect(
+        from pygeovision.models.detection.yolo import GeoYOLO, COCO_CAR_CLASSES
+        return GeoYOLO(num_classes=1, class_names=["car"],
+                        coco_class_filter=COCO_CAR_CLASSES).detect(
             image_path, output_path=output_path, **kw)
     def custom(self, image_path, model, output_path="./output/detections.tif", **kw):
         from pygeovision.inference.tiled import TiledInference
@@ -1341,125 +1340,3 @@ class _ClassificationClientProxy:
             bbox = transform_bounds(src.crs, "EPSG:4326", *src.bounds)
         return ESAWorldCoverLabeler(year=year).label(bbox, output_path=output_path, **kw)
     def __repr__(self): return "ClassificationLayer(scene|land_cover)"
-
-
-# # ─────────────────────────────────────────────────────────────────────────────
-# # SAR processing proxy — routes through PyGeoFetchBridge
-# # ─────────────────────────────────────────────────────────────────────────────
-
-# class _SARProxy:
-#     """``client.sar`` — SAR processing via PyGeoFetch v2.0 (forward-compatible).
-
-#     Methods delegate to PyGeoFetch v2.0's ``client.sar.*`` when available.
-#     A helpful warning is raised when PyGeoFetch v2.0 is not yet installed.
-
-#     Example::
-
-#         # Despeckle a Sentinel-1 scene
-#         out = client.sar.despeckle("sentinel1.tif", filter="enhanced_lee")
-
-#         # Radiometric calibration
-#         out = client.sar.calibrate("sentinel1.tif", output_type="sigma0", in_db=True)
-
-#         # Flood extent mapping
-#         out = client.sar.flood_map("post_flood.tif", threshold=-15.0,
-#                                     reference="pre_flood.tif")
-
-#         # InSAR coherence
-#         out = client.sar.coherence("slc_20240101.tif", "slc_20240113.tif", window=7)
-#     """
-
-#     def __init__(self, bridge: Any):
-#         self._b = bridge
-
-#     def despeckle(
-#         self,
-#         input_path: str,
-#         filter: str = "enhanced_lee",
-#         window: int = 5,
-#         **kwargs,
-#     ) -> str:
-#         """Speckle filter a SAR GeoTIFF.
-
-#         Args:
-#             input_path: Single-band SAR GeoTIFF (linear power or dB).
-#             filter: ``"lee"`` | ``"enhanced_lee"`` | ``"frost"`` | ``"gamma"``.
-#             window: Filter window size in pixels (odd number).
-
-#         Returns:
-#             Output path string.
-#         """
-#         return self._b.sar_despeckle(input_path, filter=filter, window=window, **kwargs)
-
-#     def calibrate(
-#         self,
-#         input_path: str,
-#         output_type: str = "sigma0",
-#         in_db: bool = True,
-#         **kwargs,
-#     ) -> str:
-#         """Radiometric calibration of raw SAR DN values.
-
-#         Args:
-#             input_path: Raw SAR digital-number GeoTIFF.
-#             output_type: ``"sigma0"`` (backscatter) | ``"gamma0"`` | ``"beta0"``.
-#             in_db: Output in dB scale (``10 * log10(linear)``).
-
-#         Returns:
-#             Output path string.
-#         """
-#         return self._b.sar_calibrate(
-#             input_path, output_type=output_type, in_db=in_db, **kwargs)
-
-#     def flood_map(
-#         self,
-#         post_path: str,
-#         threshold: float = -15.0,
-#         reference: str | None = None,
-#         **kwargs,
-#     ) -> str:
-#         """Map flood extent from post-event SAR imagery.
-
-#         Pixels below ``threshold`` dB are classified as water/flooded.
-#         When a ``reference`` pre-event image is provided, change-based
-#         detection is used instead of a fixed threshold.
-
-#         Args:
-#             post_path: Post-flood SAR GeoTIFF (calibrated dB).
-#             threshold: dB threshold below which pixels are flood
-#                 (default -15.0 dB = open water).
-#             reference: Optional pre-flood SAR GeoTIFF for change-based
-#                 detection.
-
-#         Returns:
-#             Output path of binary flood mask GeoTIFF.
-#         """
-#         return self._b.sar_flood_map(
-#             post_path, threshold=threshold, reference=reference, **kwargs)
-
-#     def coherence(
-#         self,
-#         slc1_path: str,
-#         slc2_path: str,
-#         window: int = 7,
-#         **kwargs,
-#     ) -> str:
-#         """Compute InSAR coherence between two co-registered SLC scenes.
-
-#         Args:
-#             slc1_path: First complex SLC GeoTIFF.
-#             slc2_path: Second complex SLC GeoTIFF.
-#             window: Estimation window size in pixels.
-
-#         Returns:
-#             Output path of coherence GeoTIFF (float32, [0, 1]).
-#         """
-#         return self._b.sar_coherence(slc1_path, slc2_path, window=window, **kwargs)
-
-#     def is_available(self) -> bool:
-#         """True when PyGeoFetch v2.0 SAR engine is available."""
-#         return self._b._pgf_v2 and hasattr(self._b._pgf, "sar")
-
-#     def __repr__(self) -> str:
-#         avail = "✓ PyGeoFetch v2.0" if self.is_available() else "⚠ requires PyGeoFetch v2.0"
-#         return f"SARProxy({avail} | despeckle|calibrate|flood_map|coherence)"

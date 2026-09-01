@@ -1,215 +1,140 @@
 # Architecture
 
-PyGeoVision v2.0 is built on a clean layered architecture with zero dependency on geoai-py. Every layer is independently importable and testable.
+This page describes what's actually verified about pygeovision's structure,
+not an aspirational design document. Where something is confirmed real
+and tested, that's stated plainly; where it isn't, that's stated too.
 
----
+## The two-package split
 
-## System Overview
+PyGeoVision depends on [pygeofetch](https://pypi.org/project/pygeofetch/)
+(a real, independent PyPI package, confirmed installed and inspected this
+cycle — v2.6.2.1) for the data layer:
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                       PyGeoVision Client                            │
-│   client.search()  client.download()  client.labeling  client.geoai │
-├──────────────────┬──────────────────┬───────────────────────────────┤
-│   Data Layer     │   AI Layer       │   Support Layers              │
-│   (PyGeoFetch)   │   Models+Tasks   │   XAI · Monitor · Serve       │
-├──────────────────┴──────────────────┴───────────────────────────────┤
-│   Model Registry (119 specs)   ·   Dataset Registry (503 entries)   │
-│   Training Framework           ·   Pipeline Orchestrator            │
-│   Edge / Cloud Deployment      ·   CLI (15 command groups)          │
-└─────────────────────────────────────────────────────────────────────┘
-```
+> **pygeofetch's job**: talk to every provider, know every file format,
+> know the physics of every correction (radiometric, SAR, InSAR), and
+> hand back either an analysis-ready result or an honest error.
+>
+> **PyGeoVision's job**: start where pygeofetch's output ends — AI
+> inference, pipeline orchestration, labeling, and model-specific
+> preprocessing.
 
----
+This boundary is enforced in one direction more strictly than the other:
+pygeovision should never re-implement signal processing pygeofetch
+already does correctly. This cycle found and fixed a real violation of
+that principle — see **SAR/InSAR removal** below.
 
-## Module Map
-
-```
-pygeovision/
-│
-├── __init__.py              Main client — PyGeoVision class
-├── version.py               Semantic version (2.1.7)
-│
-├── data/                    Data acquisition layer
-│   └── fetch.py             PyGeoFetch — STAC search, 22 providers, COG download
-│
-├── models/                  Model layer — 119 architectures
-│   ├── registry.py          Central ModelSpec registry
-│   ├── base.py              GeoModel + GeoModelConfig base classes
-│   ├── classification/      ViT, Swin, ConvNeXt, ResNet, EfficientNet, DINOv2
-│   ├── detection/           YOLOv8/v9, RF-DETR, RT-DETR, DETR, Faster/Mask R-CNN
-│   ├── segmentation/        U-Net, SegFormer, DeepLabV3+, SAM, SAM2, Mask2Former
-│   ├── change_detection/    ChangeFormer, ChangeSTAR, BIT, DSAMNet, SNUNet
-│   ├── foundation/          DINOv3 (12 variants), Prithvi-EO (100M/600M)
-│   ├── vlm/                 CLIP, OpenCLIP, RemoteCLIP, Moondream
-│   ├── _3d/                 PointNet++, RandLA-Net, KPConv
-│   └── weights/             HuggingFace Hub downloader + cache manager
-│
-├── labeling/                Auto-labeling layer
-│   ├── osm.py               OpenStreetMap (buildings, roads, water, parks)
-│   ├── microsoft.py         Microsoft Building Footprints (~1.4B global)
-│   ├── google.py            Google Open Buildings (~1.8B global)
-│   ├── esa.py               ESA WorldCover 2021 (11 classes, 10m)
-│   ├── dynamic_world.py     Google Dynamic World (9 classes, real-time)
-│   ├── sam_auto.py          SAM automatic mask generation
-│   ├── foundation.py        DINOv2 + k-means unsupervised labels
-│   ├── active.py            Active learning — entropy/diversity sampling
-│   ├── quality.py           Label quality assessment (completeness, noise, coverage)
-│   └── pipeline.py          Multi-source label fusion (majority vote)
-│
-├── losses/                  Geospatial loss functions
-│   ├── segmentation.py      DiceLoss, FocalLoss, TverskyLoss, ComboLoss,
-│   │                        BoundaryAwareLoss, LovászLoss, OhemCrossEntropy
-│   ├── detection.py         CIoULoss, DIoULoss, GIoULoss
-│   └── class_balance.py     ClassBalancedCrossEntropy
-│
-├── inference/               Inference engine
-│   ├── tiled.py             TiledInference — Gaussian/linear blend, TTA
-│   ├── batch.py             BatchInferenceEngine — multi-worker directory processing
-│   ├── stream.py            StreamingInference + EnsembleInference
-│   └── __init__.py          Public API
-│
-├── explainability/          XAI layer
-│   ├── gradcam.py           GradCAM, GradCAM++, EigenCAM
-│   ├── uncertainty.py       MC Dropout uncertainty maps
-│   ├── attention.py         Transformer attention map extraction
-│   └── shap_geo.py          SHAP for geospatial models
-│
-├── monitoring/              Production monitoring
-│   ├── drift.py             DriftDetector — PSI + KL divergence
-│   ├── tracker.py           ModelPerformanceTracker — mIoU, mAP over time
-│   └── alerts.py            Alert system — thresholds, webhooks, email
-│
-├── training/                Training framework
-│   ├── trainer.py           GeoTrainer — single/multi-GPU training loop
-│   ├── callbacks.py         EarlyStopping, ModelCheckpoint, LearningRateMonitor
-│   ├── metrics.py           IoU, F1, mAP, Accuracy, Precision, Recall
-│   ├── optimizers.py        AdamW, Lion, SGD, RMSprop with schedulers
-│   ├── schedulers.py        CosineAnnealing, OneCycleLR, WarmupScheduler
-│   ├── distributed.py       DDP, FSDP, gradient accumulation
-│   ├── mixed_precision.py   FP16 / BF16 autocast + gradient scaling
-│   ├── checkpoint.py        CheckpointManager — top-k saving, resume
-│   ├── data.py              GeoDataset, augmentation, collation
-│   └── validation.py        Validation loop with early stopping integration
-│
-├── serving/                 Inference server
-│   ├── api.py               FastAPI app + InferenceServer class
-│   ├── auth.py              APIKeyAuth + JWTAuth
-│   ├── health.py            HealthChecker — GPU, RAM, uptime
-│   └── models.py            Pydantic request/response schemas
-│
-├── pipelines/               YAML pipeline orchestration
-│   ├── orchestrator.py      Pipeline + PipelineOrchestrator
-│   ├── yaml_parser.py       PipelineYAMLParser — load, validate
-│   ├── scheduler.py         PipelineScheduler — cron expressions
-│   ├── steps.py             Step, SearchStep, DownloadStep, InferStep, ExportStep
-│   └── templates/           6 ready-to-run YAML templates
-│
-├── datasets/                Dataset registry
-│   ├── registry.py          503-entry DatasetInfo catalog
-│   ├── loader.py            Standardised dataset loading
-│   ├── catalog.py           Search, filter, rank datasets
-│   ├── benchmark.py         Top-5 per task selection
-│   └── analysis.py          Correlation matrix, domain statistics
-│
-├── edge/                    Edge deployment
-│   ├── onnx_rt.py           ONNXRuntimeInference — CPU/CUDA/TensorRT/CoreML
-│   └── jetson.py            JetsonDeployer — TensorRT conversion
-│
-├── cloud/                   Cloud deployment
-│   └── deploy.py            AWSDeployer, AzureDeployer, GCPDeployer
-│
-├── advanced/                Advanced AI capabilities
-│   ├── few_shot.py          FewShotLearner — prototypical networks
-│   ├── multitask.py         MultiTaskModel — shared backbone
-│   ├── automl.py            AutoML — Optuna hyperparameter search
-│   ├── vlm/                 CLIPGeo, MoondreamGeo, GeoRetrieval
-│   ├── timeseries/          GeoTimeSeries — NDVI/EVI trends, anomaly detection
-│   └── pointcloud/          LiDARProcessor — CHM, density, segmentation
-│
-├── cli/                     Command-line interface
-│   ├── main.py              15 command groups — 1,800+ lines
-│   ├── commands/            Per-module command files
-│   └── utils/               Colors, formatting, input validation
-│
-└── ai/                      GeoAI Engine
-    └── geoai/
-        ├── __init__.py      GeoAIEngine — 18 subsystems
-        ├── dinov3_proxy.py  DINOv3Proxy — 12 variants, CHMv2, dino.txt
-        └── prithvi_proxy.py PrithviProxy — EO-1.0, EO-2.0, multi-temporal
-```
-
----
-
-## Design Principles
-
-**1. Zero GeoAI dependency**
-Every module is self-contained. `geoai-py` is never imported — not even as an optional fallback. All model implementations use pure PyTorch + HuggingFace Transformers + timm.
-
-**2. Lazy loading**
-Heavy dependencies (torch, rasterio, transformers) are imported only when the relevant function is called. `import pygeovision` is fast.
-
-**3. Graceful degradation**
-If an optional dependency is missing, PyGeoVision returns a clear error message with the install command rather than crashing silently.
-
-**4. Composability**
-Every layer can be used standalone:
-
-```python
-# Only need inference — skip everything else
-from pygeovision.inference.tiled import TiledInference
-from pygeovision.models import get_model
-
-model = get_model("segformer-b2", num_classes=2)
-inf   = TiledInference(model=model)
-```
-
-**5. Type-annotated throughout**
-All public APIs have full Python type hints, enabling IDE autocompletion and static analysis with mypy.
-
----
-
-## Data Flow
+## Package layout, by verification status
 
 ```
-Satellite Provider (22)
-        │
-        ▼
-   PyGeoFetch (STAC + CQL2 search)
-        │
-        ▼
-   Download + Post-process (reproject, COG, cloud mask)
-        │
-        ├──▶ Auto-Labeling (OSM / MS / ESA / SAM / DINOv2)
-        │
-        ├──▶ Training (GeoTrainer → GeoModel)
-        │
-        ├──▶ Inference (TiledInference → prediction GeoTIFF)
-        │         │
-        │         ├──▶ Explainability (GradCAM / SHAP)
-        │         └──▶ Monitoring (drift + performance)
-        │
-        └──▶ Pipeline (YAML orchestration of all the above)
-                  │
-                  └──▶ Export (GeoJSON / GeoTIFF / COG / Cloud)
+pygeovision/                    ~60,500 lines total across 25 modules
+├── data/          11,600 lines  Thoroughly audited — real bugs found and fixed
+├── ai/             14,450 lines  Thoroughly audited — real bugs found and fixed
+│   ├── pipelines/               10 real pipelines (see Pipelines page)
+│   ├── models/                  Model registry/hub bridge, verified
+│   ├── labeling/                WorldCover verified; others not yet
+│   └── inference/               Tiled inference — memory fixes verified
+├── models/          9,190 lines  Detection (YOLO) verified this cycle;
+│                                 rest not yet audited
+├── agent/           2,330 lines  Planner/tools verified this cycle
+│                                 (SAR/InSAR routing removed)
+├── labeling/        2,480 lines  NOT audited — separate from ai/labeling/,
+│                                 confirmed genuinely different code
+├── cli/             2,290 lines  Only `channel` verified; ~25 other
+│                                 command groups not yet audited
+├── training/         2,240 lines  Not yet audited
+├── inference/           700 lines  NOT audited — separate from
+│                                 ai/inference/, confirmed different code,
+│                                 different defaults (overlap=128 vs 64)
+├── viz/             1,620 lines  Signatures confirmed real; rendering
+│                                 output not verified
+├── ... (16 more modules)         Not yet audited this cycle:
+│                                 advanced, api, benchmark, cloud, core,
+│                                 datasets, edge, enterprise,
+│                                 explainability, losses, monitoring,
+│                                 pipelines, preprocess, serving, utils
 ```
 
----
+## A real, confirmed pattern: duplicate parallel implementations
 
-## Model Loading Priority
+This audit repeatedly found the *same capability implemented twice*,
+under different module paths, with only one side actually fixed and
+tested. Confirmed instances:
 
-When `get_model(name)` is called:
+| Capability | Audited, fixed version | Separate, unaudited version |
+|---|---|---|
+| Tiled inference | `pygeovision.ai.inference.tiled_inference.TiledInference` (memory-efficient windowed reads, auto batch sizing) | `pygeovision.inference.tiled.TiledInference` (used by `client.inference.tiled()` and `client.detection.custom`) — different defaults confirm it's genuinely separate code, not a re-export |
+| ESA WorldCover labeling | `pygeovision.ai.labeling.esa_worldcover.ESAWorldCoverLabeler` (3 real bugs fixed: nodata handling, class-name mapping, tile-origin int/float promotion) | `pygeovision.labeling.landcover.ESAWorldCoverLabeler` (used by `client.labeling.esa_worldcover()`) — a genuinely separate class definition |
+| AI pipeline execution | `pygeovision channel <name>` CLI → `ai.pipelines.*Pipeline` classes | `client.pipeline(name)` — **not the same thing at all**; this is PyGeoFetch's chainable data-processing builder, not an AI pipeline runner |
 
-1. Check `timm` registry → `timm.create_model(timm_id, ...)`
-2. Check HuggingFace Hub → `AutoModel.from_pretrained(hf_id, ...)`
-3. Built-in PyTorch fallback → torchvision + custom U-Net
-4. Error with helpful install message
+**Practical implication**: fixes made to one side of a pair do not apply
+to the other. If you're using `client.labeling`/`client.inference`
+directly rather than the `channel` CLI or `ai.pipelines` classes, treat
+that code path as unaudited even where a same-named sibling has been
+fixed.
 
-```python
-from pygeovision.models import get_model
+## SAR/InSAR removal — the reasoning
 
-# All three paths work transparently:
-model = get_model("segformer-b2")        # → HuggingFace
-model = get_model("resnet50")            # → timm
-model = get_model("unet-r50")            # → SMP or built-in
-```
+PyGeoVision previously had its own SAR/InSAR processing layer
+(`client.sar`, plus `pygeovision.insar` in an earlier snapshot). This was
+removed entirely this cycle, for a specific, verified reason: pygeofetch's
+real, installed `SARProcessor` has exactly the four methods
+(`calibrate`, `coherence`, `despeckle`, `flood_map`) that pygeovision's
+wrapper delegated to — confirmed by inspecting the actual installed
+package, not assumed. Pygeofetch also has a comprehensive real `insar.*`
+suite (interferogram generation, unwrapping, coregistration, timeseries,
+PS selection, offset tracking) that pygeovision never had an equivalent
+of.
+
+Removed:
+- `client.sar` (the `_SARProxy` class and its construction)
+- `pygeovision.data.processors.sar` (557 lines — including some real,
+  documented bug fixes around georeference corruption and WGS84/UTM
+  clip mismatches that pygeofetch's simpler processor doesn't cover;
+  removed per explicit instruction, not because they were wrong)
+- Three agent tools (`SARPreprocessTool`, `SARFloodTool`, `SLCInSARTool`)
+  and all planner routing to them
+- 8 test files covering a `pygeovision.insar` module that, at the time
+  of this removal, did not exist in the delivered codebase at all
+
+For SAR/InSAR work now, call [pygeofetch](https://pypi.org/project/pygeofetch/)
+directly — see [PyGeoVision Client](api/pygeovision.md) for a real,
+verified example.
+
+## The pipeline catalog — a confirmed, significant gap
+
+`pygeovision.ai.pipelines.domains.list_pipelines()` reports 51 pipelines.
+Tracing every one to its real implementation:
+
+- **10 real, task-specific pipelines** — thoroughly audited, tested, and
+  fixed this cycle (real radiometric scaling, cloud masking, bbox
+  cropping, bi-temporal grid alignment).
+- **16 pipelines with dedicated classes** — real code, task-specific
+  logic, not yet independently verified. One (`crop_type_mapping`) has a
+  confirmed bug: it silently returns the raw, unprocessed input image as
+  the "result" if its default model isn't registered, with
+  `success=True` and no visible error.
+- **26 pipelines built from a generic factory** (`_make_simple`) that
+  only searches, downloads one scene, and validates it — despite
+  specific-sounding descriptions ("SAR oil slick detection via adaptive
+  backscatter threshold," "dNBR burn severity mapping"), these run no
+  task-specific model or algorithm at all.
+
+See [Pipelines](api/pipelines.md) for the full, named breakdown.
+
+## What "verified" means in this documentation
+
+Consistently across this documentation:
+
+- **Verified / audited / tested this cycle** — the specific claim was
+  checked against the real, installed code (reading real signatures,
+  or running real code against real or synthetic data), and where a bug
+  was found, it was fixed and regression-tested.
+- **Not yet verified** — the code exists and may well work correctly,
+  but this audit cycle did not independently confirm it. Treat it the
+  way you'd treat any third-party code you haven't tested yourself.
+- **Removed** — deleted from the codebase this cycle, with the reason
+  stated.
+
+This standard is applied unevenly on purpose: roughly 26,000 of the
+package's ~60,500 lines (`data/`, `ai/`) received this level of scrutiny
+this cycle. The rest did not yet.

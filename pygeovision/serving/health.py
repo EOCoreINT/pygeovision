@@ -18,7 +18,7 @@ class HealthChecker:
     def check(self) -> dict[str, Any]:
         return {
             "status": "healthy",
-            "version": "2.1.7",
+            "version": "2.1.8",
             "uptime_s": round(time.time() - _START_TIME, 1),
             "models_loaded": len(self._models) if hasattr(self._models, "__len__") else 0,
             "gpu": self._gpu_status(),

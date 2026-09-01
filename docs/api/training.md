@@ -1,5 +1,9 @@
 # Training Framework
 
+**Verification status**: the primary import (`from pygeovision.training.trainer import GeoTrainer`) is confirmed real against the installed code this cycle. Full behavior of the methods below has not been independently tested this cycle unless otherwise noted.
+
+---
+
 Full-featured training framework for geospatial AI: single-GPU, multi-GPU DDP, FSDP, mixed precision, and resumable checkpoints.
 
 ---

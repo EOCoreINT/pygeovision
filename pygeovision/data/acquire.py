@@ -868,57 +868,6 @@ class SatelliteAcquirer:
             logger.error("extract_grd() failed: %s", e)
             return ProcessingResult(output_path="", success=False, error=str(e))
 
-    def sar_flood_map(
-        self,
-        post_event:     str,
-        pre_event:      str | None = None,
-        threshold_db:   float = -15.0,
-        detect_direction: str = "both",  # "decrease"|"increase"|"both"
-        output_path:    str | None = None,
-    ) -> ProcessingResult:
-        """
-        Generate a SAR flood extent map via pygeofetch.
-
-        pygeofetch's SARProcessor.flood_map() now supports:
-          - ``"decrease"``: open-water backscatter decrease (classic)
-          - ``"increase"``: urban double-bounce increase (flooded buildings)
-          - ``"both"``:     detects both signatures simultaneously
-
-        The ``"both"`` mode is critical for urban flood mapping — the old
-        decrease-only mode reported 0% flooding in urban areas even during
-        confirmed flood events.
-
-        Args:
-            post_event:       Post-flood SAR GeoTIFF (calibrated, dB).
-            pre_event:        Pre-flood reference (optional).
-            threshold_db:     dB threshold for detection.
-            detect_direction: Detection mode (see above).
-            output_path:      Output flood mask path.
-
-        Returns:
-            :class:`ProcessingResult` with binary flood mask.
-        """
-        if not self._v2 or not hasattr(self._pgf, "sar"):
-            return ProcessingResult(output_path="", success=False,
-                                    error="sar_flood_map requires pygeofetch >= 2.0")
-        try:
-            r = self._pgf.sar.flood_map(
-                post_event,
-                reference=pre_event,
-                threshold=threshold_db,
-                detect_direction=detect_direction,
-            )
-            out = str(r.output_path)
-            if output_path and output_path != out:
-                import shutil
-                shutil.copy2(out, output_path)
-                out = output_path
-            return ProcessingResult(output_path=out, success=True,
-                                    metadata=r.metadata or {})
-        except Exception as e:
-            logger.error("sar_flood_map() failed: %s", e)
-            return ProcessingResult(output_path="", success=False, error=str(e))
-
     # ── Time series — all delegated to pygeofetch ─────────────────────────────
 
     def build_time_series(
