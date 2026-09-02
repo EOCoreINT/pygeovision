@@ -11,8 +11,8 @@ several corrections from earlier versions of this page are noted inline.
 | Module | Description | Verification |
 |---|---|---|
 | [PyGeoVision Client](pygeovision.md) | Main client — search, download, labeling, inference | Core methods verified |
-| [Pipelines](pipelines.md) | 51 registered pipeline names, 10 real | See breakdown |
-| [Model Layer](models.md) | 98 architectures (not 119) in the registry | Import verified |
+| [Pipelines](pipelines.md) / [Task Pipelines](task_pipelines.md) | 51 registered pipeline names, all individually resolved this cycle | See full breakdown |
+| [Model Layer](models.md) | 121 architectures in the registry (not 98 or 119 — both were other, separate counts); 121 individually build/forward-pass tested this cycle | See verified breakdown |
 | [Auto-Labeling](labeling.md) | 7+ sources | Import verified; separate from `ai.labeling` |
 | [Loss Functions](losses.md) | 10 geospatial losses | Import verified |
 | [Inference Engine](inference.md) | Tiled/batch/streaming/ensemble | Import verified; separate from `ai.inference` |

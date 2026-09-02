@@ -2,11 +2,12 @@
 
 **Important — pygeovision has three different things called "pipeline":**
 
-1. **The 10 real, audited pipelines** (`building_footprints`, `land_cover`,
-   etc.) — run via `pygeovision channel <name>` or
-   `pygeovision.ai.pipelines.*Pipeline` classes directly. These are the ones
-   thoroughly tested this cycle. See [Architecture](../architecture.md) for
-   the full 10/16/26 breakdown of what `list_pipelines()` actually returns.
+1. **The 51 real AI task pipelines** (`building_footprints`, `land_cover`,
+   `wildfire_severity`, etc.) — run via `pygeovision channel <name>` or
+   `pygeovision.ai.pipelines.*Pipeline` classes directly. Every one of the
+   51 has been individually resolved this cycle. See
+   [Task Pipelines](task_pipelines.md) for the complete, per-pipeline
+   breakdown, or [Architecture](../architecture.md) for the summary.
 2. **`client.pipeline(name)`** — not a pipeline runner at all; it's
    PyGeoFetch's chainable *data processing* builder (cloud mask, clip,
    reproject, NDVI). See [PyGeoVision Client](pygeovision.md).
@@ -15,7 +16,12 @@
    defining multi-step search/download/label/train workflows with
    dependencies and scheduling.
 
-**Verification status**: not independently audited this cycle.
+**Verification status**: not independently audited this cycle. One real,
+confirmed bug was fixed: `from pygeovision.pipelines import Pipeline`
+(used by `pygeovision.data.fetch`'s real `run_pipeline()` fallback) was
+previously unconditionally broken (`ImportError`) — this specific import
+now works correctly, though the orchestrator's actual execution logic
+below hasn't been independently re-verified this cycle.
 
 YAML-based workflow orchestration for end-to-end geospatial AI pipelines — from satellite search to exported results. Supports dependency management, cron scheduling, retry logic, and parallel execution.
 

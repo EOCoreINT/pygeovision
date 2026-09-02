@@ -1,8 +1,8 @@
 site_name: PyGeoVision
 site_description: Geospatial AI platform — satellite data via PyGeoFetch, native AI inference, 10 verified pipelines
-site_author: PyGeoVision Team
+site_author: Samuel Appiah Kubi
 site_url: https://pygeovision.org
-repo_url: https://github.com/pygeovision/pygeovision
+repo_url: https://github.com/EOCoreINT/pygeovision
 repo_name: pygeovision/pygeovision
 
 theme:
@@ -60,6 +60,18 @@ plugins:
             show_source: true
             show_root_heading: true
 
+
+markdown_extensions:
+  - pymdownx.highlight:   { anchor_linenums: true }
+  - pymdownx.superfences: { custom_fences: [{name: mermaid, class: mermaid, format: !!python/name:pymdownx.superfences.fence_code_format}]}
+  - pymdownx.tabbed:      { alternate_style: true }
+  - pymdownx.details
+  - admonition
+  - toc: { permalink: true }
+  - attr_list
+  - md_in_html
+  - tables
+
 nav:
   - Home: index.md
   - Installation: installation.md
@@ -83,6 +95,7 @@ nav:
     - Training Framework: api/training.md
     - Serving API: api/serving.md
     - Pipelines: api/pipelines.md
+    - Task Pipelines (all 51): api/task_pipelines.md
     - Dataset Registry: api/datasets.md
     - CLI Reference: api/cli.md
     - Foundation Models: api/foundation.md

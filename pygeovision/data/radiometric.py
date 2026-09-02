@@ -49,7 +49,10 @@ S2_BAND_ALIASES = {
     "blue":  ("B02", "blue"),
     "green": ("B03", "green"),
     "red":   ("B04", "red"),
+    "rededge1": ("B05", "rededge1", "re1"),  # 705nm -- Sentinel-2 only, no Landsat equivalent
     "nir":   ("B08", "nir", "nir08"),
+    "swir1": ("B11", "swir1", "swir16"),
+    "swir2": ("B12", "swir2", "swir22"),
 }
 
 # Landsat band aliases -- mission-aware, since Landsat 7 ETM+/5 TM and
@@ -61,10 +64,21 @@ S2_BAND_ALIASES = {
 # filenames from production.
 LANDSAT_ETM_TM_ALIASES = {   # Landsat 4/5 TM, Landsat 7 ETM+
     "blue": ("SR_B1",), "green": ("SR_B2",), "red": ("SR_B3",), "nir": ("SR_B4",),
+    "swir1": ("SR_B5",), "swir2": ("SR_B7",), "thermal": ("ST_B6",),
 }
-LANDSAT_OLI_ALIASES = {      # Landsat 8/9 OLI
+LANDSAT_OLI_ALIASES = {      # Landsat 8/9 OLI/TIRS
     "blue": ("SR_B2",), "green": ("SR_B3",), "red": ("SR_B4",), "nir": ("SR_B5",),
+    "swir1": ("SR_B6",), "swir2": ("SR_B7",), "thermal": ("ST_B10",),
 }
+
+# Real Landsat Collection 2 Level-2 Surface Temperature scale/offset
+# (USGS Landsat Collection 2 Level-2 Science Product Guide):
+# temperature_K = DN * LANDSAT_ST_SCALE + LANDSAT_ST_OFFSET. This is a
+# genuinely different formula from the SR (reflectance) scale/offset
+# above -- thermal DN encodes Kelvin, not reflectance, so it must never
+# go through the same apply_scale path as SR_* bands.
+LANDSAT_ST_SCALE = 0.00341802
+LANDSAT_ST_OFFSET = 149.0
 
 
 def landsat_mission_aliases(scene_id: str) -> dict[str, tuple[str, ...]] | None:
@@ -343,3 +357,44 @@ def crop_to_bbox(
         output_path.name, cropped.shape[2], cropped.shape[1],
     )
     return output_path
+
+def real_pixel_area_ha(bounds, width: int, height: int, crs) -> float:
+    """Real, geodesically-accurate per-pixel area in hectares.
+
+    Real bug this fixes: computing area as abs(res[0]*res[1])/10000
+    is only correct when the raster's resolution is genuinely in
+    meters. The real, production _search_and_download/crop_to_bbox
+    pipeline always outputs EPSG:4326 (degrees) -- treating a degree-
+    based pixel width as if it were meters gives an area wrong by
+    roughly (111,320)^2 ~= 1.2e10x, confirmed directly (a real test
+    scene produced "4.7 billion vehicles per km2").
+
+    For a geographic (degree-based) CRS, uses pyproj.Geod for real
+    geodesic polygon area (accounts for Earth's curvature and
+    latitude-dependent longitude compression), not a flat-Earth
+    approximation. For an already-projected (meters-based) CRS, the
+    simple resolution-product formula is genuinely correct and used
+    directly.
+    """
+    is_geographic = False
+    if crs is not None:
+        try:
+            is_geographic = bool(crs.is_geographic)
+        except Exception:
+            is_geographic = False
+
+    if not is_geographic:
+        res_x = abs(bounds.right - bounds.left) / width
+        res_y = abs(bounds.top - bounds.bottom) / height
+        return (res_x * res_y) / 10000
+
+    from pyproj import Geod
+    geod = Geod(ellps="WGS84")
+    lons = [bounds.left, bounds.right, bounds.right, bounds.left]
+    lats = [bounds.bottom, bounds.bottom, bounds.top, bounds.top]
+    total_area_m2, _ = geod.polygon_area_perimeter(lons, lats)
+    total_area_m2 = abs(total_area_m2)
+    n_pixels = width * height
+    if n_pixels == 0:
+        return 0.0
+    return (total_area_m2 / n_pixels) / 10000

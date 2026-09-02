@@ -733,11 +733,12 @@ class CarbonEstimationPipeline(BasePipeline):
 
             import numpy as np
             import rasterio
+            from pygeovision.data.radiometric import real_pixel_area_ha
             with rasterio.open(img_path) as src:
                 red = src.read(1).astype(np.float32)
                 nir = src.read(2).astype(np.float32)
                 profile = src.profile.copy()
-                pixel_area_ha = abs(src.res[0] * src.res[1]) / 10000
+                pixel_area_ha = real_pixel_area_ha(src.bounds, src.width, src.height, src.crs)
             ndvi = (nir - red) / (nir + red + 1e-8)
             ndvi = np.clip(ndvi, -1.0, 1.0)
 
