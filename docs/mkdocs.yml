@@ -1,7 +1,8 @@
 site_name: PyGeoVision
+docs_dir: .
 site_description: Geospatial AI platform — satellite data via PyGeoFetch, native AI inference, 10 verified pipelines
 site_author: Samuel Appiah Kubi
-site_url: https://pygeovision.org
+site_url: https://eocoreint.org
 repo_url: https://github.com/EOCoreINT/pygeovision
 repo_name: pygeovision/pygeovision
 
