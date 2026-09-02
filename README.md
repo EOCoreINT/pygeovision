@@ -12,7 +12,7 @@ being refined.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22258220.svg)](https://doi.org/10.5281/zenodo.22258220)
 [![image](https://img.shields.io/pypi/pyversions/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
-[![Tests](https://img.shields.io/badge/Tests-864_passing-22c55e?style=flat-square&logo=pytest&logoColor=white)](https://appiahkubis14.github.io/pygeovision-docs/)
+[![Tests](https://img.shields.io/badge/Tests-864_passing-22c55e?style=flat-square&logo=pytest&logoColor=white)](https://pygeovision.readthedocs.io/en/latest/)
 [![pygeofetch](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://appiahkubis14.github.io/pygeofetch-docs/)
 [![Models](https://img.shields.io/badge/Models-119%2B_native-a855f7?style=flat-square)](#-ai-inference--fully-pretrained)
 
@@ -233,7 +233,7 @@ pytest tests/
 
 ## 📋 Documentation
 
-Full docs, tutorials, example notebooks, pipeline configuration guides, and the contributing guide are at **https://appiahkubis14.github.io/pygeovision-docs/**.
+Full docs, tutorials, example notebooks, pipeline configuration guides, and the contributing guide are at **https://pygeovision.readthedocs.io/en/latest/**.
 
 ---
 

@@ -4,7 +4,7 @@ site_description: Geospatial AI platform — satellite data via PyGeoFetch, nati
 site_author: Samuel Appiah Kubi
 site_url: https://eocoreint.org
 repo_url: https://github.com/EOCoreINT/pygeovision
-repo_name: pygeovision/pygeovision
+repo_name: pygeovision
 
 theme:
   name: material
