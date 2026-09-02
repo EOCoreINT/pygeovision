@@ -60,18 +60,6 @@ plugins:
             show_source: true
             show_root_heading: true
 
-
-markdown_extensions:
-  - pymdownx.highlight:   { anchor_linenums: true }
-  - pymdownx.superfences: { custom_fences: [{name: mermaid, class: mermaid, format: !!python/name:pymdownx.superfences.fence_code_format}]}
-  - pymdownx.tabbed:      { alternate_style: true }
-  - pymdownx.details
-  - admonition
-  - toc: { permalink: true }
-  - attr_list
-  - md_in_html
-  - tables
-
 nav:
   - Home: index.md
   - Installation: installation.md
