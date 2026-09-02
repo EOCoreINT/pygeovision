@@ -1,4 +1,13 @@
-sphinx>=7.2
-sphinx-rtd-theme>=2.0
-myst-parser>=2.0
-sphinx-copybutton>=0.5
+# MkDocs core
+mkdocs>=1.5.0
+
+# Material theme (required for your theme)
+mkdocs-material>=9.0.0
+
+# MkDocStrings for Python API docs
+mkdocstrings-python>=1.0.0
+mkdocs-autorefs>=0.5.0
+
+# Optional but recommended
+mkdocs-material-extensions>=1.0.0
+pymdown-extensions>=10.0.0
