@@ -92,7 +92,7 @@ print(f"Shoreline change detected: {result['change_pct']:.2f}%")
 | Dataset | Task | Notes |
 |---------|------|-------|
 | SEN1Floods11 | Flood segmentation | 11 flood events globally |
-| WorldFloods | Flood mapping | 119 Sentinel-2 flood events |
+| WorldFloods | Flood mapping | 119 global flood events (original release, Mateo-García et al. 2021); the v2 release has since expanded to 509 event pairs |
 | CoastalSeg | Coastal zones | 6-class segmentation |
 | WaterNet | Water bodies | Global Landsat |
 | KelpNet | Kelp forest | Multispectral |

@@ -190,3 +190,11 @@ Approximate costs for continuous inference endpoints (on-demand pricing):
 | GCP | n1-std-8 + T4 | T4 | $0.90 | ~$2.25 |
 
 > Tip: Use spot/preemptible instances for batch workloads (up to 90% cheaper).
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.cloud

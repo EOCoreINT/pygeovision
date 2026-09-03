@@ -76,3 +76,11 @@ tsv.seasonal(period=12).show()
 tsv.anomaly(n_sigma=2.0).export("anomalies.png")
 tsv.mosaic(max_cols=3).export("mosaic.png")
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.viz

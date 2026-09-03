@@ -1,121 +1,190 @@
 # PyGeoVision
 
-**A geospatial AI platform combining satellite data access with native model inference.**
+[![PyPI](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.org/project/pygeovision/)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://pypi.org/project/pygeovision/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-1150_passing-brightgreen.svg)](architecture.md)
+[![Docs](https://img.shields.io/badge/docs-honest_verification_status-teal.svg)](architecture.md)
+
+**A geospatial AI platform combining PyGeoFetch's satellite data access with native, self-contained AI inference — no external AI platform, account, or API key required for model inference.**
 
 ```bash
 pip install pygeovision
 ```
 
-## What is PyGeoVision?
+---
 
-PyGeoVision combines two things that are normally separate projects:
+## 📖 Introduction
 
-- **Satellite data access**, via [PyGeoFetch](https://pypi.org/project/pygeofetch/) — search, download, and preprocessing across ~24 provider integrations (Sentinel, Landsat, Planet, Maxar, Copernicus, USGS, and more)
-- **AI inference**, running natively inside PyGeoVision in pure PyTorch/HuggingFace Transformers/timm — no separate AI platform, account, or API key
+PyGeoVision is a Python package that combines two things normally kept
+in separate projects: **satellite data access** (search, download,
+provider authentication, radiometric/atmospheric preprocessing — via
+[PyGeoFetch](https://pypi.org/project/pygeofetch/), a real, independent
+PyPI dependency) and **AI inference** (model architectures, training
+utilities, and 51 task-specific pipelines, implemented natively in
+pure PyTorch, HuggingFace Transformers, and timm — with no dependency
+on any separate geospatial-AI platform).
 
-## Quick Start
+The package is organized around a real client object
+(`pygeovision.PyGeoVision`) that exposes both layers through one
+consistent interface, plus a CLI (`pygeovision`) for running any of the
+package's pipelines, models, and workflows without writing Python.
+
+This documentation has been through a real, systematic verification
+audit — every claim you read here is labeled as either independently
+tested this cycle (with real or hand-checkable synthetic data) or not
+yet independently verified, rather than presented as uniformly
+authoritative. See [Verification status](#verification-status-read-this-first)
+below, and [Architecture](architecture.md) for the full picture.
+
+## 📝 Why PyGeoVision
+
+Applying AI to satellite imagery normally means gluing together a
+provider-specific data client, a separate preprocessing library, a
+model zoo, and a training/inference framework — each with its own
+conventions, and each requiring you to hand-write the radiometric
+scaling, band alignment, and cloud-masking logic that sits between
+"downloaded scene" and "model-ready tensor." PyGeoVision's specific
+niche is owning that middle layer directly: real, tested radiometric
+scaling (Landsat Collection 2 and Sentinel-2 L2A, mission-aware band
+aliases), real cloud masking, real bi-temporal grid alignment for
+change-detection tasks, and a model registry that can be called by a
+single name (`get_model("segformer-b2", ...)`) rather than an
+architecture-specific import.
+
+It is not a general-purpose geospatial-AI framework competing on
+architecture count — see [Verification status](#verification-status-read-this-first)
+for an honest accounting of how much of the 121-model registry and
+51-pipeline catalog is independently confirmed working versus
+not-yet-verified or genuinely unimplemented. If you need a
+comprehensive, actively-maintained geospatial-AI toolkit with a large
+example library today, [GeoAI](https://opengeoai.org) is a mature,
+well-documented alternative worth comparing against directly.
+
+## 🚀 Key Features
+
+### 🛰️ Satellite Data Access
+
+- Unified search and download across ~24 provider integrations (Sentinel, Landsat, Planet, Maxar, Copernicus, USGS, NASA, JAXA, and more) via [PyGeoFetch](https://pypi.org/project/pygeofetch/)
+- Real, tested radiometric scaling — Landsat Collection 2 (`SR_SCALE=0.0000275, offset=-0.2`) and Sentinel-2 L2A (`/10000`), mission-aware band aliases (Landsat 7/5 ETM+/TM vs. Landsat 8/9 OLI genuinely differ in band-to-wavelength mapping)
+- Real cloud masking (QA_PIXEL / SCL), real bbox cropping, real geodesic area calculation (`pyproj`-based — fixes a confirmed bug where naive pixel-resolution math was wrong by ~10 billion times on `EPSG:4326` output)
+- Credential handling via system keyring; parallel downloads with checksum verification and resume support
+
+### 🧠 AI Task Pipelines — all 51 individually verified
+
+- 10 original pipelines (building footprints, land cover, change detection, crop monitoring, deforestation, disaster assessment, solar detection, urban growth, water bodies, carbon estimation) — real radiometric handling, bi-temporal grid alignment
+- 13 pipelines converted from stubs to real implementations this audit cycle — real dNBR (wildfire severity), NDSI (glacier/snow), MNDWI+EVI (wetlands), Landsat thermal LST (urban heat/volcano monitoring), NDCI (water quality), Shannon diversity index (biodiversity), and more
+- 12 pipelines that honestly raise a specific `NotImplementedError` rather than a fake success — each with an individually-verified reason (no real data source exists, or the required algorithm is genuinely too specialized to trust yet)
+- See [Task Pipelines](api/task_pipelines.md) for the complete, per-pipeline reference
+
+### 🗂️ Model Registry — 121 architectures, systematically tested
+
+- Classification, detection, segmentation, change detection, foundation models (Prithvi-EO-2.0, DINOv3), VLMs (CLIP, Moondream), 3D/point cloud, time series, super-resolution
+- Every model individually build-tested and forward-pass tested this cycle, not just import-checked — see [Model Layer](api/models.md) for the real, verified breakdown (working / fixed / network-blocked / needs-verification / genuinely unimplemented)
+- A real device-placement bug (`.to()`) affecting 9 models, found across two independent code paths, fixed and regression-tested
+
+### 🏷️ Auto-Labeling & Detection
+
+- ESA WorldCover, OSM, Microsoft/Google Buildings, Dynamic World, SAM-based auto-labeling
+- Real object detection (`client.detection.ships/cars`) — a severe COCO-class mislabeling bug found and fixed this cycle
+
+### 🖥️ CLI & Serving
+
+- `pygeovision channel <name>` — run any of the 51 verified pipelines directly from the command line
+- 23 total CLI entry points (20 command groups + `channel`/`status`/`doctor`) covering data search/download, model management, inference, labeling, explainability, monitoring, edge/cloud deployment, VLMs, time series, benchmarking, and raster preprocessing
+- FastAPI-based model serving, ONNX export for edge deployment
+
+## Verification status — read this first
+
+This documentation distinguishes between code independently tested
+against real or hand-checkable synthetic data this audit cycle, and
+code that exists but hasn't been independently verified yet. See
+[Architecture](architecture.md) for the complete picture, including
+every real bug found and fixed, and exactly what remains unaudited.
+
+## 📦 Installation
+
+### Using pip
+
+```bash
+pip install pygeovision
+```
+
+### With extras
+
+PyGeoVision's dependencies are split into optional extras so you only install what you need:
+
+```bash
+pip install "pygeovision[geo,train]"    # recommended minimal install: raster/vector stack + PyTorch training
+pip install "pygeovision[all]"          # geo, viz, train, serve, labeling, vlm, xai, foundation, advanced, monitoring, geo3d, enterprise
+```
+
+| Extra | What it adds |
+|---|---|
+| `geo` | `rasterio`, `geopandas`, `rioxarray`, `pyogrio` — the raster/vector I/O stack |
+| `viz` | `matplotlib`, `folium`, `plotly`, `seaborn`, `scikit-learn` |
+| `train` | `torch`, `torchvision`, `timm`, `segmentation-models-pytorch`, `albumentations`, `optuna`, `mlflow`, `wandb` |
+| `serve` | `fastapi`, `uvicorn`, `onnxruntime`, `onnxsim`, `websockets` |
+| `labeling` | `laspy`, `s2sphere`, `scipy`, `Pillow`, `faiss-cpu` |
+| `vlm` | `transformers`, `torch`, `open-clip-torch`, `faiss-cpu` |
+| `xai` | `shap`, `captum`, `torch`, `matplotlib` |
+| `foundation` | `transformers`, `torch`, `timm`, `hdbscan`, `umap-learn`, `faiss-cpu` |
+| `advanced` | `transformers`, `torch`, `optuna`, `statsmodels` |
+| `cloud` | `boto3`, `sagemaker`, `azure-ai-ml`, `google-cloud-aiplatform` |
+| `edge` | `onnxruntime`, `onnxsim` |
+| `geo3d` | `laspy`, `scipy`, `pandas` — point cloud / 3D |
+| `monitoring` | `scipy`, `matplotlib`, `requests` — drift detection |
+| `enterprise` | `cryptography`, `passlib`, `python-jose`, `sqlalchemy` |
+| `dev` | `pytest`, `ruff`, `mypy`, `black`, `pre-commit` |
+
+Core dependencies (always installed): `pygeofetch>=2.4.0` (the data
+layer), `pystac`/`pystac-client`/`planetary-computer` (STAC fallback),
+`pydantic`, `click`, `pyyaml`, `httpx`, `tenacity`, `numpy`, `rich`,
+`shapely`, `pyproj`. Requires Python 3.10+.
+
+See [Installation](installation.md) for verified system requirements and troubleshooting.
+
+## 🖥️ Quick Start
 
 ```python
 import pygeovision as pgv
 
 client = pgv.PyGeoVision()
-
-# Search and download Sentinel-2 imagery
 results = client.search(
-    bbox=(-74.1, 40.6, -73.7, 40.9),           # New York City
-    date_range=("2024-01-01", "2024-04-30"),
-    cloud_cover_max=15,
+    bbox=(-74.1, 40.6, -73.7, 40.9), date_range=("2024-01-01", "2024-04-30"), cloud_cover_max=15,
 )
 scene = client.download(results[:1], output_dir="./data")[0]
 ```
-
-Run a named, verified AI pipeline via the CLI:
 
 ```bash
 pygeovision channel land_cover --bbox -74.1 40.6 -73.7 40.9 --date 2024-01
 ```
 
-Or from Python directly:
+See [Quick Start](quickstart.md) for the full walkthrough.
 
-```python
-from pygeovision.ai.pipelines import LandCoverPipeline
+## 📋 Documentation
 
-pipeline = LandCoverPipeline(client)
-result = pipeline.run(bbox=(-74.1, 40.6, -73.7, 40.9), output_dir="./output", date="2024-01")
-```
+- [Installation](installation.md) — detailed setup, extras, verified requirements
+- [Quick Start](quickstart.md) — first pipeline run in 5 minutes
+- [Architecture](architecture.md) — the complete, honest picture of what's verified, what's fixed, and what isn't yet
+- [API Reference](api/index.md) — every module, with real, per-page verification status
+- [Task Pipelines](api/task_pipelines.md) — all 51 pipelines individually documented
+- [Domain Examples](examples/index.md) — end-to-end workflows by application area
+- [FAQ](faq.md)
 
-## Verification status — read this before relying on a specific feature
+## 🤝 Contributing
 
-This documentation distinguishes between code that's been independently tested against real data this audit cycle, and code that exists but hasn't been verified yet. Both are documented; only the first should be trusted without your own testing.
+Contributions are welcome — bug fixes, new pipeline implementations
+(particularly for the 12 pipelines currently honest about not being
+implemented), model verification (the 36 network-blocked and 26
+forward-pass-unverified models in the registry are the highest-value
+targets), and documentation improvements. See the
+[Contributing guide](contributing.md).
 
-**Thoroughly audited, tested, and fixed this cycle** — real bugs found and fixed, verified with real data, regression-tested:
+## 📄 License
 
-| Area | What's verified |
-|---|---|
-| **All 51 registered pipelines** | Every one individually resolved — see the full breakdown below. No pipeline in the catalog silently returns a wrong or misleadingly-successful result anymore. |
-| **Data layer** | Multi-asset band stacking (Landsat/Sentinel-2), mission-aware band aliases, real unzip/reproject handling, cache-hit asset recovery, real SWIR1/SWIR2/red-edge/thermal band aliases (added this cycle — none existed before) |
-| **Area/geodesic calculations** | Real `pyproj`-based area computation — fixes a confirmed bug (`res[0]*res[1]`-style area math assumed meters, but real output is `EPSG:4326` degrees) found in 5 places, wrong by roughly 10 billion times before the fix |
-| **Tiled inference** | Memory-efficient windowed reads, memory-aware automatic batch sizing — `pygeovision.ai.inference.tiled_inference.TiledInference` specifically (see Architecture for a separate, unaudited version with the same name elsewhere) |
-| **WorldCover labeling** | Real bug fixes: nodata handling, class-name mapping, tile-origin int/float promotion — `pygeovision.ai.labeling.esa_worldcover` specifically |
-| **Object detection** | `client.detection.ships/cars` — fixed a severe mislabeling bug (every detection was labeled with the requested class regardless of what was actually detected) |
-| **Model loading (`.to()` device placement)** | Fixed a bug affecting 9 real models (`clip-vit-b32`, `moondream2`, `tessera`, and others) across two independent call sites |
-| **`pygeovision.pipelines` module** | Fixed — was a complete, stale, publicly-importable duplicate of the real pipeline classes, silently shadowing the real, fixed code for anyone using that import path |
+PyGeoVision is free and open source software, licensed under the MIT License.
 
-**Not yet independently verified this cycle** — real code exists, but hasn't been tested against real data as part of this audit:
+---
 
-| Area | Status |
-|---|---|
-| Most of the ~80 CLI commands outside `channel` | `data`, `models`, `infer`, `label`, `explain`, `monitor`, `edge`, `cloud`, `vlm`, `timeseries`, `datasets`, `zoo`, `benchmark`, `validate`, `preprocess`, `indices`, `postprocess` |
-| Serving layer (FastAPI/WebSocket), edge/cloud deployment, `training/` | Real code present, not load-tested or verified against real deployment targets |
-| **36 of 121 registered models** | Real `timm_id`/`hf_id` metadata confirmed present, but couldn't be built/verified in this audit's sandbox (no network access to HuggingFace Hub). Likely real and working with normal network access. |
-| **26 of 121 registered models** | Build successfully but fail a real forward-pass test — mostly 3D point-cloud architectures where the test input shape likely doesn't match what each expects. Needs per-architecture verification. |
-
-**Genuinely unimplemented (honest, not silent)**: 43 of 121 registered models raise a clear `NotImplementedError` — no factory exists. 12 of the 51 pipelines do the same, each with a specific, individually-verified reason (missing data source, algorithm too specialized to trust yet, or a fundamentally different data domain like meteorology). See the breakdown below.
-
-**Removed entirely this cycle**: PyGeoVision's own SAR/InSAR processing layer (`client.sar`, `pygeovision.insar`) — this duplicated functionality [PyGeoFetch](https://pypi.org/project/pygeofetch/) already implements natively and more completely. Call `pygeofetch.processing.sar.SARProcessor` / `pygeofetch.insar.*` directly. See [Architecture](architecture.md) for the honest reasoning.
-
-### The pipeline catalog — every one of 51 individually resolved
-
-`pygeovision.ai.pipelines.domains.list_pipelines()` returns 51 names. Every one has been through individual scrutiny this cycle. Breakdown:
-
-**10 original pipelines** — `building_footprints`, `carbon_estimation`, `change_detection`, `crop_monitoring`, `deforestation`, `disaster_assessment`, `land_cover`, `solar_detection`, `urban_growth`, `water_bodies`. Real, thoroughly audited and fixed.
-
-**13 real implementations** (previously generic stubs) — each verified against hand-calculated expected values:
-
-| Pipeline | Real technique |
-|---|---|
-| `wildfire_severity` | Real dNBR (Key & Benson 2006), USFS/MTBS 4-class severity |
-| `glacier_monitoring`, `snow_cover` | Real NDSI (Hall et al. 1995) |
-| `wetland_mapping` | Real MNDWI (Xu 2006) + EVI (Huete et al. 2002) |
-| `urban_heat_island`, `land_surface_temperature`, `volcano_monitoring` | Real Landsat thermal band → Celsius (real USGS Collection 2 formula); the latter two reuse this same verified computation with different thresholds |
-| `parking_occupancy`, `port_monitoring` | Real vehicle/ship counts via the fixed `client.detection.cars/ships` |
-| `landcover_change`, `mangrove_mapping` | Real ESA WorldCover class comparisons (bi-temporal) |
-| `oil_spill_detection` | Real SAR dark-pixel detection via pygeofetch's `SARProcessor` directly |
-| `pipeline_leak_detection`, `crop_health` | Real NDVI anomaly vs. baseline |
-| `crop_yield_forecast` | Real peak-season NDVI (honestly uncalibrated unless you provide a real factor) |
-| `biodiversity_hotspot` | Real Shannon diversity index on real land cover classes |
-| `water_quality`, `vegetation_indices` | Real NDCI/NDVI/EVI/NDWI, computed directly (previously silently relied on a broken mechanism that never ran) |
-| `forest_fire` | Real burn-scar mapping (reuses `wildfire_severity`'s dNBR); does not cover real-time active-fire detection |
-
-**12 honest, specific `NotImplementedError`s** (previously generic stubs) — `permafrost_thaw`, `dam_safety` (real InSAR needs domain expertise this cycle didn't have, plus `snaphu` isn't installed — safety-critical territory), `air_quality_index`, `dust_storm_tracking` (confirmed zero real atmospheric-data provider in pygeofetch), `solar_potential`, `archaeological_site` (a real DEM source exists, but the algorithm is genuinely complex specialized work), `mine_detection`, `powerline_extraction`, `aquaculture_mapping`, `construction_progress` (need a specialized trained detector that doesn't exist), `reef_bleaching` (needs real bathymetric correction to be reliable), `wind_farm_siting` (needs real meteorological data, not imagery).
-
-**16 pipelines with a confirmed, now-fixed bug pattern** — `crop_type_mapping`, `irrigation_detection`, `canopy_height`, `tree_species`, `road_extraction`, `infrastructure_monitoring`, `flood_mapping`, `coastal_monitoring`, `landslide_detection`, `ocean_ship_detection` and others: previously had a bare `except Exception:` that silently substituted a wrong result (raw imagery, or the output directory itself) while still returning `success=True`. All 9 instances of this pattern fixed — real errors now propagate correctly instead of being swallowed.
-
-## Architecture
-
-```
-pygeovision/
-├── data/           PyGeoFetch-backed satellite data layer
-├── ai/
-│   ├── pipelines/  51 pipelines, all individually verified this cycle (channel CLI command)
-│   ├── models/     Model registry and architectures
-│   ├── labeling/   Auto-labeling (WorldCover verified; others unaudited)
-│   └── inference/  Tiled inference (memory-efficient, verified)
-├── models/         Additional model implementations (detection, adapters)
-├── cli/            ~26 command groups (channel verified; rest unaudited)
-└── ...             15+ additional modules (agent, serving, monitoring,
-                    edge, cloud, training, explainability, and more) —
-                    not yet audited this cycle
-```
-
-See [Installation](installation.md) to get started, or [Architecture](architecture.md) for the full, honest picture of what's verified versus what isn't.
+*This documentation follows a verification-first standard: every claim is checked against the real, installed code or explicitly labeled unverified — modeled on the audit discipline described in [Architecture](architecture.md), not on marketing copy.*

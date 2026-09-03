@@ -673,11 +673,15 @@ def ai_train(task, data_dir, output, num_classes, epochs, backbone):
     click.echo(f"Preparing native {task} training config...")
     click.echo(f"  Data: {data_dir} | Classes: {num_classes} | Epochs: {epochs} | Backbone: {backbone}")
 
-    cfg = TrainingConfig(num_classes=num_classes, max_epochs=epochs)
-    click.echo(f"✓ Config ready. Build your model with the chosen backbone, then train:")
+    cfg = TrainingConfig(task=task, num_classes=num_classes, max_epochs=epochs)
+    click.echo(f"✓ Config ready. This command does NOT train anything itself -- build "
+               f"your model with the chosen backbone, then train it yourself:")
     click.echo(f"    model = get_model({backbone!r}, num_classes={num_classes}, pretrained=True)")
+    click.echo(f"    # To finetune from an existing checkpoint instead of pretrained weights:")
+    click.echo(f"    # cfg.checkpoint_path = '/path/to/existing_checkpoint.pth'")
     click.echo(f"    GeoTrainer(model, cfg).fit(train_ds, val_ds)")
-    click.echo(f"  Output will be saved to {output}")
+    click.echo(f"  Real output path (only written once you actually call .fit() yourself, "
+               f"not by this command): {output}")
     click.echo(f"  Config: {cfg.__dict__}")
 
 

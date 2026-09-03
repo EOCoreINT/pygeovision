@@ -74,7 +74,7 @@ Every one verified against a hand-calculated expected value, not just "runs with
 Real, dedicated classes that had either (a) a bare `except Exception:`
 silently substituting a wrong result while still returning
 `success=True`, or (b) a claimed-but-never-actually-computed index via
-a broken mechanism. All fixed — see [Architecture](../architecture.md#the-pipeline-catalog--every-one-of-51-resolved)
+a broken mechanism. All fixed — see [Architecture](../architecture.md#the-pipeline-catalog-every-one-of-51-resolved)
 for the fix categories.
 
 | Name | Class | Real signature | Fix applied |

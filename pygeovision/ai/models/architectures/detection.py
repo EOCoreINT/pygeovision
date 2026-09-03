@@ -13,7 +13,13 @@ def build_fcos(backbone: str = "resnet50", num_classes: int = 2, in_channels: in
         import torchvision.models.detection as det
         if backbone == "resnet50" and in_channels == 3:
             weights = "DEFAULT" if pretrained else None
-            model = det.fcos_resnet50_fpn(weights=weights, num_classes=num_classes, **kwargs)
+            # Real fix: fcos_resnet50_fpn's weights_backbone defaults to
+            # a pretrained ResNet50 regardless of the main `weights` arg
+            # -- pretrained=False previously still triggered a real
+            # network download of backbone weights.
+            weights_backbone = "DEFAULT" if pretrained else None
+            model = det.fcos_resnet50_fpn(weights=weights, weights_backbone=weights_backbone,
+                                           num_classes=num_classes, **kwargs)
             logger.info("Built FCOS(backbone=%s, num_classes=%d)", backbone, num_classes)
             return model
     except Exception:
@@ -37,7 +43,10 @@ def build_retinanet(backbone: str = "resnet50", num_classes: int = 2, in_channel
     try:
         import torchvision.models.detection as det
         weights = "DEFAULT" if (pretrained and in_channels == 3) else None
-        model = det.retinanet_resnet50_fpn(weights=weights, num_classes=num_classes, **kwargs)
+        # Real fix: same weights_backbone gap as build_fcos above.
+        weights_backbone = "DEFAULT" if (pretrained and in_channels == 3) else None
+        model = det.retinanet_resnet50_fpn(weights=weights, weights_backbone=weights_backbone,
+                                            num_classes=num_classes, **kwargs)
         logger.info("Built RetinaNet(backbone=%s, num_classes=%d)", backbone, num_classes)
         return model
     except Exception as exc:

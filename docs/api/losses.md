@@ -4,7 +4,7 @@
 
 ---
 
-10 geospatial-specific loss functions for segmentation, detection, and classification. All are `torch.nn.Module` subclasses that integrate directly into any PyTorch training loop.
+15 geospatial-specific loss functions for segmentation, detection, and classification -- corrected this cycle from an earlier claim of 10, found by cross-checking against the real, auto-generated module listing below. All are `torch.nn.Module` subclasses that integrate directly into any PyTorch training loop.
 
 ---
 
@@ -16,8 +16,10 @@ from pygeovision.losses.segmentation import (
     BoundaryAwareLoss, LovaszLoss, OhemCrossEntropy,
     GeospatialMixedLoss,
 )
-from pygeovision.losses.detection   import CIoULoss, DIoULoss
-from pygeovision.losses.class_balance import ClassBalancedCrossEntropy
+from pygeovision.losses.detection import CIoULoss, DIoULoss, GIoULoss, SIoULoss
+from pygeovision.losses.class_balance import (
+    ClassBalancedCrossEntropy, FocalCrossEntropy, LabelSmoothingCrossEntropy,
+)
 ```
 
 ---
@@ -229,3 +231,13 @@ trainer = GeoTrainer(
 )
 trainer.fit(train_dl, val_dl)
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class and its real, current docstring/signature, generated
+directly from source so it can't drift out of sync the way the hand-written
+count above did:
+
+::: pygeovision.losses

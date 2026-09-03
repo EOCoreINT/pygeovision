@@ -81,3 +81,11 @@ Note: an earlier version of this planner also made a sensor decision (SAR vs. op
 | `run_pipeline` | pipeline | Named end-to-end pipelines — see [Pipelines](pipelines.md) for which of the 51 registered names are actually verified |
 
 To add a new tool: subclass `GeoTool` in `agent/tools.py`, then register it in `TOOL_REGISTRY` at the bottom of that file.
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.agent

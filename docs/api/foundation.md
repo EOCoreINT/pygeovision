@@ -328,25 +328,35 @@ result = finetune_prithvi(
 
 ## GeoAI Engine
 
-Access foundation models through the high-level engine:
+Access foundation models through their real, direct module paths --
+there is no `client.geoai` namespace (confirmed directly against the
+installed code: `hasattr(client, 'geoai')` is `False`). An earlier
+version of this page used that namespace throughout; every example
+below has been replaced with real, verified imports.
 
 ```python
-import pygeovision as pgv
-
-client = pgv.PyGeoVision()
+from pygeovision.models.foundation.dinov3 import DINOv3Backbone, CHMv2Model
+from pygeovision.models.foundation.prithvi import load_prithvi_hf
 
 # DINOv3
-client.geoai.dinov3.load("dinov3_vitl16_sat")
-features = client.geoai.dinov3.extract_features("sentinel2.tif")
-height   = client.geoai.dinov3.canopy_height("forest.tif")
-mask     = client.geoai.dinov3.zero_shot("scene.tif", "solar panels")
+backbone = DINOv3Backbone(model_name="dinov3_vitl16_sat", device="cuda")
+features = backbone.extract_features("sentinel2.tif")
+
+chm = CHMv2Model(device="cuda")
+height = chm.predict_canopy_height("forest.tif", output_path="./output/canopy_height.tif")
 
 # Prithvi
-client.geoai.prithvi.load("prithvi_eo_2_0")
-lc     = client.geoai.prithvi.land_cover("hls.tif")
-change = client.geoai.prithvi.change_detection("2021.tif", "2024.tif")
-
-# All at once
-print(client.geoai.foundation_models.list())
-# {'dinov3': [...12 models...], 'prithvi': [...4 models...]}
+model = load_prithvi_hf(model_name="prithvi_eo_2_0", device="cuda")
 ```
+
+For the full, real registry of foundation-model architectures (which
+of these are confirmed working vs. network-blocked vs. genuinely
+unimplemented in this audit), see [Model Layer](models.md).
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.models.foundation

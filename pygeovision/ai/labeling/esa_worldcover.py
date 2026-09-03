@@ -186,18 +186,26 @@ class ESAWorldCoverLabeler(BaseLabeler):
             wc_tile_paths = self._get_worldcover_tiles(bbox_wgs84)
 
             if not wc_tile_paths:
-                # Return background mask if no tiles found
+                # Real bug fixed here, confirmed by direct testing: this
+                # branch previously wrote an all-zero background mask and
+                # returned a LabelingResult with no error/skipped set --
+                # since LabelingResult.success is a computed property
+                # (not skipped and error is None and label_path is not
+                # None), that silently evaluated to success=True. Every
+                # caller (LandCoverPipeline's "worldcover" source, and
+                # everything that delegates to it -- MangroveMapping,
+                # LandcoverChange, BiodiversityHotspot) could silently
+                # "succeed" with a meaningless, empty classification
+                # whenever the real WorldCover reference tiles were
+                # unreachable (network failure, no credentials, etc.).
+                # Now explicitly signals failure via `error`.
                 logger.warning("No WorldCover tiles found for bbox %s", bbox_wgs84)
-                mask = np.zeros((height, width), dtype=np.uint8)
-                self._write_mask_geotiff(
-                    mask, output_path,
-                    {"driver": "GTiff", "dtype": "uint8", "width": width,
-                     "height": height, "count": 1, "crs": crs,
-                     "transform": transform, "compress": "lzw"}
-                )
                 return LabelingResult(
-                    tile_id=str(tile_path), label_path=output_path,
+                    tile_id=str(tile_path), label_path=None,
                     source="esa_worldcover",
+                    error=f"No real WorldCover reference tiles could be downloaded for "
+                          f"bbox {bbox_wgs84} -- check network access and AWS S3 reachability "
+                          f"(esa-worldcover public bucket). Not a real classification result.",
                 )
 
             # Mosaic and reproject WorldCover data to tile CRS/extent

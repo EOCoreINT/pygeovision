@@ -4,7 +4,7 @@
 
 ---
 
-503-entry benchmark database spanning 14 geospatial AI research domains — the most comprehensive open registry of remote sensing datasets.
+503-entry benchmark database spanning 28 real domains (confirmed directly: `agriculture`, `archaeology`, `atmosphere`, `biodiversity`, `census`, `climate`, `coast`, `disaster`, `ecology`, `energy`, `forestry`, `foundation`, `geology`, `health`, `land_cover`, `military`, `mining`, `ocean`, `sar`, `snow_ice`, `soil`, `transportation`, `urban`, `vlm`, `water`, `wildfire`, `3d`, and `other`) -- corrected this cycle from an earlier claim of 14, found via the real, verified `dataset_registry.domains()` call.
 
 ---
 
@@ -199,3 +199,11 @@ for d in suite:
 | `thermal` | Thermal infrared |
 | `multimodal` | Multiple sensor types |
 | `passive_microwave` | Passive microwave (SMOS, AMSR2) |
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.datasets

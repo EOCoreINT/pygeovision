@@ -164,3 +164,17 @@ calibrated = sar.calibrate(despeckled.output_path, output_type="sigma0", in_db=T
 ```
 
 See [Architecture](../architecture.md) for the full reasoning behind this removal.
+
+---
+
+## Complete, auto-generated reference — `PyGeoVision` class
+
+The main client class's real, current methods and signatures,
+generated directly from source (the top-level module also defines
+several internal proxy classes for `client.detection`,
+`client.labeling`, etc. — not shown here individually; see their
+respective pages).
+
+::: pygeovision.PyGeoVision
+    options:
+      show_source: false

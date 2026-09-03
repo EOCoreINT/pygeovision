@@ -108,3 +108,11 @@ stats = proc.statistics()
 print(f"Point density: {stats['mean_density_per_m2']:.1f} pts/m²")
 print(f"Coverage:      {stats['coverage_pct']:.1f}%")
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.advanced.pointcloud

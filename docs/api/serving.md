@@ -246,3 +246,11 @@ server = InferenceServer(auth_keys={os.environ["API_USER"]: os.environ["API_KEY"
 server.register("seg_v1", "/app/model.onnx", task="segmentation", num_classes=7)
 server.serve(host="0.0.0.0", port=8080, workers=2)
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.serving

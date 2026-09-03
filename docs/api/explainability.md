@@ -176,3 +176,11 @@ cam.save_geotiff(
     class_idx=1,
 )
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.explainability

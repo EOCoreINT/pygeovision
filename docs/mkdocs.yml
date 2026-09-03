@@ -1,45 +1,76 @@
 site_name: PyGeoVision
-docs_dir: .
-site_description: Geospatial AI platform — satellite data via PyGeoFetch, native AI inference, 10 verified pipelines
-site_author: Samuel Appiah Kubi
-site_url: https://eocoreint.org
-repo_url: https://github.com/EOCoreINT/pygeovision
-repo_name: pygeovision
+site_description: Geospatial AI platform — satellite data via PyGeoFetch, native AI inference, 51 individually-verified pipelines
+site_author: PyGeoVision Team
+site_url: https://pygeovision.org
+repo_url: https://github.com/pygeovision/pygeovision
+repo_name: pygeovision/pygeovision
 
 theme:
   name: material
+  icon:
+    logo: material/satellite-variant
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
   palette:
-    - scheme: default
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
       primary: teal
       accent: deep-orange
       toggle:
-        icon: material/brightness-7
+        icon: material/weather-sunny
         name: Switch to dark mode
-    - scheme: slate
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
       primary: teal
       accent: deep-orange
       toggle:
-        icon: material/brightness-4
+        icon: material/weather-night
         name: Switch to light mode
   font:
-    text: Roboto
-    code: Roboto Mono
-  icon:
-    repo: fontawesome/brands/github
+    text: Inter
+    code: JetBrains Mono
   features:
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.expand
+    - navigation.indexes
     - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - toc.follow
     - search.highlight
     - search.share
+    - search.suggest
     - content.code.copy
     - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+    - header.autohide
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/pygeovision/pygeovision
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/pygeovision/
+  generator: false
+
+copyright: Copyright &copy; 2024–2026 PyGeoVision contributors
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - codehilite
   - meta
+  - tables
+  - def_list
   - toc:
       permalink: true
   - pymdownx.superfences
@@ -49,6 +80,11 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - attr_list
   - md_in_html
 
@@ -60,6 +96,20 @@ plugins:
           options:
             show_source: true
             show_root_heading: true
+            show_root_toc_entry: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            docstring_style: google
+            docstring_section_style: table
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            members_order: source
+            group_by_category: true
+            summary: true
+            filters: ["!^_"]
+            heading_level: 2
 
 nav:
   - Home: index.md
@@ -69,6 +119,7 @@ nav:
   - API Reference:
     - Overview: api/index.md
     - PyGeoVision Client: api/pygeovision.md
+    - Data Layer: api/data.md
     - Model Layer: api/models.md
     - Auto-Labeling: api/labeling.md
     - Loss Functions: api/losses.md
@@ -83,6 +134,7 @@ nav:
     - Point Cloud (3D): api/pointcloud.md
     - Training Framework: api/training.md
     - Serving API: api/serving.md
+    - REST API Definitions: api/rest_api.md
     - Pipelines: api/pipelines.md
     - Task Pipelines (all 51): api/task_pipelines.md
     - Dataset Registry: api/datasets.md
@@ -90,6 +142,11 @@ nav:
     - Foundation Models: api/foundation.md
     - Agent: api/agent.md
     - Visualization: api/viz.md
+    - Core: api/core.md
+    - Benchmarking: api/benchmark.md
+    - Enterprise: api/enterprise.md
+    - Preprocessing: api/preprocess.md
+    - Utilities: api/utils.md
   - Tutorials:
     - Overview: tutorials/index.md
     - Getting Started: tutorials/getting_started.md

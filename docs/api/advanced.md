@@ -126,3 +126,11 @@ search_space = {
     "warmup_epochs":    ("int", 0, 20),
 }
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.advanced

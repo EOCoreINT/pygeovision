@@ -166,3 +166,11 @@ mt = PrithviMultiTemporal("prithvi_eo_2_0")
 ts_result = mt.process_time_series(images, dates=["2024-01", ..., "2024-12"])
 trend = mt.monitor_trend(images)
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.advanced.timeseries

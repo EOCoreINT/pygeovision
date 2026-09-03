@@ -182,3 +182,20 @@ All inference engines write standard GeoTIFF outputs:
 - **Bands:** 1 band (class ID) or C bands (per-class probabilities if `return_probabilities=True`)
 - **Compression:** LZW (lossless, ~4× size reduction)
 - **Tags:** Model name, inference date, chip_size, overlap written to GeoTIFF metadata
+
+---
+
+## Complete, auto-generated reference
+
+This is `pygeovision.inference` — the separate, unaudited version (see
+[Architecture](../architecture.md) for the confirmed difference from
+`pygeovision.ai.inference.tiled_inference`, which has the real
+memory-efficiency fixes).
+
+::: pygeovision.inference
+
+### The audited version, for comparison
+
+::: pygeovision.ai.inference.tiled_inference
+    options:
+      show_source: false

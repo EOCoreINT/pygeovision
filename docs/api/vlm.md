@@ -119,3 +119,11 @@ clusters = retrieval.cluster(
     output_dir="./clusters/",
 )
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.advanced.vlm

@@ -170,3 +170,11 @@ Approximate inference throughput for `segformer-b2` on 512×512 chips:
 | Jetson Orin (TRT) | FP16 | ~45 chips/s |
 | Jetson Xavier (TRT) | FP16 | ~25 chips/s |
 | Jetson Nano (TRT) | FP16 | ~8 chips/s |
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.edge

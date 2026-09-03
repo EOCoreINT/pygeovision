@@ -249,3 +249,11 @@ print(f"Cache: {downloader.cache_size_gb():.2f} GB")
 # Clear specific model
 downloader.clear_cache("facebook/sam-vit-large")
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source. Note: this is pygeovision.models -- the top-level registry -- not pygeovision.ai.models (a separate, smaller registry, see Architecture).
+
+::: pygeovision.models

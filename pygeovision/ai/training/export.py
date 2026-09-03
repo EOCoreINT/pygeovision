@@ -102,16 +102,28 @@ class ModelExporter:
 
         logger.info("Exporting to ONNX (opset=%d)…", self.opset_version)
         with torch.no_grad():
-            torch.onnx.export(
-                self.model,
-                dummy,
-                str(output_path),
-                opset_version=self.opset_version,
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dyn,
-                do_constant_folding=True,
-            )
+            try:
+                torch.onnx.export(
+                    self.model,
+                    dummy,
+                    str(output_path),
+                    opset_version=self.opset_version,
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_axes=dyn,
+                    do_constant_folding=True,
+                )
+            except ModuleNotFoundError as exc:
+                # Real fix, confirmed by hitting this directly: modern
+                # PyTorch's default ONNX export path additionally
+                # requires onnxscript (separate from the top-level onnx
+                # package already checked for above) -- without it this
+                # raised a confusing raw traceback mentioning an
+                # unfamiliar module, not this clear message.
+                raise ImportError(
+                    f"ONNX export failed: {exc}. Modern PyTorch's default ONNX "
+                    f"exporter also requires onnxscript. Install: pip install onnxscript"
+                ) from exc
 
         # Verify
         onnx_model = onnx.load(str(output_path))

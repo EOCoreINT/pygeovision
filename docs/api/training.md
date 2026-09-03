@@ -231,3 +231,21 @@ iou_per_class = metric.compute()   # Tensor of shape (num_classes,)
 mean_iou      = iou_per_class.mean().item()
 metric.reset()
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Two genuinely different training implementations exist in this
+codebase (see [Architecture](../architecture.md)) -- neither has been
+independently audited this cycle, but they differ substantially in
+scope (this one includes DDP/FSDP, Optuna HPO, and MLflow/W&B
+integration; `ai.training` is a simpler, more focused loop).
+
+::: pygeovision.training
+
+### The separate `ai.training` implementation, for comparison
+
+::: pygeovision.ai.training
+    options:
+      show_source: false

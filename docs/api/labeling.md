@@ -261,3 +261,19 @@ result = pipeline.run(
 
 print(f"Agreement map saved: {result['agreement_path']}")
 ```
+
+---
+
+## Complete, auto-generated reference
+
+This is `pygeovision.labeling` — the separate, unaudited version (see
+[Architecture](../architecture.md) for the confirmed difference from
+`pygeovision.ai.labeling.esa_worldcover`, which has 3 real, fixed bugs).
+
+::: pygeovision.labeling
+
+### The audited version, for comparison
+
+::: pygeovision.ai.labeling.esa_worldcover
+    options:
+      show_source: false

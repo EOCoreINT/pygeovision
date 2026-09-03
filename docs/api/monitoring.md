@@ -163,3 +163,11 @@ class ProductionMonitor:
 
         return {"drift": drift_report, "performance": val_metrics, "alerts": fired}
 ```
+
+---
+
+## Complete, auto-generated reference
+
+Every class/function and its real, current docstring/signature, generated directly from source.
+
+::: pygeovision.monitoring

@@ -20,9 +20,11 @@ pygeovision --help
 
 ## `pygeovision channel` — verified this cycle
 
-Runs one of the 10 real, audited pipelines. See [Pipelines](pipelines.md)
-and [Architecture](../architecture.md) for which of the 51 registered
-pipeline names this actually covers well.
+Runs any of the 51 registered pipelines -- every one has been
+individually resolved this cycle (not just the original 10). See
+[Task Pipelines](task_pipelines.md) for the complete, per-pipeline
+breakdown of which are real implementations, which honestly raise
+`NotImplementedError`, and why.
 
 ```bash
 pygeovision channel land_cover --bbox -74.1 40.6 -73.7 40.9 --date 2024-01
@@ -44,11 +46,12 @@ Run `pygeovision channel --help` for the full, current list of pipeline names.
 
 ## Other command groups — not independently verified this cycle
 
-The CLI has roughly 25 additional top-level command groups beyond
-`channel`, covering data search/download, model management, inference,
-labeling, explainability, monitoring, edge/cloud deployment,
-vision-language models, time series, dataset/model registries,
-benchmarking, validation, and raster preprocessing/indices/postprocessing.
+The CLI has 20 additional top-level command groups beyond `channel`
+(`data`, `ai`, `ai-models`, `models`, `infer`, `label`, `explain`,
+`monitor`, `pipeline`, `edge`, `cloud`, `vlm`, `timeseries`, `datasets`,
+`zoo`, `benchmark`, `validate`, `preprocess`, `indices`, `postprocess`
+-- confirmed directly by counting real `@cli.group` decorators), plus 2
+more direct top-level commands (`status`, `doctor`).
 
 Run `pygeovision --help` for the authoritative, current list — this page
 intentionally doesn't enumerate all ~80 individual commands, since doing

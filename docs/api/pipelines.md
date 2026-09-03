@@ -262,3 +262,11 @@ Six ready-to-run pipeline templates are included:
 p = Pipeline.from_yaml("pygeovision/pipelines/templates/agriculture.yaml")
 p.run(context={"client": client, "bbox": [8.5, 47.3, 8.7, 47.4]})
 ```
+
+---
+
+## Complete, auto-generated reference
+
+The real YAML orchestrator class and its methods, generated directly from source.
+
+::: pygeovision.pipelines.orchestrator
