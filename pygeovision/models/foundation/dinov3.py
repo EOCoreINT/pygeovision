@@ -1,9 +1,24 @@
 """
 DINOv3 — Complete independent integration for PyGeoVision.
 
-12 model variants:
+*** HONEST WARNING, confirmed by direct code inspection: no path in this
+*** file loads real DINOv3 weights. Every hf_id below points to generic
+*** facebook/dinov2-* checkpoints, and load_dinov3_hub()'s "PyTorch Hub —
+*** official FacebookResearch repository" claim is also false: it calls
+*** torch.hub.load("facebookresearch/dinov2", ...) -- the DINOv2 repo,
+*** not DINOv3. The "_sat" variants' SAT-493M satellite-pretraining claim
+*** is likewise false -- the same generic, non-satellite DINOv2 weights
+*** are loaded regardless of which "_sat" name is requested. Real DINOv3
+*** weights are not currently wired into this codebase anywhere. This
+*** module is kept rather than deleted because real pipeline code
+*** (ai/pipelines/domains.py's CHMv2Model usage, sar_channel_manager.py's
+*** DINOv3Backbone usage) depends on these classes existing and being
+*** importable -- but treat everything below as "real DINOv2, mislabeled
+*** as DINOv3" until real DINOv3 weights are actually integrated.
+
+12 model variants (see honest warning above -- all currently load DINOv2):
   ViT Web:      vits16 / vits16plus / vitb16 / vitl16 / vith16plus / vit7b16
-  ViT SAT:      vitl16_sat / vit7b16_sat (trained on SAT-493M satellite corpus)
+  ViT SAT:      vitl16_sat / vit7b16_sat (NOT actually SAT-493M-pretrained -- see warning above)
   ConvNeXt:     convnext_tiny / convnext_small / convnext_base / convnext_large
 
 6 task heads:
@@ -11,13 +26,15 @@ DINOv3 — Complete independent integration for PyGeoVision.
   segmentor (ADE20K), dinotxt (zero-shot), chmv2 (canopy height)
 
 3 loading methods:
-  1. PyTorch Hub (official FacebookResearch repo)
-  2. HuggingFace Transformers (recommended)
+  1. PyTorch Hub (loads DINOv2, NOT DINOv3 -- see honest warning above)
+  2. HuggingFace Transformers (loads DINOv2, NOT DINOv3 -- see honest warning above)
   3. Local weights (enterprise / air-gapped)
 
 Transforms:
   Web:      ImageNet mean/std = (0.485, 0.456, 0.406) / (0.229, 0.224, 0.225)
   SAT-493M: Satellite mean/std = (0.430, 0.411, 0.296) / (0.213, 0.156, 0.143)
+  (the SAT-493M transform is defined but not meaningful given no real
+  SAT-493M-pretrained weights are actually loaded by this file)
 """
 from __future__ import annotations
 
@@ -166,11 +183,16 @@ def load_dinov3_hub(model_name: str = "dinov3_vitl16",
             "convnext":   "dinov2_vitb14",  # hub doesn't have ConvNeXt, fallback
         }
         hub_name = hub_name_map.get(arch, "dinov2_vitl14")
-        logger.info("Loading %s via torch.hub (%s)...", model_name, hub_name)
+        logger.warning(
+            "Loading %s: this actually loads DINOv2 (%s via facebookresearch/dinov2), "
+            "NOT real DINOv3 -- no real DINOv3 weights are wired into this codebase. "
+            "See the module-level warning in this file for details.",
+            model_name, hub_name,
+        )
         model = torch.hub.load("facebookresearch/dinov2", hub_name,
                                  pretrained=True, force_reload=False)
         model = model.to(device).eval()
-        logger.info("DINOv3 hub loaded: %s on %s", hub_name, device)
+        logger.info("Loaded (DINOv2, not DINOv3): %s on %s", hub_name, device)
         return model
     except Exception as exc:
         logger.warning("torch.hub load failed (%s), falling back to HuggingFace", exc)

@@ -279,6 +279,28 @@ class TiledInference:
             bands = band_selection or list(range(1, n_bands + 1))
             image = src.read(bands).astype(np.float32)
 
+        # Real fix, confirmed by direct inspection: this previously had
+        # zero validation that the selected band count (defaults to
+        # ALL bands in the file) actually matches what the model
+        # expects as input -- the same class of bug already found and
+        # fixed in the separate ai.inference.tiled_inference engine
+        # (a real user hit "expected 3 bands, got 13" there), but this
+        # parallel, CLI-reachable engine never got that fix. Real
+        # pre-flight check: a tiny dummy forward pass with the actual
+        # selected band count, so a mismatch surfaces here with a
+        # clear message rather than deep inside the tile loop.
+        try:
+            with torch.no_grad():
+                dummy = torch.zeros(1, len(bands), 32, 32)
+                self.model(dummy.to(self._device))
+        except Exception as exc:
+            return {
+                "success": False,
+                "error": f"Model does not accept {len(bands)} input band(s) (selected from "
+                         f"{n_bands} real band(s) in {image_path}): {exc}. Pass band_selection= "
+                         f"explicitly if this file has more bands than the model expects.",
+            }
+
         if normalise:
             for b in range(image.shape[0]):
                 p2, p98 = np.percentile(image[b], (2, 98))

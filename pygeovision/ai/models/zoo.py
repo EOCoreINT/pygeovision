@@ -50,7 +50,6 @@ def _build_zoo() -> list[ModelSpec]:
         ModelSpec("resmlp_s36", "classification", "ResMLP-S36", "resmlp_s36", 3, True, "ResMLP S36", params_m=44.0),
         ModelSpec("clip_cls", "classification", "CLIP Zero-Shot", "openai/clip-vit-large-patch14", 3, True, "CLIP zero-shot land cover", hf_model_id="openai/clip-vit-large-patch14", tags=["vlm", "zero_shot"]),
         ModelSpec("rs_clip", "classification", "RS-CLIP", "RS-CLIP-ViT-L/14", 3, True, "Remote sensing CLIP", tags=["vlm", "zero_shot", "remote_sensing"]),
-        ModelSpec("dinov3_cls", "classification", "DINOv3-Cls", "dinov2_vitl14", 3, True, "DINOv3 linear probe", hf_model_id="facebook/dinov2-large", params_m=307.0, tags=["self_supervised"]),
     ]
 
     # ── Detection (Phase 2.2) ──────────────────────────────────────────
@@ -129,7 +128,7 @@ def _build_zoo() -> list[ModelSpec]:
         ModelSpec("clip_vit_b32", "vlm", "CLIP-ViT-B/32", "vit_base_32", 3, True, "OpenAI CLIP B/32", hf_model_id="openai/clip-vit-base-patch32", params_m=151.0, tags=["zero_shot"]),
         ModelSpec("clip_vit_l14", "vlm", "CLIP-ViT-L/14", "vit_large_14", 3, True, "OpenAI CLIP L/14", hf_model_id="openai/clip-vit-large-patch14", params_m=427.0, tags=["zero_shot"]),
         ModelSpec("openclip_b32", "vlm", "OpenCLIP-B/32", "vit_base_32", 3, True, "OpenCLIP LAION-2B", hf_model_id="laion/CLIP-ViT-B-32-laion2B-s34B-b79K", params_m=151.0),
-        ModelSpec("remoteclip", "vlm", "RemoteCLIP", "vit_large_14", 3, True, "RS image-text pretraining", hf_model_id="chendelong/RemoteCLIP", params_m=427.0, tags=["remote_sensing", "zero_shot"]),
+        ModelSpec("remoteclip", "vlm", "RemoteCLIP", "vit_large_14", 3, True, "RS image-text pretraining", hf_model_id="BAAI/RemoteCLIP-ViT-L-14", params_m=427.0, tags=["remote_sensing", "zero_shot"]),
         ModelSpec("geochat", "vlm", "GeoChat", "vicuna_7b", 3, True, "Geospatial conversational VLM", hf_model_id="MBZUAI/geochat-7B", params_m=7000.0, tags=["llm", "conversational"]),
         ModelSpec("moondream2", "vlm", "Moondream2", "phi_1_5", 3, True, "Efficient satellite VLM", hf_model_id="vikhyatk/moondream2", params_m=1870.0, tags=["captioning", "vqa"]),
         ModelSpec("rs5m_clip", "vlm", "RS5M-CLIP", "vit_large", 3, True, "5M RS image-text pairs", params_m=427.0, tags=["remote_sensing"]),
@@ -162,6 +161,20 @@ def _build_zoo() -> list[ModelSpec]:
         ModelSpec("rcan", "super_resolution", "RCAN", "rcan", 3, True, "Residual Channel Attention Network", params_m=15.4),
         ModelSpec("swinir_sr", "super_resolution", "SwinIR-SR", "swin_tiny", 3, True, "SwinIR super-resolution", params_m=11.9, tags=["transformer"]),
     ]
+
+    # Real fix, confirmed by direct measurement: 77 of these 98 entries
+    # (79%) were constructed with pretrained_available=True despite
+    # having no real hf_model_id at all -- this catalog is pure metadata
+    # with no factory_fn/build mechanism, so hf_model_id is the only
+    # real signal that pretrained weights are genuinely reachable
+    # through this system. A blanket True regardless of that was a
+    # systematic, measured fabrication, not an isolated mistake.
+    # Corrected here (rather than rewriting 98 individual constructor
+    # calls with mixed positional/keyword args) so pretrained_available
+    # actually reflects whether this catalog can back the claim.
+    for spec in M:
+        if not spec.hf_model_id:
+            spec.pretrained_available = False
 
     return M
 

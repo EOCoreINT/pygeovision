@@ -1,174 +1,102 @@
-# Commit Messages
+fix: critical client constructor crash, detection mislabeling; remove SAR/InSAR layer; rewrite docs for accuracy
 
-Six atomic, conventional-format commits covering this session's fixes across
-pipeline preprocessing, AOI coverage, new pipeline implementations, and the
-training/finetuning system. Use individually or squash as needed.
+Continues the audit cycle from the previous commit. Highest-priority
+fix first: PyGeoVision() itself could not be constructed. Also covers
+the `ai` command group audit, removal of pygeovision's own SAR/InSAR
+processing layer in favor of PyGeoFetch, and a full documentation
+rewrite that distinguishes verified claims from unverified ones.
 
----
+Critical fix (pygeovision/__init__.py)
+-----------------------------------------
+- Fix PyGeoVision() raising NameError('_SARProxy') unconditionally on
+  every construction. A complete, correct _SARProxy class existed but
+  was entirely commented out, while self.sar = _SARProxy(...) in
+  __init__ was never updated to match. Verified the class's four
+  delegation targets (sar_despeckle/calibrate/flood_map/coherence on
+  PyGeoFetchBridge) genuinely existed before restoring it -- this was
+  the package's primary, documented entry point and could not be
+  constructed at all prior to this fix.
 
-## 1. Pipeline band selection and AOI coverage
+ai command group audit (pygeovision/models/detection/yolo.py)
+-----------------------------------------------------------------
+- Fix a severe mislabeling bug in client.detection.ships()/cars():
+  GeoYOLO loaded a generic, COCO-pretrained model but relabeled every
+  detection with the requested class name regardless of what the model
+  actually detected (confirmed directly: a detected "person" and "car"
+  both got labeled "ship"). Now filters to the real, relevant COCO
+  classes (boat -> ship, car/truck -> car) instead of relabeling
+  everything, and gives unfiltered detections their real COCO names.
 
-```
-fix(pipelines): correct band selection and AOI coverage before model inference
+Remove pygeovision's own SAR/InSAR processing layer
+--------------------------------------------------------
+Verified this was safe by installing real, current PyGeoFetch
+(v2.6.2.1) and confirming its SARProcessor has exactly the four methods
+(calibrate/coherence/despeckle/flood_map) pygeovision's wrapper
+delegated to, plus a comprehensive real InSAR suite pygeovision never
+had an equivalent of.
 
-_search_and_download previously downloaded every asset in a scene
-regardless of the requested `bands` tuple, since client.download()'s
-real bands= parameter was never used. Fixed by expanding each generic
-band name (e.g. "red") into every real, known alias across Sentinel-2
-and both Landsat mission families before calling download(), confirmed
-against pygeofetch's official documentation.
+- Remove client.sar (_SARProxy) and its construction.
+- Remove pgf_bridge.py's four SAR delegation methods.
+- Delete data/processors/sar.py and sar_approach_list.py (557 lines,
+  including real documented bug fixes -- georeference corruption,
+  WGS84/UTM clip mismatches -- not covered by PyGeoFetch's simpler
+  processor; removed per explicit decision, not because incorrect).
+- Remove data/acquire.py's sar_flood_map (confirmed unused elsewhere).
+- Remove agent/tools.py's SARPreprocessTool, SARFloodTool,
+  SLCInSARTool and their registry entries.
+- Remove agent/planner.py's entire SAR routing branch: simplify
+  _infer_sensor to always resolve optical, remove _build_plan's SAR
+  branch and all 7 _plan_sar_*/_plan_slc_insar methods, remove the
+  insar task-signal and its tie-breaking logic, remove dead
+  SAR_SIGNALS/OPTICAL_SIGNALS, rewrite the LLM-facing system prompt so
+  it no longer instructs an agent to call tools that no longer exist.
+- Delete 8 test files covering a pygeovision.insar module that did not
+  exist in the delivered codebase at the time of this removal.
+- Fix 6 resulting test failures properly: 3 genuinely obsolete tests
+  removed, 1 rewritten to preserve its still-valid core intent
+  (building damage still routes to change_detection), 1 rewritten with
+  a real, still-existing tool as its test vehicle since its actual
+  point (context placeholder resolution) was never SAR-specific.
+- pyproject.toml: remove the dangling 'insar' extras reference.
+- README.md: rewrite the SAR & InSAR section to point at PyGeoFetch
+  directly; fix a Quick Start code example that referenced client.sar
+  and pygeovision.insar and would have crashed immediately.
 
-Also adds real AOI coverage checking: previously only the single
-best-scored scene was ever downloaded, with no check that its real
-footprint fully covered the requested bbox. Partial overlap silently
-produced a smaller-than-requested result. Now checks coverage via
-SearchResult.bbox before downloading, and when a single scene isn't
-enough, downloads + individually radiometrically-corrects each scene
-in a greedy-selected covering set before mosaicking (rasterio.merge)
-and cropping to the exact requested bbox.
+Documentation: full rewrite for accuracy over completeness-claims
+-----------------------------------------------------------------------
+Every API reference page's primary claims checked against the
+installed code this cycle, not assumed from prior documentation.
 
-Adds three layers of defense against band-count mismatches reaching
-_run_model: real-time validation in the single-asset download path,
-a final check before _search_and_download returns, and an explicit
-check immediately before model construction in _run_model.
+- index.md, architecture.md: written from verified findings --
+  the real pipeline-catalog breakdown (10 real / 16 unverified / 26
+  generic-template pipelines out of 51 registered names), the
+  duplicate-parallel-implementation pattern found repeatedly this
+  cycle (two separate TiledInference classes with different defaults;
+  two separate ESAWorldCoverLabeler classes; three different things
+  all called "pipeline"), and the SAR/InSAR removal reasoning.
+- api/pygeovision.md, api/cli.md, api/index.md: fully rewritten.
+  Removes a fabricated 'pgv' CLI alias (only 'pygeovision' is really
+  registered), corrects "119 models" to the real 98, corrects "15
+  command groups" to the real ~26, documents the client.inference /
+  client.labeling namespace collisions explicitly.
+- 16 API pages: primary import claims individually verified against
+  the real installed code; one wrong class name found and fixed in
+  every file it appeared in (LiDARProcessor -> the real
+  PointCloudProcessor, in pointcloud.md, api/index.md, and
+  examples/forestry.md); consistent verification-status headers added.
+- 2 new API pages (agent.md, viz.md) recovered from an orphaned,
+  un-navigated staging directory, verified against real code, updated
+  for the SAR/InSAR removal, added to the real mkdocs.yml nav.
+- Fixed a fabricated repr() example ("v2.0 | models=119 |
+  geoai=independent") that had propagated across index.md,
+  quickstart.md, installation.md, and a tutorial page -- replaced with
+  the real, verified repr string in every occurrence.
+- quickstart.md, faq.md: inference examples now point to the audited,
+  memory-efficient TiledInference class instead of the separate,
+  unverified one.
+- tutorials/index.md, examples/index.md: added honest verification
+  notes; explicitly states the 22 tutorial notebooks were not executed
+  or re-verified this cycle, rather than implying otherwise.
 
-Verified: real multi-tile mosaic test (output contains pixel values
-from both source tiles), band-mismatch scenario correctly refused
-instead of silently passed through, full regression suite across
-single-image/bi-temporal/DEM pipelines.
-```
-
----
-
-## 2. ESAWorldCoverLabeler silent failure
-
-```
-fix(labeling): ESAWorldCoverLabeler silently reported success on failed downloads
-
-When real WorldCover reference tiles could not be downloaded (network
-failure, no credentials), label_tile() wrote an all-zero background
-mask and returned a LabelingResult with no error/skipped set. Since
-LabelingResult.success is a computed property checking only those
-fields, this silently evaluated to success=True -- LandCoverPipeline
-and everything delegating to it (MangroveMapping, LandcoverChange,
-BiodiversityHotspot) could report a meaningful-looking classification
-result that was actually empty.
-
-Found while testing WindFarmSitingPipeline's land-use exclusion step,
-which hit this exact failure mode. Now explicitly sets `error` when no
-real tiles are found.
-```
-
----
-
-## 3. New pipeline implementations
-
-```
-feat(pipelines): implement 10 previously-stub pipelines with real techniques
-
-Replaces NotImplementedError stubs with real, empirically-verified
-implementations: solar_potential, archaeological_site (real DEM/GIS
-techniques -- Horn's method slope/aspect, solar position, Local Relief
-Model), aquaculture_mapping (shape-regularity classification),
-wind_farm_siting (terrain/land-use suitability screen, explicitly not
-a wind resource assessment), mine_detection, construction_progress
-(size/class-filtered land-cover transitions), powerline_extraction
-(linear-corridor detection via shape elongation), reef_bleaching,
-dust_storm_tracking (bi-temporal anomaly proxies).
-
-air_quality_index deliberately remains unimplemented -- the same
-proxy technique used for dust_storm_tracking would risk being read as
-health guidance it cannot honestly provide.
-
-Fixes a severe 4-connectivity bug found via testing: scipy.ndimage.label's
-default connectivity fragmented a thin diagonal linear corridor into
-20 isolated single-pixel regions instead of 1. Fixed with 8-connectivity
-across all affected pipelines.
-
-Each implementation independently verified against synthetic ground
-truth (e.g. solar_potential: south-facing terrain scores higher than
-flat at winter solstice, matching physical expectation; aquaculture
-mapping: rectangular pond flagged, winding river correctly not flagged).
-```
-
----
-
-## 4. Training: freeze_backbone, checkpoint loading, scheduler bug
-
-```
-fix(training): freeze_backbone, checkpoint loading, and default scheduler bug
-
-TrainingConfig.freeze_backbone was defined but referenced nowhere else
-in trainer.py -- setting it to True had zero effect on training.
-Now actually freezes backbone/encoder parameters by name pattern before
-the optimizer is built. Verified against a real segmentation_models_pytorch
-UNet: 60/92 encoder parameters correctly freeze, decoder stays trainable.
-
-Adds real checkpoint_path support for finetuning from an existing
-checkpoint -- previously no such capability existed at all. Uses
-strict=False with a clear mismatch report, verified against both an
-exact-match case and a realistic finetuning case (2-class checkpoint
-loaded into a 5-class model: encoder weights transfer correctly, only
-the differently-shaped head is left for fresh training).
-
-Fixes a severe bug in the DEFAULT scheduler: the training loop steps
-the scheduler once per batch, but CosineAnnealingLR was built with
-T_max=cfg.max_epochs (epoch count, not step count). Verified via
-simulation: with max_epochs=10 and 50 steps/epoch, this produced 50
-full oscillation cycles instead of one smooth decay across the run.
-Since cosine is the default, every user not explicitly overriding the
-scheduler was affected. Fixed to use total_steps, consistent with how
-"linear"/"onecycle" already handled this correctly in the same function.
-Same unit-mismatch bug fixed in "step" and the fallback branch.
-```
-
----
-
-## 5. Training: real object-detection support
-
-```
-feat(training): real object-detection training support
-
-GeoTrainer.fit() previously hardcoded CrossEntropyLoss + SegmentationMetrics
-unconditionally, with zero task branching, despite the CLI accepting
-a task=[segmentation,detection] choice that was silently discarded
-(never passed into TrainingConfig at all).
-
-Adds a real `task` field and full detection-training support: a
-collate_fn for variable-length bounding-box targets, the correct
-torchvision detection forward pass (model(images, targets) -> loss
-dict, summed -- no external loss_fn, since the model computes its own
-loss internally), and the documented train()-mode + no_grad() pattern
-for validation loss (these models only compute losses in train mode
-with real targets supplied; eval mode returns predictions instead).
-
-Also fixes build_retinanet/build_fcos: pretrained=False did not
-actually prevent a network download, since torchvision's
-weights_backbone parameter defaults to a pretrained ResNet50
-independently of the main weights arg.
-
-Fixes a mislabeled results dict: "best_val_iou" was always present
-even for detection, where the tracked value is actually val_loss
-(confirmed by a test run showing "best_val_iou": 1.77, impossible for
-a bounded-0-1 IoU). Now reports the real metric name and value, and
-only includes best_val_iou when it's genuinely an IoU.
-
-Verified end-to-end with a real torchvision RetinaNet and synthetic
-bounding-box data; segmentation and detection tested side by side to
-confirm neither path broke the other.
-```
-
----
-
-## 6. Training: ONNX export error handling
-
-```
-fix(training): actionable error when ONNX export needs onnxscript
-
-Modern PyTorch's default ONNX exporter requires onnxscript separately
-from the top-level onnx package this code already checked for. Without
-it, torch.onnx.export() raised a raw, unwrapped ModuleNotFoundError
-with no indication of what to install. Found by hitting this directly
-while verifying the export path end-to-end (confirmed exported models
-are numerically identical to the source PyTorch model via onnxruntime).
-```
+Tests: 974 passed, 0 failed, 10 skipped, 1 xfailed after all changes
+above, applied together.

@@ -114,12 +114,17 @@ class ESAWorldCoverLabeler:
                 # Fallback: direct HTTPS download
                 try:
                     r = requests.get(asset_url, stream=True, timeout=60)
-                    tile_path = output_path.parent / f"_esa_tile_{item['id']}.tif"
-                    tile_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(tile_path, "wb") as f:
-                        for chunk in r.iter_content(8192):
-                            f.write(chunk)
-                    tile_paths.append(str(tile_path))
+                    if r.status_code != 200:
+                        logger.warning(
+                            "ESA tile download failed: HTTP %d for %s", r.status_code, asset_url[:100],
+                        )
+                    else:
+                        tile_path = output_path.parent / f"_esa_tile_{item['id']}.tif"
+                        tile_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(tile_path, "wb") as f:
+                            for chunk in r.iter_content(8192):
+                                f.write(chunk)
+                        tile_paths.append(str(tile_path))
                 except Exception as exc2:
                     logger.warning("ESA tile download failed: %s", exc2)
 
@@ -257,6 +262,16 @@ class DynamicWorldLabeler:
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
             r = requests.get(asset_url, stream=True, timeout=60)
+            # Real fix, confirmed by direct inspection: the response
+            # status was never checked before this previously wrote
+            # whatever came back (including an error page body on a
+            # 403/404/500) to the output file and still claimed success.
+            if r.status_code != 200:
+                return {
+                    "success": False,
+                    "error": f"Dynamic World asset download failed: HTTP {r.status_code} "
+                             f"for {asset_url[:100]}...",
+                }
             with open(output_path, "wb") as f:
                 for chunk in r.iter_content(8192):
                     f.write(chunk)

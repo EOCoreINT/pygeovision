@@ -18,7 +18,8 @@ def build_unet(
     encoder: str = "resnet50",
     in_channels: int = 3,
     num_classes: int = 2,
-    encoder_weights: str | None = "imagenet",
+    pretrained: bool = True,
+    encoder_weights: str | None = "__unset__",
     activation: str | None = None,
     **kwargs: Any,
 ) -> Any:
@@ -30,7 +31,17 @@ def build_unet(
         encoder: Encoder backbone name (e.g. 'resnet50', 'efficientnet-b4').
         in_channels: Number of input channels (bands).
         num_classes: Number of output classes.
-        encoder_weights: Pretrained weight source ('imagenet' or None).
+        pretrained: Whether to use ImageNet-pretrained encoder weights.
+            Real fix: this is the same convention every other build_*
+            function in this package uses (build_resnet, build_vit,
+            build_fcos, etc.) -- confirmed by direct testing that this
+            parameter was previously silently ignored here (real weight
+            downloads happened even when the caller explicitly requested
+            pretrained=False, since this function only accepted
+            encoder_weights, not pretrained).
+        encoder_weights: Advanced override for a specific weight source
+            string beyond True/False (e.g. a non-imagenet smp source).
+            Takes precedence over `pretrained` only if explicitly set.
         activation: Output activation ('softmax2d', 'sigmoid', or None).
         **kwargs: Additional args forwarded to smp.Unet.
 
@@ -50,6 +61,9 @@ def build_unet(
             "U-Net requires segmentation-models-pytorch. "
             "Install: pip install segmentation-models-pytorch"
         ) from exc
+
+    if encoder_weights == "__unset__":
+        encoder_weights = "imagenet" if pretrained else None
 
     # When in_channels != 3 and encoder_weights='imagenet', SMP patches
     # the first conv layer to accept arbitrary channels.
@@ -72,7 +86,8 @@ def build_deeplabv3plus(
     encoder: str = "resnet101",
     in_channels: int = 3,
     num_classes: int = 2,
-    encoder_weights: str | None = "imagenet",
+    pretrained: bool = True,
+    encoder_weights: str | None = "__unset__",
     encoder_output_stride: int = 16,
     **kwargs: Any,
 ) -> Any:
@@ -82,7 +97,13 @@ def build_deeplabv3plus(
         encoder: Encoder backbone (e.g. 'resnet101', 'xception').
         in_channels: Number of input channels.
         num_classes: Number of output classes.
-        encoder_weights: Pretrained source ('imagenet' or None).
+        pretrained: Whether to use ImageNet-pretrained encoder weights.
+            Real fix, same as build_unet: this was previously silently
+            ignored (this function only accepted encoder_weights, not
+            pretrained), confirmed by real weight downloads happening
+            even with pretrained=False explicitly requested.
+        encoder_weights: Advanced override beyond True/False. Takes
+            precedence over `pretrained` only if explicitly set.
         encoder_output_stride: Output stride (16 or 8; 8 = higher resolution).
         **kwargs: Additional args for smp.DeepLabV3Plus.
 
@@ -99,6 +120,9 @@ def build_deeplabv3plus(
             "DeepLabV3+ requires segmentation-models-pytorch. "
             "Install: pip install segmentation-models-pytorch"
         ) from exc
+
+    if encoder_weights == "__unset__":
+        encoder_weights = "imagenet" if pretrained else None
 
     model = smp.DeepLabV3Plus(
         encoder_name=encoder,

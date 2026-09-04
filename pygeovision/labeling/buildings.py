@@ -179,7 +179,14 @@ class MicrosoftBuildingsLabeler:
 
         # Rasterise buildings = 1
         self._rasterise_buildings(geojson, bbox, output_path, resolution_m, reference_raster)
-        return {"success": True, "n_buildings": n, "output_path": str(output_path), "source": "Microsoft"}
+        # Real fix, same pattern found and fixed in osm.py: this
+        # previously returned success=True unconditionally, even with
+        # n=0 real buildings found (a real, plausible outcome for a
+        # rural/remote bbox).
+        return {
+            "success": n > 0, "n_buildings": n, "output_path": str(output_path), "source": "Microsoft",
+            "error": None if n > 0 else f"0 real Microsoft building footprints found for bbox={bbox}.",
+        }
 
     def _rasterise_buildings(self, geojson, bbox, output_path, resolution_m, reference_raster):
         try:
@@ -300,4 +307,8 @@ class GoogleBuildingsLabeler:
         # Use MS-style rasterise
         ms = MicrosoftBuildingsLabeler()
         ms._rasterise_buildings(geojson, bbox, output_path, resolution_m, reference_raster)
-        return {"success": True, "n_buildings": len(all_features), "output_path": str(output_path), "source": "Google"}
+        n_buildings = len(all_features)
+        return {
+            "success": n_buildings > 0, "n_buildings": n_buildings, "output_path": str(output_path), "source": "Google",
+            "error": None if n_buildings > 0 else f"0 real Google building footprints found for bbox={bbox}.",
+        }

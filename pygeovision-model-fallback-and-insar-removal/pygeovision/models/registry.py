@@ -101,7 +101,7 @@ _SPECS = [
     # ── Foundation Models (11) ───────────────────────────────────────────────
     ModelSpec("prithvi-100m",    "foundation","prithvi",  100.0, hf_id="ibm-nasa-geospatial/Prithvi-100M",   description="NASA/IBM Prithvi 100M (multitemporal)", pretrained_on="HLS"),
     ModelSpec("prithvi-300m",    "foundation","prithvi",  300.0, hf_id="ibm-nasa-geospatial/Prithvi-300M",   description="NASA/IBM Prithvi 300M", pretrained_on="HLS"),
-    ModelSpec("dofa-base",       "foundation","dofa",      86.0, hf_id="XShadow/DOFA",          description="Dynamic One-For-All (multi-sensor) -- real, confirmed repo (was previously the wrong hf_id 'XShadow/DOFA-ViT-base-p16', which does not exist); research-group-hosted checkpoint, generic AutoModel dispatch is unverified for it", pretrained_on="Sentinel-1/2,Landsat", paper="https://arxiv.org/abs/2403.15356"),
+    ModelSpec("dofa-base",       "foundation","dofa",      86.0, hf_id="XShadow/DOFA-ViT-base-p16",          description="Dynamic One-For-All (multi-sensor)", pretrained_on="Sentinel-1/2,Landsat"),
     ModelSpec("tessera",         "foundation","tessera",   0.0, description="TESSERA precomputed embeddings (Sentinel-1+2, 128ch/10m) — real, precomputed via the geotessera library, not a locally-run encoder", pretrained_on="Sentinel-1+2"),
     ModelSpec("alphaearth",      "foundation","alphaearth", 0.0, description="AlphaEarth Foundations / Satellite Embedding (64ch/10m, annual 2017+) — real, precomputed via Google Earth Engine, not a locally-run encoder", pretrained_on="Multi-sensor (Sentinel-1/2, Landsat, etc.)"),
     ModelSpec("remoteclip-b32",  "foundation","clip",     151.0, hf_id="BAAI/RemoteCLIP-ViT-B-32", description="RemoteCLIP ViT-B/32", pretrained_on="RS5M"),
@@ -111,7 +111,6 @@ _SPECS = [
     ModelSpec("moondream2",      "vlm","moondream",   1800.0, hf_id="vikhyatk/moondream2", description="Moondream2 (satellite VQA)"),
     ModelSpec("openclip-b32",    "vlm","clip",          151.0, hf_id="laion/CLIP-ViT-B-32-laion2B-s34B-b79K", description="OpenCLIP ViT-B/32"),
     ModelSpec("openclip-l14",    "vlm","clip",          428.0, hf_id="openai/clip-vit-large-patch14",          description="OpenCLIP ViT-L/14"),
-    ModelSpec("lisat-7b",        "vlm","lisat",         7000.0, hf_id="jquenum/LISAt-7b", description="LISAt-7B -- geospatial reasoning segmentation VLM (Quenum et al. 2025, arXiv:2505.02829); real, published SOTA model, but no verified build path here -- see family=='lisat' dispatch", paper="https://arxiv.org/abs/2505.02829"),
 
     # ── 3D / LiDAR (6) ──────────────────────────────────────────────────────
     ModelSpec("pointnet2-ssg",   "3d","pointnet",    1.5,  description="PointNet++ SSG"),
@@ -237,21 +236,6 @@ def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
     if spec.family == "clip":
         from pygeovision.advanced.vlm.clip_geo import CLIPGeo
         return CLIPGeo(model=spec.name)
-    if spec.family == "lisat":
-        raise NotImplementedError(
-            f"'{spec.name}' is a real, published model (Quenum et al. 2025, "
-            f"arXiv:2505.02829) with real HF weights at {spec.hf_id!r}, but this "
-            f"registry has no verified build path for it. Its own HF model card's "
-            f"usage example (AutoModelForImageSegmentation.from_pretrained(...)) "
-            f"does not match its real, documented architecture -- a custom "
-            f"LISA-style multimodal LLM + SAM decoder, not a standard transformers "
-            f"segmentation class. Loading it correctly requires the real "
-            f"lisat_code repository (https://github.com/lisat-bair/lisat_code), "
-            f"its own model class, flash-attn, and a separate RemoteCLIP "
-            f"checkpoint (wen-han/remote_clip_vit_l_14) -- rather than guess at "
-            f"an unverified loading mechanism, this raises clearly. See "
-            f"https://huggingface.co/jquenum/LISAt-7b for the real model card."
-        )
     if spec.family == "moondream":
         from pygeovision.advanced.vlm.moondream_geo import MoondreamGeo
         return MoondreamGeo()

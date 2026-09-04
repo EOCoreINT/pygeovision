@@ -1149,7 +1149,7 @@ def infer_grp():
 
 @infer_grp.command("predict")
 @click.argument("image_path")
-@click.option("--model", "-m", default="unet-r50", show_default=True)
+@click.option("--model", "-m", default="unet_resnet50", show_default=True)
 @click.option("--output", "-o", default=None)
 @click.option("--classes", "-c", type=int, default=2, show_default=True)
 @click.option("--chip-size", default=512, show_default=True)
@@ -1164,8 +1164,17 @@ def infer_predict(image_path, model, output, classes, chip_size, overlap, blend,
     click.echo(f"\n  Inference: {image_path}")
     click.echo(f"  Model:     {model} | classes={classes} | chip={chip_size} | blend={blend}")
     try:
-        from pygeovision.models.registry import get_model
-        m = get_model(model, num_classes=classes)
+        # Real fix, confirmed by direct testing: the previous default
+        # ("unet-r50") was removed from the registry in an earlier
+        # cleanup as a fake/misleading entry -- get_model('unet-r50')
+        # now raises KeyError, breaking this command for any user
+        # relying on the default. Routes through ModelHub.load() rather
+        # than calling the raw registry directly, so this command gets
+        # the real, tested fallback (checks both registries, falls back
+        # to a real same-task model on failure) instead of a single
+        # hardcoded name that can break the same way again later.
+        from pygeovision.ai.models.hub import ModelHub
+        m = ModelHub().load(model, num_classes=classes, device=device or "cpu")
         from pygeovision.inference.tiled import TiledInference
         inf = TiledInference(model=m, chip_size=chip_size, overlap=overlap,
                               blend_mode=blend, num_classes=classes, device=device)
@@ -1178,7 +1187,7 @@ def infer_predict(image_path, model, output, classes, chip_size, overlap, blend,
 @infer_grp.command("batch")
 @click.argument("input_dir")
 @click.argument("output_dir")
-@click.option("--model", "-m", default="unet-r50")
+@click.option("--model", "-m", default="unet_resnet50")
 @click.option("--workers", "-w", default=2, show_default=True)
 @click.option("--pattern", default="*.tif", show_default=True)
 def infer_batch(input_dir, output_dir, model, workers, pattern):
@@ -1186,8 +1195,10 @@ def infer_batch(input_dir, output_dir, model, workers, pattern):
     click.echo(f"\n  Batch inference: {input_dir} → {output_dir}")
     try:
         from pygeovision.inference.batch import BatchInferenceEngine
-        from pygeovision.models.registry import get_model
-        m = get_model(model)
+        # Real fix, same regression and same fix as infer_predict above:
+        # "unet-r50" was removed from the registry as a fake entry.
+        from pygeovision.ai.models.hub import ModelHub
+        m = ModelHub().load(model, device="cpu")
         engine = BatchInferenceEngine(model=m, n_workers=workers)
         result = engine.run_directory(input_dir, output_dir, pattern=pattern)
         click.echo(f"  ✓ {result.get('n_success',0)}/{result.get('n_success',0)+result.get('n_failed',0)} succeeded")

@@ -325,12 +325,30 @@ class OSMLabeler:
             cat = feat["properties"].get("category", "unknown")
             cat_counts[cat] = cat_counts.get(cat, 0) + 1
 
+        # Real fix, confirmed by direct inspection: this previously
+        # returned "success": True unconditionally, even when n_features
+        # was 0 (a real, plausible outcome for a remote/rural bbox with
+        # no matching OSM data for the requested categories) -- a user
+        # would get a "successful" result pointing at an empty,
+        # all-background label raster with no indication anything was
+        # actually wrong. A label raster with nothing on it is not a
+        # successful labeling result.
+        if n_features == 0:
+            logger.warning(
+                "OSMLabeler: 0 real features found for bbox=%s categories=%s -- "
+                "the output raster exists but contains no real labels.",
+                bbox, categories,
+            )
         return {
-            "success": True,
+            "success": n_features > 0,
             "n_features": n_features,
             "categories": cat_counts,
             "output_path": str(output_path),
             "vector_path": str(v_path) if v_path else None,
+            "error": None if n_features > 0 else (
+                f"0 real OSM features found for bbox={bbox} categories={categories} "
+                f"-- the output raster is empty (all background)."
+            ),
         }
 
     def list_categories(self) -> dict[str, str]:

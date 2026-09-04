@@ -11,11 +11,11 @@ from pygeovision.labeling.landcover import DynamicWorldLabeler, ESAWorldCoverLab
 from pygeovision.labeling.osm import OSMLabeler
 from pygeovision.labeling.pipeline import AutoLabelPipeline
 from pygeovision.labeling.quality import LabelQualityAssessor
-from pygeovision.labeling.sam_auto import SAMAutoLabeler
+from pygeovision.labeling.sam_auto import SAMAutoLabeler, SamGeoLabeler
 
 __all__ = [
     "OSMLabeler", "MicrosoftBuildingsLabeler", "GoogleBuildingsLabeler",
     "ESAWorldCoverLabeler", "DynamicWorldLabeler",
-    "SAMAutoLabeler", "FoundationModelLabeler",
+    "SAMAutoLabeler", "SamGeoLabeler", "FoundationModelLabeler",
     "ActiveLearner", "LabelQualityAssessor", "AutoLabelPipeline",
 ]
