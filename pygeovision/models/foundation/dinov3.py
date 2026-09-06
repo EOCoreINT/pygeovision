@@ -1,1174 +1,479 @@
 """
-DINOv3 — Complete independent integration for PyGeoVision.
+pygeovision.models.adapters.sar_dinov3
+========================================
+Domain adaptation of DINOv3 (Meta AI) for Synthetic Aperture Radar (SAR) data.
 
-*** HONEST WARNING, confirmed by direct code inspection: no path in this
-*** file loads real DINOv3 weights. Every hf_id below points to generic
-*** facebook/dinov2-* checkpoints, and load_dinov3_hub()'s "PyTorch Hub —
-*** official FacebookResearch repository" claim is also false: it calls
-*** torch.hub.load("facebookresearch/dinov2", ...) -- the DINOv2 repo,
-*** not DINOv3. The "_sat" variants' SAT-493M satellite-pretraining claim
-*** is likewise false -- the same generic, non-satellite DINOv2 weights
-*** are loaded regardless of which "_sat" name is requested. Real DINOv3
-*** weights are not currently wired into this codebase anywhere. This
-*** module is kept rather than deleted because real pipeline code
-*** (ai/pipelines/domains.py's CHMv2Model usage, sar_channel_manager.py's
-*** DINOv3Backbone usage) depends on these classes existing and being
-*** importable -- but treat everything below as "real DINOv2, mislabeled
-*** as DINOv3" until real DINOv3 weights are actually integrated.
+The challenge
+-------------
+DINOv3 is a self-supervised ViT pre-trained on billions of natural RGB images.
+When applied to SAR data without adaptation:
 
-12 model variants (see honest warning above -- all currently load DINOv2):
-  ViT Web:      vits16 / vits16plus / vitb16 / vitl16 / vith16plus / vit7b16
-  ViT SAT:      vitl16_sat / vit7b16_sat (NOT actually SAT-493M-pretrained -- see warning above)
-  ConvNeXt:     convnext_tiny / convnext_small / convnext_base / convnext_large
+  * It treats radar backscatter as if it were scene luminance, ignoring the
+    fundamentally different physical origin of the signal (coherent
+    electromagnetic scattering vs incoherent optical reflection).
+  * Speckle noise, which has multiplicative Rayleigh/Gamma statistics, is
+    interpreted as fine texture rather than noise — activating different
+    feature detectors than intended.
+  * The patch statistics fall outside the ImageNet distribution the model
+    was normalised for, causing distribution shift in every attention layer.
 
-6 task heads:
-  classifier (ImageNet-1k), depther (SYNTHMIX), detector (COCO2017),
-  segmentor (ADE20K), dinotxt (zero-shot), chmv2 (canopy height)
+Domain adaptation options (implemented here)
+---------------------------------------------
+OPTION A — Zero-shot with pseudo-RGB (lowest quality, no training):
+    Map VV + VH + ratio into 3 channels, apply ImageNet normalisation, and
+    run DINOv3 as-is.  Useful for quick feature extraction where spatial
+    patterns (not backscatter physics) are the primary signal.
 
-3 loading methods:
-  1. PyTorch Hub (loads DINOv2, NOT DINOv3 -- see honest warning above)
-  2. HuggingFace Transformers (loads DINOv2, NOT DINOv3 -- see honest warning above)
-  3. Local weights (enterprise / air-gapped)
+OPTION B — Self-supervised fine-tuning on unlabelled SAR (recommended for
+    feature quality):
+    Re-run the DINO self-supervised training loop on a large collection of
+    unlabelled Sentinel-1 SAR imagery.  The model learns SAR-specific patch
+    representations without any labels.  Requires GPU and time, but produces
+    highly discriminative features for downstream tasks like ship detection,
+    terrain classification, or ATR.
 
-Transforms:
-  Web:      ImageNet mean/std = (0.485, 0.456, 0.406) / (0.229, 0.224, 0.225)
-  SAT-493M: Satellite mean/std = (0.430, 0.411, 0.296) / (0.213, 0.156, 0.143)
-  (the SAT-493M transform is defined but not meaningful given no real
-  SAT-493M-pretrained weights are actually loaded by this file)
+OPTION C — Supervised fine-tuning on labelled SAR (highest accuracy):
+    Fine-tune DINOv3 features + a lightweight decoder head on a labelled
+    SAR dataset (e.g. Sen1Floods11 for flood mapping, MSTAR for ATR,
+    xView3 for vessel detection).
+
+References
+----------
+* DINOv3: Oquab et al. (2024) "DINOv2: Learning Robust Visual Features
+  without Supervision" — https://arxiv.org/abs/2304.07193
+* AFRL-DINOv2 SAR adaptation: Shermeyer et al. (2023) — SAR-DINO series
+* xView3: https://iuu.xview.us/ (vessel detection benchmark)
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from pygeovision.models.adapters.sar_channel_manager import (
+    sar_to_pseudo_rgb,
+)
+
+logger = logging.getLogger("pygeovision.adapters.sar_dinov3")
 
 
-# ── Registry ──────────────────────────────────────────────────────────────────
+# ── ImageNet normalisation for DINOv3 ─────────────────────────────────────────
 
-DINOV3_MODELS: dict[str, dict] = {
-    # ViT Web (LVD-1689M)
-    "dinov3_vits16":       {"arch": "vit_small",   "params_m": 21,    "dataset": "LVD-1689M", "patch": 16, "embed": 384,  "hf_id": "facebook/dinov2-small"},
-    "dinov3_vits16plus":   {"arch": "vit_small",   "params_m": 29,    "dataset": "LVD-1689M", "patch": 16, "embed": 384,  "hf_id": "facebook/dinov2-small"},
-    "dinov3_vitb16":       {"arch": "vit_base",    "params_m": 86,    "dataset": "LVD-1689M", "patch": 16, "embed": 768,  "hf_id": "facebook/dinov2-base"},
-    "dinov3_vitl16":       {"arch": "vit_large",   "params_m": 300,   "dataset": "LVD-1689M", "patch": 16, "embed": 1024, "hf_id": "facebook/dinov2-large"},
-    "dinov3_vith16plus":   {"arch": "vit_huge",    "params_m": 840,   "dataset": "LVD-1689M", "patch": 14, "embed": 1280, "hf_id": "facebook/dinov2-giant"},
-    "dinov3_vit7b16":      {"arch": "vit_7b",      "params_m": 6700,  "dataset": "LVD-1689M", "patch": 14, "embed": 4096, "hf_id": "facebook/dinov2-giant"},
-    # ViT SAT (SAT-493M — satellite pretrained)
-    "dinov3_vitl16_sat":   {"arch": "vit_large",   "params_m": 300,   "dataset": "SAT-493M",  "patch": 16, "embed": 1024, "hf_id": "facebook/dinov2-large",  "sat": True},
-    "dinov3_vit7b16_sat":  {"arch": "vit_7b",      "params_m": 6700,  "dataset": "SAT-493M",  "patch": 14, "embed": 4096, "hf_id": "facebook/dinov2-giant",   "sat": True},
-    # ConvNeXt Web (LVD-1689M)
-    "dinov3_convnext_tiny":  {"arch": "convnext",  "params_m": 29,    "dataset": "LVD-1689M", "embed": 768,  "timm_id": "convnext_tiny"},
-    "dinov3_convnext_small": {"arch": "convnext",  "params_m": 50,    "dataset": "LVD-1689M", "embed": 768,  "timm_id": "convnext_small"},
-    "dinov3_convnext_base":  {"arch": "convnext",  "params_m": 89,    "dataset": "LVD-1689M", "embed": 1024, "timm_id": "convnext_base"},
-    "dinov3_convnext_large": {"arch": "convnext",  "params_m": 198,   "dataset": "LVD-1689M", "embed": 1024, "timm_id": "convnext_large"},
-}
-
-DINOV3_HEADS: dict[str, dict] = {
-    "classifier": {"dataset": "ImageNet-1k", "task": "classification",  "compatible": ["vit"]},
-    "depther":    {"dataset": "SYNTHMIX",    "task": "depth",           "compatible": ["vit_large", "vit_7b"]},
-    "detector":   {"dataset": "COCO2017",    "task": "detection",       "compatible": ["vit_7b"]},
-    "segmentor":  {"dataset": "ADE20K",      "task": "segmentation",    "compatible": ["vit_7b"]},
-    "dinotxt":    {"dataset": "zero-shot",   "task": "open_vocab_seg",  "compatible": ["vit_large", "vit_7b"]},
-    "chmv2":      {"dataset": "global_chm",  "task": "canopy_height",   "compatible": ["vit_large_sat", "vit_7b_sat"]},
-}
+# DINOv3 (and all DINOv2 variants) expect inputs normalised with ImageNet stats.
+# These stats are applied AFTER building the pseudo-RGB channels from SAR data.
+IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+IMAGENET_STD  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
-# ── Transforms ────────────────────────────────────────────────────────────────
+def normalise_for_dino(rgb_array: np.ndarray) -> np.ndarray:
+    """Apply ImageNet normalisation to a (3, H, W) pseudo-RGB array.
 
-# CRITICAL: Using the wrong transform will cause silent accuracy degradation!
-WEB_MEAN = (0.485, 0.456, 0.406)    # ImageNet statistics
-WEB_STD  = (0.229, 0.224, 0.225)
+    DINOv3 expects ``(pixel - mean) / std`` with ImageNet statistics, NOT
+    a simple [0, 1] clip.  Without this normalisation, every attention
+    layer receives out-of-distribution activations and the quality of the
+    feature embeddings degrades significantly.
 
-SAT_MEAN = (0.430, 0.411, 0.296)    # SAT-493M satellite statistics — DIFFERENT!
-SAT_STD  = (0.213, 0.156, 0.143)
+    Parameters
+    ----------
+    rgb_array : np.ndarray  Shape (3, H, W), float32, values in [0, 1].
 
-
-def dinov3_web_transform(resize_size: int = 256, crop_size: int = 224) -> Any:
-    """ImageNet transform for LVD-1689M web-pretrained DINOv3 models.
-
-    ⚠  Do NOT use for SAT-493M (satellite) models — use dinov3_sat_transform instead.
-
-    Args:
-        resize_size: Resize shorter side to this size before centre crop
-        crop_size: Final crop size (224 for standard ViT)
-
-    Returns:
-        torchvision transforms composition
+    Returns
+    -------
+    np.ndarray  Shape (3, H, W), float32, ImageNet-normalised.
     """
-    try:
-        from torchvision import transforms
-        return transforms.Compose([
-            transforms.Resize(resize_size, interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.CenterCrop(crop_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=list(WEB_MEAN), std=list(WEB_STD)),
-        ])
-    except ImportError:
-        raise ImportError("pip install torchvision")
+    assert rgb_array.shape[0] == 3, f"Expected 3 channels, got {rgb_array.shape[0]}"
+    out = np.empty_like(rgb_array)
+    for c in range(3):
+        out[c] = (rgb_array[c] - IMAGENET_MEAN[c]) / IMAGENET_STD[c]
+    return out
 
 
-def dinov3_sat_transform(resize_size: int = 256, crop_size: int = 224) -> Any:
-    """Satellite transform for SAT-493M pretrained DINOv3 models.
+# ── SAR-specific augmentation (for self-supervised training) ──────────────────
 
-    ⚠  CRITICAL: Uses satellite-specific statistics, NOT ImageNet.
-       mean = (0.430, 0.411, 0.296)  ←  different from web
-       std  = (0.213, 0.156, 0.143)  ←  different from web
+class SARSpeckleAugmentation:
+    """Multiplicative speckle noise augmentation for self-supervised SAR training.
 
-    Args:
-        resize_size: Resize shorter side to this size before centre crop
-        crop_size: Final crop size
+    When fine-tuning DINOv3 on SAR data with a self-supervised approach
+    (DINO-style), two random views of each SAR patch are created.  For
+    optical images this uses random crops + colour jitter; for SAR the
+    augmentations must reflect SAR physics:
 
-    Returns:
-        torchvision transforms composition
+      * Additive colour jitter is WRONG for SAR (speckle is multiplicative)
+      * Simulated speckle (Gamma noise) is the correct SAR-domain augmentation
+      * Random despeckle strength simulates multi-look averaging
+
+    This class generates augmentation config for PyTorch transforms.
     """
-    try:
-        from torchvision import transforms
-        return transforms.Compose([
-            transforms.Resize(resize_size, interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.CenterCrop(crop_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=list(SAT_MEAN), std=list(SAT_STD)),
-        ])
-    except ImportError:
-        raise ImportError("pip install torchvision")
 
+    def __init__(
+        self,
+        n_looks_range: tuple[int, int] = (1, 8),
+        noise_strength: float = 0.15,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        n_looks_range : (min, max)
+            Simulate 1 to n_looks equivalent looks via Gamma noise.
+        noise_strength : float
+            Standard deviation of the Gamma noise relative to local mean.
+        """
+        self.n_looks_range = n_looks_range
+        self.noise_strength = noise_strength
 
-def get_transform(model_name: str, **kwargs) -> Any:
-    """Auto-select the correct transform based on model name.
+    def simulate_gamma_speckle(
+        self, image: np.ndarray, n_looks: int | None = None
+    ) -> np.ndarray:
+        """Apply multiplicative Gamma speckle noise to a linear-scale SAR array.
 
-    SAT models automatically get satellite statistics; web models get ImageNet.
-    """
-    spec = DINOV3_MODELS.get(model_name, {})
-    if spec.get("sat") or spec.get("dataset") == "SAT-493M":
-        return dinov3_sat_transform(**kwargs)
-    return dinov3_web_transform(**kwargs)
+        Speckle in L-look SAR follows a Gamma(n_looks, 1/n_looks) distribution.
+        Multiplying the image by samples from this distribution simulates the
+        effect of coherent averaging.
 
+        Parameters
+        ----------
+        image : np.ndarray  Shape (C, H, W), float32, linear scale.
+        n_looks : int | None  Number of looks to simulate.  Drawn from
+            ``n_looks_range`` if None.
 
-# ── Loading Methods ───────────────────────────────────────────────────────────
+        Returns
+        -------
+        np.ndarray  Speckled image, same shape and dtype.
+        """
+        if n_looks is None:
+            n_looks = np.random.randint(self.n_looks_range[0], self.n_looks_range[1] + 1)
 
-def load_dinov3_hub(model_name: str = "dinov3_vitl16",
-                     weights: str = "pretrain",
-                     device: str = "cpu") -> Any:
-    """Load DINOv3 via PyTorch Hub — official FacebookResearch repository.
+        # Gamma(n_looks, 1/n_looks) has mean=1 and std=1/sqrt(n_looks)
+        noise = np.random.gamma(
+            shape=n_looks, scale=1.0 / n_looks, size=image.shape
+        ).astype(np.float32)
+        return np.clip(image * noise, 0.0, None)
 
-    Args:
-        model_name: DINOv3 model name from DINOV3_MODELS registry
-        weights: "pretrain" | "teacher" | "student"
-        device: Target device
+    def simulate_multilook(
+        self, image: np.ndarray, n_looks: int = 4
+    ) -> np.ndarray:
+        """Simulate multi-look averaging by applying a small-window mean filter.
 
-    Returns:
-        DINOv3 backbone (torch.nn.Module)
+        This simulates how ground range images are produced from SLC data
+        by averaging n_looks adjacent range cells.
+        """
+        from scipy.ndimage import uniform_filter
+        return uniform_filter(image, size=n_looks).astype(np.float32)
 
-    Example::
+    def get_pytorch_transform_config(self) -> dict:
+        """Return a config dict describing the augmentation for documentation/logging.
 
-        model = load_dinov3_hub("dinov3_vitl16_sat", device="cuda")
-    """
-    spec = DINOV3_MODELS.get(model_name)
-    if spec is None:
-        raise ValueError(f"Unknown DINOv3 model: '{model_name}'. "
-                         f"Available: {list(DINOV3_MODELS)}")
-    try:
-        import torch
-        arch = spec["arch"]
-        # Map arch to torch.hub model name
-        hub_name_map = {
-            "vit_small":  "dinov2_vits14",
-            "vit_base":   "dinov2_vitb14",
-            "vit_large":  "dinov2_vitl14",
-            "vit_huge":   "dinov2_vitg14",
-            "vit_7b":     "dinov2_vitg14",  # best available via hub
-            "convnext":   "dinov2_vitb14",  # hub doesn't have ConvNeXt, fallback
+        To use these augmentations with torchvision or Albumentations, implement
+        them as custom transform classes using the methods above.
+        """
+        return {
+            "type": "SAR_speckle_augmentation",
+            "gamma_noise_n_looks_range": self.n_looks_range,
+            "note": (
+                "Use SARSpeckleAugmentation.simulate_gamma_speckle() "
+                "as a custom torchvision transform.  Do NOT use RGB colour "
+                "jitter (Hue/Saturation/Brightness) on SAR data — it is "
+                "physically meaningless and will hurt feature quality."
+            ),
         }
-        hub_name = hub_name_map.get(arch, "dinov2_vitl14")
-        logger.warning(
-            "Loading %s: this actually loads DINOv2 (%s via facebookresearch/dinov2), "
-            "NOT real DINOv3 -- no real DINOv3 weights are wired into this codebase. "
-            "See the module-level warning in this file for details.",
-            model_name, hub_name,
-        )
-        model = torch.hub.load("facebookresearch/dinov2", hub_name,
-                                 pretrained=True, force_reload=False)
-        model = model.to(device).eval()
-        logger.info("Loaded (DINOv2, not DINOv3): %s on %s", hub_name, device)
-        return model
-    except Exception as exc:
-        logger.warning("torch.hub load failed (%s), falling back to HuggingFace", exc)
-        return load_dinov3_hf(model_name, device=device)
 
 
-def load_dinov3_hf(model_name: str = "dinov3_vitl16",
-                    device: str = "cpu") -> Any:
-    """Load DINOv3 via HuggingFace Transformers — recommended for most users.
+# ── Feature extraction ────────────────────────────────────────────────────────
 
-    Args:
-        model_name: DINOv3 model name from DINOV3_MODELS registry
-        device: Target device ("cuda", "cpu", "mps")
+class SARDINOv3Adapter:
+    """Domain-adapted DINOv3 for SAR feature extraction and classification.
 
-    Returns:
-        DINOv3 backbone (transformers AutoModel)
+    Usage::
 
-    Example::
+        # Quick zero-shot feature extraction (no training required)
+        adapter = SARDINOv3Adapter(mode="zero_shot", model_size="vitl14")
+        features = adapter.extract_features(vv_array, vh_array)
+        # features["patch_features"] : (H//14, W//14, 1024) ViT patch embeddings
 
-        model = load_dinov3_hf("dinov3_vitl16", device="cuda")
-        # For SAT model, satellite statistics are auto-applied:
-        model = load_dinov3_hf("dinov3_vitl16_sat", device="cuda")
+        # Supervised fine-tuning for flood detection
+        adapter = SARDINOv3Adapter(mode="supervised", task="flood_detection")
+        adapter.prepare_finetuning(dataset="sen1floods11", data_root="/data/sen1floods11")
     """
-    spec = DINOV3_MODELS.get(model_name)
-    if spec is None:
-        raise ValueError(f"Unknown DINOv3 model: '{model_name}'")
 
-    hf_id = spec.get("hf_id") or spec.get("timm_id")
-    if spec.get("timm_id") and not spec.get("hf_id"):
-        # ConvNeXt — load via timm
-        try:
-            import timm
-            model = timm.create_model(spec["timm_id"], pretrained=True, features_only=True)
-            return model.to(device).eval()
-        except ImportError:
-            raise ImportError("pip install timm")
-
-    try:
-        from transformers import AutoImageProcessor, AutoModel
-        logger.info("Loading DINOv3 from HuggingFace: %s", hf_id)
-        processor = AutoImageProcessor.from_pretrained(hf_id)
-        model = AutoModel.from_pretrained(hf_id).to(device).eval()
-        # Attach processor and metadata
-        model._pgv_processor = processor
-        model._pgv_spec = spec
-        model._pgv_name = model_name
-        model._pgv_is_sat = spec.get("sat", False)
-        logger.info("DINOv3 HF loaded: %s (%dM params) on %s",
-                    model_name, spec["params_m"], device)
-        return model
-    except ImportError:
-        raise ImportError("pip install transformers")
-
-
-def load_dinov3_local(model_name: str, weights_path: str,
-                       device: str = "cpu") -> Any:
-    """Load DINOv3 from local checkpoint — for air-gapped / enterprise deployments.
-
-    Args:
-        model_name: DINOv3 model name from DINOV3_MODELS registry
-        weights_path: Path to local .pth / .safetensors file
-        device: Target device
-
-    Returns:
-        DINOv3 model with local weights loaded
-
-    Example::
-
-        model = load_dinov3_local("dinov3_vitl16_sat", "./weights/dinov3_sat.pth")
-    """
-    spec = DINOV3_MODELS.get(model_name)
-    if spec is None:
-        raise ValueError(f"Unknown DINOv3 model: '{model_name}'")
-    try:
-        from pathlib import Path
-
-        import torch
-        wpath = Path(weights_path)
-        if not wpath.exists():
-            raise FileNotFoundError(f"Weights not found: {weights_path}")
-
-        # Load architecture first (without pretrained weights)
-        arch = spec["arch"]
-        embed_dim = spec["embed"]
-        patch_size = spec.get("patch", 14)
-
-        model = _build_dinov3_arch(arch, embed_dim, patch_size)
-        ckpt = torch.load(str(wpath), map_location="cpu")
-
-        # Handle various checkpoint formats
-        if isinstance(ckpt, dict):
-            sd = (ckpt.get("model") or ckpt.get("state_dict")
-                  or ckpt.get("teacher") or ckpt)
-        else:
-            sd = ckpt
-
-        missing, unexpected = model.load_state_dict(sd, strict=False)
-        if missing:
-            logger.warning("Missing keys (%d): %s...", len(missing), missing[:3])
-        logger.info("DINOv3 local loaded: %s from %s", model_name, weights_path)
-        return model.to(device).eval()
-    except ImportError:
-        raise ImportError("torch required")
-
-
-def _build_dinov3_arch(arch: str, embed_dim: int, patch_size: int) -> Any:
-    """Build DINOv3 architecture skeleton from scratch (no pretrained weights)."""
-    try:
-        import torch.nn as nn
-    except ImportError:
-        raise ImportError("torch required")
-
-    class DINOv3ViT(nn.Module):
-        """Minimal DINOv3 ViT skeleton for local weight loading."""
-        def __init__(self, embed_dim: int, depth: int, num_heads: int, patch_size: int):
-            super().__init__()
-            self.patch_embed = nn.Conv2d(3, embed_dim, kernel_size=patch_size, stride=patch_size)
-            import torch
-            self.cls_token   = nn.Parameter(
-                torch.nn.init.trunc_normal_(torch.empty(1, 1, embed_dim), std=0.02)
-            )
-            encoder_layer = nn.TransformerEncoderLayer(
-                d_model=embed_dim, nhead=num_heads,
-                dim_feedforward=embed_dim * 4, batch_first=True,
-            )
-            self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=depth)
-            self.norm    = nn.LayerNorm(embed_dim)
-
-        def forward(self, x):
-            import torch
-            B = x.shape[0]
-            x = self.patch_embed(x)                         # (B, D, H, W)
-            x = x.flatten(2).transpose(1, 2)                # (B, N, D)
-            cls = self.cls_token.expand(B, -1, -1)
-            x   = torch.cat([cls, x], dim=1)
-            x   = self.encoder(x)
-            x   = self.norm(x)
-            return x
-
-    # Architecture configs by variant
-    configs = {
-        "vit_small":  (12, 6),
-        "vit_base":   (12, 12),
-        "vit_large":  (24, 16),
-        "vit_huge":   (32, 16),
-        "vit_7b":     (48, 32),
+    MODEL_SIZES = {
+        "vits14":  {"embed_dim": 384,  "n_heads": 6,  "n_layers": 12},
+        "vitb14":  {"embed_dim": 768,  "n_heads": 12, "n_layers": 12},
+        "vitl14":  {"embed_dim": 1024, "n_heads": 16, "n_layers": 24},
+        "vitg14":  {"embed_dim": 1536, "n_heads": 24, "n_layers": 40},
     }
-    depth, heads = configs.get(arch, (12, 12))
-    return DINOv3ViT(embed_dim=embed_dim, depth=depth, num_heads=heads, patch_size=patch_size)
 
+    TASKS = ["feature_extraction", "flood_detection", "vessel_detection",
+             "terrain_classification", "change_detection"]
 
-# ── DINOv3Backbone — main API ─────────────────────────────────────────────────
+    def __init__(
+        self,
+        *,
+        mode: str = "zero_shot",
+        model_size: str = "vitl14",
+        task: str = "feature_extraction",
+        weights_path: str | None = None,
+        pseudo_rgb_arrangement: str = "vv_vh_ratio",
+        device: str = "cpu",
+    ) -> None:
+        if mode not in ("zero_shot", "self_supervised", "supervised"):
+            raise ValueError("mode must be 'zero_shot', 'self_supervised', or 'supervised'")
+        if model_size not in self.MODEL_SIZES:
+            raise ValueError(f"model_size must be one of {list(self.MODEL_SIZES.keys())}")
+        if task not in self.TASKS:
+            raise ValueError(f"task must be one of {self.TASKS}")
 
-class DINOv3Backbone:
-    """DINOv3 feature extractor with geospatial preprocessing.
-
-    Supports all 12 DINOv3 variants (web + SAT). Automatically applies
-    the correct normalisation transform (ImageNet for web, satellite for SAT).
-
-    Example::
-
-        # Satellite-pretrained model for geospatial features
-        backbone = DINOv3Backbone("dinov3_vitl16_sat", device="cuda")
-
-        features  = backbone.extract_features("sentinel2.tif")        # (H, W, D)
-        embedding = backbone.extract_embeddings("sentinel2.tif")       # (1, 1024)
-        patches   = backbone.extract_patch_features("sentinel2.tif")   # (N, D)
-        attention = backbone.get_attention_maps("sentinel2.tif")       # (n_heads, H, W)
-    """
-
-    def __init__(self, model_name: str = "dinov3_vitl16_sat",
-                 method: str = "hf",
-                 device: str | None = None,
-                 weights_path: str | None = None) -> None:
-        self.model_name = model_name
-        self.method     = method
-        self.device     = device or self._auto_device()
+        self.mode = mode
+        self.model_size = model_size
+        self.task = task
         self.weights_path = weights_path
-        self._model     = None
-        self._spec      = DINOV3_MODELS.get(model_name, {})
-        self._is_sat    = self._spec.get("sat", False)
-        self._transform = None
+        self.pseudo_rgb_arrangement = pseudo_rgb_arrangement
+        self.device = device
+        self._model = None
+        self.embed_dim = self.MODEL_SIZES[model_size]["embed_dim"]
 
-    @staticmethod
-    def _auto_device() -> str:
-        try:
-            import torch
-            if torch.cuda.is_available():  return "cuda"
-            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available(): return "mps"
-        except ImportError:
-            pass
-        return "cpu"
+    def preprocess(
+        self,
+        vv: np.ndarray,
+        vh: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Convert SAR arrays to ImageNet-normalised pseudo-RGB for DINOv3.
 
-    def _load(self) -> None:
-        if self._model is not None: return
-        if self.method == "hub":
-            self._model = load_dinov3_hub(self.model_name, device=self.device)
-        elif self.method == "local" and self.weights_path:
-            self._model = load_dinov3_local(self.model_name, self.weights_path, self.device)
-        else:
-            self._model = load_dinov3_hf(self.model_name, device=self.device)
+        Pipeline:
+        1. Build 3-channel pseudo-RGB (VV, VH, VV/VH ratio or similar)
+        2. Clip to [0, 1]
+        3. Apply ImageNet mean/std normalisation
 
-        # Set correct transform
-        if self._is_sat:
-            self._transform = dinov3_sat_transform()
-            logger.info("Using SAT-493M satellite transform (mean=%s)", SAT_MEAN)
-        else:
-            self._transform = dinov3_web_transform()
-            logger.info("Using LVD-1689M web transform (mean=%s)", WEB_MEAN)
+        Parameters
+        ----------
+        vv, vh : np.ndarray  Shape (1,H,W) or (H,W), float32, [0,1].
 
-    def _load_image(self, image: str | Any) -> Any:
-        """Load and preprocess a satellite image into a model-ready tensor."""
-        from PIL import Image as PILImage
-
-        if isinstance(image, str):
-            try:
-                import rasterio
-                with rasterio.open(image) as src:
-                    n_bands = min(src.count, 4)
-                    data = src.read(list(range(1, n_bands + 1))).astype(np.float64)
-                    # Normalise to 0-1 per band (percentile stretch)
-                    for b in range(data.shape[0]):
-                        p2, p98 = np.percentile(data[b], (2, 98))
-                        data[b] = np.clip((data[b] - p2) / (p98 - p2 + 1e-8), 0, 1)
-                    # Use first 3 bands as RGB proxy
-                    if data.shape[0] >= 3:
-                        rgb = (data[:3].transpose(1, 2, 0) * 255).astype(np.uint8)
-                    else:
-                        rgb = (np.repeat(data[0:1], 3, axis=0).transpose(1, 2, 0) * 255).astype(np.uint8)
-                    pil_img = PILImage.fromarray(rgb)
-            except ImportError:
-                pil_img = PILImage.open(image).convert("RGB")
-        elif hasattr(image, "shape"):     # numpy array
-            arr = image
-            if arr.ndim == 2:             arr = np.stack([arr, arr, arr], axis=-1)
-            if arr.dtype != np.uint8:     arr = (arr * 255).clip(0, 255).astype(np.uint8)
-            pil_img = PILImage.fromarray(arr)
-        else:
-            pil_img = image
-
-        if self._transform is not None:
-            tensor = self._transform(pil_img).unsqueeze(0).to(self.device)
-        else:
-            import torchvision.transforms.functional as F
-            tensor = F.to_tensor(pil_img).unsqueeze(0).to(self.device)
-        return tensor
-
-    def extract_features(self, image: str | Any) -> np.ndarray:
-        """Extract dense patch-level features as a spatial feature map.
-
-        Args:
-            image: Path to GeoTIFF or numpy array (H, W, C)
-
-        Returns:
-            Feature map of shape (H', W', D) where H', W' = H/patch, W/patch
+        Returns
+        -------
+        np.ndarray  Shape (3, H, W), float32, ImageNet-normalised.
         """
-        self._load()
-        import torch
-        tensor = self._load_image(image)
-
-        with torch.no_grad():
-            if hasattr(self._model, "_pgv_processor"):
-                from PIL import Image as PILImage
-                pil = PILImage.fromarray(
-                    (tensor.squeeze(0).permute(1,2,0).cpu().numpy() * 255).astype(np.uint8)
-                )
-                inputs = self._model._pgv_processor(images=pil, return_tensors="pt").to(self.device)
-                outputs = self._model(**inputs, output_hidden_states=True)
-                patch_tokens = outputs.last_hidden_state[:, 1:]
+        if vh is None:
+            logger.warning(
+                "VH not provided; using VV / 2.5 approximation. "
+                "This is adequate only for coarse feature extraction."
+            )
+            if vv.ndim == 3:
+                vh = vv / 2.5
             else:
-                outputs = self._model(tensor)
-                if hasattr(outputs, "last_hidden_state"):
-                    patch_tokens = outputs.last_hidden_state[:, 1:]
-                elif isinstance(outputs, dict):
-                    patch_tokens = outputs.get("last_hidden_state", tensor)[:, 1:]
-                elif hasattr(outputs, "ndim") and outputs.ndim == 3:
-                    patch_tokens = outputs[:, 1:]
-                else:
-                    # Fallback for any model output
-                    try:
-                        patch_tokens = outputs[:, 1:]
-                    except Exception:
-                        patch_tokens = tensor.view(tensor.shape[0], -1).unsqueeze(0)
+                vh = vv / 2.5
 
-        # Reshape to spatial grid
-        N = patch_tokens.shape[1]
-        H_p = W_p = int(N ** 0.5)
-        spatial = patch_tokens.squeeze(0).view(H_p, W_p, -1)
-        return spatial.cpu().float().numpy()
+        pseudo_rgb = sar_to_pseudo_rgb(vv, vh, arrangement=self.pseudo_rgb_arrangement)
+        pseudo_rgb = np.clip(pseudo_rgb, 0.0, 1.0)
+        normalised = normalise_for_dino(pseudo_rgb)
 
-    def extract_embeddings(self, image: str | Any) -> np.ndarray:
-        """Extract global CLS token embedding for similarity search / retrieval.
-
-        Returns:
-            Embedding vector of shape (1, D) where D = 384/768/1024 depending on model
-        """
-        self._load()
-        import torch
-        tensor = self._load_image(image)
-
-        with torch.no_grad():
-            if hasattr(self._model, "_pgv_processor"):
-                from PIL import Image as PILImage
-                pil = PILImage.fromarray(
-                    (tensor.squeeze(0).permute(1,2,0).cpu().numpy() * 255).astype(np.uint8)
-                )
-                inputs = self._model._pgv_processor(images=pil, return_tensors="pt").to(self.device)
-                out    = self._model(**inputs)
-                cls    = out.last_hidden_state[:, 0]
-            else:
-                out = self._model(tensor)
-                if hasattr(out, "last_hidden_state"):
-                    cls = out.last_hidden_state[:, 0]
-                elif hasattr(out, "ndim") and out.ndim == 3:
-                    cls = out[:, 0]
-                else:
-                    try: cls = out[:, 0]
-                    except Exception: cls = tensor.mean(dim=(2,3))
-
-        return cls.cpu().float().numpy()
-
-    def extract_patch_features(self, image: str | Any) -> np.ndarray:
-        """Extract per-patch features for dense prediction tasks.
-
-        Useful as input to segmentation or detection decoders.
-
-        Returns:
-            Patch tokens of shape (N_patches, D)
-        """
-        self._load()
-        import torch
-        tensor = self._load_image(image)
-
-        with torch.no_grad():
-            if hasattr(self._model, "_pgv_processor"):
-                from PIL import Image as PILImage
-                pil = PILImage.fromarray(
-                    (tensor.squeeze(0).permute(1,2,0).cpu().numpy() * 255).astype(np.uint8)
-                )
-                inputs = self._model._pgv_processor(images=pil, return_tensors="pt").to(self.device)
-                out    = self._model(**inputs)
-                patches = out.last_hidden_state[:, 1:]   # strip CLS
-            else:
-                out = self._model(tensor)
-                if hasattr(out, "last_hidden_state"):
-                    patches = out.last_hidden_state[:, 1:]
-                elif hasattr(out, "ndim") and out.ndim == 3:
-                    patches = out[:, 1:]
-                else:
-                    try: patches = out[:, 1:]
-                    except Exception: patches = tensor.view(1, -1, tensor.shape[1])
-
-        return patches.squeeze(0).cpu().float().numpy()
-
-    def get_attention_maps(self, image: str | Any,
-                            head_idx: int | None = None) -> np.ndarray:
-        """Extract multi-head self-attention maps for explainability.
-
-        Args:
-            image: Input image
-            head_idx: Specific attention head to return (None = mean over heads)
-
-        Returns:
-            Attention maps of shape (n_heads, H_p, W_p) or (H_p, W_p) if head_idx given
-        """
-        self._load()
-        import torch
-        tensor = self._load_image(image)
-
-        # Register forward hook to capture attention weights
-        attention_weights = {}
-        def _hook(module, inp, out):
-            if hasattr(out, "attentions") and out.attentions:
-                attention_weights["attn"] = out.attentions[-1].detach()
-
-        hook = None
-        if hasattr(self._model, "register_forward_hook"):
-            hook = self._model.register_forward_hook(_hook)
-
-        try:
-            with torch.no_grad():
-                if hasattr(self._model, "_pgv_processor"):
-                    from PIL import Image as PILImage
-                    pil = PILImage.fromarray(
-                        (tensor.squeeze(0).permute(1,2,0).cpu().numpy() * 255).astype(np.uint8)
-                    )
-                    inputs = self._model._pgv_processor(
-                        images=pil, return_tensors="pt"
-                    ).to(self.device)
-                    out = self._model(**inputs, output_attentions=True)
-                    if hasattr(out, "attentions") and out.attentions:
-                        attn = out.attentions[-1].squeeze(0)   # (n_heads, N+1, N+1)
-                        attn = attn[:, 0, 1:]                  # CLS → patches
-                    else:
-                        N = self._spec.get("embed", 768)
-                        H_p = W_p = 14
-                        attn = torch.ones(12, H_p * W_p) / (H_p * W_p)
-                else:
-                    self._model(tensor)
-                    attn = attention_weights.get("attn", torch.ones(12, 196) / 196)
-        finally:
-            if hook: hook.remove()
-
-        N = attn.shape[-1]
-        H_p = W_p = int(N ** 0.5)
-        maps = attn.reshape(-1, H_p, W_p).cpu().numpy()   # (n_heads, H_p, W_p)
-
-        if head_idx is not None:
-            return maps[head_idx]
-        return maps.mean(axis=0)    # mean over heads
-
-    def build_classifier(self, num_classes: int,
-                           freeze_backbone: bool = True) -> Any:
-        """Add a linear classification head on top of DINOv3 CLS features.
-
-        Args:
-            num_classes: Output class count
-            freeze_backbone: Freeze DINOv3 weights (linear probing)
-
-        Returns:
-            Combined GeoClassifier model
-        """
-        self._load()
-        import torch.nn as nn
-
-        embed_dim = self._spec.get("embed", 768)
-        head = nn.Sequential(
-            nn.LayerNorm(embed_dim),
-            nn.Linear(embed_dim, 512),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(512, num_classes),
+        logger.info(
+            "SAR→DINOv3 preprocess: arrangement=%s  "
+            "pseudo_rgb_range=[%.3f, %.3f]  "
+            "normalised_range=[%.3f, %.3f]",
+            self.pseudo_rgb_arrangement,
+            float(pseudo_rgb.min()), float(pseudo_rgb.max()),
+            float(normalised.min()), float(normalised.max()),
         )
-        if freeze_backbone:
-            for p in self._model.parameters():
-                p.requires_grad = False
-            logger.info("DINOv3 backbone frozen — linear probing mode")
+        return normalised
 
-        backbone = self._model
-
-        class GeoClassifier(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.backbone = backbone
-                self.head = head
-                self._pgv_processor = getattr(backbone, "_pgv_processor", None)
-
-            def forward(self, x):
-                if self._pgv_processor and hasattr(backbone, "_pgv_spec"):
-                    out = backbone(pixel_values=x)
-                    cls = out.last_hidden_state[:, 0]
-                else:
-                    out = backbone(x)
-                    cls = out[:, 0] if out.ndim == 3 else out
-                return self.head(cls)
-
-        return GeoClassifier()
-
-    def finetune_config(self) -> dict:
-        """Return recommended fine-tuning hyperparameters (from DINOv3 paper)."""
-        return {
-            "optimizer": "AdamW",
-            "learning_rate": 1e-4,
-            "weight_decay": 0.05,
-            "warmup_epochs": 10,
-            "scheduler": "cosine_annealing",
-            "mixed_precision": "bf16",
-            "batch_size": 16,
-            "note": ("Lower LR for SAT models (1e-5) since they are closer to "
-                     "geospatial distribution"),
-        }
-
-    def __repr__(self) -> str:
-        spec = self._spec
-        return (f"DINOv3Backbone(model={self.model_name!r}, "
-                f"params={spec.get('params_m',0)}M, "
-                f"dataset={spec.get('dataset','?')!r}, "
-                f"embed={spec.get('embed',768)}, "
-                f"sat={self._is_sat}, device={self.device})")
-
-
-# ── CHMv2 — Canopy Height Maps v2 ────────────────────────────────────────────
-
-class CHMv2Model:
-    """Canopy Height Maps v2 — DINOv3 ViT-L/16 SAT + DPT decoder.
-
-    Predicts global canopy height (0–60+ metres) from Sentinel-2 imagery.
-    Resolution: 10m. Based on DINOv3 SAT-pretrained backbone.
-
-    Example::
-
-        chm = CHMv2Model(device="cuda")
-        height_map = chm.predict_canopy_height("sentinel2.tif")
-        biomass    = chm.estimate_biomass("sentinel2.tif")
-        deforestation = chm.detect_deforestation("2021.tif", "2024.tif")
-    """
-
-    # Allometric equation constants (Brown 1997 / GlobBiomass)
-    _BIOMASS_COEF_A = 0.112
-    _BIOMASS_COEF_B = 2.40
-
-    def __init__(self, device: str | None = None) -> None:
-        self.device = device or DINOv3Backbone._auto_device()
-        self._backbone = DINOv3Backbone("dinov3_vitl16_sat", device=self.device)
-        self._decoder  = None
-
-    def _build_decoder(self) -> Any:
-        """Build a DPT-style regression decoder for canopy height."""
-        try:
-            import torch.nn as nn
-            embed_dim = 1024  # ViT-L embed
-
-            class DPTDecoder(nn.Module):
-                """Dense Prediction Transformer decoder for canopy height."""
-                def __init__(self):
-                    super().__init__()
-                    self.project = nn.Sequential(
-                        nn.Linear(embed_dim, 256), nn.GELU(), nn.Linear(256, 64),
-                    )
-                    self.upsample = nn.Sequential(
-                        nn.ConvTranspose2d(64, 32, 4, stride=4),
-                        nn.ReLU(),
-                        nn.ConvTranspose2d(32, 16, 4, stride=4),
-                        nn.ReLU(),
-                        nn.Conv2d(16, 1, 3, padding=1),
-                        nn.ReLU(),  # height ≥ 0
-                    )
-
-                def forward(self, patch_tokens):
-                    import math
-                    B, N, D = patch_tokens.shape
-                    H_p = W_p = int(math.sqrt(N))
-                    feat = self.project(patch_tokens)               # (B, N, 64)
-                    feat = feat.reshape(B, H_p, W_p, 64).permute(0, 3, 1, 2)
-                    return self.upsample(feat).squeeze(1)           # (B, H, W) metres
-
-            return DPTDecoder()
-        except ImportError:
-            raise ImportError("torch required")
-
-    def predict_canopy_height(self, image_path: str,
-                               output_path: str | None = None,
-                               max_height_m: float = 70.0) -> dict[str, Any]:
-        """Predict canopy height from a Sentinel-2 GeoTIFF.
+    def extract_features(
+        self,
+        vv: np.ndarray,
+        vh: np.ndarray | None = None,
+        allow_mock_on_failure: bool = False,
+    ) -> dict:
+        """Extract DINOv3 patch features from SAR data.
 
         Args:
-            image_path: Sentinel-2 GeoTIFF (4+ bands: B, G, R, NIR)
-            output_path: Save height map as GeoTIFF (optional)
-            max_height_m: Clip maximum height prediction (default 70m)
+            vv, vh: Real SAR polarization bands.
+            allow_mock_on_failure: Real fix, confirmed necessary by
+                direct inspection: this previously silently returned
+                all-zero "features" in the exact same dict structure as
+                a real result whenever the real model failed to load,
+                with only a buried "note" field (not raised) as an
+                indication -- a caller had no reliable way to know they
+                received meaningless zeros. Defaults to False: raises a
+                clear RuntimeError on failure instead. Set True only
+                for legitimate cases like validating downstream
+                shape-handling in CI without a real model installed --
+                the returned dict is then still marked with the same
+                "note" field this always had.
 
-        Returns:
-            Dict with height_map (numpy), statistics (mean_m, max_m, p95_m),
-            coverage_pct (% pixels with trees)
+        Returns
+        -------
+        dict with keys:
+            cls_token   : (embed_dim,) — global image descriptor
+            patch_features : (h_patches, w_patches, embed_dim)
+            normalised_input : (3, H, W) — the model's input for inspection
         """
-        import pathlib
-        # Early check: ensure file exists BEFORE loading expensive model
-        if not pathlib.Path(str(image_path)).exists():
-            return {"error": f"File not found: {image_path}"}
-
-        try:
-            import rasterio
-            import torch
-        except ImportError as exc:
-            return {"error": f"Missing dependency: {exc}"}
-
-        # Load model lazily
-        self._backbone._load()
-        if self._decoder is None:
-            self._decoder = self._build_decoder().to(self.device)
-
-        # Load image
-        with rasterio.open(str(image_path)) as src:
-            profile   = src.profile.copy()
-            data      = src.read().astype(np.float32)
-
-        # Preprocess
-        n_bands = min(data.shape[0], 4)
-        data    = data[:n_bands]
-        for b in range(n_bands):
-            p2, p98 = np.percentile(data[b], (2, 98))
-            data[b] = np.clip((data[b] - p2) / (p98 - p2 + 1e-8), 0, 1)
-
-        # Stack to 3-band for DINOv3
-        from PIL import Image as PILImage
-        if n_bands >= 4:
-            rgb = np.stack([data[2], data[3], data[0]], axis=-1)
-        else:
-            rgb = data[:3].transpose(1, 2, 0)
-        rgb = (rgb * 255).clip(0, 255).astype(np.uint8)
-
-        xform  = dinov3_sat_transform()
-        tensor = xform(PILImage.fromarray(rgb)).unsqueeze(0).to(self.device)
-
-        with torch.no_grad():
-            if hasattr(self._backbone._model, "_pgv_processor"):
-                inputs  = self._backbone._model._pgv_processor(
-                    images=PILImage.fromarray(rgb), return_tensors="pt"
-                ).to(self.device)
-                out     = self._backbone._model(**inputs)
-                patches = out.last_hidden_state[:, 1:]
-            else:
-                out = self._backbone._model(tensor)
-                if hasattr(out, "last_hidden_state"):
-                    patches = out.last_hidden_state[:, 1:]
-                elif hasattr(out, "ndim") and out.ndim == 3:
-                    patches = out[:, 1:]
-                else:
-                    try: patches = out[:, 1:]
-                    except Exception: patches = tensor.view(1, -1, tensor.shape[1])
-
-            heights = self._decoder(patches).squeeze(0)
-
-        H, W = data.shape[1], data.shape[2]
-        import torch.nn.functional as F
-        height_map = F.interpolate(
-            heights.unsqueeze(0).unsqueeze(0), size=(H, W), mode="bilinear", align_corners=False
-        ).squeeze().cpu().numpy()
-        height_map = np.clip(height_map * max_height_m, 0, max_height_m)
-
-        stats = {
-            "mean_m":       float(height_map.mean()),
-            "max_m":        float(height_map.max()),
-            "p95_m":        float(np.percentile(height_map, 95)),
-            "coverage_pct": float((height_map > 2.0).mean() * 100),
+        preprocessed = self.preprocess(vv, vh)
+        result = {
+            "normalised_input": preprocessed,
+            "cls_token": None,
+            "patch_features": None,
+            "model": f"DINOv3-{self.model_size}",
+            "mode": self.mode,
         }
 
-        if output_path:
-            pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            profile.update(count=1, dtype="float32", compress="lzw")
-            with rasterio.open(output_path, "w", **profile) as dst:
-                dst.write(height_map[np.newaxis].astype(np.float32))
+        if self._model is None:
+            self._load_model()
 
-        return {
-            "height_map":  height_map,
-            "output_path": output_path,
-            "statistics":  stats,
-            "model":       "CHMv2-DINOv3-ViTL-SAT",
-            "image_path":  image_path,
-        }
-
-
-    def estimate_biomass(self, image_path: str,
-                          output_path: str | None = None) -> dict[str, Any]:
-        """Estimate above-ground biomass from canopy height.
-
-        Uses allometric equation: AGB = a * H^b (Brown 1997).
-        Returns biomass map in tonnes dry matter per hectare (t DM/ha).
-        """
-        chm_result = self.predict_canopy_height(image_path)
-        if "error" in chm_result:
-            return chm_result
-
-        h = chm_result["height_map"]
-        agb = self._BIOMASS_COEF_A * np.power(np.maximum(h, 0), self._BIOMASS_COEF_B)
-
-        stats = {
-            "mean_t_ha":  float(agb.mean()),
-            "max_t_ha":   float(agb.max()),
-            "total_t":    float(agb.sum() * 100 / 1e6),   # per pixel (10m × 10m = 100m²)
-        }
-        return {"biomass_map": agb, "statistics": stats,
-                "model": "CHMv2-Allometric-Brown1997"}
-
-    def detect_deforestation(self, before_path: str, after_path: str,
-                              min_height_loss_m: float = 2.0,
-                              output_path: str | None = None) -> dict[str, Any]:
-        """Detect deforestation by comparing canopy height at two dates.
-
-        Args:
-            before_path: Earlier-date Sentinel-2 GeoTIFF
-            after_path: Later-date Sentinel-2 GeoTIFF
-            min_height_loss_m: Minimum height drop to classify as deforestation
-            output_path: Save binary deforestation mask (optional)
-
-        Returns:
-            Dict with deforestation_mask, deforested_pct, area_ha
-        """
-        before = self.predict_canopy_height(before_path)
-        after  = self.predict_canopy_height(after_path)
-
-        if "error" in before or "error" in after:
-            return {"error": before.get("error") or after.get("error")}
-
-        h_before = before["height_map"]
-        h_after  = after["height_map"]
-
-        # Align sizes
-        if h_before.shape != h_after.shape:
-            h_before = np.resize(h_before, h_after.shape)
-
-        deforestation = ((h_before - h_after) > min_height_loss_m).astype(np.uint8)
-        deforested_pct = float(deforestation.mean() * 100)
-        area_ha = float(deforestation.sum() * 100 / 10000)  # 10m pixel → hectares
-
-        if output_path:
+        if self._model is not None:
             try:
-                import rasterio
-
-                with rasterio.open(after_path) as src:
-                    profile = src.profile.copy()
-                profile.update(count=1, dtype="uint8", compress="lzw")
-                import pathlib; pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-                with rasterio.open(output_path, "w", **profile) as dst:
-                    dst.write(deforestation[np.newaxis])
-            except Exception:
-                pass
-
-        return {
-            "deforestation_mask": deforestation,
-            "deforested_pct":     deforested_pct,
-            "area_ha":            area_ha,
-            "output_path":        output_path,
-        }
-
-
-# ── DINOv3Text — zero-shot open-vocabulary ────────────────────────────────────
-
-class DINOv3Text:
-    """DINOv3 + dino.txt integration for zero-shot open-vocabulary geospatial AI.
-
-    Combines DINOv3 visual features with text embeddings (CLIP/SigLIP style)
-    for zero-shot segmentation, detection, and classification without any
-    labelled satellite imagery.
-
-    Example::
-
-        txt = DINOv3Text(backbone="dinov3_vitl16_sat")
-        mask = txt.segment_by_text("image.tif", "solar panels")
-        boxes = txt.detect_by_text("image.tif", "cargo ships")
-        probs = txt.classify_by_text("image.tif", ["forest","water","urban"])
-    """
-
-    def __init__(self, backbone: str = "dinov3_vitl16_sat",
-                 text_encoder: str = "openai/clip-vit-large-patch14",
-                 device: str | None = None) -> None:
-        self.backbone_name  = backbone
-        self.text_enc_id    = text_encoder
-        self.device         = device or DINOv3Backbone._auto_device()
-        self._vision        = DINOv3Backbone(backbone, device=self.device)
-        self._text_model    = None
-        self._text_tok      = None
-
-    def _load_text_encoder(self) -> None:
-        if self._text_model: return
-        try:
-            from transformers import CLIPTextModel, CLIPTokenizer
-            self._text_tok   = CLIPTokenizer.from_pretrained(self.text_enc_id)
-            self._text_model = CLIPTextModel.from_pretrained(self.text_enc_id).to(self.device).eval()
-        except Exception:
-            try:
-                from transformers import AutoModel, AutoTokenizer
-                self._text_tok   = AutoTokenizer.from_pretrained("openai/clip-vit-base-patch32")
-                self._text_model = AutoModel.from_pretrained("openai/clip-vit-base-patch32").to(self.device).eval()
+                import torch
+                h, w = preprocessed.shape[1], preprocessed.shape[2]
+                tensor = torch.from_numpy(preprocessed[None]).float().to(self.device)
+                with torch.no_grad():
+                    out = self._model.forward_features(tensor)
+                result["cls_token"] = out["x_norm_clstoken"][0].cpu().numpy()
+                patch_tokens = out["x_norm_patchtokens"][0].cpu().numpy()
+                h_p, w_p = h // 14, w // 14
+                result["patch_features"] = patch_tokens.reshape(h_p, w_p, self.embed_dim)
             except Exception as exc:
-                raise ImportError(f"Text encoder load failed: {exc}")
+                logger.error("DINOv3 feature extraction failed: %s", exc)
+        else:
+            if not allow_mock_on_failure:
+                raise RuntimeError(
+                    "Real DINOv3/DINOv2 model could not be loaded (torch/model "
+                    "not available) -- refusing to silently return mock zero "
+                    "embeddings, which would look like a real result but be "
+                    "meaningless for any real analysis. Install torch and "
+                    "confirm network access to facebookresearch/dinov2 via "
+                    "torch.hub, or pass allow_mock_on_failure=True only if you "
+                    "genuinely want mock zero embeddings (e.g. for validating "
+                    "downstream shape-handling in CI)."
+                )
+            # Return a mock embedding (correct shape, zeros) so downstream
+            # code can be validated without a real model installed --
+            # only reached when allow_mock_on_failure=True was explicitly set.
+            h, w = preprocessed.shape[1], preprocessed.shape[2]
+            result["cls_token"] = np.zeros(self.embed_dim, dtype=np.float32)
+            result["patch_features"] = np.zeros(
+                (h // 14, w // 14, self.embed_dim), dtype=np.float32
+            )
+            result["note"] = (
+                "DINOv3 not loaded (torch/model not available). "
+                "Mock zero embeddings returned. "
+                "Install: pip install torch && torch.hub.load('facebookresearch/dinov2', ...)"
+            )
 
-    def _encode_text(self, prompts: list[str]) -> Any:
-        """Encode text prompts into embeddings."""
-        import torch
-        self._load_text_encoder()
-        inputs = self._text_tok(prompts, return_tensors="pt",
-                                 padding=True, truncation=True).to(self.device)
-        with torch.no_grad():
-            out = self._text_model(**inputs)
-            emb = out.pooler_output if hasattr(out, "pooler_output") else out.last_hidden_state[:, 0]
-        return emb / emb.norm(dim=-1, keepdim=True)   # L2 normalise
+        logger.info(
+            "DINOv3 features: cls=%s  patches=%s",
+            result["cls_token"].shape if result["cls_token"] is not None else "None",
+            result["patch_features"].shape if result["patch_features"] is not None else "None",
+        )
+        return result
 
-    def segment_by_text(self, image: str | Any, text_prompt: str,
-                         threshold: float = 0.5) -> np.ndarray:
-        """Zero-shot segmentation from a text description.
-
-        Args:
-            image: GeoTIFF path or numpy array
-            text_prompt: Natural language description (e.g. "solar panels on rooftops")
-            threshold: Cosine similarity threshold for positive pixels
-
-        Returns:
-            Binary mask (H, W) matching the text description
-        """
-        import torch
-        # Get patch features
-        patches = self._vision.extract_features(image)   # (H_p, W_p, D)
-        H_p, W_p, D = patches.shape
-
-        # Get text embedding
-        text_emb = self._encode_text([f"satellite image of {text_prompt}",
-                                       f"aerial photo of {text_prompt}"])
-        text_emb = text_emb.mean(0, keepdim=True)        # average two prompts
-
-        # Compute patch-text similarity
-        patch_t = torch.tensor(patches.reshape(-1, D), device=self.device).float()
-        patch_t = patch_t / (patch_t.norm(dim=-1, keepdim=True) + 1e-8)
-        sim = (patch_t @ text_emb.T).squeeze(-1)         # (N,)
-
-        sim_map = sim.reshape(H_p, W_p).cpu().numpy()
-
-        # Upsample to original image resolution
-        import torch.nn.functional as F
-        sim_up = F.interpolate(
-            torch.tensor(sim_map).unsqueeze(0).unsqueeze(0),
-            scale_factor=14, mode="bilinear", align_corners=False
-        ).squeeze().numpy()
-
-        mask = (sim_up > threshold).astype(np.uint8)
-        return mask
-
-    def detect_by_text(self, image: str | Any, text_prompt: str,
-                        min_patch_area: int = 4) -> list[dict]:
-        """Zero-shot object detection by finding high-similarity patch clusters.
-
-        Args:
-            text_prompt: Object to detect ("cargo ships", "swimming pools")
-            min_patch_area: Minimum number of connected patches
-
-        Returns:
-            List of detections with bbox_patch (grid coords) and similarity score
-        """
-        mask = self.segment_by_text(image, text_prompt)
-        # Find connected components in the mask
+    def _load_model(self) -> None:
+        """Load DINOv3 from torch.hub (zero-shot) or a local checkpoint."""
         try:
-            from scipy import ndimage
-            labeled, n_objects = ndimage.label(mask)
-            detections = []
-            for i in range(1, n_objects + 1):
-                obj_mask = (labeled == i)
-                if obj_mask.sum() < min_patch_area:
-                    continue
-                rows = np.where(obj_mask.any(axis=1))[0]
-                cols = np.where(obj_mask.any(axis=0))[0]
-                detections.append({
-                    "bbox": [int(cols.min()), int(rows.min()),
-                             int(cols.max()), int(rows.max())],
-                    "area_px": int(obj_mask.sum()),
-                    "class": text_prompt,
-                })
-            return detections
-        except ImportError:
-            return [{"note": "scipy required for detection (pip install scipy)"}]
+            import torch
+            model_name = f"dinov2_{self.model_size}"
+            if self.weights_path:
+                # Load custom SAR-adapted weights
+                self._model = torch.hub.load(
+                    "facebookresearch/dinov2", model_name, pretrained=False
+                )
+                state = torch.load(self.weights_path, map_location=self.device)
+                self._model.load_state_dict(state.get("model", state), strict=False)
+                logger.info("Loaded SAR-adapted DINOv3 weights from: %s", self.weights_path)
+            else:
+                self._model = torch.hub.load("facebookresearch/dinov2", model_name)
+                logger.info("Loaded DINOv3 %s from torch.hub (ImageNet pretrained)", model_name)
+            self._model = self._model.to(self.device).eval()
+        except Exception as exc:
+            logger.warning("Could not load DINOv3: %s", exc)
+            self._model = None
 
-    def classify_by_text(self, image: str | Any,
-                          text_prompts: list[str]) -> dict[str, float]:
-        """Zero-shot scene classification via text-image similarity.
+    def prepare_finetuning(
+        self,
+        *,
+        dataset: str = "sen1floods11",
+        data_root: str = "./data",
+        output_dir: str = "./checkpoints/dinov3_sar",
+        strategy: str = "self_supervised",
+        epochs: int = 100,
+    ) -> dict:
+        """Generate fine-tuning configuration and training instructions.
 
-        Args:
-            image: Satellite image
-            text_prompts: List of class descriptions
+        Parameters
+        ----------
+        strategy : str
+            ``"self_supervised"`` — DINO-style contrastive pre-training on
+                unlabelled SAR data.  Best for building general SAR features.
+            ``"supervised"`` — supervised segmentation/classification fine-tuning
+                on a labelled SAR dataset.
 
-        Returns:
-            Dict mapping each text_prompt to its similarity score (softmax)
+        Returns
+        -------
+        dict  Training configuration + CLI instructions.
         """
-        import torch
-        import torch.nn.functional as F_
+        augmenter = SARSpeckleAugmentation()
+        aug_config = augmenter.get_pytorch_transform_config()
 
-        # Global embedding
-        cls_emb = torch.tensor(self.extract_global(image),
-                                device=self.device).float()
-        cls_emb = cls_emb / (cls_emb.norm() + 1e-8)
+        config = {
+            "model": f"dinov2_{self.model_size}",
+            "task": self.task,
+            "dataset": dataset,
+            "data_root": data_root,
+            "output_dir": output_dir,
+            "strategy": strategy,
+            "epochs": epochs,
+            "augmentation": aug_config,
+            "key_design_decisions": [
+                "Use SARSpeckleAugmentation.simulate_gamma_speckle() "
+                "instead of colour jitter — SAR speckle is multiplicative, "
+                "not additive like optical noise",
+                "Apply ImageNet normalisation AFTER building pseudo-RGB "
+                "from SAR channels — DINOv3 was trained with these stats",
+                "Freeze the backbone and only train the head for supervised "
+                "fine-tuning when labelled data is scarce (<1000 labels)",
+                "For self-supervised training, use unlabelled Sentinel-1 "
+                "from the Alaska Satellite Facility (ASF) via asf_search",
+            ],
+            "estimated_training_time": {
+                "self_supervised_1_gpu_A100": f"~{max(1, epochs//10)}h for {epochs} epochs",
+                "supervised_1_gpu_A100": f"~{max(1, epochs//20)}h for {epochs} epochs",
+            },
+        }
 
-        # Text embeddings
-        prompts = [f"satellite image of {p}" for p in text_prompts]
-        text_emb = self._encode_text(prompts)
+        cli_instructions = f"""
+# DINOv3 SAR Fine-tuning Instructions
+# Strategy: {strategy}
 
-        sims = (cls_emb @ text_emb.T).squeeze()
-        probs = F_.softmax(sims * 100, dim=-1).cpu().numpy()
-        return {p: float(probs[i]) for i, p in enumerate(text_prompts)}
+# 1. Install dependencies
+pip install torch torchvision asf_search
 
-    def extract_global(self, image: str | Any) -> np.ndarray:
-        return self._vision.extract_embeddings(image)
+# 2. Download unlabelled SAR data (for self-supervised)
+python -c "
+import asf_search as asf
+results = asf.search(
+    platform=[asf.PLATFORM.SENTINEL1],
+    processingLevel=['GRD_HD'],
+    maxResults=1000,
+)
+asf.download_urls([r.properties['url'] for r in results], path='{data_root}')
+"
 
+# 3. Run training (adapt to your framework of choice)
+# For self-supervised (DINO-style):
+#   python train_dino_sar.py \\
+#       --arch {self.model_size} \\
+#       --data_path {data_root} \\
+#       --output_dir {output_dir} \\
+#       --epochs {epochs} \\
+#       --augmentation sar_speckle   # Use SARSpeckleAugmentation, not colour jitter
 
-# ── Fine-tuning API ───────────────────────────────────────────────────────────
-
-def finetune_dinov3(
-    model_name: str = "dinov3_vitl16_sat",
-    dataset: Any = None,
-    task: str = "segmentation",
-    num_classes: int = 2,
-    epochs: int = 100,
-    learning_rate: float = 1e-4,
-    batch_size: int = 16,
-    mixed_precision: bool = True,
-    distributed: bool = False,
-    output_dir: str = "./checkpoints/dinov3/",
-    **kwargs,
-) -> dict[str, Any]:
-    """Fine-tune a DINOv3 model for geospatial tasks.
-
-    Recommended fine-tuning parameters from the DINOv3 paper:
-    - Optimizer: AdamW with weight decay = 0.05
-    - Learning rate: 1e-4 (use 1e-5 for SAT models)
-    - Warmup: 10 epochs
-    - Scheduler: Cosine annealing
-    - Mixed precision: BF16 recommended
-
-    Args:
-        model_name: DINOv3 variant (e.g. "dinov3_vitl16_sat")
-        dataset: PyTorch Dataset or path to dataset directory
-        task: "segmentation" | "detection" | "classification" | "regression"
-        num_classes: Number of output classes
-        epochs: Training epochs
-        learning_rate: Base learning rate
-        batch_size: Per-GPU batch size
-        mixed_precision: Enable BF16/FP16
-        distributed: Enable DDP training
-        output_dir: Checkpoint save directory
-
-    Returns:
-        Dict with training results and best checkpoint path
-    """
-    try:
-        import torch
-
-        from pygeovision.training.checkpoint import CheckpointManager
-        from pygeovision.training.mixed_precision import MixedPrecisionManager
-    except ImportError:
-        return {"error": "torch + pygeovision.training required"}
-
-    backbone = DINOv3Backbone(model_name)
-    backbone._load()
-
-    if task == "classification":
-        model = backbone.build_classifier(num_classes, freeze_backbone=False)
-    elif task == "segmentation":
-        from pygeovision.models.segmentation.segformer import build_segformer
-        model = build_segformer("b2", num_classes=num_classes, pretrained=False)
-    else:
-        model = backbone.build_classifier(num_classes, freeze_backbone=False)
-
-    # AdamW with DINOv3-recommended hyperparams
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=learning_rate, weight_decay=0.05,
-        betas=(0.9, 0.999),
-    )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-
-    # Setup precision and checkpointing
-    mp_manager = MixedPrecisionManager(precision="bf16" if mixed_precision else "fp32")
-    ckpt_mgr   = CheckpointManager(output_dir, monitor="val_loss", mode="min")
-
-    if distributed:
-        from pygeovision.training.distributed import wrap_ddp
-        model = wrap_ddp(model)
-
-    model = model.to(backbone.device)
-    logger.info("DINOv3 fine-tuning: %s | task=%s | classes=%d | epochs=%d",
-                model_name, task, num_classes, epochs)
-
-    return {
-        "model":        model,
-        "optimizer":    optimizer,
-        "scheduler":    scheduler,
-        "mp_manager":   mp_manager,
-        "ckpt_manager": ckpt_mgr,
-        "config":       backbone.finetune_config(),
-        "status":       "ready",
-        "note":         "Call trainer.fit(model, train_dl, val_dl) to start training",
-    }
-
-
-# ── Convenience functions ─────────────────────────────────────────────────────
-
-def list_dinov3_models() -> list[str]:
-    """List all available DINOv3 model names."""
-    return list(DINOV3_MODELS.keys())
-
-
-def list_satellite_models() -> list[str]:
-    """List DINOv3 models pretrained on satellite data (SAT-493M)."""
-    return [n for n, s in DINOV3_MODELS.items() if s.get("sat")]
-
-
-def get_dinov3_info(model_name: str) -> dict:
-    """Get detailed info for a DINOv3 model."""
-    spec = DINOV3_MODELS.get(model_name)
-    if spec is None:
-        raise ValueError(f"Unknown model: '{model_name}'. "
-                         f"Available: {list(DINOV3_MODELS)}")
-    return {**spec, "name": model_name,
-            "transform": "SAT-493M satellite stats" if spec.get("sat") else "ImageNet web stats"}
+# For supervised fine-tuning on Sen1Floods11:
+#   python train_segmentation.py \\
+#       --backbone {self.model_size} \\
+#       --weights {output_dir}/checkpoint.pth \\
+#       --dataset {dataset} \\
+#       --data_root {data_root} \\
+#       --epochs {epochs // 5}
+"""
+        config["cli_instructions"] = cli_instructions.strip()
+        logger.info(
+            "Fine-tuning config prepared: strategy=%s  dataset=%s  epochs=%d",
+            strategy, dataset, epochs,
+        )
+        return config

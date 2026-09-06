@@ -364,15 +364,34 @@ def _spectral_burn_scar(data_hls: np.ndarray) -> np.ndarray:
 # ── Loading Methods ───────────────────────────────────────────────────────────
 
 def load_prithvi_hf(model_name: str = "prithvi_eo_2_0",
-                     device: str = "cpu") -> Any:
+                     device: str = "cpu",
+                     allow_random_init: bool = False) -> Any:
     """Load Prithvi from HuggingFace — recommended for most users.
 
     Args:
         model_name: Prithvi variant from PRITHVI_MODELS registry
         device: Target device ("cuda", "cpu")
+        allow_random_init: Real fix, confirmed necessary by direct
+            inspection: this previously silently returned a randomly-
+            initialized "surrogate" model with the correct architecture
+            but ZERO real pretrained weights whenever the real HF load
+            failed for any reason -- a caller had no way to know they
+            were now working with random noise instead of real Prithvi
+            features, since the function still returned what looked
+            like a successful model object. Defaults to False: raises a
+            clear RuntimeError on failure instead. Set True only if you
+            genuinely want an architecture-only model for development/
+            testing -- the returned model is then marked with a real
+            `_pygeovision_is_random_init = True` attribute so it can
+            never be silently mistaken for the real, pretrained thing
+            downstream.
 
     Returns:
-        Prithvi model (transformers AutoModel or surrogate ViT)
+        Real, pretrained Prithvi model (transformers AutoModel).
+
+    Raises:
+        RuntimeError: If the real checkpoint could not be loaded and
+            allow_random_init=False (the default).
 
     Example::
 
@@ -417,14 +436,27 @@ def load_prithvi_hf(model_name: str = "prithvi_eo_2_0",
             logger.info("Prithvi loaded: %s (%dM params)", model_name, spec["params_m"])
             return model
         except Exception as exc:
+            if not allow_random_init:
+                raise RuntimeError(
+                    f"Failed to load real, pretrained Prithvi weights for "
+                    f"'{model_name}' ({hf_id}): {exc}. Refusing to silently "
+                    f"substitute a randomly-initialized model -- that would "
+                    f"produce plausible-looking but meaningless output. "
+                    f"Check that transformers>=4.40 is installed and HF_TOKEN "
+                    f"is set if this repo requires auth. Pass "
+                    f"allow_random_init=True only if you genuinely want an "
+                    f"architecture-only model for development/testing."
+                ) from exc
             logger.warning(
-                "Direct load of '%s' failed (%s). "
-                "Building lightweight surrogate ViT with correct architecture "
-                "but no pretrained weights.  For full accuracy, ensure "
-                "'transformers>=4.40' is installed and HF_TOKEN is set.",
+                "Direct load of '%s' failed (%s). allow_random_init=True was "
+                "explicitly set, so building an architecture-only surrogate "
+                "with NO real pretrained weights -- output will be "
+                "meaningless for any real analysis.",
                 hf_id, exc,
             )
-            return _build_prithvi_surrogate(spec, device)
+            surrogate = _build_prithvi_surrogate(spec, device)
+            surrogate._pygeovision_is_random_init = True
+            return surrogate
     except ImportError:
         raise ImportError("pip install transformers>=4.40")
 

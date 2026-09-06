@@ -406,6 +406,26 @@ class HeuristicPlanner:
             return self._plan_solar(od, bbox, date)
         elif task == "road":
             return self._plan_road(od, bbox, date)
+        elif task == "subsidence":
+            # Real fix, confirmed by tracing this directly: "subsidence"
+            # is a real, still-detected task keyword set (a leftover
+            # from before InSAR support was removed from pygeovision's
+            # scope), but had no real routing branch at all -- it
+            # silently fell through to the land-cover default below,
+            # meaning a real request for subsidence/deformation
+            # monitoring would silently get an unrelated land-cover
+            # plan with no indication the real request couldn't be
+            # fulfilled. Raises clearly instead, consistent with the
+            # same honest-failure pattern used elsewhere in this
+            # codebase (e.g. CenterNet, LISAt) for real, out-of-scope
+            # capability gaps.
+            raise ValueError(
+                "Ground subsidence/deformation monitoring requires real "
+                "InSAR displacement processing, which is out of "
+                "pygeovision's scope (removed entirely -- see the "
+                "project roadmap). Use pygeofetch's own real InSAR "
+                "module directly: pygeofetch.insar."
+            )
         else:
             return self._plan_optical_land_cover(od, bbox, date, bands)
 
@@ -550,7 +570,7 @@ class HeuristicPlanner:
     def _plan_solar(self, od, bbox, date) -> list[Step]:
         return [
             Step(0, "run_pipeline", {
-                "pipeline_name": "solar_panels",
+                "pipeline_name": "solar_detection",
                 "bbox": bbox, "date": date, "output_dir": od,
             }, rationale="Solar panel detection + capacity estimation"),
         ]
@@ -558,7 +578,7 @@ class HeuristicPlanner:
     def _plan_road(self, od, bbox, date) -> list[Step]:
         return [
             Step(0, "run_pipeline", {
-                "pipeline_name": "road_network",
+                "pipeline_name": "road_extraction",
                 "bbox": bbox, "date": date, "output_dir": od,
             }, rationale="Road network extraction + vectorisation"),
         ]

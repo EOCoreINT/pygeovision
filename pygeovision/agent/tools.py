@@ -447,8 +447,8 @@ class EndToEndPipelineTool(GeoTool):
         {"name": "pipeline_name", "type": "str", "required": True,
          "description": (
              "One of: building_footprints | change_detection | land_cover | "
-             "flood_mapping | crop_mapping | forest_monitoring | road_network | "
-             "solar_panels | wildfire_severity | glacier_monitoring"
+             "flood_mapping | crop_monitoring | deforestation | road_extraction | "
+             "solar_detection | wildfire_severity | glacier_monitoring"
          )},
         {"name": "bbox",        "type": "list[float]", "required": True},
         {"name": "date",        "type": "str", "required": True,

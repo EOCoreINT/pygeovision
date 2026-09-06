@@ -113,7 +113,7 @@ class GeoAgentMemory:
             self._spatial["last_output"] = trace.final_output
             # Auto-bind by task heuristic
             for ex in getattr(trace, "executions", []):
-                if "flood" in ex.step.tool_name and ex.result.output_path:
+                if "flood" in str(ex.step.args.get("task", "")) and ex.result.output_path:
                     self.bind("flood_mask", ex.result.output_path)
                 elif "land_cover" in str(ex.step.args.get("task","")) and ex.result.output_path:
                     self.bind("land_cover_map", ex.result.output_path)
@@ -171,7 +171,24 @@ class GeoAgentMemory:
             data = json.load(f)
         self._spatial  = data.get("spatial", {})
         self._bindings = data.get("bindings", {})
-        logger.info("Session loaded from %s  (%d turns)", path, len(data.get("turns", [])))
+        # Real fix, confirmed necessary by direct inspection: this
+        # previously never restored self._turns at all, despite the
+        # log message below claiming "(%d turns)" were loaded -- a
+        # saved conversation history was silently lost on every reload.
+        # Turn.to_dict() itself doesn't save plan_summary/outputs, so
+        # those two fields honestly can't round-trip from a saved file
+        # and are left at their dataclass defaults rather than silently
+        # fabricated.
+        self._turns = [
+            Turn(
+                idx=t.get("turn", i), query=t.get("query", ""),
+                timestamp=t.get("timestamp", ""), plan_steps=t.get("plan_steps", 0),
+                planner_used=t.get("planner", ""), success=t.get("success", False),
+                final_output=t.get("final_output") or None,
+            )
+            for i, t in enumerate(data.get("turns", []))
+        ]
+        logger.info("Session loaded from %s  (%d turns)", path, len(self._turns))
 
     def __repr__(self) -> str:
         return (

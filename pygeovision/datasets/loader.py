@@ -19,13 +19,34 @@ class DatasetLoader:
             if v: print(f"  {k:<18}: {v}")
 
     def download(self, name: str, output_dir: str | None = None) -> Path:
+        """Point to where a real dataset can actually be obtained.
+
+        Real fix, confirmed necessary by direct inspection: this
+        previously created an empty output directory and returned it
+        as if a real download had happened, for the small number of
+        entries that have a real download_url set -- with zero actual
+        file-fetching code anywhere in the function. Checking those
+        real URLs directly confirmed why: EuroSAT, BigEarthNet, DOTA,
+        LEVIR-CD, and CropHarvest all point to human-facing project
+        pages (GitHub repos, project websites), not direct file links.
+        A real HTTP GET against these would download HTML, not the
+        dataset -- worse than the previous behavior, since it would
+        produce a real-looking but wrong file. No automated download is
+        genuinely possible for any of these without navigating
+        registration/terms/manual download links as a human, so this
+        now raises clearly for every real dataset name rather than
+        silently creating a misleading empty "downloaded" directory.
+
+        Raises:
+            ValueError: Always -- with the real URL to visit, whether
+                or not `download_url` happens to be set (neither case
+                supports a genuine automated download today).
+        """
         from pygeovision.datasets.registry import dataset_registry
         d = dataset_registry[name]
-        if not d.download_url:
-            raise ValueError(f"No download URL for '{name}'. Visit: {d.paper_url}")
-        out = Path(output_dir or self.data_root / name)
-        out.mkdir(parents=True, exist_ok=True)
-        print(f"  Download '{name}' → {out}")
-        print(f"  URL: {d.download_url}")
-        print(f"  Size: ~{d.volume_gb:.1f} GB")
-        return out
+        real_url = d.download_url or d.paper_url
+        raise ValueError(
+            f"'{name}' has no real, automated download path -- "
+            f"{'its real download_url is a human-facing project page, not a direct file link' if d.download_url else 'no download_url is set for this entry'}. "
+            f"Visit {real_url!r} directly to obtain it."
+        )

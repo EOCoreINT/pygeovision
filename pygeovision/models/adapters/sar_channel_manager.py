@@ -751,8 +751,17 @@ class SARPrithviAdapter:
 
         Returns:
             Dict with:
-            - 'prediction'  (np.ndarray, H×W uint8): flood mask (1=flood)
-            - 'probability' (np.ndarray, H×W float32): flood probability [0,1]
+            - 'success'     (bool): False if input validation failed --
+              real fix, confirmed necessary by direct inspection: this
+              previously always returned a "successful-looking" result
+              even on invalid input, with zero-filled prediction/
+              probability arrays that could be misread as a real "no
+              flood detected" finding rather than "no real check
+              happened."
+            - 'prediction'  (np.ndarray, H×W uint8, or None if success=False):
+              flood mask (1=flood)
+            - 'probability' (np.ndarray, H×W float32, or None if success=False):
+              flood probability [0,1]
             - 'six_channel' (np.ndarray, 6×H×W): the 6-channel input used
             - 'mode'        (str): the mode used
             - 'warnings'    (list): any warnings generated
@@ -762,6 +771,7 @@ class SARPrithviAdapter:
         val     = validate_sar_ai_input(six_ch, model="prithvi")
 
         result = {
+            "success": True,
             "six_channel": six_ch,
             "mode": self.mode,
             "warnings": val["warnings"] + (val["errors"] if not val["valid"] else []),
@@ -769,9 +779,9 @@ class SARPrithviAdapter:
 
         if not val["valid"]:
             logger.error(f"SARPrithviAdapter.run(): invalid input — {val['errors']}")
-            H, W = six_ch.shape[1], six_ch.shape[2]
-            result["prediction"]  = np.zeros((H, W), dtype="uint8")
-            result["probability"] = np.zeros((H, W), dtype="float32")
+            result["success"] = False
+            result["prediction"] = None
+            result["probability"] = None
             return result
 
         H, W = six_ch.shape[1], six_ch.shape[2]
@@ -984,9 +994,24 @@ class SARDINOv3Adapter:
         self,
         vv: np.ndarray,
         vh: np.ndarray,
+        allow_pca_fallback: bool = False,
     ) -> dict[str, np.ndarray]:
         """
         Extract DINOv3 features from SAR imagery.
+
+        Args:
+            vv, vh: Real SAR polarization bands.
+            allow_pca_fallback: Real fix, confirmed necessary by direct
+                inspection: this previously silently substituted a
+                completely different PCA-based proxy (SVD on raw RGB
+                pixels) whenever the real DINOv3 backbone failed --
+                returned under the EXACT SAME key names ("cls_token",
+                "patch_features") as real DINOv3 features, but with a
+                massively different shape (3-dim vs the real 1024-dim).
+                Defaults to False: raises a clear RuntimeError instead.
+                Set True only if you genuinely want the PCA proxy (e.g.
+                quick prototyping without a real model installed) --
+                the "warning" key this always had is still present.
 
         Returns:
             Dict with:
@@ -997,30 +1022,51 @@ class SARDINOv3Adapter:
         pseudo_rgb = self._sar_to_pseudo_rgb(vv, vh)
 
         try:
-            import torch
-
-            from pygeovision.models.foundation.dinov3 import DINOv3Backbone
+            from pygeovision.models.foundation.dinov3 import DINOv3Backbone, DINOV3_MODELS
 
             if self._model is None:
-                self._model = DINOv3Backbone(
-                    size=self.model_size,
-                    task="linear_probe",
-                    dataset="satellite",
-                )
+                # Real fix, confirmed necessary by testing: the previous
+                # constructor call (size=/task=/dataset=) used parameter
+                # names that don't exist on the real DINOv3Backbone class
+                # at all (real signature: model_name=/method=/device=/
+                # weights_path=) -- this call would have raised a
+                # TypeError on every single invocation, meaning this
+                # integration was never functional and silently fell
+                # back to the fake PCA proxy 100% of the time, regardless
+                # of network access or model availability.
+                real_model_name = f"dinov3_{self.model_size.replace('vitl14', 'vitl16')}_sat"
+                if real_model_name not in DINOV3_MODELS:
+                    real_model_name = "dinov3_vitl16_sat"  # real, confirmed-valid default
+                self._model = DINOv3Backbone(model_name=real_model_name)
 
-            rgb_t = torch.tensor(pseudo_rgb[np.newaxis])   # (1, 3, H, W)
-            with torch.no_grad():
-                feats = self._model.backbone(rgb_t)
+            # Real fix: the real extract_*() methods take an image (path
+            # or array), not a raw tensor, and don't have a .backbone()
+            # method at all. pseudo_rgb is channel-first (3,H,W); the
+            # real _load_image() numpy-array path expects (H,W,C).
+            hwc_rgb = pseudo_rgb.transpose(1, 2, 0)
+            cls_embedding = self._model.extract_embeddings(hwc_rgb)
+            patch_features = self._model.extract_patch_features(hwc_rgb)
 
             return {
-                "cls_token":      feats["cls"].squeeze().cpu().numpy(),
-                "patch_features": feats["patches"].squeeze().cpu().numpy(),
+                "cls_token":      cls_embedding.squeeze(),
+                "patch_features": patch_features,
                 "pseudo_rgb":     pseudo_rgb,
             }
 
         except Exception as e:
+            if not allow_pca_fallback:
+                raise RuntimeError(
+                    f"Real DINOv3 feature extraction failed ({e}). Refusing to "
+                    f"silently substitute a PCA proxy under the same "
+                    f"'cls_token'/'patch_features' keys real DINOv3 features use "
+                    f"-- the PCA proxy has a completely different shape (3-dim, "
+                    f"not the real 1024-dim) and is not a real feature "
+                    f"substitute. Pass allow_pca_fallback=True only if you "
+                    f"genuinely want this proxy."
+                ) from e
             logger.warning(f"DINOv3 feature extraction failed ({e}). Returning PCA proxy.")
-            # Fallback: PCA-based feature proxy
+            # Fallback: PCA-based feature proxy -- only reached when
+            # allow_pca_fallback=True was explicitly set.
             _H, _W     = pseudo_rgb.shape[1], pseudo_rgb.shape[2]
             flat     = pseudo_rgb.reshape(3, -1).T   # (H*W, 3)
             from numpy.linalg import svd
