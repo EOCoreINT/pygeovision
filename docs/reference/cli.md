@@ -45,3 +45,11 @@ pygeovision infer predict scene.tif \
     --classes 2 \
     --chip-size 512
 ```
+
+```{seealso}
+[Direct Native Inference](../cli/direct-inference.md) for
+`ai segment`/`ai detect`/`ai classify`/`ai change` — a genuinely
+different, faster interface for files you already have on disk.
+[Data & Authentication](../cli/data-and-auth.md) for the real
+`pygeofetch`-delegated commands.
+```

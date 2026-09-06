@@ -1255,8 +1255,22 @@ class _SegmentationClientProxy:
     
     def custom(self, image_path, model, output_path="./output/pred.tif",
                chip_size=512, overlap=128, **kw):
-        """Run any custom PyTorch segmentation model with tiled inference."""
+        """Run any custom PyTorch segmentation model with tiled inference.
+
+        Args:
+            model: Either a real, already-built PyTorch model, or a
+                real model name from the registry (e.g.
+                "unet_resnet50") -- resolved via ModelHub.load(). Real
+                fix, confirmed by direct testing: previously a string
+                name was passed straight to TiledInference, which
+                requires a real, callable model object -- this failed
+                with a confusing "band count"/"str object is not
+                callable" error rather than building the named model.
+        """
         from pygeovision.inference.tiled import TiledInference
+        if isinstance(model, str):
+            from pygeovision.ai.models.hub import ModelHub
+            model = ModelHub().load(model, device="cpu")
         return TiledInference(model=model, chip_size=chip_size, overlap=overlap,
                                **kw).infer(image_path, output_path)
     def __repr__(self): return "SegmentationLayer(buildings|water|sam|custom)"
@@ -1279,7 +1293,18 @@ class _DetectionClientProxy:
                         coco_class_filter=COCO_CAR_CLASSES).detect(
             image_path, output_path=output_path, **kw)
     def custom(self, image_path, model, output_path="./output/detections.tif", **kw):
+        """Run any custom PyTorch detection model with tiled inference.
+
+        Real fix, same as _SegmentationClientProxy.custom(): accepts
+        either a real, already-built model or a real registry name
+        string, resolved via ModelHub.load() -- previously a string
+        name was passed straight to TiledInference, which needs a
+        real, callable model object.
+        """
         from pygeovision.inference.tiled import TiledInference
+        if isinstance(model, str):
+            from pygeovision.ai.models.hub import ModelHub
+            model = ModelHub().load(model, device="cpu")
         return TiledInference(model=model, **kw).infer(image_path, output_path)
     def __repr__(self): return "DetectionLayer(generic|ships|cars|custom)"
 

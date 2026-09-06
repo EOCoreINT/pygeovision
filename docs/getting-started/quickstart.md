@@ -32,7 +32,7 @@ specific to that pipeline (e.g. water-body area in hectares). A
 pipeline that couldn't find real, usable imagery reports
 `"success": false` with a clear reason — it does not silently return
 an empty or fabricated result. See
-[AI Task Pipelines](../core-features/pipelines.md) for the full list
+[AI Task Pipelines](../pipelines/index.md) for the full list
 and what each one actually computes.
 
 ## The same thing in Python
@@ -89,6 +89,6 @@ exact code path.
 
 ## What's next
 
-- [AI Task Pipelines](../core-features/pipelines.md) — the real, current status of all 49 pipelines
+- [AI Task Pipelines](../pipelines/index.md) — the real, current status of all 49 pipelines
 - [Model Registry](../core-features/model-registry.md) — how model loading, verification, and fallback actually work
 - [Full CLI Reference](../reference/cli.md) — every real command

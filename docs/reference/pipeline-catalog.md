@@ -1,7 +1,7 @@
 # Pipeline Catalog (Quick Reference)
 
 All 49 real pipeline names, alphabetically. See
-[AI Task Pipelines](../core-features/pipelines.md) for what each one
+[AI Task Pipelines](../pipelines/index.md) for what each one
 actually does and its real limitations.
 
 ```

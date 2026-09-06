@@ -99,6 +99,14 @@ softened for presentation.
   worked for the real flood pipeline -- verified directly with a
   synthetic trace matching its actual step structure, then fixed.
 
+- `client.segmentation.custom()` and `client.detection.custom()` (and
+  the CLI commands built on them, `ai segment custom`/`ai detect
+  custom`) passed a real model-name string straight to the tiled
+  inference engine, which requires an actual, built model object --
+  confirmed by direct testing, this failed with a confusing "band
+  count"/"str object is not callable" error rather than working. Now
+  resolves a real string name via `ModelHub.load()` first.
+
 **Dataset catalog**
 - `DatasetLoader.download()` (a real, CLI-reachable command claiming to
   "download and extract a dataset by name") created an empty output

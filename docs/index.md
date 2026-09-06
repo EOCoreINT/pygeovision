@@ -35,7 +35,7 @@ and note the real, current status of anything that isn't fully resolved.
 ## Quick links
 
 - [Quick Start (5 Minutes)](getting-started/quickstart.md) — install to your first real inference result
-- [AI Task Pipelines](core-features/pipelines.md) — all 49 real pipelines, organized by domain
+- [AI Task Pipelines](pipelines/index.md) — all 49 real pipelines, organized by domain, each fully documented
 - [Model Registry](core-features/model-registry.md) — 77 real models across two registries, with an honest accounting of what was removed and why
 - [Training & Finetuning](training/index.md) — real segmentation and object-detection training, real checkpoint-based finetuning
 - [Full CLI Reference](reference/cli.md) — every real command group
@@ -51,13 +51,28 @@ getting-started/quickstart
 
 ```{toctree}
 :maxdepth: 2
+:caption: AI Task Pipelines
+:hidden:
+
+pipelines/index
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Core Features
 :hidden:
 
-core-features/pipelines
 core-features/model-registry
 core-features/aoi-coverage-and-bands
 core-features/labeling
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Models — Full Catalog
+:hidden:
+
+models/index
 ```
 
 ```{toctree}
@@ -84,6 +99,7 @@ inference/onnx-export
 
 reference/python-api
 reference/cli
+cli/index
 reference/pipeline-catalog
 reference/model-catalog
 reference/datasets

@@ -66,6 +66,13 @@ path, rather than guessing at one:
 
 ## Real, verified integrations
 
+```{seealso}
+For the complete, detailed catalog of every real model in every
+category — segmentation, detection, change detection, foundation
+models, VLMs, classification, 3D — see
+[Models — Full Catalog](../models/index.md).
+```
+
 - **SAM / SAM2**: `sam-vit-h/l/b`, `sam2-hiera-l` — real `hf_id`
   entries, plus a real wrapper (`SamGeoLabeler`) around
   [segment-geospatial](https://samgeo.gishub.org) (Wu & Osco, 2023,
