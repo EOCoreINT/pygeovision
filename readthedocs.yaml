@@ -1,4 +1,4 @@
-# Read the Docs configuration file for pygeofetch
+# Read the Docs configuration file for pygeovision
 # See https://docs.readthedocs.io/en/stable/config-file/v2.html
 
 version: 2
@@ -8,20 +8,9 @@ build:
   tools:
     python: "3.12"
 
-# Build documentation with MkDocs
-mkdocs:
+sphinx:
   configuration: docs/conf.py
-  # Fail the build on any warning (recommended once docs are stable)
-  # fail_on_warning: true
 
-# Install pygeofetch itself (so mkdocstrings can import it) plus docs dependencies
 python:
   install:
-    - method: pip
-      path: .
     - requirements: docs/requirements.txt
-
-# Build formats made available for download in addition to HTML
-formats:
-  - pdf
-  - epub
