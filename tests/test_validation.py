@@ -285,21 +285,34 @@ class TestVectorizer:
         assert loaded["type"] == "FeatureCollection"
 
 
-class TestOptimizerConfig:
-    def test_optimizer_config_defaults(self):
-        from pygeovision.ai.training.optimizers import OptimizerConfig
-        cfg = OptimizerConfig()
-        assert cfg.name == "adamw"
-        assert cfg.lr > 0
-        assert cfg.weight_decay >= 0
+class TestDeadOptimizersModuleRemoved:
+    """pygeovision.ai.training.optimizers (plural) was confirmed
+    completely dead code: neither real GeoTrainer implementation ever
+    imported from it. ai.training.trainer.GeoTrainer's own comment
+    acknowledged this directly, and it actually gets its real
+    optimizer/scheduler logic from the sibling pygeovision.training.
+    optimizer module instead (confirmed by reading its real import).
+    Removed the dead file entirely rather than leave a second,
+    never-reached implementation with its own, different, untested API
+    sitting alongside the real one."""
 
-    def test_build_optimizer_no_torch(self):
-        """build_optimizer should raise ImportError if torch not available."""
-        pytest.importorskip("torch", reason="torch not installed")
-        # If torch is installed, test the actual build
+    def test_dead_module_no_longer_exists(self):
+        with pytest.raises(ImportError):
+            from pygeovision.ai.training.optimizers import OptimizerConfig  # noqa: F401
+
+    def test_real_optimizer_module_used_by_both_trainers_still_works(self):
+        """The real, actually-used module (singular 'optimizer', not
+        'optimizers') that both GeoTrainer implementations share."""
         import torch.nn as nn
+        from dataclasses import dataclass
+        from pygeovision.training.optimizer import build_optimizer
 
-        from pygeovision.ai.training.optimizers import build_optimizer
+        @dataclass
+        class FakeCfg:
+            optimizer: str = "adamw"
+            learning_rate: float = 1e-4
+            weight_decay: float = 1e-4
+
         model = nn.Linear(10, 2)
-        opt = build_optimizer(model, name="adamw", lr=1e-4)
+        opt = build_optimizer(model, FakeCfg())
         assert opt is not None

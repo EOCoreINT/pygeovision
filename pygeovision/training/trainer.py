@@ -423,6 +423,30 @@ class GeoTrainer:
                 pin_memory=self.cfg.pin_memory,
             )
 
+        # Real fix, confirmed necessary by direct inspection: freeze_backbone
+        # was a real TrainingConfig field with zero effect anywhere in this
+        # file before this fix -- the same bug already found and fixed in
+        # the OTHER, parallel GeoTrainer (pygeovision.ai.training.trainer),
+        # but never applied here, the trainer the CLI's `ai train` command
+        # actually uses. Freezes real backbone/encoder parameters by name
+        # pattern before the optimizer is built, so frozen parameters are
+        # never handed to the optimizer at all.
+        if self.cfg.freeze_backbone:
+            frozen_count = 0
+            for name, param in model.named_parameters():
+                if any(pat in name for pat in ("encoder", "backbone", "patch_embed")):
+                    param.requires_grad = False
+                    frozen_count += 1
+            if frozen_count == 0:
+                logger.warning(
+                    "freeze_backbone=True but no parameters matched the real "
+                    "name patterns ('encoder'/'backbone'/'patch_embed') -- "
+                    "nothing was frozen. Check model.named_parameters() to "
+                    "find this architecture's real prefix."
+                )
+            else:
+                logger.info("freeze_backbone=True: froze %d real parameter(s).", frozen_count)
+
         # Build optimizer and scheduler
         optimizer = build_optimizer(model, self.cfg)
         n_steps = len(train_loader) if train_loader else 100

@@ -94,20 +94,29 @@ print(f"Amplitude:       {seasonal['seasonal_amplitude']:.3f}")
 
 ---
 
-## LiDAR Individual Tree Segmentation
+## LiDAR Canopy Height Model
 
 ```python
 from pygeovision.advanced.pointcloud import PointCloudProcessor
 
-proc  = PointCloudProcessor("forest_scan.las", crs="EPSG:25832")
-chm   = proc.canopy_height_model(resolution_m=1.0, output="chm.tif")
-trees = proc.segment_trees(chm_path="chm.tif", min_height_m=5.0,
-                             output_path="trees.geojson")
+proc = PointCloudProcessor()
+chm  = proc.canopy_height_model("forest_scan.las", "chm.tif", resolution=1.0)
 
-print(f"Trees detected:   {trees['n_trees']}")
-print(f"Mean height:      {trees['mean_height_m']:.1f}m")
-print(f"Stem density:     {trees['stems_per_ha']:.0f} stems/ha")
-print(f"Basal area:       {trees['basal_area_m2_ha']:.1f} m²/ha")
+print(f"Success:      {chm['success']}")
+print(f"Max height:   {chm['height_stats']['max_m']}m")
+print(f"Output CRS:   {chm['crs']}")
+```
+
+```{note}
+Individual-tree segmentation (detecting discrete tree crowns, stem
+density, basal area from the CHM) is not a real, implemented
+capability in this codebase — checked directly against
+`PointCloudProcessor`'s real methods (`read`, `canopy_height_model`,
+`classify_points`, `extract_buildings`) before writing this example.
+An earlier version of this page showed a `segment_trees()` call that
+doesn't exist. The real, available output here is the CHM raster
+itself, which a real, separate tree-detection tool (e.g. local maxima
+filtering on the CHM) could be built on top of.
 ```
 
 ---

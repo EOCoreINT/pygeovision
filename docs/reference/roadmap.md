@@ -51,6 +51,31 @@ softened for presentation.
   that specific integration had never worked at all, with or without
   network access.
 
+**A second, CLI-connected trainer had the identical unfixed bugs**
+- `freeze_backbone` and the default cosine LR scheduler were fixed
+  earlier in `pygeovision.ai.training.trainer` (Python-API-only), but
+  writing deeper documentation for this system prompted checking the
+  *other*, genuinely separate `pygeovision.training.trainer` -- the
+  one `pygeovision ai train` (the actual CLI command) uses -- rather
+  than assuming the earlier fix covered both. It didn't: both bugs
+  were present here too, completely unfixed. `freeze_backbone`
+  appeared exactly once in the file (its own definition) with zero
+  effect; the default scheduler had the identical `T_max=max_epochs`
+  vs. per-batch-stepping unit mismatch, verified by simulation to
+  produce dozens of oscillations instead of one smooth decay, and the
+  `step` scheduler had the same unit mismatch too. Every real user of
+  the CLI's `ai train` command up to this point in the audit was
+  silently affected by both. Fixed the same way as the other trainer
+  and independently re-verified (60/92 real parameters freeze; zero
+  oscillations in a simulated full training run).
+- A related documentation conflation, also corrected: earlier pages on
+  this site used `checkpoint_path=...`/`task="detection"` in code
+  examples that imported `pygeovision.training.trainer` -- neither
+  field exists on that class at all; both are real, but only on
+  `pygeovision.ai.training.trainer`. Fixed the imports and added an
+  explicit comparison table clarifying which of the two real trainers
+  has which real capability.
+
 **Training**
 - The default learning-rate scheduler oscillated 50 times instead of
   decaying once across a training run, affecting every user who didn't
@@ -106,6 +131,31 @@ softened for presentation.
   confirmed by direct testing, this failed with a confusing "band
   count"/"str object is not callable" error rather than working. Now
   resolves a real string name via `ModelHub.load()` first.
+
+**Documentation corrections found while writing deeper detail**
+- Several earlier pages on this site used `pygeovision run <pipeline>
+  --bbox lon,lat,lon,lat` as the CLI example for running a named AI
+  pipeline. Checked directly against the real CLI source: no `run`
+  command exists at all. The real command is `channel`, its `--bbox`
+  takes 4 separate space-separated floats (not a comma-separated
+  string), and critically, `pipeline_name` is a real, closed
+  `click.Choice` of only 10 of the 49 real pipelines -- the other 39
+  have no CLI entry point at all, Python-API-only. Corrected across
+  every page that repeated the error.
+- A related fabricated claim on the same pages: that the CLI writes a
+  `stats.json` file. Checked the real command's output handling
+  directly -- it only prints `result.stats` to the terminal via
+  `click.echo()`. Corrected.
+
+**Newly-discovered, previously-undocumented functionality**
+- `pygeovision.ai.labeling.label_studio.LabelStudioLabeler` (679 real
+  lines, a genuine human-in-the-loop Label Studio integration) had
+  never been documented or audited before this pass. Checked it for
+  the same HTTP-status-not-checked pattern found in the WorldCover/
+  Dynamic World fallback downloads above, since it makes just as many
+  real HTTP calls -- it doesn't have that bug. Its shared
+  `_api_get()`/`_api_post()` helpers already correctly call
+  `raise_for_status()` on every request.
 
 **Dataset catalog**
 - `DatasetLoader.download()` (a real, CLI-reachable command claiming to

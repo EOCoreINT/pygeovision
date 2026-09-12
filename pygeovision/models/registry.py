@@ -101,7 +101,8 @@ _SPECS = [
     # ── Foundation Models (11) ───────────────────────────────────────────────
     ModelSpec("prithvi-100m",    "foundation","prithvi",  100.0, hf_id="ibm-nasa-geospatial/Prithvi-100M",   description="NASA/IBM Prithvi 100M (multitemporal)", pretrained_on="HLS"),
     ModelSpec("prithvi-300m",    "foundation","prithvi",  300.0, hf_id="ibm-nasa-geospatial/Prithvi-300M",   description="NASA/IBM Prithvi 300M", pretrained_on="HLS"),
-    ModelSpec("dofa-base",       "foundation","dofa",      86.0, hf_id="XShadow/DOFA",          description="Dynamic One-For-All (multi-sensor) -- real, confirmed repo (was previously the wrong hf_id 'XShadow/DOFA-ViT-base-p16', which does not exist); research-group-hosted checkpoint, generic AutoModel dispatch is unverified for it", pretrained_on="Sentinel-1/2,Landsat", paper="https://arxiv.org/abs/2403.15356"),
+    ModelSpec("dofa-base",       "foundation","dofa",      86.0, hf_id="XShadow/DOFA",          description="Dynamic One-For-All (multi-sensor) -- real, dedicated integration via torchgeo (github.com/microsoft/torchgeo), verified end-to-end this session (same model instance correctly embeds both 9-band Sentinel-2 and 3-band NAIP input); real pretrained weights confirmed at hf.co/torchgeo/dofa", pretrained_on="Sentinel-1/2,NAIP,EnMAP,Gaofen", paper="https://arxiv.org/abs/2403.15356"),
+    ModelSpec("dofa-large",      "foundation","dofa",      304.0, hf_id="XShadow/DOFA",          description="DOFA large (ViT-L/16) -- same real torchgeo integration as dofa-base, real pretrained weights confirmed via torchgeo's DOFALarge16_Weights enum", pretrained_on="Sentinel-1/2,NAIP,EnMAP,Gaofen", paper="https://arxiv.org/abs/2403.15356"),
     ModelSpec("tessera",         "foundation","tessera",   0.0, description="TESSERA precomputed embeddings (Sentinel-1+2, 128ch/10m) — real, precomputed via the geotessera library, not a locally-run encoder", pretrained_on="Sentinel-1+2"),
     ModelSpec("alphaearth",      "foundation","alphaearth", 0.0, description="AlphaEarth Foundations / Satellite Embedding (64ch/10m, annual 2017+) — real, precomputed via Google Earth Engine, not a locally-run encoder", pretrained_on="Multi-sensor (Sentinel-1/2, Landsat, etc.)"),
     ModelSpec("remoteclip-b32",  "foundation","clip",     151.0, hf_id="BAAI/RemoteCLIP-ViT-B-32", description="RemoteCLIP ViT-B/32", pretrained_on="RS5M"),
@@ -237,6 +238,14 @@ def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
     if spec.family == "clip":
         from pygeovision.advanced.vlm.clip_geo import CLIPGeo
         return CLIPGeo(model=spec.name)
+    if spec.family == "dofa":
+        from pygeovision.models.foundation.dofa import load_dofa_hf
+        real_name = {
+            "dofa-base": "dofa_base_patch16_224",
+            "dofa-large": "dofa_large_patch16_224",
+        }.get(spec.name, "dofa_base_patch16_224")
+        return load_dofa_hf(real_name, device=kwargs.get("device", "cpu"),
+                             allow_random_init=kwargs.get("allow_random_init", False))
     if spec.family == "lisat":
         raise NotImplementedError(
             f"'{spec.name}' is a real, published model (Quenum et al. 2025, "

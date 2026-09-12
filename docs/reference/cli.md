@@ -11,7 +11,7 @@ pygeovision --help
 
 | Group | Real commands |
 |---|---|
-| `run` | Run any of the 49 real pipelines by name |
+| `channel` | Run 10 of the 49 real pipelines by name (a closed `click.Choice` list — see the warning below) |
 | `ai train` | Build a real `TrainingConfig` and print the real Python to actually train (does not train itself — see [Training](../training/index.md)) |
 | `models` | `list`, `zoo list`, `zoo search` — browse both real registries and the real, metadata-only catalog |
 | `infer` | `predict`, `batch` — real tiled inference via `pygeovision.inference.tiled` |
@@ -31,10 +31,19 @@ documented step for Sentinel-2 DN-to-reflectance conversion.
 ## Example: a real pipeline run
 
 ```bash
-pygeovision run water_bodies \
-    --bbox -0.15,51.47,-0.10,51.52 \
+pygeovision channel water_bodies \
+    --bbox -0.15 51.47 -0.10 51.52 \
     --date 2024-06 \
     --output ./output/
+```
+
+```{warning}
+`channel`'s `pipeline_name` is a real, closed `click.Choice` of only
+10 pipelines (`change_detection`, `land_cover`, `building_footprints`,
+`crop_monitoring`, `disaster_assessment`, `deforestation`,
+`urban_growth`, `water_bodies`, `solar_detection`,
+`carbon_estimation`). The other 39 real pipelines are Python-API-only
+— see [AI Task Pipelines](../pipelines/index.md).
 ```
 
 ## Example: real tiled inference

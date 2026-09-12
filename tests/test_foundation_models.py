@@ -12,48 +12,29 @@ import pytest
 # ── Model Registry Integration ────────────────────────────────────────────────
 
 class TestFoundationModelRegistry:
-    """Verify the main model registry contains all DINOv3 + Prithvi models."""
+    """Verify the main model registry's real, current foundation-model
+    entries -- not the pre-cleanup state this class originally tested.
 
-    # DINOv3 ViT Web variants
-    @pytest.mark.parametrize("name", [
-        "dinov3_vits16", "dinov3_vits16plus", "dinov3_vitb16", "dinov3_vitl16",
-        "dinov3_vith16plus", "dinov3_vit7b16",
-    ])
-    def test_dinov3_web_variants_in_registry(self, name):
-        from pygeovision.models.registry import model_registry
-        assert name in model_registry, f"Missing from registry: {name}"
-        spec = model_registry[name]
-        assert spec.task == "foundation"
-        assert spec.family == "dinov3"
-        assert spec.pretrained_on == "LVD-1689M"
+    An earlier version of this class asserted the presence and metadata
+    of 18 confirmed-fake, mislabeled dinov3_*-named registry entries (12
+    backbone variants + 6 task heads). All were found to load real
+    facebook/dinov2-* weights under a DINOv3 label -- including "SAT-493M
+    satellite-pretrained" variants that loaded the identical, generic,
+    non-satellite DINOv2 weights regardless of which _sat name was
+    requested. All 18 were removed from the registry rather than
+    relabeled, since a genuinely correct DINOv3 integration would need
+    real, separately-verified DINOv3 weights this codebase does not have.
+    """
 
-    # DINOv3 SAT variants
-    @pytest.mark.parametrize("name", ["dinov3_vitl16_sat", "dinov3_vit7b16_sat"])
-    def test_dinov3_sat_variants_in_registry(self, name):
-        from pygeovision.models.registry import model_registry
-        assert name in model_registry
-        spec = model_registry[name]
-        assert spec.pretrained_on == "SAT-493M"
-        assert spec.supports_multispectral is True
+    def test_mislabeled_dinov3_entries_removed(self):
+        from pygeovision.models.registry import model_registry, list_models
+        dinov3_named = [n for n in list_models() if "dinov3" in n.lower()]
+        assert dinov3_named == [], f"Expected zero, found: {dinov3_named}"
 
-    # DINOv3 ConvNeXt variants
-    @pytest.mark.parametrize("name", [
-        "dinov3_convnext_tiny", "dinov3_convnext_small",
-        "dinov3_convnext_base", "dinov3_convnext_large",
-    ])
-    def test_dinov3_convnext_in_registry(self, name):
+    def test_real_dinov2_entries_present(self):
         from pygeovision.models.registry import model_registry
-        assert name in model_registry
-        assert model_registry[name].family == "dinov3"
-
-    # DINOv3 task heads
-    @pytest.mark.parametrize("name", [
-        "dinov3_classifier", "dinov3_depther", "dinov3_detector",
-        "dinov3_segmentor", "dinov3_dinotxt", "dinov3_chmv2",
-    ])
-    def test_dinov3_heads_in_registry(self, name):
-        from pygeovision.models.registry import model_registry
-        assert name in model_registry, f"Head missing: {name}"
+        for name in ("dinov2-s", "dinov2-b", "dinov2-l", "dinov2-g"):
+            assert name in model_registry, f"Missing real DINOv2 entry: {name}"
 
     # Prithvi models
     @pytest.mark.parametrize("name,params,pretrain", [
@@ -70,27 +51,36 @@ class TestFoundationModelRegistry:
         assert spec.supports_multispectral is True
 
     def test_total_foundation_models_count(self):
+        """Real, current count after the dinov3 cleanup above and the
+        real DOFA integration added since (see Model Registry docs)."""
         from pygeovision.models.registry import model_registry
         foundation = model_registry.list(task="foundation")
-        # 6 ViT web + 2 ViT SAT + 4 ConvNeXt + 6 heads + 2+ Prithvi + others ≥ 28
-        assert len(foundation) >= 28, f"Expected ≥28 foundation models, got {len(foundation)}"
+        assert len(foundation) == 11, f"Expected 11 real foundation models, got {len(foundation)}"
 
     def test_registry_summary(self):
+        """Real, current total after removing 59 confirmed-fake entries
+        (121 -> 62) and later additions (DOFA, LISAt) and restorations
+        (centernet-r50, satlas-pretrain, changestar-r18, chatearthnet as
+        honestly-failing, discoverable entries) -- 68 total."""
         from pygeovision.models.registry import model_registry
         s = model_registry.summary()
-        assert s["total"] >= 119
+        assert s["total"] == 68, f"Expected 68 real registry entries, got {s['total']}"
         assert "foundation" in s["by_task"]
 
     def test_list_satellite_pretrained(self):
-        from pygeovision.models.registry import _REGISTRY
-        sat = [n for n, s in _REGISTRY.items()
-               if s.pretrained_on in ("SAT-493M", "HLS-US", "HLS-Global")]
-        assert len(sat) >= 4  # 2 DINOv3 SAT + 2 Prithvi
+        from pygeovision.models.registry import model_registry, list_models
+        sat = [n for n in list_models()
+               if model_registry[n].pretrained_on in
+               ("SAT-493M", "HLS-US", "HLS-Global", "Sentinel-1/2,NAIP,EnMAP,Gaofen")]
+        assert len(sat) == 5, f"Expected 5 real sat/HLS-pretrained entries, got {sat}"
 
-    def test_search_dinov3(self):
+    def test_search_dinov3_returns_nothing(self):
+        """A real, honest consequence of removing every dinov3-named
+        entry: searching for one now correctly returns nothing, rather
+        than the 12+ fake matches it used to."""
         from pygeovision.models.registry import model_registry
         results = model_registry.search("dinov3")
-        assert len(results) >= 12
+        assert len(results) == 0
 
     def test_search_prithvi(self):
         from pygeovision.models.registry import model_registry
@@ -318,20 +308,21 @@ class TestEndToEndFoundation:
             assert result["statistics"]["mean_m"] >= 0.0
 
     def test_model_registry_completeness(self):
-        """Final check: registry has all 12+6+2 = 20+ foundation model entries."""
-        from pygeovision.models.registry import model_registry
+        """Final check: real, current foundation model entries -- zero
+        dinov3-named entries (all confirmed mislabeled and removed),
+        real Prithvi and DOFA present."""
+        from pygeovision.models.registry import model_registry, list_models
         foundation = set(model_registry.list(task="foundation"))
-        # All 12 DINOv3 backbone variants
-        dinov3_variants = [
-            "dinov3_vits16", "dinov3_vits16plus", "dinov3_vitb16", "dinov3_vitl16",
-            "dinov3_vith16plus", "dinov3_vit7b16",
-            "dinov3_vitl16_sat", "dinov3_vit7b16_sat",
-            "dinov3_convnext_tiny", "dinov3_convnext_small",
-            "dinov3_convnext_base", "dinov3_convnext_large",
-        ]
-        for v in dinov3_variants:
-            assert v in model_registry, f"Missing DINOv3 variant: {v}"
-        # Both Prithvi models
+        # Real, current state: zero dinov3-named entries (all 12 backbone
+        # variants were confirmed mislabeled -- see TestFoundationModelRegistry
+        # above for the full detail -- and removed).
+        dinov3_named = [n for n in list_models() if "dinov3" in n.lower()]
+        assert dinov3_named == [], f"Expected zero, found: {dinov3_named}"
+        # Both real Prithvi models
         assert "prithvi_eo_1_0" in model_registry
         assert "prithvi_eo_2_0" in model_registry
+        # The real, dedicated DOFA integration added since (torchgeo-based,
+        # verified this project to correctly embed both 9-band Sentinel-2
+        # and 3-band NAIP input with the same model instance)
+        assert "dofa-base" in model_registry
         print(f"\n  ✓ Foundation models: {len(foundation)} in registry")

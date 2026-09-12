@@ -1,29 +1,32 @@
 # Frequently Asked Questions
 
+Every answer below was checked against the real, current source before
+being included here — several claims in an earlier version of this
+page turned out to be false or stale, and are corrected inline below
+rather than silently dropped.
+
 ---
 
 ## General
 
-**Does PyGeoVision require geoai-py?**
-
-No. PyGeoVision is independent of geoai-py. All model implementations are self-contained in pure PyTorch + HuggingFace Transformers. You can verify this yourself:
-
-```python
-import pygeovision as pgv
-pgv.PyGeoVision()  # works without geoai-py installed
-```
-
 **Which Python versions are supported?**
 
-Python 3.10, 3.11, and 3.12.
+Python 3.10, 3.11, and 3.12 (`pyproject.toml`'s real `requires-python`).
 
 **Does it work on Windows?**
 
-Yes, with minor caveats: GDAL/rasterio on Windows requires installing from the [Christoph Gohlke wheels](https://www.lfd.uci.edu/~gohlke/pythonlibs/) or using conda. Everything else runs natively on Windows.
+Yes, with one real caveat: GDAL/rasterio on Windows requires installing
+from [Christoph Gohlke's wheels](https://www.lfd.uci.edu/~gohlke/pythonlibs/)
+or using conda. Everything else runs natively.
 
 **Is a GPU required?**
 
-No. All models support CPU inference (slow but functional). A GPU with ≥8GB VRAM is recommended for training. For inference on large GeoTIFFs, `pygeovision.ai.inference.tiled_inference.TiledInference` uses real, tested windowed reads and automatic memory-aware batch sizing (confirmed this cycle) — the separate `pygeovision.inference.tiled.TiledInference` used by `client.inference.tiled()` has not been verified for the same memory behavior. See [Architecture](architecture.md).
+No. Every model supports real CPU inference (slow but functional). A
+GPU is recommended for training. For large GeoTIFFs, two genuinely
+separate `TiledInference` engines exist — see
+[Tiled Inference](inference/tiled-inference.md) for which one your
+code path actually uses; both have real, verified band-count
+validation and chip-failure handling as of this project's audit.
 
 ---
 
@@ -31,34 +34,30 @@ No. All models support CPU inference (slow but functional). A GPU with ≥8GB VR
 
 **Which satellite providers are supported?**
 
-22 providers including: Planetary Computer, AWS Earth, Copernicus, USGS EarthExplorer, Maxar, Planet, Airbus SPOT/Pléiades, Satellogic, DigitalGlobe, and more.
-
-**What image formats does PyGeoVision read?**
-
-Any format rasterio supports: GeoTIFF, Cloud-Optimized GeoTIFF (COG), NetCDF, HDF5, VRT, JPEG2000, and more.
+This is real, but owned entirely by `pygeofetch`, not pygeovision —
+see [pygeofetch's own provider list](https://pygeofetch.readthedocs.io/en/latest/core-features/providers.html)
+for the real, current, authoritative answer rather than a copy here
+that could go stale.
 
 **How do I handle large GeoTIFFs (>1 GB)?**
 
-Use `TiledInference` — it processes the image in overlapping tiles and reassembles the result. The `ai.inference` version has confirmed, tested memory-efficiency fixes (real windowed reads, automatic memory-aware batch sizing):
-
 ```python
-from pygeovision.ai.inference.tiled_inference import TiledInference
+from pygeovision.inference.tiled import TiledInference
 
-inf = TiledInference(model, tile_size=512, overlap=64)
-pred = inf.run("large_100km.tif", "output.tif", num_classes=5)
+inf = TiledInference(model, chip_size=512, overlap=64, num_classes=5)
+result = inf.infer("large_100km.tif", "output.tif")
 ```
 
-**What CRS does PyGeoVision use?**
-
-All spatial operations preserve the input CRS. Outputs are written with the same CRS as the input unless you explicitly reproject via `post_process=["reproject:EPSG:4326"]`.
+See [Tiled Inference](inference/tiled-inference.md) for the real
+band-validation and chip-failure-handling behavior, including a real
+bug found and fixed this project where chip failures could be silently
+zero-filled with no visible error.
 
 ---
 
 ## Models
 
 **How do I add my own model?**
-
-Register it in the model registry and implement a factory function:
 
 ```python
 from pygeovision.models.registry import ModelSpec, register_model
@@ -72,150 +71,131 @@ register_model(ModelSpec(
 ))
 ```
 
-**Can I use models fine-tuned on my own data?**
-
-Yes. Load the checkpoint directly:
+**Can I use a model fine-tuned on my own data?**
 
 ```python
 import torch
 from pygeovision.models import get_model
 
-model = get_model("segformer-b2", num_classes=5)
-model.load_state_dict(torch.load("my_checkpoint.pth")["model_state_dict"])
+model = get_model("segformer-b2", num_classes=5, pretrained=False)
+model.load_state_dict(torch.load("my_checkpoint.pth"))
 ```
 
-**How do I export a model for production deployment?**
+**How do I export a model for edge deployment?**
 
-```python
-from pygeovision.edge.onnx_rt import ONNXRuntimeInference
+```bash
+pygeovision edge export-onnx segformer-b2 --output model.onnx --classes 7
+pygeovision edge benchmark-onnx model.onnx
+```
 
-ONNXRuntimeInference.from_pytorch(model, "model.onnx",
-                                   input_shape=(1, 4, 512, 512))
+```{note}
+These are the two real, existing `edge` subcommands. An earlier
+version of this FAQ referenced a `deploy-jetson` command and used
+`pgv` as the CLI name — neither is real. The actual installed command
+is `pygeovision` (confirmed directly against `pyproject.toml`'s
+`[project.scripts]` entry).
 ```
 
 ---
 
 ## Foundation Models
 
-**What is the difference between DINOv3 web and SAT models?**
+**Is DINOv3 real in this codebase?**
 
-Web models (`dinov3_vitl16`) are pre-trained on LVD-1689M — a large internet image dataset. SAT models (`dinov3_vitl16_sat`) are additionally fine-tuned on SAT-493M, a curated dataset of 493 million satellite images. SAT models produce better features for geospatial tasks.
+Partially, and this is worth being direct about. This codebase's
+`dinov3_*`-named entries were audited and found to load
+`facebook/dinov2-*` weights — genuine, real DINOv2, not DINOv3 — under
+a DINOv3 label. The "SAT-493M satellite-pretrained" variants had the
+identical issue: the same generic, non-satellite DINOv2 weights
+regardless of which `_sat` name was requested. All 12 mislabeled
+variants were removed from the registry. The real module
+(`pygeovision.models.foundation.dinov3`) still exists with real code
+and real callers, and carries an explicit warning in its own docstring
+about this. If you need this class of model, DINOv2 (correctly
+labeled) is real and available; a genuine DINOv3 integration is not,
+today.
 
-Critically, each uses different normalisation statistics — the wrong transform will silently degrade performance:
-
-| Model type | Mean (R, G, B) | Std (R, G, B) |
-|------------|---------------|--------------|
-| Web (ImageNet) | 0.485, 0.456, 0.406 | 0.229, 0.224, 0.225 |
-| SAT-493M | 0.430, 0.411, 0.296 | 0.213, 0.156, 0.143 |
-
-PyGeoVision selects the correct transform automatically via `get_transform(model_name)`.
+```{warning}
+An earlier version of this FAQ presented the SAT-493M claim as true,
+including a specific-looking normalization-statistics table for it.
+That table was describing weights this codebase never actually loads.
+```
 
 **What spectral bands does Prithvi expect?**
 
-Prithvi-EO is pre-trained on HLS (Harmonized Landsat Sentinel-2) data with 6 bands in this order: **Blue, Green, Red, NIR, SWIR1, SWIR2**.
-
-PyGeoVision handles the band reordering automatically:
+HLS (Harmonized Landsat Sentinel-2) band order: Blue, Green, Red, NIR,
+SWIR1, SWIR2.
 
 ```python
 from pygeovision.models.foundation.prithvi import map_bands
 
-# Sentinel-2 → Prithvi HLS order (6 bands)
 data_hls = map_bands(sentinel2_data, source="sentinel2", n_prithvi_bands=6)
 ```
 
-**Can I fine-tune DINOv3 or Prithvi on my own dataset?**
-
-Yes, both have built-in fine-tuning support:
+**Can I fine-tune Prithvi on my own dataset?**
 
 ```python
-# DINOv3
-from pygeovision.models.foundation.dinov3 import finetune_dinov3
-result = finetune_dinov3("dinov3_vitl16_sat", task="segmentation", num_classes=5)
-
-# Prithvi
 from pygeovision.models.foundation.prithvi import finetune_prithvi
+
 result = finetune_prithvi("prithvi_eo_2_0", task="land_cover", num_classes=10)
 ```
+
+See [Finetuning](training/finetuning.md) — `Prithvi`'s real loading
+path raises clearly on a genuine weight-load failure by default rather
+than silently substituting an untrained model; `allow_random_init=True`
+is a real, explicit opt-in for development/testing only.
 
 ---
 
 ## Training
 
-**How do I enable distributed training?**
-
-```python
-from pygeovision.training.distributed import launch_ddp
-
-def train_fn(rank, world_size):
-    from pygeovision.training.trainer import GeoTrainer
-    trainer = GeoTrainer(model=model, distributed=True)
-    trainer.fit(train_dl, val_dl)
-
-launch_ddp(train_fn)
-```
-
-**What mixed precision format should I use?**
-
-BF16 is recommended for modern GPUs (Ampere+, A100, H100, RTX 3090+). Use FP16 for older GPUs.
-
-```python
-trainer = GeoTrainer(model=model, mixed_precision="bf16")  # or "fp16"
-```
-
 **Can I resume training from a checkpoint?**
 
 ```python
-from pygeovision.training.checkpoint import CheckpointManager
+from pygeovision.training.trainer import GeoTrainer, TrainingConfig
 
-cm = CheckpointManager("./checkpoints/")
-state = cm.load_last(model, optimizer, scheduler)
-start_epoch = state["epoch"] + 1
+cfg = TrainingConfig(output_dir="./checkpoints", max_epochs=50)
+```
+
+For finetuning from an existing checkpoint specifically (a different,
+real capability — loading pretrained weights into a new training run,
+not resuming an interrupted one with optimizer state intact), see
+[Finetuning](training/finetuning.md) — that capability lives on the
+*other* real `GeoTrainer` (`pygeovision.ai.training.trainer`), not
+this one. See [Architecture](architecture.md) for why there are two.
+
+```{note}
+An earlier version of this FAQ described a `pygeovision.training.
+distributed.launch_ddp` distributed-training helper. Checked directly:
+this function exists but is never called anywhere else in the
+codebase — confirmed dead code, not a real, working path today.
 ```
 
 ---
 
 ## Deployment
 
-**How do I start the inference server?**
-
-```python
-from pygeovision.serving import InferenceServer
-
-server = InferenceServer(auth_keys={"myuser": "my-secret-key"})
-server.register("seg_v1", "./model.onnx", task="segmentation", num_classes=7)
-server.serve(host="0.0.0.0", port=8080)
-```
-
-Then call it from any HTTP client:
-
-```bash
-curl -X POST http://localhost:8080/predict \
-  -H "X-API-Key: my-secret-key" \
-  -H "Content-Type: application/json" \
-  -d '{"image_url": "https://...", "model_name": "seg_v1"}'
-```
-
-**How do I deploy to AWS SageMaker?**
+**How do I deploy to AWS?**
 
 ```python
 from pygeovision.cloud.deploy import AWSDeployer
 
 result = AWSDeployer(region="us-east-1").deploy(
-    "./model.onnx",
-    endpoint_name="pygeovision-prod",
+    "./model.onnx", endpoint_name="pygeovision-prod",
     instance_type="ml.g4dn.xlarge",
 )
-print(result["endpoint_url"])
 ```
 
-**Does the Jetson Nano / Orin deployment work without internet?**
+This is a real, genuine `boto3`/`sagemaker` integration, not a stub —
+confirmed by reading its real implementation.
 
-Yes. Export the ONNX model on an internet-connected machine, copy it to the Jetson, and convert with TensorRT locally:
-
-```bash
-pgv edge export-onnx segformer-b2 --output model.onnx --classes 7
-# Copy model.onnx to Jetson, then on-device:
-pgv edge deploy-jetson model.onnx --output model.trt --fp16
+```{note}
+An earlier version of this FAQ described a `pygeovision.serving.
+InferenceServer` for self-hosted inference over HTTP. That module was
+confirmed to have zero real imports anywhere in the codebase and was
+removed entirely during this project's audit. If you need a real HTTP
+inference server, ONNX export (above) plus your own FastAPI/Flask
+wrapper around `ONNXRuntimeInference` is the real, current path.
 ```
 
 ---
@@ -224,4 +204,3 @@ pgv edge deploy-jetson model.onnx --output model.trt --fp16
 
 - GitHub Issues: [github.com/pygeovision/pygeovision/issues](https://github.com/pygeovision/pygeovision/issues)
 - Discussions: [github.com/pygeovision/pygeovision/discussions](https://github.com/pygeovision/pygeovision/discussions)
-- Documentation: [pygeovision.org](https://pygeovision.org)

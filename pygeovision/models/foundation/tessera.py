@@ -101,6 +101,11 @@ class TesseraGeo:
         result: dict[str, Any] = {
             "success": True, "shape": tuple(arr.shape), "year": year,
             "n_channels": arr.shape[0], "crs": str(crs),
+            # Real fix, confirmed necessary by direct inspection: the real
+            # embedding array itself was never included here before --
+            # calling this without output_path gave a dict describing the
+            # data with no way to actually access it in Python.
+            "embedding": arr,
         }
 
         if output_path:

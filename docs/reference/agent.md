@@ -86,3 +86,10 @@ rather than just reading it:
   correctly.
 
 This completes the audit of every file in `pygeovision.agent`.
+
+```{seealso}
+[Agent — Full Reference](../agent/index.md) for every real tool's
+verified parameters and behavior, and the real step-chaining mechanism
+(`$step_N_output` placeholder resolution) that lets multi-step plans
+actually work.
+```

@@ -6,6 +6,13 @@ than manual annotation.
 
 ## Real labelers
 
+```{seealso}
+For the complete, detailed reference — every real parameter, the
+newly-documented Label Studio human-in-the-loop integration, and
+active learning / quality assessment — see
+[Labeling — Full Reference](../labeling/index.md).
+```
+
 | Labeler | Real data source |
 |---|---|
 | `ESAWorldCoverLabeler` | Real ESA WorldCover 10m global land cover |

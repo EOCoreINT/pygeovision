@@ -64,16 +64,31 @@ class TestDINOv3Registry:
         with pytest.raises(ValueError, match="Unknown"):
             get_dinov3_info("not_a_real_model")
 
-    def test_model_registry_contains_dinov3(self):
-        from pygeovision.models.registry import model_registry
-        assert "dinov3_vitl16_sat" in model_registry
-        assert "dinov3_vitl16" in model_registry
-        assert "dinov3_convnext_base" in model_registry
+    def test_mislabeled_dinov3_entries_removed_from_registry(self):
+        """The dinov3_*-named registry entries (both the web/sat variants
+        and the "head" entries like dinov3_classifier) were confirmed to
+        load real facebook/dinov2-* weights under a DINOv3 label --
+        including "SAT-493M satellite-pretrained" variants that loaded
+        the identical, generic, non-satellite DINOv2 weights regardless
+        of which _sat name was requested. All were removed from the
+        registry rather than relabeled, since a genuinely correct DINOv3
+        integration would need real, separately-verified DINOv3 weights
+        this codebase does not have."""
+        from pygeovision.models.registry import model_registry, list_models
+        names = list_models()
+        dinov3_named = [n for n in names if "dinov3" in n.lower()]
+        assert dinov3_named == [], (
+            f"Expected zero dinov3-named registry entries (all confirmed "
+            f"mislabeled and removed), found: {dinov3_named}"
+        )
 
-    def test_head_registry_in_model_registry(self):
+    def test_real_dinov2_entries_present_and_correctly_labeled(self):
+        """The real, correctly-labeled DINOv2 entries remain -- if you
+        need this class of model, real DINOv2 is available; a genuine
+        DINOv3 integration is not, today."""
         from pygeovision.models.registry import model_registry
-        for head in ["dinov3_classifier", "dinov3_depther", "dinov3_chmv2"]:
-            assert head in model_registry, f"Head not in registry: {head}"
+        for name in ("dinov2-s", "dinov2-b", "dinov2-l", "dinov2-g"):
+            assert name in model_registry, f"Missing real DINOv2 entry: {name}"
 
 
 # ── Transforms ────────────────────────────────────────────────────────────────

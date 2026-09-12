@@ -1,6 +1,6 @@
 # Direct Native Inference (`ai segment` / `ai detect` / `ai classify` / `ai change`)
 
-A genuinely different interface from `pygeovision run <pipeline>`:
+A genuinely different interface from `pygeovision channel <pipeline>`:
 these commands run inference directly on a file you already have on
 disk — no search, no download, no AOI coverage checking. If you
 already have a GeoTIFF and just want a real model run on it, this is

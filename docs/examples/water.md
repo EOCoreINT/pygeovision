@@ -37,7 +37,7 @@ print(f"Flood extent: {flood['class_pct'].get(1, 0):.1f}% of study area")
 ```python
 from pygeovision.models import get_model
 from pygeovision.inference.tiled import TiledInference
-from pygeovision.labeling.dynamic_world import DynamicWorldLabeler
+from pygeovision.labeling.landcover import DynamicWorldLabeler
 
 bbox = [-122.5, 37.2, -122.1, 37.6]   # San Francisco Bay
 

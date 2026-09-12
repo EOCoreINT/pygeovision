@@ -69,8 +69,14 @@ class TestModelZoo:
         assert "vlm" in tasks
 
     def test_top_for_task(self):
+        # Real, honest count after the earlier fix that corrected
+        # pretrained_available to actually match real hf_model_id
+        # presence (previously 77 of 98 entries falsely claimed
+        # pretrained_available=True with no real weights backing it) --
+        # only 3 real segmentation entries genuinely have pretrained
+        # weights now.
         top = self.zoo.top_for_task("segmentation", n=5)
-        assert len(top) == 5
+        assert len(top) == 3
         assert all(m.task == "segmentation" for m in top)
         assert all(m.pretrained_available for m in top)
 
@@ -84,7 +90,13 @@ class TestModelZoo:
         s = self.zoo.summary()
         assert s["total_models"] >= 50
         assert s["with_hf_weights"] >= 15
-        assert s["pretrained"] >= 50
+        # Real, honest count after the earlier fix: pretrained now
+        # genuinely matches real hf_model_id presence (20), not the
+        # old, false claim (>=50 regardless of real backing).
+        assert s["pretrained"] == s["with_hf_weights"], (
+            "pretrained_available should exactly track real hf_model_id "
+            "presence -- any divergence means a fabricated or missed claim."
+        )
         assert "segmentation" in s["tasks"]
 
     def test_all_models_have_required_fields(self):

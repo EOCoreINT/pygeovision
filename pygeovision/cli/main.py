@@ -668,7 +668,7 @@ def ai_train(task, data_dir, output, num_classes, epochs, backbone):
         pygeovision ai train segmentation --data ./building_chips/ \\
             --output building_model.pth --num-classes 2 --epochs 100
     """
-    from pygeovision.training.trainer import TrainingConfig
+    from pygeovision.ai.training.trainer import TrainingConfig
 
     click.echo(f"Preparing native {task} training config...")
     click.echo(f"  Data: {data_dir} | Classes: {num_classes} | Epochs: {epochs} | Backbone: {backbone}")
@@ -676,6 +676,7 @@ def ai_train(task, data_dir, output, num_classes, epochs, backbone):
     cfg = TrainingConfig(task=task, num_classes=num_classes, max_epochs=epochs)
     click.echo(f"✓ Config ready. This command does NOT train anything itself -- build "
                f"your model with the chosen backbone, then train it yourself:")
+    click.echo(f"    from pygeovision.ai.training.trainer import GeoTrainer")
     click.echo(f"    model = get_model({backbone!r}, num_classes={num_classes}, pretrained=True)")
     click.echo(f"    # To finetune from an existing checkpoint instead of pretrained weights:")
     click.echo(f"    # cfg.checkpoint_path = '/path/to/existing_checkpoint.pth'")

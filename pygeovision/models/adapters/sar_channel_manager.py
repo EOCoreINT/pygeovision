@@ -933,7 +933,7 @@ class SARDINOv3Adapter:
         R ← VV, G ← VH, B ← VV/(VH+ε)
         Provides urban (high VV/VH ratio → red) vs water (low VH → dark green)
         discrimination in the RGB colour space.
-
+        
     'physics_rgb':
         R ← VV, G ← (VV+VH)/2, B ← VH
         Analogous to R-G-B assignment for Sentinel-2 true colour.

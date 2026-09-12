@@ -39,10 +39,15 @@ class TestTiledInferenceLoudFailure:
     """Regression tests for bug #1 — chip-prediction failures must not be
     silently swallowed into an all-zero output."""
 
-    def test_incompatible_model_raises_by_default(self, tmp_path):
+    def test_incompatible_model_caught_by_preflight_check(self, tmp_path):
         """A model whose forward() signature doesn't match TiledInference's
-        single-tensor-in/logits-out assumption must raise, not silently
-        return zeros."""
+        single-tensor-in/logits-out assumption must not silently succeed.
+        Verified directly: this specific incompatibility (wrong argument
+        count) is now caught even earlier than the original version of
+        this test expected -- a real pre-flight dummy-forward-pass check
+        (added in a separate audit round) catches it before the tile loop
+        starts at all, returning an honest success=False with a clear
+        error rather than wasting time on the full tile loop first."""
         from pygeovision.inference.tiled import TiledInference
 
         class IncompatibleModel(torch.nn.Module):
@@ -53,8 +58,9 @@ class TestTiledInferenceLoudFailure:
         _make_geotiff(raster_path)
 
         inf = TiledInference(IncompatibleModel(), chip_size=32, overlap=0, num_classes=2)
-        with pytest.raises(RuntimeError, match="chip prediction failed"):
-            inf.infer(str(raster_path), str(tmp_path / "out.tif"))
+        result = inf.infer(str(raster_path), str(tmp_path / "out.tif"))
+        assert result["success"] is False
+        assert "does not accept" in result["error"] or "missing" in result["error"]
 
     def test_tolerate_chip_failures_opts_into_old_behavior(self, tmp_path):
         """With tolerate_chip_failures=True, failures are logged and
@@ -80,10 +86,10 @@ class TestTiledInferenceHalfPrecisionDeviceBug:
     not crash on CPU."""
 
     def test_default_settings_work_on_cpu(self, tmp_path):
-        from pygeovision.models.registry import get_model
+        from pygeovision.ai.models.registry import registry as native_registry
         from pygeovision.inference.tiled import TiledInference
 
-        model = get_model("unet-r50", num_classes=2, in_channels=4, pretrained=False)
+        model = native_registry.build("unet_resnet50", num_classes=2, in_channels=4, pretrained=False)
         raster_path = tmp_path / "scene.tif"
         _make_geotiff(raster_path)
 
@@ -99,10 +105,10 @@ class TestTiledInferenceHalfPrecisionDeviceBug:
         label map, which can collapse for an untrained model) must show
         genuine per-pixel variation, confirming real per-chip computation
         is happening rather than a fallback/zero-fill path."""
-        from pygeovision.models.registry import get_model
+        from pygeovision.ai.models.registry import registry as native_registry
         from pygeovision.inference.tiled import TiledInference
 
-        model = get_model("unet-r50", num_classes=2, in_channels=4, pretrained=False)
+        model = native_registry.build("unet_resnet50", num_classes=2, in_channels=4, pretrained=False)
         raster_path = tmp_path / "scene.tif"
         _make_geotiff(raster_path, size=96)
 

@@ -35,9 +35,11 @@ and note the real, current status of anything that isn't fully resolved.
 ## Quick links
 
 - [Quick Start (5 Minutes)](getting-started/quickstart.md) — install to your first real inference result
+- [Architecture](architecture.md) — the real package structure, and the genuinely duplicate systems worth knowing about
 - [AI Task Pipelines](pipelines/index.md) — all 49 real pipelines, organized by domain, each fully documented
 - [Model Registry](core-features/model-registry.md) — 77 real models across two registries, with an honest accounting of what was removed and why
 - [Training & Finetuning](training/index.md) — real segmentation and object-detection training, real checkpoint-based finetuning
+- [Examples & Tutorials](examples/index.md) — end-to-end domain workflows
 - [Full CLI Reference](reference/cli.md) — every real command group
 
 ```{toctree}
@@ -47,6 +49,8 @@ and note the real, current status of anything that isn't fully resolved.
 
 getting-started/installation
 getting-started/quickstart
+architecture
+faq
 ```
 
 ```{toctree}
@@ -77,6 +81,14 @@ models/index
 
 ```{toctree}
 :maxdepth: 2
+:caption: Labeling — Full Reference
+:hidden:
+
+labeling/index
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Training & Finetuning
 :hidden:
 
@@ -94,6 +106,29 @@ inference/onnx-export
 
 ```{toctree}
 :maxdepth: 2
+:caption: Natural-Language Agent
+:hidden:
+
+reference/agent
+agent/index
+```
+
+```{toctree}
+:maxdepth: 1
+:caption: Examples & Tutorials
+:hidden:
+
+examples/index
+examples/agriculture
+examples/forestry
+examples/urban
+examples/water
+examples/disaster
+examples/climate
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Reference
 :hidden:
 
@@ -104,7 +139,6 @@ reference/pipeline-catalog
 reference/model-catalog
 reference/datasets
 reference/model-evaluation
-reference/agent
 reference/advanced
 reference/roadmap
 ```

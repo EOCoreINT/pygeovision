@@ -572,10 +572,12 @@ class Prithvi:
 
     def __init__(self, variant: str = "prithvi_eo_2_0",
                  method: str = "hf",
-                 device: str | None = None) -> None:
+                 device: str | None = None,
+                 allow_random_init: bool = False) -> None:
         self.variant = variant
         self.method  = method
         self.device  = device or self._auto_device()
+        self.allow_random_init = allow_random_init
         self._model  = None
         self._spec   = PRITHVI_MODELS.get(variant, {})
 
@@ -594,7 +596,8 @@ class Prithvi:
         if weights_path:
             self._model = load_prithvi_local(self.variant, weights_path, self.device)
         else:
-            self._model = load_prithvi_hf(self.variant, self.device)
+            self._model = load_prithvi_hf(self.variant, self.device,
+                                           allow_random_init=self.allow_random_init)
         return self
 
     def _ensure_loaded(self) -> None:
@@ -1474,7 +1477,7 @@ def finetune_prithvi(
     except ImportError:
         return {"error": "torch + pygeovision.training required"}
 
-    prithvi = Prithvi(model_name)
+    prithvi = Prithvi(model_name, allow_random_init=kwargs.get("allow_random_init", False))
     prithvi.load()
 
     model = prithvi.build_segmentation_head(num_classes, freeze_backbone=False)

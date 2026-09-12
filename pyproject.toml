@@ -125,11 +125,12 @@ xai = [
     "matplotlib>=3.8",
 ]
 
-# ── Foundation models (DINOv3, Prithvi-EO-2.0) ──────────────────────────────
+# ── Foundation models (DINOv3, Prithvi-EO-2.0, DOFA) ────────────────────────
 foundation = [
     "transformers>=4.40",
     "torch>=2.0",
     "timm>=0.9",
+    "torchgeo>=0.6",
     "hdbscan>=0.8.33",
     "scikit-learn>=1.3",
     "umap-learn>=0.5",

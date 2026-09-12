@@ -294,12 +294,20 @@ class TiledInference:
                 dummy = torch.zeros(1, len(bands), 32, 32)
                 self.model(dummy.to(self._device))
         except Exception as exc:
-            return {
-                "success": False,
-                "error": f"Model does not accept {len(bands)} input band(s) (selected from "
-                         f"{n_bands} real band(s) in {image_path}): {exc}. Pass band_selection= "
-                         f"explicitly if this file has more bands than the model expects.",
-            }
+            if not self.tolerate_chip_failures:
+                return {
+                    "success": False,
+                    "error": f"Model does not accept {len(bands)} input band(s) (selected from "
+                             f"{n_bands} real band(s) in {image_path}): {exc}. Pass band_selection= "
+                             f"explicitly if this file has more bands than the model expects.",
+                }
+            logger.warning(
+                "Pre-flight check found the model does not accept %d input band(s) "
+                "(selected from %d real band(s) in %s): %s. tolerate_chip_failures=True "
+                "was explicitly set, so proceeding anyway -- every chip will likely "
+                "fail and be zero-filled per that setting's real, existing behavior.",
+                len(bands), n_bands, image_path, exc,
+            )
 
         if normalise:
             for b in range(image.shape[0]):

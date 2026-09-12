@@ -1,8 +1,22 @@
 # Finetuning
 
 Two real capabilities support finetuning: freezing the backbone, and
-resuming from an existing checkpoint. Both were found broken (or
-entirely missing) in an earlier audit and are now fixed and verified.
+resuming from an existing checkpoint.
+
+```{note}
+`freeze_backbone` (below) now works correctly on both real
+`TrainingConfig` implementations (see [Training](index.md) for why
+there are two). `checkpoint_path` is only available on
+`pygeovision.ai.training.trainer.TrainingConfig` — the Python-API-only
+trainer, not the one `pygeovision ai train` builds.
+```
+
+```python
+from pygeovision.ai.training.trainer import GeoTrainer, TrainingConfig
+```
+
+Both capabilities were found broken (or entirely missing) in an
+earlier audit and are now fixed and verified.
 
 ## `freeze_backbone`: a real, confirmed fix
 

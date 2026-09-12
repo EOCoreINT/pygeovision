@@ -13,27 +13,49 @@ give it a bounding box and a date, get back a real result with real
 statistics.
 
 ```bash
-pygeovision run water_bodies \
-    --bbox -0.15,51.47,-0.10,51.52 \
+pygeovision channel water_bodies \
+    --bbox -0.15 51.47 -0.10 51.52 \
     --date 2024-06 \
     --output ./output/
 ```
 
-## 3. Verify
-
-```python
-import json
-with open("./output/stats.json") as f:
-    print(json.load(f))
+```{warning}
+The `channel` command's `pipeline_name` argument is a real, closed
+`click.Choice` of only 10 pipelines: `change_detection`, `land_cover`,
+`building_footprints`, `crop_monitoring`, `disaster_assessment`,
+`deforestation`, `urban_growth`, `water_bodies`, `solar_detection`,
+`carbon_estimation`. The other 39 real pipelines documented in
+[AI Task Pipelines](../pipelines/index.md) have no CLI entry point at
+all -- they're reachable only through the Python API
+(`client.pipeline("wildfire_severity", ...)` or importing the
+pipeline class directly, as shown on each domain page).
 ```
 
-A real, successful run reports `"success": true` and real statistics
-specific to that pipeline (e.g. water-body area in hectares). A
-pipeline that couldn't find real, usable imagery reports
-`"success": false` with a clear reason — it does not silently return
-an empty or fabricated result. See
-[AI Task Pipelines](../pipelines/index.md) for the full list
-and what each one actually computes.
+## 3. Verify
+
+The CLI prints real stats directly to the terminal:
+
+```
+✓ channel complete!
+  Output: ./output/water_bodies_result.tif
+  Stats:
+    water_area_ha: 42.1800
+    water_pct: 0.0731
+```
+
+```{note}
+The CLI does not write a separate stats.json file -- `result.stats` is
+printed directly. If you want the real stats as structured data (to
+save, parse, or feed into another step), use the Python API below,
+which returns the real `PipelineResult` object directly.
+```
+
+A real, successful run reports `success=True` and real statistics
+specific to that pipeline. A pipeline that couldn't find real, usable
+imagery reports `success=False` with a clear `error` — it does not
+silently return an empty or fabricated result. See
+[AI Task Pipelines](../pipelines/index.md) for the full list and what
+each one actually computes.
 
 ## The same thing in Python
 
@@ -65,7 +87,7 @@ an equally real alternative to importing the pipeline class directly.
 ## 4. Train or finetune a real model
 
 ```python
-from pygeovision.training.trainer import GeoTrainer, TrainingConfig
+from pygeovision.ai.training.trainer import GeoTrainer, TrainingConfig
 import segmentation_models_pytorch as smp
 
 model = smp.Unet(encoder_name="resnet50", in_channels=4, classes=2)
@@ -81,11 +103,11 @@ trainer = GeoTrainer(model, cfg)
 results = trainer.fit(train_dataset, val_dataset)
 ```
 
-See [Training & Finetuning](../training/index.md) for what's real here
-and the two significant bugs (a silently-ignored `freeze_backbone`,
-and a default learning-rate schedule that oscillated 50x instead of
-decaying once) that were found and fixed in an earlier audit of this
-exact code path.
+See [Training & Finetuning](../training/index.md) for the real, current status
+here — including a second, genuinely separate `GeoTrainer` (the one
+`pygeovision ai train` actually uses) that had the identical scheduler
+and `freeze_backbone` bugs, found and fixed independently in a later
+audit pass.
 
 ## What's next
 

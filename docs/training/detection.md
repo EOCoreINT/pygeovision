@@ -1,8 +1,15 @@
 # Object Detection Training
 
+```{note}
+`task="detection"` only exists on
+`pygeovision.ai.training.trainer.TrainingConfig` — the Python-API-only
+trainer. See [Training](index.md) for why there are two real,
+separate implementations.
+```
+
 ```python
 from pygeovision.ai.models.architectures.detection import build_retinanet
-from pygeovision.training.trainer import GeoTrainer, TrainingConfig
+from pygeovision.ai.training.trainer import GeoTrainer, TrainingConfig
 
 model = build_retinanet(num_classes=3, pretrained=False)
 cfg = TrainingConfig(task="detection", max_epochs=50)

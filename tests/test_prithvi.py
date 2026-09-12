@@ -143,16 +143,39 @@ class TestPrithviBandHandling:
 # ── Loading Mechanisms ────────────────────────────────────────────────────────
 
 class TestPrithviLoading:
-    def test_load_hf_returns_model_or_surrogate(self):
-        """load_prithvi_hf must return a model (surrogate if HF unavailable)."""
+    def test_load_hf_raises_clearly_on_real_failure_by_default(self, monkeypatch):
+        """load_prithvi_hf must raise clearly on a genuine load failure --
+        not silently substitute a randomly-initialized model. This
+        replaces an earlier test that expected the opposite (a silent
+        "surrogate" fallback), which was itself the real, severe bug
+        fixed in an earlier audit round: a caller had no reliable way to
+        know they'd received meaningless, untrained weights instead of
+        the real, pretrained model. Mocks the real failure point
+        directly rather than relying on this environment's network
+        availability, so the test is deterministic in any environment."""
+        from transformers import AutoModel
+        def _raise(*a, **kw):
+            raise OSError("simulated real network failure")
+        monkeypatch.setattr(AutoModel, "from_pretrained", _raise)
+
         from pygeovision.models.foundation.prithvi import load_prithvi_hf
-        model = load_prithvi_hf("prithvi_eo_1_0", device="cpu")
+        with pytest.raises(RuntimeError):
+            load_prithvi_hf("prithvi_eo_1_0", device="cpu")
+
+    def test_load_hf_allow_random_init_opts_in_explicitly(self):
+        """The only way to get an architecture-only model now is the
+        real, explicit allow_random_init=True opt-in -- and the result
+        is clearly marked so it can't be silently mistaken for a real,
+        pretrained model."""
+        from pygeovision.models.foundation.prithvi import load_prithvi_hf
+        model = load_prithvi_hf("prithvi_eo_1_0", device="cpu", allow_random_init=True)
         assert model is not None
         assert hasattr(model, "forward") or callable(model)
+        assert getattr(model, "_pygeovision_is_random_init", False) is True
 
-    def test_load_hf_eo2(self):
+    def test_load_hf_eo2_allow_random_init(self):
         from pygeovision.models.foundation.prithvi import load_prithvi_hf
-        model = load_prithvi_hf("prithvi_eo_2_0", device="cpu")
+        model = load_prithvi_hf("prithvi_eo_2_0", device="cpu", allow_random_init=True)
         assert model is not None
 
     def test_load_local_nonexistent_raises(self):
@@ -214,7 +237,7 @@ class TestPrithviClass:
 
     def test_load_returns_self(self):
         from pygeovision.models.foundation.prithvi import Prithvi
-        p = Prithvi("prithvi_eo_1_0")
+        p = Prithvi("prithvi_eo_1_0", allow_random_init=True)
         result = p.load()
         assert result is p
         assert p._model is not None
@@ -507,6 +530,7 @@ class TestFinetunePrithvi:
             task="land_cover",
             num_classes=10,
             epochs=5,
+            allow_random_init=True,
         )
         if "error" not in result:
             assert "model" in result

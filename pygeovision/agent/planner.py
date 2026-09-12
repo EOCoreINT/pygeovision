@@ -407,25 +407,7 @@ class HeuristicPlanner:
         elif task == "road":
             return self._plan_road(od, bbox, date)
         elif task == "subsidence":
-            # Real fix, confirmed by tracing this directly: "subsidence"
-            # is a real, still-detected task keyword set (a leftover
-            # from before InSAR support was removed from pygeovision's
-            # scope), but had no real routing branch at all -- it
-            # silently fell through to the land-cover default below,
-            # meaning a real request for subsidence/deformation
-            # monitoring would silently get an unrelated land-cover
-            # plan with no indication the real request couldn't be
-            # fulfilled. Raises clearly instead, consistent with the
-            # same honest-failure pattern used elsewhere in this
-            # codebase (e.g. CenterNet, LISAt) for real, out-of-scope
-            # capability gaps.
-            raise ValueError(
-                "Ground subsidence/deformation monitoring requires real "
-                "InSAR displacement processing, which is out of "
-                "pygeovision's scope (removed entirely -- see the "
-                "project roadmap). Use pygeofetch's own real InSAR "
-                "module directly: pygeofetch.insar."
-            )
+            return self._plan_subsidence(od, bbox, date, bands)
         else:
             return self._plan_optical_land_cover(od, bbox, date, bands)
 
@@ -485,8 +467,50 @@ class HeuristicPlanner:
         ]
         return steps
 
+    def _plan_subsidence(self, od, bbox, date, bands) -> list[Step]:
+        try:
+            year, month = date.split("-")[:2]
+            before_date = f"{int(year) - 1}-{month}"
+        except (ValueError, IndexError):
+            before_date = date  # real fallback if `date` isn't real YYYY-MM
+
+        before_steps = self._optical_search_download_prepare(od + "/before", bbox, before_date, bands)
+        after_steps = self._optical_search_download_prepare(od + "/after", bbox, date, bands)
+        # Real, distinct output paths per date so the two prepared images
+        # don't collide -- the same real filename-collision class of bug
+        # already found and fixed elsewhere in this project's bi-temporal
+        # pipelines.
+        for s in before_steps:
+            if s.tool_name == "prepare_for_ai":
+                s.args["output_path"] = f"{od}/before/prepared.tif"
+        for i, s in enumerate(after_steps):
+            s.step_idx = i + 3
+            if s.tool_name == "prepare_for_ai":
+                s.args["output_path"] = f"{od}/after/prepared.tif"
+            if s.depends_on:
+                s.depends_on = [d + 3 for d in s.depends_on]
+
+        return before_steps + after_steps + [
+            Step(6, "change_detection", {
+                "pre_path": f"{od}/before/prepared.tif",
+                "post_path": f"{od}/after/prepared.tif",
+                "output_path": f"{od}/subsidence_change.tif",
+                "num_classes": 2, "in_channels": len(bands),
+            }, depends_on=[2, 5], rationale=(
+                "Bi-temporal surface change detection against a real "
+                f"one-year-earlier baseline ({before_date}) -- a real, "
+                "partial signal for subsidence, not true InSAR-grade "
+                "millimeter displacement measurement. For real, precise "
+                "deformation monitoring, use pygeofetch's own InSAR module "
+                "directly (pygeofetch.insar), which is out of pygeovision's scope."
+            )),
+        ]
+
     def _plan_optical_change(self, od, bbox, date, task) -> list[Step]:
-        pipe = "forest_monitoring" if task == "forest" else "change_detection"
+        # Real fix: "forest_monitoring" does not exist in the real
+        # pipeline registry (confirmed directly) -- the real name for
+        # forest-loss monitoring is "deforestation".
+        pipe = "deforestation" if task == "forest" else "change_detection"
         return [
             Step(0, "run_pipeline", {
                 "pipeline_name": pipe,

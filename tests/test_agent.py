@@ -99,12 +99,15 @@ class TestToolRegistry:
     def test_registry_has_expected_tools(self):
         expected = [
             "search_satellite_data", "download_satellite_data", "prepare_for_ai",
-            "sar_preprocess", "sar_flood_detection",
             "prithvi_inference", "change_detection",
             "compute_spectral_index", "postprocess", "run_pipeline",
         ]
         for name in expected:
             assert name in TOOL_REGISTRY, f"Missing tool: {name}"
+        assert "sar_preprocess" not in TOOL_REGISTRY, (
+            "sar_preprocess was deliberately removed -- SAR/InSAR processing "
+            "is handled directly by pygeofetch, not through this planner."
+        )
 
     def test_build_tools_returns_bound_instances(self, mock_pgv, tools):
         assert len(tools) == len(TOOL_REGISTRY)
@@ -252,26 +255,28 @@ class TestHeuristicPlanner:
     def planner(self, tools):
         return HeuristicPlanner(tools)
 
-    def test_flood_sar_query_produces_sar_steps(self, planner):
+    def test_flood_sar_query_produces_valid_plan(self, planner):
+        """SAR-mentioning flood query still produces a real, valid plan --
+        via the real optical/Prithvi path, since SAR-specific tools were
+        deliberately removed (see planner.py's _infer_sensor docstring)."""
         plan = planner.plan("Map SAR flood extent in Accra — no optical available",
                             context={"bbox": [-0.3, 5.5, -0.05, 5.7], "date": "2026-06"})
         tool_names = [s.tool_name for s in plan.steps]
-        assert plan.sensor == "sar",  f"Expected sensor=sar, got {plan.sensor}"
+        assert plan.sensor == "optical", (
+            "_infer_sensor always resolves to 'optical' now -- SAR/InSAR "
+            "processing is handled directly by pygeofetch, not this planner."
+        )
         assert plan.task   == "flood", f"Expected task=flood, got {plan.task}"
-        assert "sar_preprocess"      in tool_names
-        assert "sar_flood_detection" in tool_names
+        assert len(plan.steps) >= 1
 
     def test_building_damage_routes_to_change_detection(self, planner):
-        """Building damage after earthquake → change_detection, NOT sar_flood_detection."""
+        """Building damage after earthquake → change_detection."""
         plan = planner.plan("Detect building damage after the Turkey earthquake using SAR",
                             context={"bbox": [36.0, 36.0, 37.0, 37.0], "date": "2023-02"})
         tool_names = [s.tool_name for s in plan.steps]
-        assert plan.sensor == "sar"
+        assert plan.sensor == "optical"
         assert plan.task   == "damage"
         assert "change_detection" in tool_names
-        assert "sar_flood_detection" not in tool_names, (
-            "Damage task must not use flood detection tool"
-        )
 
     def test_optical_flood_uses_prithvi_not_sar(self, planner):
         """Optical + flood → Prithvi pipeline, not SAR pipeline."""
@@ -281,23 +286,31 @@ class TestHeuristicPlanner:
         assert plan.sensor == "optical"
         assert "search_satellite_data" in tool_names
         assert "prithvi_inference"     in tool_names
-        assert "sar_preprocess"        not in tool_names
+        assert "sar_preprocess"        not in TOOL_REGISTRY
 
-    def test_oil_spill_uses_sar_pipeline(self, planner):
-        """Oil spill → SAR dark-pixel approach."""
+    def test_oil_spill_uses_real_pipeline(self, planner):
+        """Oil spill → a real, valid plan."""
         plan = planner.plan("Detect oil spill with Sentinel-1 at night",
                             context={"bbox": [50.0, 24.0, 57.0, 28.0], "date": "2024-06"})
-        assert plan.sensor == "sar"
+        assert plan.sensor == "optical"
         assert plan.task   == "oil_spill"
 
     def test_subsidence_routes_to_change_detection(self, planner):
-        """Subsidence → SAR + change_detection."""
+        """Subsidence → real change_detection, with an honest caveat that
+        this is bi-temporal surface change, not true InSAR-grade
+        displacement (that remains pygeofetch.insar's real, separate
+        domain -- see the planner's LLM prompt and _infer_sensor docstring
+        for the documented reasoning)."""
         plan = planner.plan("Monitor ground subsidence in Jakarta",
                             context={"bbox": [106.7, -6.3, 107.0, -6.0], "date": "2024-06"})
         tool_names = [s.tool_name for s in plan.steps]
-        assert plan.sensor == "sar"
+        assert plan.sensor == "optical"
         assert plan.task   == "subsidence"
         assert "change_detection" in tool_names
+        cd_step = next(s for s in plan.steps if s.tool_name == "change_detection")
+        assert "insar" in cd_step.rationale.lower(), (
+            "Should honestly point to pygeofetch.insar for real displacement measurement"
+        )
 
     def test_land_cover_uses_prithvi(self, planner):
         """Land cover classification → Prithvi inference."""
