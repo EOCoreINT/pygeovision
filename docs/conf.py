@@ -1,6 +1,12 @@
 # Configuration file for the Sphinx documentation builder.
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import os
+import sys
+
+
+sys.path.insert(0, os.path.abspath(".."))
+
 project = "pygeovision"
 copyright = "2026, PyGeoVision Contributors"
 author = "PyGeoVision Contributors"
@@ -35,6 +41,13 @@ html_theme_options = {
     "navigation_depth": 4,
     "titles_only": False,
 }
+
+html_static_path = (
+    ["_static"]
+    if os.path.isdir(os.path.join(os.path.dirname(__file__), "_static"))
+    else []
+)
+html_css_files = ["custom.css"] if html_static_path else []
 
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
