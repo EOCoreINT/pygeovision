@@ -28,7 +28,18 @@ result = ChangeDetectionPipeline(client).run(
     output_dir="./output",
     model="changeformer",
 )
-# result.stats: {"changed_area_ha": ..., "changed_pct": ...}
+print(result.metadata)
+# {"date_before": "2020-01", "date_after": "2024-01", "model": "changeformer",
+#  "bands": ("red","green","blue"), "num_classes": 2}
+```
+
+```{note}
+Corrected from an earlier version of this page: the real
+`ChangeDetectionPipeline.run()` doesn't populate `result.stats` at
+all — only `result.metadata`, shown above. There's no
+`changed_area_ha`/`changed_pct` computed by this pipeline itself; if
+you need real area statistics from the output change mask, compute
+them yourself from the real, returned raster.
 ```
 
 **Model choice matters here more than in most pipelines** — `siamese_unet`

@@ -12,6 +12,7 @@ segmentation-models
 detection-models
 change-detection-models
 foundation-models
+embeddings
 vlm-models
 classification-and-3d-models
 native-registry

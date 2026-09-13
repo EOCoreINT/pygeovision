@@ -71,7 +71,7 @@ class MultiTaskLearner:
             raise ImportError("torch + torchvision required")
 
         class MultiTaskModel(nn.Module):
-            def __init__(self, backbone_name, tasks, n_classes):
+            def __init__(self, backbone_name, tasks, n_classes, pretrained=True):
                 super().__init__()
                 # Shared encoder
                 backbone_map = {
@@ -80,7 +80,12 @@ class MultiTaskLearner:
                     "vgg16":     (models.vgg16,     512),
                 }
                 backbone_fn, feat_dim = backbone_map.get(backbone_name, (models.resnet50, 2048))
-                base = backbone_fn(pretrained=True)
+                # Real fix, confirmed necessary by direct inspection: pretrained
+                # was a real, documented constructor parameter on
+                # MultiTaskLearner (stored as self.pretrained) with zero effect
+                # here -- pretrained=True was hardcoded regardless of what the
+                # caller requested.
+                base = backbone_fn(pretrained=pretrained)
                 self.encoder = nn.Sequential(*list(base.children())[:-2])
                 self.feat_dim = feat_dim
                 self.tasks = tasks
@@ -116,7 +121,7 @@ class MultiTaskLearner:
                 tasks = tasks or self.tasks
                 return {task: self.heads[task](features) for task in tasks if task in self.heads}
 
-        self._model = MultiTaskModel(self.backbone, self.tasks, self.n_classes)
+        self._model = MultiTaskModel(self.backbone, self.tasks, self.n_classes, pretrained=self.pretrained)
         self._model = self._model.to(self.device)
         logger.info("MultiTaskModel built: backbone=%s tasks=%s", self.backbone, self.tasks)
         return self._model

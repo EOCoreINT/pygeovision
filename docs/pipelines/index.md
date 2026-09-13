@@ -1,12 +1,31 @@
 # AI Task Pipelines — Overview
 
-49 real, working pipelines, organized into 9 domains below. Every one
+49 real, working pipelines. **Two genuinely different real
+implementations**, not one shared architecture — this matters enough
+to say before anything else on this page:
+
+```{important}
+**10 pipelines** (`change_detection`, `land_cover`,
+`building_footprints`, `crop_monitoring`, `disaster_assessment`,
+`deforestation`, `urban_growth`, `water_bodies`, `solar_detection`,
+`carbon_estimation`) are the only ones reachable through the CLI's
+`channel` command, and they run a **separate, real implementation**
+(`pygeovision.ai.pipelines`) with its own real helper methods,
+real historical bug fixes, and a `PipelineResult.pipeline` field
+(not `.name`). See
+[The 10 CLI-Reachable Pipelines](cli-reachable-pipelines.md) for full,
+dedicated detail — the shared-architecture description on the rest of
+this page describes the **other 39**, Python-API-only pipelines in
+`pygeovision.ai.pipelines.domains`.
+```
+
+The other 39 are organized into 9 domains below. Every one of *those*
 shares the same real internal architecture, described once here rather
 than repeated on every page.
 
-## The shared pipeline lifecycle
+## The shared pipeline lifecycle (the 39 Python-API-only pipelines)
 
-Every pipeline's `run()` method follows the same four real stages:
+Every one of these 39 pipelines' `run()` method follows the same four real stages:
 
 1. **Search & AOI coverage** — finds real scenes covering your
    requested bbox via `pygeofetch`. If one scene doesn't fully cover
@@ -56,6 +75,7 @@ network flakiness silently swallowed into a fabricated result. Read
 ```{toctree}
 :maxdepth: 1
 
+cli-reachable-pipelines
 agriculture
 forestry
 infrastructure

@@ -6,6 +6,149 @@ a real, specific accounting of what was found and fixed during this
 package's audit, and what remains genuinely open. Nothing here is
 softened for presentation.
 
+## Fixed while writing deeper pipeline documentation
+
+- **`flood_mapping` was completely fabricated as using a real Prithvi
+  foundation model.** Checked directly: it's a single, direct NDWI
+  call (`client.segmentation.water()`), nothing more — no foundation
+  model, no HLS channel mapping, no "flood_detection task mode" as an
+  earlier version of this page claimed.
+- **`water_quality`'s real NDCI (chlorophyll proxy) computation was
+  omitted entirely** from an earlier version of this page, which
+  described only the turbidity proxy as if it were the whole pipeline.
+- **`coastal_monitoring`'s documented NDWI shoreline-extraction step
+  doesn't exist.** The real pipeline calls `client.change.detect()`
+  directly on the raw image pair — a real, third distinct
+  change-detection code path (separate from both the `domains.py`
+  bi-temporal pipelines and the standalone `ChangeFormer` class) that
+  tries `ChangeDetection(model_variant="changeformer")` first and
+  genuinely, silently falls back to a fixed-percentile spectral-diff
+  method if that fails.
+- **`oil_spill_detection` overclaimed an "adaptive local threshold."**
+  The real implementation uses a fixed, global `-18.0` dB constant.
+- **`reef_bleaching` overstated its own real bi-temporal design**: an
+  earlier version of this page implied both depth and turbidity are
+  cancelled out by comparing two dates. Checked directly against the
+  source: only the *static* seafloor depth is cancelled — turbidity
+  and tidal state can still genuinely differ between dates and produce
+  a false positive, a real limitation the source states explicitly
+  but this page previously didn't reflect.
+
+
+
+- **`urban_heat_island`'s documented NDVI-based emissivity correction
+  doesn't exist.** Checked directly: the real implementation is a
+  direct DN→Kelvin→Celsius conversion (real USGS Collection 2
+  calibration constants), nothing more. Also discovered and documented
+  for the first time: `land_surface_temperature`, an identical-
+  implementation sibling (a real Python subclass with no overridden
+  logic) that had never been documented anywhere before.
+- **`solar_potential` overclaimed a "direct and diffuse components"
+  irradiance model.** The real docstring explicitly states there is no
+  atmospheric attenuation modeling beyond the geometric
+  cosine-incidence factor. Also had the same fabricated `dem_path=`
+  parameter as `archaeological_site`/`wind_farm_siting` (both fetch a
+  real DEM automatically via OpenTopography; neither accepts a
+  user-supplied file), and both were missing the real OpenTopography
+  API key requirement.
+- **`landcover_change`'s real stats key is `top_transitions`** (the
+  top 10 class transitions by frequency), not a full
+  `transition_matrix` as previously documented.
+- **Three more real, notable cross-file `LandCoverPipeline`
+  compositions found and documented**: `landcover_change`,
+  `mine_detection`, and `construction_progress` (bringing the total to
+  five real pipelines in `domains.py` that reuse this one class from
+  the separate `pygeovision.ai.pipelines` module, rather than
+  duplicating ESA WorldCover access logic).
+
+
+
+- **`wetland_mapping` was described with the wrong formulas** — an
+  earlier version claimed NDWI+NDVI; the real implementation uses
+  MNDWI (Xu, 2006, using SWIR1) and EVI (Huete et al., 2002),
+  scientifically different indices, though the overall three-way
+  classification logic was accurately described.
+- **`mangrove_mapping`'s real bi-temporal requirement was undocumented**
+  — described as a single-date `date=` extent map; the real pipeline
+  requires `date_before`/`date_after` and computes area *change*
+  against ESA WorldCover's specific mangrove class code (95), not a
+  filtered subset of "tree cover" classes as previously described.
+- **`archaeological_site`'s documented `dem_path=`/`lrm_radius_m=`
+  parameters don't exist.** The real pipeline auto-fetches a DEM from
+  OpenTopography (requiring a real API key) rather than accepting a
+  user-supplied file, and the real smoothing parameter is
+  `smoothing_radius_px` (pixels, not meters).
+- **Two real, notable cross-file compositions found and documented for
+  the first time**: `mangrove_mapping` and `biodiversity_hotspot`
+  (both in `domains.py`) internally construct and call the real
+  `LandCoverPipeline` from the separate `pygeovision.ai.pipelines`
+  module — genuine code reuse across the two-implementation split
+  described in [Architecture](../architecture.md), not duplicated
+  logic.
+
+
+
+- **All 10 CLI-reachable pipeline names had full, incorrect duplicate
+  descriptions scattered across 6 other domain pages**
+  (`water-and-disasters.md`, `urban.md`, `infrastructure.md`,
+  `cryosphere-and-climate.md`, `forestry.md`, `change-detection.md`)
+  — each describing a plausible-sounding but different implementation
+  than the real one actually dispatched for that name (different
+  parameters, different formulas, different `result.stats`/
+  `result.metadata` shapes). Every one checked directly against the
+  real source; all removed and replaced with a cross-reference to
+  [The 10 CLI-Reachable Pipelines](../pipelines/cli-reachable-pipelines.md),
+  the one page with verified, accurate detail for these 10 names.
+- **`canopy_height`'s documented `dem_path=` terrain-normalization
+  parameter doesn't exist.** The real pipeline takes only `bbox`,
+  `output_dir`, and `date`, with no DEM integration at all.
+- **`vegetation_indices` was filed under the wrong domain** (its own
+  class says `domain="agriculture"`, not `environment`) and described
+  inaccurately in three ways: claimed a selectable `indices=`
+  parameter (doesn't exist — NDVI/EVI/NDWI are always all three
+  computed), claimed SAVI was one of them (it isn't), and claimed
+  multi-band GeoTIFF output (the real output is per-date statistics).
+
+
+
+- **`crop_type_mapping`'s default model name was fake.** Confirmed
+  directly: `"crop_type_model"` is not a real, registered entry in
+  either registry — calling this pipeline with its own defaults always
+  raised `RuntimeError`. It had never worked out of the box. Fixed the
+  default to `"segformer_b2"`, a real, working segmentation model.
+- **`landslide_detection`'s hardcoded model name was also fake**, and
+  worse than the bug above: there was no `kwargs.get()` override at
+  all, so this pipeline could never be run successfully under any
+  configuration. Fixed to a real, working default, made properly
+  overridable.
+- **`irrigation_detection` never requested NIR data.** It downloaded
+  only the default red/green/blue bands, but its own real NDWI
+  computation (`segmentation.water()`) needs green+NIR to be
+  meaningful. With only 3 bands, the fallback band-indexing used red
+  as "green" and green as "nir" — silently computing
+  `(red−green)/(red+green)` instead of real NDWI, a scientifically
+  meaningless result for every real run. Confirmed by direct
+  calculation before fixing.
+
+
+
+- **`pygeovision channel`'s `--date-before`/`--date-after` flags had
+  zero effect for 3 of the 10 real, CLI-reachable pipelines**
+  (`disaster_assessment`, `deforestation`, `urban_growth`) — found
+  while writing full documentation for these pipelines and checking
+  the actual CLI-to-pipeline argument flow rather than assuming it
+  worked because the flags existed. The CLI passed these through with
+  literal `date_before`/`date_after` kwarg names regardless of which
+  pipeline was selected, but these three pipelines' real `run()`
+  signatures use different parameter names (`pre_date`/`post_date`,
+  `baseline_year`/`analysis_year`, `start_year`/`end_year`) — confirmed
+  directly by inspecting each signature. The flags were silently
+  absorbed into `**kwargs` and never used, with each pipeline falling
+  back to its own hardcoded default dates regardless of what a real
+  user requested via the CLI. Fixed to translate to the correct real
+  parameter name per pipeline, with year-extraction for the two
+  pipelines that expect a bare year rather than a full date.
+
 ## Fixed during this documentation audit
 
 **Pipelines & data preparation**
@@ -226,3 +369,43 @@ softened for presentation.
 - A real wrapper (`SamGeoLabeler`) around
   [segment-geospatial](https://samgeo.gishub.org), a real, peer-reviewed
   SAM integration for remote sensing.
+- **A real, dedicated DOFA integration** (`pygeovision.models.foundation.dofa`),
+  replacing the previously-unverified generic `AutoModel` dispatch.
+  Built on [torchgeo](https://github.com/microsoft/torchgeo)'s official
+  implementation and real, direct checkpoint URLs. Verified end-to-end:
+  the same model instance correctly embeds both 9-band Sentinel-2 and
+  3-band NAIP input. See [Embeddings](../models/embeddings.md).
+- **`GeoEmbeddings`** (`pygeovision.models.embeddings`) — a new, unified
+  embedding-extraction interface across DOFA, Prithvi, DINOv2,
+  RemoteCLIP, and Tessera, plus a real, verified `cosine_similarity`/
+  `nearest` pair. Found and fixed a real gap while building it:
+  `TesseraGeo.embeddings_for_bbox()` never actually returned the real
+  embedding array, only its shape/metadata.
+
+**A full test-suite audit round** (the project's real `tests/`
+directory, not written during this documentation work) surfaced
+several more real findings, resolved down to a clean 936 passed / 0
+failed:
+
+- `pygeovision ai train`'s CLI command crashed with `TypeError` on
+  every single invocation (both segmentation and detection) — it
+  imported the wrong one of the two parallel `TrainingConfig` classes.
+- `MultiTaskLearner.pretrained` was a real, documented constructor
+  parameter with zero effect — `pretrained=True` was hardcoded in the
+  actual model-building code regardless of what was requested. Same
+  pattern as the `freeze_backbone` bug above, found independently.
+- The heuristic agent planner's subsidence routing was reconsidered:
+  an earlier fix made it raise a clear error; real, independent
+  evidence from the test suite showed the intended design was a real,
+  working plan using `change_detection` with an honest caveat instead.
+  Also found and fixed a second dangling pipeline reference
+  (`"forest_monitoring"` → real name `"deforestation"`) while
+  investigating.
+- Nine registry entries initially removed as fake were reconsidered and
+  restored as honest, discoverable stubs instead of silent absence —
+  see [Model Registry](../core-features/model-registry.md).
+- Five orphaned test files (`test_slc_insar.py`, `test_viz.py`,
+  `test_enterprise.py`, `test_serving.py`, `test_utils_phase8.py`)
+  tested modules confirmed dead and already removed from the codebase;
+  deleted rather than fixed, since the functionality they tested was
+  deliberately out of scope, not buggy.

@@ -1,28 +1,11 @@
 # Infrastructure
 
-Seven real pipelines, spanning segmentation, object detection, and two
-genuine spectral-anomaly proxies.
-
-## `building_footprints`
-
-**What it does:** Real per-pixel building segmentation.
-
-**How it actually works:** Runs a real segmentation model
-(`unet_resnet50`/`segformer_b2`/etc., or a real SAM-based model —
-`sam-vit-h` — via `model=`) directly over the optical RGB or RGB+NIR
-stack. When a SAM variant is used, this pipeline runs it in its real
-automatic-mask-generation mode and filters masks by real, configurable
-size/shape heuristics (`min_area_m2`, `max_aspect_ratio`) to reject
-non-building blobs (a SAM mask over a parking lot or a shadow, for
-example).
-
-```python
-result = BuildingFootprintsPipeline(client).run(
-    bbox=(...), date="2024-06", output_dir="./output",
-    model="sam-vit-h", min_area_m2=20.0,
-)
-# result.stats: {"n_buildings": ..., "total_footprint_area_ha": ..., "building_density_pct": ...}
-```
+Six real pipelines documented in full here, plus `building_footprints`,
+one of the 10 CLI-reachable pipelines with a separate real
+implementation — see
+[The 10 CLI-Reachable Pipelines](cli-reachable-pipelines.md) for that
+one (a simpler real segmentation call than an earlier version of this
+page described).
 
 ## `road_extraction`
 

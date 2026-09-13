@@ -4,101 +4,103 @@ Ten real pipelines, including `wildfire_severity` (filed here since it
 covers non-forest burns too) and the two pipelines with the most
 explicit honest-scope warnings in the whole catalog.
 
-## `land_cover`
-
-**What it does:** Real global land-cover classification.
-
-**How it actually works:** Delegates to a real `ESAWorldCoverLabeler`
-pull of the real ESA WorldCover 10m dataset (11 real global land-cover
-classes) for the requested AOI and reprojects/crops it to your exact
-bbox. Not a model inference at all — a real, direct lookup against a
-real, published global product.
-
-```python
-result = LandCoverPipeline(client).run(bbox=(...), date="2024", output_dir="./output")
-# result.stats: {"class_pct": {"tree_cover": 41.2, "cropland": 33.7, ...}}
+```{note}
+`land_cover` and `urban_growth` are two of the 10 CLI-reachable
+pipelines with a separate, real implementation — see
+[The 10 CLI-Reachable Pipelines](cli-reachable-pipelines.md) for the
+real, correct detail (including `land_cover`'s real three-way
+worldcover/dynamic_world/model dispatch, and `urban_growth`'s real,
+deliberate use of Landsat rather than Sentinel-2).
 ```
 
-## `urban_growth`
+## `urban_heat_island` and `land_surface_temperature`
 
-**What it does:** Real bi-temporal built-up-area expansion.
+**What they do:** Real land-surface-temperature (LST) mapping from
+Landsat's thermal band — literally the same real implementation under
+two names, not two techniques (`LandSurfaceTemperaturePipeline` is a
+direct Python subclass of `UrbanHeatIslandPipeline` with no overridden
+logic — the same pattern as `forest_fire`/`wildfire_severity` in
+[Forestry](forestry.md)).
 
-**How it actually works:** Runs `land_cover`-equivalent classification
-independently for both dates, then computes the real set difference:
-pixels that were non-built-up in the "before" classification and
-built-up in "after."
-
-```python
-result = UrbanGrowthPipeline(client).run(
-    bbox=(...), date_before="2015", date_after="2024", output_dir="./output",
-)
-# result.stats: {"new_urban_area_ha": ..., "growth_rate_pct_per_year": ...}
-```
-
-## `urban_heat_island`
-
-**What it does:** Real land-surface-temperature (LST) mapping from
-thermal bands.
-
-**How it actually works:** Retrieves the real thermal band (Landsat
-Band 10/11), converts real digital numbers to real brightness
-temperature via the sensor's published calibration constants, then
-applies a real emissivity correction based on the NDVI-derived
-proportion of vegetation per pixel — bare urban surfaces and
-vegetation have measurably different real emissivity, and skipping
-this correction biases LST high over vegetated pixels.
+**How it actually works:** Retrieves the real thermal band (requires
+Landsat specifically — Sentinel-2 has no thermal sensor at all), and
+applies the real, published USGS Collection 2 Level-2 Surface
+Temperature conversion directly: `temperature_K = DN × 0.00341802 +
+149.0`.
 
 ```python
-result = UrbanHeatIslandPipeline(client).run(
-    bbox=(...), date="2024-07", output_dir="./output",
-)
-# result.stats: {"mean_lst_c": ..., "hotspot_area_ha": ..., "urban_rural_delta_c": ...}
+from pygeovision.ai.pipelines.domains import UrbanHeatIslandPipeline
+
+result = UrbanHeatIslandPipeline(client).run(bbox=(...), date="2024-07", output_dir="./output")
+print(result.stats)
+# {"mean_temp_celsius": ..., "max_temp_celsius": ..., "min_temp_celsius": ...,
+#  "pct_heat_island": ...}  # fraction of pixels >2°C warmer than the scene mean
 ```
 
-## `solar_detection`
-
-**What it does:** Real rooftop solar-panel detection.
-
-**How it actually works:** A real object-detection model
-(`rf-detr-b`/`retinanet_resnet50`) trained to recognize the real,
-distinctive rectangular-grid visual signature of PV panel arrays.
-
-```python
-result = SolarDetectionPipeline(client).run(
-    bbox=(...), date="2024-06", output_dir="./output", conf=0.5,
-)
-# result.stats: {"n_installations": ..., "estimated_capacity_mw": ...}
+```{warning}
+Corrected from an earlier version of this page, which claimed a real
+NDVI-derived emissivity correction was applied. Checked directly: no
+emissivity correction of any kind exists in the real implementation —
+it's the direct DN→Kelvin→Celsius conversion above, nothing more. The
+real stats keys are also different from what was previously shown
+(`mean_temp_celsius`/`pct_heat_island`, not `mean_lst_c`/
+`hotspot_area_ha`/`urban_rural_delta_c`).
 ```
 
-`estimated_capacity_mw` is derived from a real, configurable
-watts-per-square-meter conversion applied to detected panel area — a
-real, published rule-of-thumb figure, not a per-installation
-verified capacity.
+`pct_heat_island` uses a real, relative definition — pixels more than
+2°C warmer than the scene's own mean — deliberately relative rather
+than an absolute "hot" threshold, since what counts as hot varies by
+climate and season.
 
 ## `solar_potential`
 
 **What it does:** Real clear-sky solar irradiance estimation from
-terrain — **not** rooftop detection (see `solar_detection` above for
-that).
+terrain — **not** rooftop detection (see
+[The 10 CLI-Reachable Pipelines](cli-reachable-pipelines.md)'s
+`solar_detection` for that).
 
 **How it actually works:** A real, from-scratch DEM analysis, verified
-against independent physics. Computes real slope and aspect via
-Horn's method (a real, published 3x3-kernel gradient estimator), real
-solar position (zenith and azimuth angles) via Spencer's 1971
-equations for a given date/time, then a real tilted-surface irradiance
-model combining direct and diffuse components. Verified: on a flat
-synthetic DEM, the output exactly matches `cos(solar zenith angle)` as
-it must by definition; at winter solstice, south-facing terrain scores
-higher than flat, which scores higher than north-facing — matching
-real, independently-known physical expectation for the northern
-hemisphere.
+against independent physics. Automatically fetches a real DEM from
+OpenTopography for the requested bbox. Computes real slope and aspect
+via Horn's method (a real, published 3×3-kernel gradient estimator —
+the same algorithm GDAL's `gdaldem slope/aspect` uses), real solar
+position (zenith and azimuth) via Spencer's 1971 declination equations
+for the given date/time, then the standard tilted-surface
+cosine-incidence-angle formula (Duffie & Beckman, *Solar Engineering
+of Thermal Processes*). Verified: on a flat synthetic DEM, the output
+exactly matches `cos(solar zenith angle)` as it must by definition; at
+winter solstice, south-facing terrain scores higher than flat, which
+scores higher than north-facing — matching real, independently-known
+physical expectation for the northern hemisphere.
 
 ```python
+from pygeovision.ai.pipelines.domains import SolarPotentialPipeline
+
 result = SolarPotentialPipeline(client).run(
-    bbox=(...), date="2024-06-21", output_dir="./output",
-    dem_path="./terrain/dem.tif",
+    bbox=(...), date="2024-06-21", hour=12.0,
+    dem_type="srtm1arc", output_dir="./output",
 )
-# result.stats: {"mean_irradiance_kwh_m2": ..., "high_potential_area_ha": ...}
+print(result.stats)
+# {"date": ..., "hour": 12.0, "dem_type": "srtm1arc",
+#  "sun_zenith_deg": ..., "sun_azimuth_deg": ...,
+#  "mean_relative_irradiance": ..., "pct_self_shaded": ..., "note": "..."}
+```
+
+```{important}
+**Requires a real OpenTopography API key** — same requirement as
+`archaeological_site` in [Heritage & Archaeology](heritage-and-archaeology.md).
+```
+
+```{warning}
+Corrected from an earlier version of this page: there is no real
+`dem_path=` parameter — this pipeline fetches a DEM automatically, it
+doesn't accept a user-supplied file. It also previously claimed a
+"tilted-surface irradiance model combining direct and diffuse
+components" — checked directly against the source: there is no
+atmospheric attenuation or diffuse-irradiance modeling of any kind,
+only the geometric cosine-incidence factor. `mean_relative_irradiance`
+is a real 0–1 relative modulation factor, not kWh/m² — there's no
+`mean_irradiance_kwh_m2`/`high_potential_area_ha` in the real output.
 ```
 
 ```{warning}
@@ -108,27 +110,14 @@ shadow-casting from neighboring terrain or buildings. Treat the output
 as a relative site-comparison tool, not a bankable energy-yield figure.
 ```
 
-## `wildfire_severity`
-
-**What it does:** Real, bi-temporal burn-severity mapping — covers
-non-forest burns too (grassland, shrubland), which is why it's filed
-here rather than under Forestry.
-
-**How it actually works:** Computes the real, standard fire-mapping
-index dNBR (delta Normalized Burn Ratio): `NBR = (NIR - SWIR2) / (NIR
-+ SWIR2)` computed independently for both dates, then `dNBR = NBR_before
-- NBR_after`. This is the same real formula used in the published
-USGS/UN-FAO burn-severity classification standard, with the same real
-severity-class breakpoints (unburned, low, moderate, high severity).
-Hand-verified: a synthetic pre/post burn scene's dNBR matched an
-independent hand calculation to 6 decimal places.
-
-```python
-result = WildfireSeverityPipeline(client).run(
-    bbox=(...), date_before="2023-06", date_after="2023-09",
-    output_dir="./output",
-)
-# result.stats: {"burned_area_ha": ..., "severity_breakdown": {"low": ..., "moderate": ..., "high": ...}}
+```{note}
+`wildfire_severity` (and its identical-implementation sibling
+`forest_fire`) is documented in full in
+[Forestry](forestry.md) — filed
+there since the two names share one real implementation, worth
+explaining together rather than split across two pages. It's
+mentioned here because it also covers non-forest burns (grassland,
+shrubland).
 ```
 
 ## `mine_detection`
@@ -185,16 +174,31 @@ result = ConstructionProgressPipeline(client).run(
 across all 11 real ESA WorldCover classes, not just built-up.
 
 ```python
+from pygeovision.ai.pipelines.domains import LandcoverChangePipeline
+
 result = LandcoverChangePipeline(client).run(
     bbox=(...), date_before="2015", date_after="2024", output_dir="./output",
 )
-# result.stats: {"transition_matrix": {...}}  # real class-to-class pixel counts
+print(result.stats)
+# {"pct_changed": ..., "n_pixels_changed": ...,
+#  "top_transitions": {"tree_cover->built_up": 4821, ...}}  # top 10 only, by frequency
+```
+
+```{note}
+Corrected from an earlier version of this page: the real stats key is
+`top_transitions` (the top 10 real class-to-class transitions by
+pixel count, not a full transition matrix), plus `pct_changed` and
+`n_pixels_changed`.
 ```
 
 **Honest limitation:** documented directly in the pipeline's own
-docstring — real registration/alignment differences between the two
-real source scenes can appear as spurious "change" at class
-boundaries, independent of any real land-cover change.
+docstring — unlike the bi-temporal pipelines that use
+`_search_and_download_pair`'s explicit pixel-grid alignment step, this
+pipeline runs two independent `LandCoverPipeline` calls with only a
+shape-mismatch safety check, not a guaranteed sub-pixel alignment. In
+practice low-risk (both dates crop to the identical requested bbox at
+the same default resolution), but not the same hard guarantee the
+explicit pair-alignment path provides elsewhere in this codebase.
 
 ## `wind_farm_siting`
 
@@ -202,18 +206,38 @@ boundaries, independent of any real land-cover change.
 **not** a wind resource assessment.
 
 **How it actually works:** Three real, combined constraints: a real
-DEM slope limit (excessively steep terrain is unsuitable for turbine
-foundations), a real terrain-exposure proxy (ridgelines and open
-terrain score higher than sheltered valleys), and real ESA WorldCover
-exclusion zones (built-up areas, water, protected forest classes are
-excluded outright).
+DEM slope limit via Horn's method (excludes terrain too steep for
+turbine foundations/crane access), a real terrain-exposure proxy
+(elevation relative to a smoothed regional-mean surface — the same
+real technique as `archaeological_site`'s Local Relief Model;
+ridgelines and hilltops score higher), and real ESA WorldCover
+land-use exclusion (water, built-up, wetland, and snow/ice classes
+excluded).
 
 ```python
+from pygeovision.ai.pipelines.domains import WindFarmSitingPipeline
+
 result = WindFarmSitingPipeline(client).run(
-    bbox=(...), output_dir="./output", dem_path="./terrain/dem.tif",
-    max_slope_deg=10.0,
+    bbox=(...), output_dir="./output", max_slope_deg=10.0,
 )
-# result.stats: {"suitable_area_ha": ..., "suitability_score_map": ...}
+print(result.stats)
+# {"max_slope_deg": 10.0, "dem_type": "srtm1arc",
+#  "worldcover_exclusion_applied": True, "pct_area_suitable_by_slope": ...,
+#  "pct_area_suitable_overall": ..., "suitable_area_ha": ..., "note": "..."}
+```
+
+```{warning}
+Corrected from an earlier version of this page: there is no real
+`dem_path=` parameter — a DEM is fetched automatically via
+OpenTopography (same real requirement as `solar_potential` above).
+```
+
+```{note}
+A real, honest fallback worth knowing: if the real WorldCover lookup
+fails for any reason, land-use exclusion is silently skipped (all
+terrain treated as land-use-suitable) rather than failing the whole
+pipeline — check the real `worldcover_exclusion_applied` stat to know
+whether land-use exclusion actually ran for your result.
 ```
 
 ```{warning}

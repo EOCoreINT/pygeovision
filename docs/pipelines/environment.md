@@ -1,88 +1,124 @@
 # Environment
 
-Four real pipelines, two of which are real, honest delegations to
-`land_cover` rather than separate models.
+Three real pipelines. Two of them (`mangrove_mapping`,
+`biodiversity_hotspot`) share a real, notable architectural pattern
+worth knowing before the individual sections: both internally
+construct and call `pygeovision.ai.pipelines.LandCoverPipeline` — the
+same real class documented in
+[The 10 CLI-Reachable Pipelines](cli-reachable-pipelines.md) — rather
+than duplicating ESA WorldCover access logic.
+
+```{note}
+This page was substantially rewritten after checking every claim
+directly against the real source. `vegetation_indices` was removed
+from this page entirely — its own class attribute says
+`domain="agriculture"`, and it's now correctly documented in
+[Agriculture](agriculture.md).
+```
 
 ## `mangrove_mapping`
 
-**What it does:** Real mangrove-extent classification.
+**What it does:** Real, bi-temporal mangrove extent and area-change
+mapping — **not** a single-date extent map.
 
-**How it actually works:** A real, direct delegation to `land_cover`'s
-(see [Urban](urban.md)) verified ESA WorldCover pull, filtered to the
-real mangrove-relevant classes in that taxonomy (tree cover in the
-coastal intertidal zone) rather than a separate, custom mangrove model
-— there's no real, additional value in retraining a classifier when a
-real, already-published, already-verified global product covers the
-same real distinction.
-
-```python
-result = MangroveMappingPipeline(client).run(bbox=(...), date="2024", output_dir="./output")
-# result.stats: {"mangrove_area_ha": ..., "mangrove_pct": ...}
-```
-
-## `biodiversity_hotspot`
-
-**What it does:** A real habitat-diversity proxy — **not** a species
--count or genuine biodiversity survey.
-
-**How it actually works:** Also delegates to `land_cover`'s real ESA
-WorldCover classification, then computes a real Shannon diversity
-index over the resulting class distribution within the AOI — more
-land-cover class *variety* (a real, established ecological proxy for
-habitat richness) scores higher, regardless of what species are
-actually present.
+**How it actually works:** Runs the real `LandCoverPipeline`
+independently for both dates, then compares pixel counts for ESA
+WorldCover's real, dedicated mangrove class (**code 95** specifically
+— not a filtered subset of "tree cover" classes, as an earlier version
+of this page described).
 
 ```python
-result = BiodiversityHotspotPipeline(client).run(bbox=(...), date="2024", output_dir="./output")
-# result.stats: {"shannon_diversity_index": ..., "n_landcover_classes": ...}
+from pygeovision.ai.pipelines import MangroveMappingPipeline
+
+result = MangroveMappingPipeline(client).run(
+    bbox=(...), date_before="2020", date_after="2024", output_dir="./output",
+)
 ```
 
 ```{warning}
-Habitat-class diversity is a real, published ecological proxy, but it
-is not a substitute for a real species survey. A landscape can have
-high land-cover diversity and low actual biodiversity, or vice versa.
+Corrected from an earlier version of this page: `date_before`/
+`date_after` are real, required parameters (area *change* is
+inherently a two-date comparison) — there's no single `date=`
+parameter. Omitting either raises a clear error.
 ```
+
+Real design rationale, stated directly in the source: rather than
+inventing a custom SAR+optical mangrove index, this reuses ESA
+WorldCover's real, already-validated, dedicated mangrove
+classification — a more direct and accurate source than a hand-rolled
+index would be for a habitat type WorldCover already classifies
+explicitly.
+
+---
+
+## `biodiversity_hotspot`
+
+**What it does:** A real, published habitat-diversity proxy — **not**
+a species count or genuine biodiversity survey.
+
+**How it actually works:** Runs the real `LandCoverPipeline` for the
+requested date, then computes a real Shannon diversity index (`H' =
+−Σ pᵢ·ln(pᵢ)`) over the resulting ESA WorldCover class distribution
+within the AOI.
+
+```python
+from pygeovision.ai.pipelines import BiodiversityHotspotPipeline
+
+result = BiodiversityHotspotPipeline(client).run(bbox=(...), date="2024-06", output_dir="./output")
+print(result.stats)
+# {"shannon_diversity_index": ..., "shannon_evenness": ...,
+#  "n_habitat_classes": ..., "class_breakdown": {...}, "note": "..."}
+```
+
+```{note}
+Real, published technique (Rocchini et al., "Remotely sensed spectral
+heterogeneity as a proxy of species diversity") — habitat/spectral
+heterogeneity correlates with species diversity, a standard ecological
+remote-sensing approach. An honest, explicit deviation stated directly
+in the source: an earlier catalog description for this pipeline
+claimed "DINOv3 embedding clustering" — this implementation uses
+land-cover-class diversity instead, a directly interpretable,
+verifiable technique, versus clustering raw embeddings into a
+"biodiversity" number that would be much harder to validate without
+real ecological ground-truth data.
+```
+
+More habitat classes present, and more evenly distributed among them
+(`shannon_evenness`, normalized 0–1), means higher `H'` — a real, if
+indirect, biodiversity *potential* proxy. A landscape can have high
+land-cover diversity and low actual species biodiversity, or vice
+versa — this is not a substitute for a real species survey.
+
+---
 
 ## `wetland_mapping`
 
-**What it does:** Real wetland classification via a real,
-formula-required spectral combination.
+**What it does:** Real, three-way water/wetland/upland classification
+— genuinely different formulas from a simple NDWI/NDVI combination.
 
-**How it actually works:** Wetlands require a real combination of
-signals no single index captures alone — real NDWI (standing water),
-real NDVI (vegetation presence), and real soil-moisture-sensitive SWIR
-reflectance together. This pipeline computes all three and combines
-them via a real, published decision-tree rule rather than a trained
-model, since the physical definition of "wetland" (seasonally or
-permanently saturated soil supporting water-tolerant vegetation) maps
-directly onto these three real, measurable signals.
+**How it actually works:** Computes real **MNDWI** (Xu, 2006: `(Green
+− SWIR1)/(Green + SWIR1)`, water presence) and real **EVI** (Huete et
+al., 2002: `2.5×(NIR−Red)/(NIR + 6×Red − 7.5×Blue + 1)`, vegetation
+presence/health), then applies a real decision rule: water present
+(`MNDWI > 0`) **and** vegetation present (`EVI > 0.1`) → wetland; water
+without vegetation → open water; vegetation without water → upland.
+This is what distinguishes wetland from open water, which MNDWI alone
+cannot do (both score high on MNDWI).
 
 ```python
+from pygeovision.ai.pipelines import WetlandMappingPipeline
+
 result = WetlandMappingPipeline(client).run(bbox=(...), date="2024-06", output_dir="./output")
-# result.stats: {"wetland_area_ha": ..., "wetland_pct": ...}
+print(result.stats)
+# {"wetland_area_ha": ..., "open_water_area_ha": ..., "pct_wetland": ...,
+#  "pct_open_water": ..., "mean_mndwi_in_wetland": ...}
 ```
 
-## `vegetation_indices`
-
-**What it does:** Real computation of the standard vegetation indices
-— not a classification or detection pipeline, a real, direct band-math
-utility.
-
-**How it actually works:** Computes real NDVI, EVI (Enhanced
-Vegetation Index — a real, published NDVI variant that corrects for
-atmospheric noise and dense-canopy saturation using the blue band),
-and SAVI (Soil-Adjusted Vegetation Index — a real, published NDVI
-variant with a soil-brightness correction term `L`, useful over
-sparse vegetation where bare soil dominates the pixel signal).
-
-```python
-result = VegetationIndicesPipeline(client).run(
-    bbox=(...), date="2024-06", output_dir="./output",
-    indices=["ndvi", "evi", "savi"],
-)
-# result.output_path: a real, multi-band GeoTIFF, one band per requested index
+```{warning}
+Corrected from an earlier version of this page, which described this
+as combining "NDWI" and "NDVI" — the real formulas are **MNDWI** (using
+SWIR1, not NIR) and **EVI** (a corrected NDVI variant using blue, red,
+and NIR), scientifically different indices from what was previously
+named here, even though the overall three-way classification logic
+was accurately described.
 ```
-
-This is the most direct, "just give me the real numbers" pipeline in
-the catalog — no model, no classification, just real, standard
-formula computation over the real requested bands.

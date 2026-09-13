@@ -7,38 +7,65 @@ an automatic detector.
 
 **What it does:** Produces real, enhanced terrain visualizations that
 help a human expert spot subtle earthworks — **not** automatic site
-detection.
+detection. No confidence score, verdict, or bounding box is produced.
 
-**How it actually works:** Requires a real DEM. Computes a real Local
-Relief Model (LRM) — Hesse (2010)'s published method: subtract a
-large-radius low-pass-filtered version of the terrain from the
-original elevation, isolating small-scale relief (an ancient mound, a
-filled ditch) from the broad, large-scale topography that would
-otherwise dominate a raw elevation visualization. Combines this with
-real 8-direction hillshade compositing — computing real illumination
-from 8 different real sun-azimuth angles and combining them, since a
-single-direction hillshade can hide subtle features running parallel
-to the light direction.
+**How it actually works:** Automatically fetches a real DEM from
+OpenTopography for the requested bbox — not a user-supplied file.
+Computes a real Local Relief Model (Hesse, 2010): subtracts a
+smoothed regional-trend surface (a real uniform/mean filter) from the
+real DEM, isolating small-scale local relief (an ancient mound, a
+filled ditch) that a raw DEM or standard hillshade can hide under
+broader regional slope. Combines this with real 8-azimuth
+multi-directional hillshade (Devereux et al., 2008) — averaging
+illumination from 8 real sun angles rather than one, since a
+single-direction hillshade can hide features running parallel to the
+light direction. Slope/aspect use the same real, Horn's-method formula
+already verified for `solar_potential` (see below).
 
 ```python
-result = ArchaeologicalSitePipeline(client).run(
-    bbox=(...), output_dir="./output", dem_path="./terrain/high_res_dem.tif",
-    lrm_radius_m=20.0,
-)
-# result.output_path: a real, enhanced GeoTIFF for visual inspection
-```
+from pygeovision.ai.pipelines import ArchaeologicalSitePipeline
 
-**Verification:** tested against a synthetic 1.5-meter mound injected
-into a flat synthetic DEM — the real LRM output recovered a 1.34-meter
-relief signal (a real, expected, slight underestimate given the
-filter's smoothing, not a bug). Edge-artifact behavior near the DEM
-boundary is documented directly in the pipeline's own docstring.
+result = ArchaeologicalSitePipeline(client).run(
+    bbox=(...), output_dir="./output",
+    smoothing_radius_px=15,   # real LRM window radius, in pixels
+    dem_type="srtm1arc",      # real OpenTopography product key
+)
+print(result.stats)
+# {"smoothing_radius_px": 15, "dem_type": "srtm1arc",
+#  "lrm_std": ..., "lrm_min": ..., "lrm_max": ..., "note": "..."}
+```
 
 ```{warning}
-This pipeline produces a visualization, not a classification. There is
-no real, trained model anywhere in this codebase that outputs "this is
-an archaeological site" — the LRM/hillshade output is designed to make
-subtle real terrain anomalies visible to a human expert, who then
-makes the actual determination. Treat `result.output_path` as an input
-to expert review, not a final answer.
+Corrected from an earlier version of this page, which described a
+`dem_path=`/`lrm_radius_m=` API — neither exists in the real
+implementation. There's no user-supplied DEM option: this pipeline
+fetches one automatically via OpenTopography, and the real
+smoothing-window parameter is `smoothing_radius_px` (in pixels, not
+meters).
 ```
+
+```{important}
+**Requires a real OpenTopography API key** — the same requirement as
+`solar_potential`. Without one configured
+(`client.add_credentials("opentopography", api_key=...)`, register at
+[portal.opentopography.org](https://portal.opentopography.org)), this
+pipeline honestly fails with a clear error rather than silently
+returning nothing.
+```
+
+**Honest limitations, stated directly in the source:**
+
+- This is a visualization aid, not a classifier. No trained
+  archaeological-feature model exists in this codebase to make a "site
+  detected" claim honestly — interpreting the output requires a real
+  human expert, the same way it would with any other archaeological
+  remote-sensing tool.
+- Confirmed by direct testing: the LRM shows real edge artifacts within
+  roughly one `smoothing_radius_px` of the raster boundary — an
+  expected characteristic of moving-window smoothing near edges, not a
+  bug. Treat relief near the image border with extra caution, or
+  request a bbox padded beyond your real area of interest.
+- The regional-trend surface uses a simple uniform (mean) filter, a
+  real, standard, simple choice — some published LRM workflows instead
+  use a more elaborate interpolation-based trend surface, not
+  implemented here.

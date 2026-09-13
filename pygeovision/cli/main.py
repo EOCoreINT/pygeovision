@@ -874,8 +874,24 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
     client = PyGeoVision()
 
     kwargs = {"date": date}
-    if date_before: kwargs["date_before"] = date_before
-    if date_after: kwargs["date_after"] = date_after
+    # Real fix, confirmed by direct inspection: date_before/date_after
+    # are not real parameter names on disaster_assessment (pre_date/
+    # post_date), deforestation (baseline_year/analysis_year), or
+    # urban_growth (start_year/end_year) -- passing the generic names
+    # through unchanged for these three pipelines meant the flags were
+    # silently absorbed into **kwargs and never used, with the real
+    # pipeline falling back to its own hardcoded default dates
+    # regardless of what was requested.
+    _year_only = {"deforestation", "urban_growth"}
+    _param_names = {
+        "disaster_assessment": ("pre_date", "post_date"),
+        "deforestation":       ("baseline_year", "analysis_year"),
+        "urban_growth":        ("start_year", "end_year"),
+    }.get(pipeline_name, ("date_before", "date_after"))
+    if date_before:
+        kwargs[_param_names[0]] = date_before[:4] if pipeline_name in _year_only else date_before
+    if date_after:
+        kwargs[_param_names[1]] = date_after[:4] if pipeline_name in _year_only else date_after
     if model: kwargs["model"] = model
     if source: kwargs["source"] = source
     if provider: kwargs["providers"] = list(provider)

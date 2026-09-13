@@ -45,31 +45,14 @@ has melted and only perennial glacier ice remains) — comparing a
 winter date to a summer date will show a real, large "change" that's
 actually just seasonal snow, not glacier retreat.
 
-## `carbon_estimation`
-
-**What it does:** A real, configurable above-ground-biomass-to-carbon
-proxy — **not** a real, trained biomass model.
-
-**How it actually works:** No real, trained biomass-estimation model
-exists anywhere in this codebase. This is honest, exposed band-math:
-computes real NDVI, applies a real, user-configurable linear
-NDVI-to-biomass conversion, then a real, standard 0.47
-biomass-to-carbon conversion factor (the real, published IPCC default
-ratio of carbon content in dry biomass).
-
-```python
-result = CarbonEstimationPipeline(client).run(
-    bbox=(...), date="2024-06", output_dir="./output",
-    biomass_calibration={"a": 45.0, "b": -8.0},   # your own, real, fitted values
-)
-# result.stats: {"total_carbon_tons": ..., "mean_carbon_density_tons_ha": ...}
-```
-
-```{warning}
-Without real, locally-fitted biomass calibration constants (from real
-field plot data for your ecosystem type), this is a relative NDVI
--based index scaled by a generic conversion factor, not a validated
-carbon stock estimate. The calibration constants are exposed and
-required precisely so this isn't a black box producing numbers that
-look more authoritative than they are.
+```{note}
+`carbon_estimation` is one of the 10 CLI-reachable pipelines with a
+separate, real implementation — see
+[The 10 CLI-Reachable Pipelines](cli-reachable-pipelines.md) for the
+real, correct formula and parameters (a quadratic NDVI relationship
+with `agb_scale`/`agb_max`/`carbon_fraction`, not the linear
+calibration dict described in an earlier version of this page). The
+honest core message is the same either way: without real, local
+calibration, this is an uncalibrated proxy, not a validated carbon
+stock estimate.
 ```

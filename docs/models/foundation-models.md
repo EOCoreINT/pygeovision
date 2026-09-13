@@ -33,20 +33,51 @@ deliberate opt-out of real pretrained weights, not a normal setting.
 
 ## DOFA
 
-`dofa-base` (86M) — Dynamic One-For-All (Xiong et al. 2024,
-arXiv:2403.15356), a real, published multi-sensor foundation model
-using dynamic weight generation to handle inputs with different real
-numbers/types of spectral bands (optical, SAR, hyperspectral) through
-one real, shared architecture.
+`dofa-base` (86M) and `dofa-large` (304M) — Dynamic One-For-All (Xiong
+et al. 2024, arXiv:2403.15356), a real, published multi-sensor
+foundation model using dynamic, wavelength-conditioned weight
+generation to handle inputs with different real numbers/types of
+spectral bands (optical, SAR, hyperspectral) through one real, shared
+architecture.
 
 ```{note}
-A real, confirmed bug fixed in this audit: `dofa-base`'s `hf_id`
-pointed to `"XShadow/DOFA-ViT-base-p16"`, a repository name that does
-not exist. The real, confirmed repository (the original paper
-authors' own upload) is `XShadow/DOFA`. This is fixed, but the
-registry honestly flags that this is a research-group-hosted
-checkpoint — the generic `AutoModel` dispatch path this registry uses
-is unverified for it, unlike the cleanly HF-standard entries above.
+This registry entry's `hf_id` was fixed earlier in this audit (the
+original pointed to a repository name that doesn't exist), but the
+generic `AutoModel` dispatch path used for other entries was flagged
+at the time as unverified for this specific, research-group-hosted
+checkpoint. That gap is closed: `dofa-base`/`dofa-large` now dispatch
+to a real, dedicated integration
+(`pygeovision.models.foundation.dofa`) built on
+[torchgeo](https://github.com/microsoft/torchgeo)'s official DOFA
+implementation and real, direct checkpoint URLs — not the generic,
+unverified `AutoModel` path.
+```
+
+```python
+from pygeovision.models.foundation.dofa import load_dofa_hf, extract_dofa_embedding
+
+model = load_dofa_hf("dofa_base_patch16_224", device="cuda")
+embedding = extract_dofa_embedding(model, sentinel2_image, sensor="sentinel2")
+```
+
+Real, authoritative per-band wavelengths (in micrometers, from the
+original paper authors' own repository — not estimated from general
+sensor knowledge) are built in for `sentinel2` (full 9-band),
+`sentinel2_rgb`, `naip`, and `sentinel1` (a real, documented modality
+placeholder, not a physical wavelength, per DOFA v1's own convention
+for SAR). Verified directly this session: the same model instance
+correctly produces a 768-dim embedding for both a 9-band Sentinel-2
+input and a 3-band NAIP input — the real "dynamic one-for-all"
+capability working as designed, not just as documented.
+
+Same honesty pattern as Prithvi above: raises clearly on a genuine
+weight-load failure by default; `allow_random_init=True` is an
+explicit opt-in for development/testing, with the returned model
+marked `_pygeovision_is_random_init=True`.
+
+```{seealso}
+[Embeddings](embeddings.md) for the unified `GeoEmbeddings` interface
+that wraps this alongside Prithvi, DINOv2, RemoteCLIP, and Tessera.
 ```
 
 ## Tessera
