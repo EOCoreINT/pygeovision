@@ -8,6 +8,10 @@ This project is **actively under development**. While the core functionality
 is production-ready and thoroughly tested, some advanced features are still 
 being refined. -->
 
+# ⚠️ Work In Progress (Pre-Alpha)
+This repository is currently an active R&D playground as part of my pre-Master's roadmap for the Copernicus Master in Digital Earth. Architecture is shifting rapidly. 
+
+
 [![image](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22258220.svg)](https://doi.org/10.5281/zenodo.22258220)
