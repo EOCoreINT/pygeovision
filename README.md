@@ -8,8 +8,6 @@ This project is **actively under development**. While the core functionality
 is production-ready and thoroughly tested, some advanced features are still 
 being refined. -->
 
-# ⚠️ Work In Progress (Pre-Alpha)
-This repository is currently an active R&D playground as part of my pre-Master's roadmap for the Copernicus Master in Digital Earth. Architecture is shifting rapidly. 
 
 
 [![image](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
@@ -19,6 +17,11 @@ This repository is currently an active R&D playground as part of my pre-Master's
 [![Tests](https://img.shields.io/badge/Tests-864_passing-22c55e?style=flat-square&logo=pytest&logoColor=white)](https://pygeovision.readthedocs.io/en/latest/)
 [![pygeofetch](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://appiahkubis14.github.io/pygeofetch-docs/)
 <!-- [![Models](https://img.shields.io/badge/Models-119%2B_native-a855f7?style=flat-square)](#-ai-inference--fully-pretrained) -->
+
+
+# ⚠️ Work In Progress (Pre-Alpha)
+This repository is currently an active research and development (R&D) playground as part of my pre-Master's roadmap for the Copernicus Master in Digital Earth. Architecture is shifting rapidly. 
+
 
 **Go from "I need imagery of this place" to a finished map, mask, or dataset — without stitching together a satellite API, a preprocessing pipeline, and a separate AI platform yourself.**
 
