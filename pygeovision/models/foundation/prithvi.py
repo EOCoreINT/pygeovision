@@ -1,69 +1,141 @@
 """
-Prithvi-EO — Complete independent integration for PyGeoVision.
+Prithvi-EO -- NASA/IBM geospatial foundation models, integrated for PyGeoVision.
 
-Models:
-  prithvi_eo_1_0  — 100M params, HLS (US), original Prithvi
-  prithvi_eo_2_0  — 600M params, HLS (Global, 10-year), multi-temporal
+Models (all take **six** HLS bands: Blue, Green, Red, narrow-NIR, SWIR-1, SWIR-2):
+  prithvi_eo_1_0       100M  Prithvi-EO-1.0-100M (3 frames, contiguous US)
+  prithvi_eo_2_0       300M  Prithvi-EO-2.0-300M (4 frames, global)
+  prithvi_eo_2_0_600m  600M  Prithvi-EO-2.0-600M (4 frames, global)
 
-Architecture: Spatial + Temporal Transformer Attention
-Pretraining: Harmonized Landsat Sentinel-2 (HLS) data, 30m resolution
-Spectral bands: 6 (HLS-L) or 10 (HLS-S2)
+How the real model is loaded
+----------------------------
+The Prithvi repositories are **not** ``transformers`` models: ``config.json`` has no
+``model_type`` and there is no ``auto_map``, so ``AutoModel`` cannot load them.  Each repo
+ships ``prithvi_mae.py`` (the architecture), ``config.json`` and a ``.pt`` checkpoint.  This
+module downloads those three files at a **pinned commit** (``spec["revision"]``), imports
+``prithvi_mae.py`` and loads the checkpoint with ``torch.load(weights_only=True)``.  The
+checkpoint is checked key-by-key: a layer that the checkpoint does not fill raises
+:class:`~pygeovision.core.exceptions.ModelLoadError` instead of staying randomly initialised.
 
-Loading:
-  Method 1: HuggingFace Transformers (recommended)
-  Method 2: Local weights (enterprise / air-gapped)
+.. warning::
+   Importing ``prithvi_mae.py`` executes code from the Hugging Face repository.  The default
+   commits were chosen when this module was written; read the diff before changing a
+   ``revision``.  Needs ``einops`` and ``timm``.
+
+Input preparation
+-----------------
+The pretrained weights expect **per-band z-scored HLS digital numbers** (reflectance x 10000),
+using the mean/std stored in each repo's ``config.json``.  Dividing by 10000 and stopping
+there -- what earlier versions did -- feeds the network inputs of the wrong scale.  The
+:class:`PrithviBackbone` wrapper applies the standardisation itself; every public method here
+takes surface **reflectance in [0, 1]**.
+
+Task heads
+----------
+A backbone produces features, not land-cover maps.  Segmentation / regression heads must be
+trained (see :func:`finetune_prithvi`) and handed to :class:`PrithviTasks` as ``head_weights``.
+Without a trained head, :class:`PrithviTasks` falls back to documented spectral-index rules and
+says so in ``result["method"]``; tasks that have no such rule (crop type, biomass) raise
+``NotImplementedError`` rather than invent a result.
 """
 from __future__ import annotations
 
+import functools
+import importlib.util
+import json
 import logging
+import sys
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 
+from pygeovision.core.exceptions import ModelLoadError
+
 logger = logging.getLogger(__name__)
 
 
+class PrithviLoadError(ModelLoadError, RuntimeError):
+    """Prithvi weights/architecture could not be loaded.
+
+    Also a ``RuntimeError`` because earlier versions of :func:`load_prithvi_hf` raised that.
+    """
+
+
 # ── Model Registry ────────────────────────────────────────────────────────────
+# ``revision`` pins the commit whose ``prithvi_mae.py`` is executed (see module docstring).
 
 PRITHVI_MODELS: dict[str, dict] = {
     "prithvi_eo_1_0": {
         "params_m": 100,
-        "hf_id":    "ibm-nasa-geospatial/Prithvi-100M",
+        "hf_id":    "ibm-nasa-geospatial/Prithvi-EO-1.0-100M",
+        "revision": "f3a9ea7a1723621b0aeceb4de993093704d712c5",
+        "checkpoint": "Prithvi_EO_V1_100M.pt",
         "coverage": "US",
         "resolution_m": 30,
         "n_bands":  6,
-        "n_frames": 3,           # Multi-temporal: up to 3 time steps
+        "n_frames": 3,           # frames the model was pre-trained with
         "embed_dim": 768,
         "patch_size": 16,
         "temporal": True,
-        "description": "Original Prithvi MAE, trained on US HLS imagery",
+        "loadable": True,
+        "description": "Prithvi-EO-1.0 MAE, trained on contiguous-US HLS imagery",
     },
     "prithvi_eo_2_0": {
-        "params_m": 600,
-        "hf_id":    "ibm-nasa-geospatial/Prithvi-EO-2.0-300M",   # proxy for 600M
+        "params_m": 300,
+        "hf_id":    "ibm-nasa-geospatial/Prithvi-EO-2.0-300M",
+        "revision": "9eb1b1102806593963daa333bcc491b1c6f8562f",
+        "checkpoint": "Prithvi_EO_V2_300M.pt",
         "coverage": "Global",
         "resolution_m": 30,
         "n_bands":  6,
-        "n_frames": 4,           # Multi-temporal: up to 4 time steps
+        "n_frames": 4,
         "embed_dim": 1024,
         "patch_size": 16,
         "temporal": True,
-        "description": "Prithvi-EO-2.0 — 600M, global coverage, 10-year HLS",
+        "loadable": True,
+        "description": "Prithvi-EO-2.0 300M, global HLS (this key used to claim 600M while loading the 300M repo)",
+    },
+    "prithvi_eo_2_0_600m": {
+        "params_m": 600,
+        "hf_id":    "ibm-nasa-geospatial/Prithvi-EO-2.0-600M",
+        "revision": "2a5cf6cedea1c0b31734021e2a5ac90082825414",
+        "checkpoint": "Prithvi_EO_V2_600M.pt",
+        "coverage": "Global",
+        "resolution_m": 30,
+        "n_bands":  6,
+        "n_frames": 4,
+        "embed_dim": 1280,
+        "patch_size": 14,
+        "temporal": True,
+        "loadable": True,
+        "description": "Prithvi-EO-2.0 600M, global HLS",
     },
     "prithvi_eo_1_0_finetuned_burn": {
         "params_m": 100,
-        "hf_id":    "ibm-nasa-geospatial/Prithvi-100M-burn-scar",
+        "hf_id":    "ibm-nasa-geospatial/Prithvi-EO-1.0-100M-burn-scar",
         "task":     "burn_scar_segmentation",
-        "description": "Prithvi-100M fine-tuned for burn scar mapping",
+        "loadable": False,
+        "load_note": "fine-tuned downstream checkpoints are MMSegmentation/TerraTorch artefacts, not "
+                     "backbone checkpoints; load them with TerraTorch",
+        "description": "Prithvi-EO-1.0-100M fine-tuned for burn-scar mapping (reference only)",
     },
     "prithvi_eo_1_0_finetuned_flood": {
         "params_m": 100,
-        "hf_id":    "ibm-nasa-geospatial/Prithvi-100M-multi-temporal-crop-classification",
+        "hf_id":    "ibm-nasa-geospatial/Prithvi-EO-1.0-100M-sen1floods11",
         "task":     "flood_segmentation",
-        "description": "Prithvi-100M fine-tuned for flood detection",
+        "loadable": False,
+        "load_note": "fine-tuned downstream checkpoints are MMSegmentation/TerraTorch artefacts, not "
+                     "backbone checkpoints; load them with TerraTorch",
+        "description": "Prithvi-EO-1.0-100M fine-tuned on Sen1Floods11 (reference only; this entry "
+                       "used to point at the crop-classification repo)",
     },
 }
 
+# Per-band HLS statistics in digital numbers (reflectance x 10000), from the Prithvi-EO-2.0-300M
+# config.  Used only by the random-init stand-in; real models read their own config.json.
+HLS_MEAN_DN = (1087.0, 1342.0, 1433.0, 2734.0, 1958.0, 1363.0)
+HLS_STD_DN = (2248.0, 2179.0, 2178.0, 1850.0, 1242.0, 1049.0)
 
 # ── Band Mappings ────────────────────────────────────────────────────────────
 
@@ -72,14 +144,14 @@ SENTINEL2_TO_PRITHVI = {
     "B02": 0,   # Blue  (10m)
     "B03": 1,   # Green (10m)
     "B04": 2,   # Red   (10m)
-    "B08": 3,   # NIR   (10m)
+    "B08": 3,   # broad NIR (10m) -- stand-in for HLS narrow NIR; B8A is preferred when both exist
     "B11": 4,   # SWIR1 (20m)
     "B12": 5,   # SWIR2 (20m)
-    # Extended bands (HLS-S2 format, 10-band variant)
+    # Red-edge bands: Prithvi takes six bands only, so these are ignored by map_bands(n_prithvi_bands=6)
     "B05": 6,   # Red Edge 1 (20m)
     "B06": 7,   # Red Edge 2 (20m)
     "B07": 8,   # Red Edge 3 (20m)
-    "B8A": 9,   # NIR Narrow (20m)
+    "B8A": 3,   # narrow NIR (20m) -- what HLS (and so Prithvi) actually uses as its NIR band
 }
 
 # Landsat band name → Prithvi HLS position
@@ -177,6 +249,14 @@ def map_bands(
     else:
         # Assume canonical sensor order
         names = (SENTINEL2_CANONICAL if source == "sentinel2" else LANDSAT_CANONICAL)
+
+    # HLS band 4 is *narrow* NIR (Sentinel-2 B8A).  If a stack has both B08 and B8A use B8A;
+    # B08 alone is accepted as a (spectrally slightly different) stand-in.
+    if source == "sentinel2" and "B08" in names and "B8A" in names:
+        names = [("B08_unused" if n == "B08" else n) for n in names]
+    elif source == "sentinel2" and "B08" in names and "B8A" not in names:
+        logger.warning("map_bands: using broad-NIR B08 for Prithvi's narrow-NIR band (HLS uses B8A); "
+                       "expect a small spectral mismatch.")
 
     for src_idx, band_name in enumerate(names):
         if src_idx >= data.shape[0]:
@@ -361,248 +441,391 @@ def _spectral_burn_scar(data_hls: np.ndarray) -> np.ndarray:
 
 
 
-# ── Loading Methods ───────────────────────────────────────────────────────────
 
-def load_prithvi_hf(model_name: str = "prithvi_eo_2_0",
-                     device: str = "cpu",
-                     allow_random_init: bool = False) -> Any:
-    """Load Prithvi from HuggingFace — recommended for most users.
 
-    Args:
-        model_name: Prithvi variant from PRITHVI_MODELS registry
-        device: Target device ("cuda", "cpu")
-        allow_random_init: Real fix, confirmed necessary by direct
-            inspection: this previously silently returned a randomly-
-            initialized "surrogate" model with the correct architecture
-            but ZERO real pretrained weights whenever the real HF load
-            failed for any reason -- a caller had no way to know they
-            were now working with random noise instead of real Prithvi
-            features, since the function still returned what looked
-            like a successful model object. Defaults to False: raises a
-            clear RuntimeError on failure instead. Set True only if you
-            genuinely want an architecture-only model for development/
-            testing -- the returned model is then marked with a real
-            `_pygeovision_is_random_init = True` attribute so it can
-            never be silently mistaken for the real, pretrained thing
-            downstream.
+# ── Input standardisation ─────────────────────────────────────────────────────
 
-    Returns:
-        Real, pretrained Prithvi model (transformers AutoModel).
+def standardise_hls(
+    reflectance: np.ndarray,
+    mean: tuple[float, ...] | list[float] = HLS_MEAN_DN,
+    std: tuple[float, ...] | list[float] = HLS_STD_DN,
+) -> np.ndarray:
+    """Reflectance ``(C, H, W)`` in [0, 1] -> the z-scored DN input Prithvi was trained on.
 
-    Raises:
-        RuntimeError: If the real checkpoint could not be loaded and
-            allow_random_init=False (the default).
-
-    Example::
-
-        model = load_prithvi_hf("prithvi_eo_2_0", device="cuda")
+    ``z = (reflectance * 10000 - mean) / std`` per band.  :class:`PrithviBackbone` does this
+    internally; the function is public for users who call a raw ``PrithviMAE`` themselves.
     """
-    spec = PRITHVI_MODELS.get(model_name)
-    if spec is None:
-        raise ValueError(f"Unknown Prithvi model: '{model_name}'. "
-                         f"Available: {list(PRITHVI_MODELS)}")
-
-    hf_id = spec["hf_id"]
-    logger.info("Loading Prithvi from HuggingFace: %s", hf_id)
-
-    try:
-        from transformers import AutoConfig, AutoModel
-        try:
-            # First load the config and patch any None fields that would
-            # cause "NoneType cannot be interpreted as an integer" inside
-            # transformers model constructors.
-            config = AutoConfig.from_pretrained(hf_id, trust_remote_code=True)
-            # Common fields that must be integers for ViT-based Prithvi
-            _int_defaults = {
-                "image_size":          224,
-                "num_frames":          1,
-                "patch_size":          16,
-                "num_hidden_layers":   12,
-                "num_attention_heads": 12,
-                "intermediate_size":   3072,
-                "hidden_size":         768,
-            }
-            for attr, default in _int_defaults.items():
-                if getattr(config, attr, None) is None:
-                    setattr(config, attr, default)
-
-            model = AutoModel.from_pretrained(
-                hf_id,
-                config=config,
-                trust_remote_code=True,
-                ignore_mismatched_sizes=True,
-            )
-            model = model.to(device).eval()
-            logger.info("Prithvi loaded: %s (%dM params)", model_name, spec["params_m"])
-            return model
-        except Exception as exc:
-            if not allow_random_init:
-                raise RuntimeError(
-                    f"Failed to load real, pretrained Prithvi weights for "
-                    f"'{model_name}' ({hf_id}): {exc}. Refusing to silently "
-                    f"substitute a randomly-initialized model -- that would "
-                    f"produce plausible-looking but meaningless output. "
-                    f"Check that transformers>=4.40 is installed and HF_TOKEN "
-                    f"is set if this repo requires auth. Pass "
-                    f"allow_random_init=True only if you genuinely want an "
-                    f"architecture-only model for development/testing."
-                ) from exc
-            logger.warning(
-                "Direct load of '%s' failed (%s). allow_random_init=True was "
-                "explicitly set, so building an architecture-only surrogate "
-                "with NO real pretrained weights -- output will be "
-                "meaningless for any real analysis.",
-                hf_id, exc,
-            )
-            surrogate = _build_prithvi_surrogate(spec, device)
-            surrogate._pygeovision_is_random_init = True
-            return surrogate
-    except ImportError:
-        raise ImportError("pip install transformers>=4.40")
+    c = reflectance.shape[0]
+    m = np.asarray(mean, dtype=np.float32)[:c].reshape(-1, 1, 1)
+    s = np.asarray(std, dtype=np.float32)[:c].reshape(-1, 1, 1)
+    return ((reflectance.astype(np.float32) * HLS_SCALE_FACTOR - m) / s).astype(np.float32)
 
 
-def load_prithvi_local(model_name: str, weights_path: str,
-                        device: str = "cpu") -> Any:
-    """Load Prithvi from a local checkpoint file.
+# ── Backbone wrapper ──────────────────────────────────────────────────────────
 
-    Args:
-        model_name: Prithvi variant name
-        weights_path: Path to .pth or .safetensors checkpoint
-
-    Returns:
-        Prithvi model with weights loaded
-    """
-    spec = PRITHVI_MODELS.get(model_name)
-    if spec is None:
-        raise ValueError(f"Unknown model: '{model_name}'")
-
-    from pathlib import Path
-    if not Path(weights_path).exists():
-        raise FileNotFoundError(f"Weights not found: {weights_path}")
-
-    try:
-        import torch
-        model = _build_prithvi_surrogate(spec, device="cpu")
-        ckpt  = torch.load(weights_path, map_location="cpu")
-        state = (ckpt.get("state_dict") or ckpt.get("model") or ckpt
-                 if isinstance(ckpt, dict) else ckpt)
-        missing, unexpected = model.load_state_dict(state, strict=False)
-        if missing:
-            logger.warning("Missing keys: %d (first 3: %s)", len(missing), missing[:3])
-        return model.to(device).eval()
-    except ImportError:
-        raise ImportError("torch required")
-
-
-def _build_prithvi_surrogate(spec: dict, device: str = "cpu") -> Any:
-    """Build a Prithvi-compatible ViT surrogate (no pretrained weights)."""
+@functools.lru_cache(maxsize=1)
+def _backbone_classes() -> tuple[type, type]:
+    """Build the torch classes lazily so ``import prithvi`` works without torch."""
     import torch
     import torch.nn as nn
 
-    embed_dim  = spec.get("embed_dim", 768)
-    n_bands    = spec.get("n_bands", 6)
-    patch_size = spec.get("patch_size", 16)
-    depth      = 24 if embed_dim >= 1024 else 12
-    heads      = 16 if embed_dim >= 1024 else 12
+    class StandInEncoder(nn.Module):
+        """Small random-init ViT with the PrithviViT ``forward_features`` interface.
 
-    class PrithviSurrogate(nn.Module):
-        """Prithvi-compatible multi-temporal ViT surrogate."""
-        def __init__(self):
-            import torch as _torch
+        **Not the Prithvi architecture** and not sized like it (2 blocks).  It exists so that
+        code built on :class:`PrithviBackbone` can be developed and tested without downloading
+        a checkpoint.  Anything it outputs is meaningless.
+        """
+
+        def __init__(self, in_chans: int, embed_dim: int, patch_size: tuple[int, int, int],
+                     depth: int = 2) -> None:
             super().__init__()
-            self.patch_embed = nn.Conv2d(n_bands, embed_dim,
-                                          kernel_size=patch_size, stride=patch_size)
-            self.cls_token   = nn.Parameter(_torch.nn.init.trunc_normal_(
-                _torch.empty(1, 1, embed_dim), std=0.02))
-            encoder_layer = nn.TransformerEncoderLayer(
-                d_model=embed_dim, nhead=heads,
-                dim_feedforward=embed_dim * 4, batch_first=True, dropout=0.0,
+            heads = next(h for h in (16, 12, 8, 4, 2, 1) if embed_dim % h == 0)
+            self.patch_embed = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+            nn.init.trunc_normal_(self.cls_token, std=0.02)
+            layer = nn.TransformerEncoderLayer(embed_dim, heads, embed_dim * 4, dropout=0.0, batch_first=True)
+            self.blocks = nn.TransformerEncoder(layer, num_layers=depth, enable_nested_tensor=False)
+            self.norm = nn.LayerNorm(embed_dim)
+
+        def forward_features(self, x, temporal_coords=None, location_coords=None):
+            p = self.patch_embed(x).flatten(2).transpose(1, 2)        # (B, T*h*w, D), order (t, h, w)
+            tokens = torch.cat([self.cls_token.expand(p.shape[0], -1, -1), p], dim=1)
+            return [self.norm(self.blocks(tokens))]
+
+    class PrithviBackbone(nn.Module):
+        """Uniform front-end over a Prithvi encoder.
+
+        ``forward(pixel_values)`` takes surface reflectance in [0, 1] as ``(B, C, H, W)`` (one
+        frame) or ``(B, T, C, H, W)``, standardises it with the model's own band statistics, and
+        returns an object with
+
+        * ``last_hidden_state`` ``(B, 1 + T*N, D)`` -- CLS token, then patch tokens ordered (t, h, w)
+        * ``cls``               ``(B, D)``
+        * ``frame_tokens``      ``(B, T, N, D)``
+        * ``grid``              ``(h, w)`` patches per frame
+        """
+
+        def __init__(self, encoder: nn.Module, *, embed_dim: int, patch_size: tuple[int, int, int],
+                     img_size: int | None, num_frames: int | None, n_bands: int,
+                     mean: list[float], std: list[float]) -> None:
+            super().__init__()
+            if patch_size[0] != 1:
+                raise ValueError(f"temporal patch size must be 1, got {patch_size}")
+            self.encoder = encoder
+            self.embed_dim = embed_dim
+            self.patch_size = tuple(patch_size)
+            self.img_size = img_size
+            self.num_frames = num_frames
+            self.n_bands = n_bands
+            self.register_buffer("_mean", torch.tensor(mean, dtype=torch.float32).view(1, 1, -1, 1, 1))
+            self.register_buffer("_std", torch.tensor(std, dtype=torch.float32).view(1, 1, -1, 1, 1))
+
+        def forward(self, pixel_values=None, x=None, temporal_coords=None, location_coords=None, **_):
+            x = pixel_values if pixel_values is not None else x
+            if x is None:
+                raise ValueError("Pass pixel_values=... (or x=...)")
+            if x.ndim == 4:
+                x = x.unsqueeze(1)
+            elif x.ndim != 5:
+                raise ValueError(f"expected (B, C, H, W) or (B, T, C, H, W), got {tuple(x.shape)}")
+            b, t, c, h, w = x.shape
+            if c != self.n_bands:
+                raise ValueError(f"Prithvi takes {self.n_bands} bands, got {c}")
+            if self.num_frames is not None and t != self.num_frames:
+                raise ValueError(
+                    f"this model was built for {self.num_frames} frame(s) but got {t}; reload it with "
+                    f"num_frames={t} (the positional embedding depends on it)")
+            if self.img_size is not None and (h, w) != (self.img_size, self.img_size):
+                raise ValueError(f"this model was built for {self.img_size}x{self.img_size} tiles, "
+                                 f"got {h}x{w}")
+            ph, pw = self.patch_size[1:]
+            if h % ph or w % pw:
+                raise ValueError(f"tile {h}x{w} is not a multiple of the patch size {ph}x{pw}")
+
+            z = (x * HLS_SCALE_FACTOR - self._mean) / self._std            # reflectance -> z-scored DN
+            z = z.permute(0, 2, 1, 3, 4).contiguous()                      # (B, C, T, H, W)
+            tokens = self.encoder.forward_features(z, temporal_coords, location_coords)[-1]
+            gh, gw = h // ph, w // pw
+            if tokens.shape[1] != 1 + t * gh * gw:
+                raise RuntimeError(f"encoder returned {tokens.shape[1]} tokens, expected {1 + t * gh * gw}")
+            return SimpleNamespace(
+                last_hidden_state=tokens,
+                cls=tokens[:, 0],
+                frame_tokens=tokens[:, 1:].reshape(b, t, gh * gw, -1),
+                grid=(gh, gw),
             )
-            self.encoder  = nn.TransformerEncoder(encoder_layer, num_layers=depth)
-            self.norm     = nn.LayerNorm(embed_dim)
-            self.config   = type("Cfg", (), {"hidden_size": embed_dim})()
 
-        def forward(self, pixel_values=None, x=None, **kwargs):
-            if pixel_values is None: pixel_values = x
-            if pixel_values is None:
-                raise ValueError("Pass pixel_values=... or x=...")
-            # Support (B, T, C, H, W) multi-temporal
-            if pixel_values.ndim == 5:
-                B, T, C, H, W = pixel_values.shape
-                pixel_values = pixel_values.reshape(B * T, C, H, W)
-                multi_temp   = True
-            else:
-                B = pixel_values.shape[0]
-                multi_temp = False
+    return PrithviBackbone, StandInEncoder
 
-            p = self.patch_embed(pixel_values)        # (B, D, H', W')
-            p = p.flatten(2).transpose(1, 2)          # (B, N, D)
-            cls = self.cls_token.expand(p.shape[0], -1, -1)
-            p   = torch.cat([cls, p], dim=1)
-            p   = self.norm(self.encoder(p))
 
-            if multi_temp:
-                _, N, D = p.shape
-                p = p.reshape(B, -1, D)   # flatten temporal dimension
+def _build_prithvi_surrogate(spec: dict, device: str = "cpu") -> Any:
+    """Random-init stand-in for development and tests (flagged ``_pygeovision_is_random_init``).
 
-            return type("Out", (), {
-                "last_hidden_state": p,
-                "pooler_output": p[:, 0],
-            })()
+    It is **not** Prithvi: a 2-block ViT behind the same :class:`PrithviBackbone` interface.
+    """
+    import torch  # noqa: F401  (fail early with a clear error if torch is missing)
 
-    model = PrithviSurrogate().to(device).eval()
-    logger.info("Prithvi surrogate built: embed=%d depth=%d", embed_dim, depth)
+    backbone_cls, encoder_cls = _backbone_classes()
+    embed_dim = spec.get("embed_dim", 768)
+    n_bands = spec.get("n_bands", 6)
+    ps = spec.get("patch_size", 16)
+    ps = tuple(ps) if isinstance(ps, (list, tuple)) else (1, ps, ps)
+    model = backbone_cls(
+        encoder_cls(n_bands, embed_dim, ps), embed_dim=embed_dim, patch_size=ps, img_size=None,
+        num_frames=None, n_bands=n_bands, mean=list(HLS_MEAN_DN[:n_bands]), std=list(HLS_STD_DN[:n_bands]),
+    ).to(device).eval()
+    model._pygeovision_is_random_init = True
+    model._pygeovision_random_init_reason = "stand-in encoder, not the Prithvi architecture"
+    logger.warning("Prithvi stand-in built (random weights, NOT the Prithvi architecture): outputs are meaningless.")
     return model
+
+
+# ── Loading ───────────────────────────────────────────────────────────────────
+
+def _import_prithvi_mae(code_path: str | Path) -> Any:
+    """Import the repository's ``prithvi_mae.py`` (executes that file -- see module docstring)."""
+    code_path = Path(code_path)
+    name = f"_pygeovision_prithvi_mae_{abs(hash(str(code_path.resolve())))}"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, code_path)
+    if spec is None or spec.loader is None:
+        raise PrithviLoadError(f"cannot import {code_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except ImportError as exc:
+        del sys.modules[name]
+        raise ImportError(f"prithvi_mae.py needs extra packages: pip install einops timm ({exc})") from exc
+    except Exception:
+        del sys.modules[name]
+        raise
+    if not hasattr(module, "PrithviMAE"):
+        del sys.modules[name]
+        raise PrithviLoadError(f"{code_path} does not define PrithviMAE")
+    return module
+
+
+def _assemble_backbone(
+    model_name: str, spec: dict, config_path: str | Path, code_path: str | Path,
+    weights_path: str | Path, num_frames: int, device: str,
+) -> Any:
+    """Build ``PrithviMAE`` from ``config.json``, load the checkpoint strictly, wrap the encoder."""
+    import torch
+
+    try:
+        with open(config_path) as f:
+            cfg = dict(json.load(f)["pretrained_cfg"])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise PrithviLoadError(f"{config_path} has no usable 'pretrained_cfg' section: {exc}") from exc
+
+    n_bands = int(cfg.get("in_chans", spec.get("n_bands", 6)))
+    patch = tuple(cfg.get("patch_size", (1, spec.get("patch_size", 16), spec.get("patch_size", 16))))
+    cfg["num_frames"] = int(num_frames)
+    mean = cfg.get("mean") or list(HLS_MEAN_DN[:n_bands])
+    std = cfg.get("std") or list(HLS_STD_DN[:n_bands])
+    if len(mean) != n_bands or len(std) != n_bands:
+        raise PrithviLoadError(f"{config_path}: mean/std do not have {n_bands} entries")
+
+    module = _import_prithvi_mae(code_path)
+    mae = module.PrithviMAE(**cfg)
+
+    state = torch.load(str(weights_path), map_location="cpu", weights_only=True)
+    if isinstance(state, dict) and isinstance(state.get("state_dict"), dict):
+        state = state["state_dict"]
+    # The positional embeddings are fixed sin-cos buffers rebuilt for the requested
+    # num_frames / img_size, which is why the official script discards the stored ones.
+    state = {k: v for k, v in state.items() if "pos_embed" not in k}
+    result = mae.load_state_dict(state, strict=False)
+    missing = [k for k in result.missing_keys if "pos_embed" not in k]
+    if missing:
+        raise PrithviLoadError(
+            f"{model_name}: checkpoint {Path(weights_path).name} does not fill {len(missing)} layer(s) of the "
+            f"architecture built from {Path(config_path).name} (first: {missing[:3]}); they would stay "
+            f"randomly initialised.",
+            details="config.json, prithvi_mae.py and the checkpoint must come from the same repository revision.")
+    if result.unexpected_keys:
+        logger.warning("%s: %d checkpoint key(s) are not used by this architecture (first: %s)",
+                       model_name, len(result.unexpected_keys), result.unexpected_keys[:3])
+
+    backbone_cls, _ = _backbone_classes()
+    model = backbone_cls(
+        mae.encoder, embed_dim=int(cfg["embed_dim"]), patch_size=patch, img_size=int(cfg.get("img_size", 224)),
+        num_frames=int(num_frames), n_bands=n_bands, mean=list(mean), std=list(std),
+    )
+    model._pygeovision_config = cfg
+    return model.to(device).eval()
+
+
+def _random_init_or_raise(model_name: str, spec: dict, device: str, allow_random_init: bool,
+                          exc: BaseException) -> Any:
+    if not allow_random_init:
+        raise PrithviLoadError(
+            f"Failed to load real, pretrained Prithvi weights for '{model_name}' ({spec.get('hf_id')}): {exc}",
+            details="Nothing was substituted: a randomly initialised model would give plausible-looking but "
+                    "meaningless output. Needs network access to the Hugging Face Hub (or use "
+                    "load_prithvi_local with the three downloaded files) plus `pip install einops timm`. "
+                    "Pass allow_random_init=True only for development/testing.",
+        ) from exc
+    logger.warning("Loading '%s' failed (%s); allow_random_init=True, so returning a random stand-in.",
+                   model_name, exc)
+    return _build_prithvi_surrogate(spec, device)
+
+
+def _get_spec(model_name: str) -> dict:
+    spec = PRITHVI_MODELS.get(model_name)
+    if spec is None:
+        raise ValueError(f"Unknown Prithvi model: '{model_name}'. Available: {list(PRITHVI_MODELS)}")
+    return spec
+
+
+def load_prithvi_hf(model_name: str = "prithvi_eo_2_0",
+                    device: str = "cpu",
+                    allow_random_init: bool = False,
+                    num_frames: int = 1,
+                    revision: str | None = None) -> Any:
+    """Load a pretrained Prithvi backbone from the Hugging Face Hub.
+
+    Args:
+        model_name: key of :data:`PRITHVI_MODELS`.
+        device: target device.
+        allow_random_init: if the real weights cannot be loaded, return a flagged random stand-in
+            (``_pygeovision_is_random_init = True``) instead of raising.  Development only.
+        num_frames: number of time steps the model will see (the positional embedding is built for
+            it).  1 for single-date features; the pre-training value is in ``spec["n_frames"]``.
+        revision: Hub commit to download.  Defaults to the pinned ``spec["revision"]``.
+
+    Returns:
+        A :class:`PrithviBackbone` (encoder only; the MAE decoder is dropped).
+
+    Raises:
+        ValueError: unknown ``model_name``.
+        NotImplementedError: ``model_name`` is a fine-tuned downstream checkpoint.
+        PrithviLoadError: the weights could not be loaded (also a ``RuntimeError``).
+    """
+    spec = _get_spec(model_name)
+    if not spec.get("loadable", True):
+        raise NotImplementedError(f"'{model_name}': {spec.get('load_note', 'not a loadable backbone')}")
+    rev = revision or spec.get("revision")
+    logger.info("Loading Prithvi %s from %s@%s", model_name, spec["hf_id"], (rev or "main")[:8])
+    try:
+        from huggingface_hub import hf_hub_download
+        config_path = hf_hub_download(spec["hf_id"], "config.json", revision=rev)
+        code_path = hf_hub_download(spec["hf_id"], "prithvi_mae.py", revision=rev)
+        weights_path = hf_hub_download(spec["hf_id"], spec["checkpoint"], revision=rev)
+        model = _assemble_backbone(model_name, spec, config_path, code_path, weights_path, num_frames, device)
+        logger.info("Prithvi loaded: %s (%sM params, %d frame(s))", model_name, spec["params_m"], num_frames)
+        return model
+    except PrithviLoadError as exc:
+        if not allow_random_init:
+            raise
+        return _random_init_or_raise(model_name, spec, device, allow_random_init, exc)
+    except Exception as exc:  # network, auth, missing file, missing einops/timm ...
+        return _random_init_or_raise(model_name, spec, device, allow_random_init, exc)
+
+
+def load_prithvi_local(model_name: str, weights_path: str, device: str = "cpu",
+                       num_frames: int = 1, config_path: str | None = None,
+                       code_path: str | None = None) -> Any:
+    """Load Prithvi from files already on disk (air-gapped use).
+
+    Needs the three files of the repository revision: the checkpoint (``weights_path``),
+    ``config.json`` and ``prithvi_mae.py``.  The latter two default to the directory of
+    ``weights_path``.  A checkpoint that does not match the architecture raises
+    :class:`PrithviLoadError` -- the earlier version loaded real weights into a different
+    network with ``strict=False`` and returned a random model.
+    """
+    spec = _get_spec(model_name)
+    if not spec.get("loadable", True):
+        raise NotImplementedError(f"'{model_name}': {spec.get('load_note', 'not a loadable backbone')}")
+    weights = Path(weights_path)
+    if not weights.exists():
+        raise FileNotFoundError(f"Weights not found: {weights_path}")
+    config = Path(config_path) if config_path else weights.parent / "config.json"
+    code = Path(code_path) if code_path else weights.parent / "prithvi_mae.py"
+    for label, path in (("config.json", config), ("prithvi_mae.py", code)):
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{label} not found at {path}. Download it from the same revision of "
+                f"{spec['hf_id']} and pass its path (config_path= / code_path=).")
+    return _assemble_backbone(model_name, spec, config, code, weights, num_frames, device)
+
 
 
 # ── Prithvi — main API ───────────────────────────────────────────────────────
 
 class Prithvi:
-    """Prithvi-EO Foundation Model — independent PyGeoVision integration.
-
-    Wraps both Prithvi-EO-1.0 (100M) and Prithvi-EO-2.0 (600M).
-    Handles HLS spectral bands, multi-temporal inputs, and task heads.
+    """Prithvi-EO foundation model: features, dense features and a trainable segmentation head.
 
     Example::
 
         model = Prithvi("prithvi_eo_2_0").load()
-        features = model.extract_features("hls_scene.tif")
-        seg_head = model.build_segmentation_head(num_classes=11)
+        features = model.extract_features("hls_scene.tif")          # (1, 1024)
+        seg = model.build_segmentation_head(num_classes=11)         # train it, then use PrithviTasks
+
+    The backbone is built for a fixed number of time steps (``num_frames``) and a fixed tile
+    size (224).  Single-image methods use ``num_frames=1``; :class:`PrithviMultiTemporal`
+    reloads the model for the number of dates it is given.
     """
 
     def __init__(self, variant: str = "prithvi_eo_2_0",
                  method: str = "hf",
                  device: str | None = None,
-                 allow_random_init: bool = False) -> None:
+                 allow_random_init: bool = False,
+                 num_frames: int = 1) -> None:
         self.variant = variant
         self.method  = method
         self.device  = device or self._auto_device()
         self.allow_random_init = allow_random_init
+        self.num_frames = num_frames
         self._model  = None
         self._spec   = PRITHVI_MODELS.get(variant, {})
+        self._local: tuple[str, str | None, str | None] | None = None
 
     @staticmethod
     def _auto_device() -> str:
         try:
             import torch
-            if torch.cuda.is_available(): return "cuda"
-            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available(): return "mps"
+            if torch.cuda.is_available():
+                return "cuda"
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                return "mps"
         except ImportError:
             pass
         return "cpu"
 
-    def load(self, weights_path: str | None = None) -> Prithvi:
-        """Load the Prithvi model. Returns self for chaining."""
-        if weights_path:
-            self._model = load_prithvi_local(self.variant, weights_path, self.device)
-        else:
-            self._model = load_prithvi_hf(self.variant, self.device,
-                                           allow_random_init=self.allow_random_init)
+    def _build(self) -> Any:
+        if self._local is not None:
+            weights, config, code = self._local
+            return load_prithvi_local(self.variant, weights, self.device, num_frames=self.num_frames,
+                                      config_path=config, code_path=code)
+        return load_prithvi_hf(self.variant, self.device, allow_random_init=self.allow_random_init,
+                               num_frames=self.num_frames)
+
+    def load(self, weights_path: str | None = None, config_path: str | None = None,
+             code_path: str | None = None) -> Prithvi:
+        """Load the backbone (Hub, or local files if ``weights_path`` is given). Returns self."""
+        self._local = (weights_path, config_path, code_path) if weights_path else None
+        self._model = self._build()
         return self
 
-    def _ensure_loaded(self) -> None:
+    def _ensure_loaded(self, num_frames: int | None = None) -> None:
+        """Load if needed, and rebuild for ``num_frames`` if the loaded model is built for another."""
         if self._model is None:
-            self.load()
+            if num_frames is not None:
+                self.num_frames = num_frames
+            self._model = self._build()
+            return
+        have = getattr(self._model, "num_frames", None)
+        if num_frames is not None and have is not None and have != num_frames:
+            logger.info("Reloading %s for %d frame(s) (was built for %d)", self.variant, num_frames, have)
+            self.num_frames = num_frames
+            self._model = self._build()
+
+    def _tile_size(self) -> int:
+        return int(getattr(self._model, "img_size", None) or 224)
 
     def _load_geotiff(
         self,
@@ -633,17 +856,16 @@ class Prithvi:
         """
         try:
             import rasterio
-            import rasterio.warp as rwarp
             from rasterio.enums import Resampling as RSpl
-        except ImportError:
-            raise ImportError("pip install rasterio")
+        except ImportError as exc:
+            raise ImportError("pip install rasterio") from exc
 
         n_prithvi = n_bands or self._spec.get("n_bands", 6)
 
         with rasterio.open(path) as src:
             avail      = min(src.count, n_prithvi)
-            orig_H     = src.height
-            orig_W     = src.width
+            orig_h     = src.height
+            orig_w     = src.width
 
             # Compute ground pixel size in metres — handles both geographic and
             # projected CRS so the 30m resampling threshold is always meaningful.
@@ -659,8 +881,8 @@ class Prithvi:
             # Resample to 30m when finer than 20m (Prithvi native resolution)
             if resample_to_30m and res_m < 20.0:
                 scale = res_m / 30.0   # e.g. 10m → scale=0.333
-                new_H = max(1, int(orig_H * scale))
-                new_W = max(1, int(orig_W * scale))
+                new_H = max(1, int(orig_h * scale))
+                new_W = max(1, int(orig_w * scale))
                 data  = src.read(
                     list(range(1, avail + 1)),
                     out_shape=(avail, new_H, new_W),
@@ -668,7 +890,7 @@ class Prithvi:
                 ).astype(np.float32)
                 logger.debug(
                     "_load_geotiff: resampled %dx%d (%.1fm) → %dx%d (30m) for Prithvi",
-                    orig_W, orig_H, res_m, new_W, new_H,
+                    orig_w, orig_h, res_m, new_W, new_H,
                 )
             else:
                 data = src.read(list(range(1, avail + 1))).astype(np.float32)
@@ -703,95 +925,97 @@ class Prithvi:
 
         return data
 
-    def extract_features(self, image_path: str, source: str = "hls") -> np.ndarray:
-        """Extract CLS token features from an HLS GeoTIFF.
+
+    def _tile_array(self, image_path: str, source: str = "hls") -> np.ndarray:
+        """``(C, S, S)`` reflectance resized to the model's tile size ``S``."""
+        import cv2
+        data = self._load_geotiff(image_path, source)
+        size = self._tile_size()
+        return np.stack([cv2.resize(data[b], (size, size), interpolation=cv2.INTER_AREA)
+                         for b in range(data.shape[0])]).astype(np.float32)
+
+    def _tile_tensor(self, image_path: str, source: str = "hls") -> Any:
+        import torch
+        return torch.from_numpy(self._tile_array(image_path, source)).unsqueeze(0).to(self.device)
+
+    def extract_features(self, image_path: str, source: str = "hls", pool: str = "cls") -> np.ndarray:
+        """Scene-level feature vector from an HLS-style GeoTIFF.
+
+        The whole scene is resized to the model's tile size, so this describes the scene, not a
+        30 m pixel.
 
         Args:
-            image_path: HLS GeoTIFF path (6 bands: B,G,R,NIR,SWIR1,SWIR2)
-            source: "hls" | "sentinel2" | "landsat"
+            image_path: GeoTIFF with the six Prithvi bands (see ``source`` / band mapping).
+            source: ``"hls"`` | ``"sentinel2"`` | ``"landsat"``.
+            pool: ``"cls"`` -- the CLS token (an MAE encoder's CLS is not trained for
+                classification); ``"mean"`` -- the mean of the patch tokens, usually the better
+                global descriptor.
 
         Returns:
-            Feature vector of shape (1, embed_dim)
+            ``(1, embed_dim)`` array.
         """
-        self._ensure_loaded()
+        if pool not in ("cls", "mean"):
+            raise ValueError("pool must be 'cls' or 'mean'")
         import torch
-
-        data   = self._load_geotiff(image_path, source)
-        _H, _W   = data.shape[1], data.shape[2]
-
-        # Resize to model patch grid (224×224 standard)
-        import cv2
-        data_r = np.stack([cv2.resize(data[b], (224, 224)) for b in range(data.shape[0])])
-        tensor = torch.tensor(data_r).unsqueeze(0).to(self.device)   # (1, C, H, W)
-
+        self._ensure_loaded(1)
         with torch.no_grad():
-            out = self._model(pixel_values=tensor)
-
-        cls = out.last_hidden_state[:, 0] if hasattr(out, "last_hidden_state") else out
-        return cls.cpu().float().numpy()
+            out = self._model(pixel_values=self._tile_tensor(image_path, source))
+        feat = out.cls if pool == "cls" else out.frame_tokens.mean(dim=(1, 2))
+        return feat.cpu().float().numpy()
 
     def extract_patch_features(self, image_path: str, source: str = "hls") -> np.ndarray:
-        """Extract per-patch features for dense prediction tasks."""
-        self._ensure_loaded()
+        """Per-patch features for dense prediction: ``(h*w, embed_dim)``, row-major patch grid."""
         import torch
-
-        data = self._load_geotiff(image_path, source)
-        import cv2
-        data_r = np.stack([cv2.resize(data[b], (224, 224)) for b in range(data.shape[0])])
-        tensor = torch.tensor(data_r).unsqueeze(0).to(self.device)
-
+        self._ensure_loaded(1)
         with torch.no_grad():
-            out = self._model(pixel_values=tensor)
+            out = self._model(pixel_values=self._tile_tensor(image_path, source))
+        return out.frame_tokens[0, 0].cpu().float().numpy()
 
-        tokens = out.last_hidden_state[:, 1:] if hasattr(out, "last_hidden_state") else out
-        return tokens.squeeze(0).cpu().float().numpy()
+    def build_segmentation_head(self, num_classes: int, freeze_backbone: bool = True) -> Any:
+        """Semantic-segmentation model: Prithvi encoder + a **randomly initialised** conv head.
 
-    def build_segmentation_head(self, num_classes: int,
-                                  freeze_backbone: bool = True) -> Any:
-        """Build a semantic segmentation model with Prithvi as encoder.
+        The head must be trained before its output means anything.  The result maps
+        ``(B, 6, S, S)`` reflectance to ``(B, num_classes, S, S)`` logits.
 
         Args:
-            num_classes: Number of segmentation classes
-            freeze_backbone: Freeze Prithvi weights (recommended for small datasets)
-
-        Returns:
-            PrithviSegModel (torch.nn.Module)
+            num_classes: number of output classes.
+            freeze_backbone: freeze the encoder (recommended for small datasets).
         """
-        self._ensure_loaded()
+        self._ensure_loaded(1)
         import torch.nn as nn
+        import torch.nn.functional as F
 
-        embed_dim = self._spec.get("embed_dim", 768)
-        n_bands   = self._spec.get("n_bands", 6)
+        embed_dim = int(self._model.embed_dim)
 
         class PrithviSegModel(nn.Module):
-            def __init__(self, backbone, head_):
+            def __init__(self, backbone, head_, freeze):
                 super().__init__()
-                self.backbone  = backbone
-                self.head      = head_
-                self._n_bands  = n_bands
+                self.backbone = backbone
+                self.head = head_
+                self._freeze = freeze
+
+            def train(self, mode: bool = True):
+                super().train(mode)
+                if self._freeze:
+                    self.backbone.eval()
+                return self
 
             def forward(self, x):
-                import math
-                if x.shape[1] != self._n_bands:
-                    x = x[:, :self._n_bands]
                 out = self.backbone(pixel_values=x)
-                tokens = out.last_hidden_state[:, 1:]      # patch tokens
-                B, N, D = tokens.shape
-                H_p = W_p = int(math.sqrt(N))
-                feat = tokens.reshape(B, H_p, W_p, D).permute(0, 3, 1, 2)
-                return self.head(feat)
+                gh, gw = out.grid
+                tokens = out.frame_tokens[:, 0]                         # (B, N, D); single frame
+                feat = tokens.transpose(1, 2).reshape(tokens.shape[0], embed_dim, gh, gw)
+                return F.interpolate(self.head(feat), size=x.shape[-2:], mode="bilinear",
+                                     align_corners=False)
 
         head = nn.Sequential(
-            nn.ConvTranspose2d(embed_dim, 256, 4, stride=4), nn.ReLU(),
-            nn.ConvTranspose2d(256, 64, 4, stride=4),        nn.ReLU(),
-            nn.Conv2d(64, num_classes, 1),
+            nn.Conv2d(embed_dim, 256, 3, padding=1), nn.BatchNorm2d(256), nn.ReLU(inplace=True),
+            nn.Conv2d(256, num_classes, 1),
         )
-
         if freeze_backbone:
             for p in self._model.parameters():
                 p.requires_grad = False
-
-        return PrithviSegModel(self._model, head).to(self.device)
+        return PrithviSegModel(self._model, head, freeze_backbone).to(self.device)
 
     def finetune_config(self) -> dict:
         """Recommended fine-tuning hyperparameters for Prithvi-EO-2.0."""
@@ -813,253 +1037,238 @@ class Prithvi:
                 f"device={self.device}, loaded={self._model is not None})")
 
 
+# ── Saving / loading trained heads ───────────────────────────────────────────
+
+_HEAD_FORMAT = "pygeovision-prithvi-head-v1"
+
+
+def save_prithvi_head(model: Any, path: str, variant: str, task: str, num_classes: int) -> str:
+    """Save the trained ``.head`` of a :meth:`Prithvi.build_segmentation_head` model.
+
+    The file records the backbone variant, task and class count so :class:`PrithviTasks` can
+    refuse a head that was trained for something else.
+    """
+    import torch
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    torch.save({"format": _HEAD_FORMAT, "variant": variant, "task": task, "num_classes": num_classes,
+                "state_dict": getattr(model, "head", model).state_dict()}, path)
+    return str(path)
+
+
+def _load_head_file(path: str, variant: str, task: str, num_classes: int | None) -> dict:
+    import torch
+    blob = torch.load(path, map_location="cpu", weights_only=True)
+    if not isinstance(blob, dict) or blob.get("format") != _HEAD_FORMAT:
+        raise ValueError(f"{path} is not a Prithvi head file written by save_prithvi_head()")
+    for key, want in (("variant", variant), ("task", task)):
+        if blob.get(key) != want:
+            raise ValueError(f"{path} was trained for {key}={blob.get(key)!r}, not {want!r}")
+    if num_classes is not None and blob.get("num_classes") != num_classes:
+        raise ValueError(f"{path} has {blob.get('num_classes')} classes, expected {num_classes}")
+    return blob
+
+
 # ── PrithviMultiTemporal ──────────────────────────────────────────────────────
 
 class PrithviMultiTemporal:
-    """Multi-temporal analysis with Prithvi-EO-2.0.
+    """Multi-date analysis in Prithvi's feature space.
 
-    Processes time stacks of HLS imagery using Prithvi's temporal attention.
+    Prithvi's encoder attends jointly over all dates, so these tools describe how the *learned
+    features* differ between dates.  They are screening indicators, not calibrated change or
+    phenology models: validate against reference data before relying on them.
 
     Example::
 
         mt = PrithviMultiTemporal("prithvi_eo_2_0")
-        features = mt.process_time_series(["jan.tif","apr.tif","jul.tif","oct.tif"])
-        change   = mt.detect_change("before.tif", "after.tif")
+        out = mt.process_time_series(["jan.tif", "apr.tif", "jul.tif", "oct.tif"])
+        change = mt.detect_change("before.tif", "after.tif")
     """
 
     def __init__(self, model_name: str = "prithvi_eo_2_0",
-                 device: str | None = None) -> None:
+                 device: str | None = None, allow_random_init: bool = False) -> None:
         self.model_name = model_name
-        self._prithvi   = Prithvi(model_name, device=device)
+        self._prithvi   = Prithvi(model_name, device=device, allow_random_init=allow_random_init)
+
+    def _encode(self, image_paths: list[str], source: str):
+        import torch
+        if not image_paths:
+            raise ValueError("need at least one image")
+        T = len(image_paths)
+        self._prithvi._ensure_loaded(T)
+        stack = np.stack([self._prithvi._tile_array(p, source) for p in image_paths])      # (T, C, S, S)
+        tensor = torch.from_numpy(stack).unsqueeze(0).to(self._prithvi.device)             # (1, T, C, S, S)
+        with torch.no_grad():
+            return self._prithvi._model(pixel_values=tensor)
 
     def process_time_series(self, image_paths: list[str],
                              dates: list[str] | None = None,
                              source: str = "hls") -> dict[str, Any]:
-        """Process a multi-temporal stack of HLS images.
+        """Encode a chronological stack of HLS-style GeoTIFFs.
 
-        Args:
-            image_paths: Ordered list of GeoTIFF paths (chronological)
-            dates: ISO date strings for each image (optional, for metadata)
-            source: Input satellite format ("hls"|"sentinel2"|"landsat")
-
-        Returns:
-            Dict with features (T, D), dates, trend analysis
+        Returns a dict with ``frame_embeddings`` ``(T, D)`` (mean patch token per date),
+        ``frame_tokens`` ``(T, N, D)``, ``features`` ``(1 + T*N, D)`` (CLS first), ``grid``,
+        ``n_frames``, ``dates`` and ``model``.
         """
-        self._prithvi._ensure_loaded()
-        import torch
-
-        n_bands   = self._prithvi._spec.get("n_bands", 6)
-        all_data  = []
-        for path in image_paths:
-            data = self._prithvi._load_geotiff(path, source=source, n_bands=n_bands)
-            import cv2
-            data_r = np.stack([cv2.resize(data[b], (224, 224)) for b in range(n_bands)])
-            all_data.append(data_r)
-
-        T = len(all_data)
-        stack = np.stack(all_data, axis=0)                            # (T, C, H, W)
-        tensor = torch.tensor(stack).unsqueeze(0).to(self._prithvi.device)  # (1, T, C, H, W)
-
-        with torch.no_grad():
-            out = self._prithvi._model(pixel_values=tensor)
-
-        features = out.last_hidden_state.squeeze(0).cpu().numpy()    # (T*N, D) or (N, D)
-        cls_per_frame = features[:T] if features.shape[0] >= T else features
-
+        out = self._encode(image_paths, source)
+        T = len(image_paths)
+        frame_tokens = out.frame_tokens[0].cpu().float().numpy()
         return {
-            "features":    features,
-            "n_frames":    T,
-            "dates":       dates or [f"t{i}" for i in range(T)],
-            "cls_per_frame": cls_per_frame,
-            "model":       self.model_name,
+            "frame_embeddings": frame_tokens.mean(axis=1),
+            "frame_tokens":     frame_tokens,
+            "features":         out.last_hidden_state[0].cpu().float().numpy(),
+            "grid":             tuple(out.grid),
+            "n_frames":         T,
+            "dates":            dates or [f"t{i}" for i in range(T)],
+            "model":            self.model_name,
         }
 
     def detect_change(self, before_path: str, after_path: str,
                        source: str = "hls",
                        output_path: str | None = None) -> dict[str, Any]:
-        """Detect land-cover or vegetation changes between two dates.
+        """Feature-space change map between two dates.
 
-        Uses Prithvi's temporal attention to identify meaningful change.
-
-        Returns:
-            Dict with change_map (H, W), change_pct, significant_change_pct
+        ``change_map`` is the per-patch L2 distance between the two dates' patch features,
+        normalised by its maximum (patch grid, e.g. 14x14).  ``change_pct`` is the share of
+        patches above half of that maximum -- a relative indicator, not an area of change.
+        If ``output_path`` is given the map is resampled to the scene and written as a GeoTIFF.
         """
-        result = self.process_time_series([before_path, after_path],
-                                           dates=["before", "after"], source=source)
-        if "error" in result:
-            return result
-
-        # Simple change: L2 distance between CLS embeddings
-        f = result["cls_per_frame"]
-        if f.shape[0] >= 2:
-            np.abs(f[0] - f[1])
-        else:
-            np.zeros(f.shape[-1])
-
-        # Build spatial change map from patch features
-        patch_features = result["features"]
-        # patch_features may include CLS token — find correct N
-        total = patch_features.shape[0]
-        # Half of total = features per temporal frame (may include CLS)
-        half  = total // 2 if total >= 2 else 1
-        # Find nearest perfect square ≤ half (remove CLS if needed)
-        import math
-        H_p = W_p = int(math.sqrt(half))
-        N = H_p * W_p   # patches per frame (exclude CLS)
-
-        if total >= 2 and N > 0:
-            before_patches = patch_features[:N]
-            after_patches  = patch_features[half:half + N]
-            change_scores  = np.abs(before_patches - after_patches).mean(axis=-1)
-            try:
-                change_map = change_scores.reshape(H_p, W_p)
-            except ValueError:
-                change_map = np.zeros((H_p, H_p))
-        else:
-            change_map = np.zeros((14, 14))
-
-        # Normalise
-        if change_map.max() > 0:
-            change_map = change_map / change_map.max()
-
-        change_pct = float((change_map > 0.5).mean() * 100)
-
+        result = self.process_time_series([before_path, after_path], dates=["before", "after"], source=source)
+        tokens = result["frame_tokens"]                                  # (2, N, D)
+        gh, gw = result["grid"]
+        score = np.linalg.norm(tokens[1] - tokens[0], axis=-1).reshape(gh, gw)
+        peak = float(score.max())
+        change_map = score / peak if peak > 0 else np.zeros_like(score)
+        out: dict[str, Any] = {
+            "change_map":   change_map.astype(np.float32),
+            "raw_distance": score.astype(np.float32),
+            "change_pct":   float((change_map > 0.5).mean() * 100),
+            "output_path":  None,
+            "model":        self.model_name,
+            "note":         "relative feature-distance indicator, not a calibrated change area",
+        }
         if output_path:
             try:
-                import pathlib
-
+                import cv2
                 import rasterio
-                pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 with rasterio.open(before_path) as src:
                     profile = src.profile.copy()
                     H, W = src.height, src.width
-                import cv2
-                change_full = cv2.resize(change_map, (W, H))
-                profile.update(count=1, dtype="float32", compress="lzw")
+                full = cv2.resize(change_map.astype(np.float32), (W, H), interpolation=cv2.INTER_LINEAR)
+                profile.update(count=1, dtype="float32", compress="lzw", nodata=None)
+                for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                    profile.pop(_k, None)
                 with rasterio.open(output_path, "w", **profile) as dst:
-                    dst.write(change_full[np.newaxis].astype(np.float32))
+                    dst.write(full[np.newaxis].astype(np.float32))
+                out["output_path"] = output_path
             except Exception as exc:
                 logger.warning("Failed to save change map: %s", exc)
-
-        return {
-            "change_map":   change_map,
-            "change_pct":   change_pct,
-            "output_path":  output_path,
-            "model":        self.model_name,
-        }
+                out["output_error"] = f"{type(exc).__name__}: {exc}"
+        return out
 
     def monitor_trend(self, time_series_paths: list[str],
                        dates: list[str] | None = None,
                        source: str = "hls") -> dict[str, Any]:
-        """Analyse temporal trends using Prithvi features.
+        """How far each date's embedding has drifted from the first date, and whether it is growing.
 
-        Fits a linear trend to the temporal CLS embeddings.
-        Useful for NDVI trends, land cover dynamics, urbanisation.
+        ``drift_from_first[t]`` is ``||e_t - e_0||``; ``trend_direction`` is the sign of its linear
+        slope (``diverging`` / ``converging`` / ``stable``).  Embedding axes have no fixed sign or
+        meaning, so a sign-based "increasing/decreasing" trend (used by earlier versions) was
+        arbitrary.
         """
         result = self.process_time_series(time_series_paths, dates=dates, source=source)
-        features = result["cls_per_frame"]   # (T, D)
-
-        T = features.shape[0]
+        emb = result["frame_embeddings"]
+        T = emb.shape[0]
         if T < 3:
             return {**result, "trend": "insufficient_data (need ≥ 3 time steps)"}
-
-        # Fit linear trend per feature dimension
-        t = np.arange(T)
-        slopes = np.polyfit(t, features, 1)[0]       # (D,)
-
-        trend_dir = "increasing" if slopes.mean() > 0 else "decreasing"
-        magnitude = float(np.abs(slopes).mean())
-
+        drift = np.linalg.norm(emb - emb[0], axis=1)
+        slope = float(np.polyfit(np.arange(T), drift, 1)[0])
+        direction = "stable" if abs(slope) < 1e-8 else ("diverging" if slope > 0 else "converging")
         return {
             **result,
-            "trend_direction":   trend_dir,
-            "trend_magnitude":   magnitude,
-            "trend_per_dim":     slopes.tolist()[:20],  # first 20 dims
+            "trend_direction":  direction,
+            "trend_magnitude":  abs(slope),
+            "drift_from_first": drift.tolist(),
         }
 
     def predict_seasonal(self, time_series_paths: list[str],
                           dates: list[str] | None = None) -> dict[str, Any]:
-        """Fit a seasonal model (annual cycle) to the temporal series.
+        """Dominant mode of variation across ≥ 4 dates (first principal component of the embeddings).
 
-        Returns:
-            Dict with seasonal_amplitude, peak_date, trough_date
+        ``seasonal_amplitude`` is the half-range of that component in embedding units;
+        ``peak_step`` / ``trough_step`` are its extreme dates (sign fixed so the first date is not
+        above the mean).  This is a statistic of the feature space, not a physical seasonal model.
         """
         result = self.process_time_series(time_series_paths, dates=dates)
-        features = result["cls_per_frame"]
-        T = features.shape[0]
-
+        emb = result["frame_embeddings"]
+        T = emb.shape[0]
         if T < 4:
             return {**result, "note": "Need ≥ 4 time steps for seasonal model"}
-
-        # Fit sinusoid: mean + A * cos(2π/T * t + φ)
-        np.linspace(0, 2 * np.pi, T)
-        mean_feat = features.mean(axis=-1)          # scalar per time step
-        A = (mean_feat.max() - mean_feat.min()) / 2
-        peak_idx  = int(np.argmax(mean_feat))
-        trough_idx = int(np.argmin(mean_feat))
-
+        centred = emb - emb.mean(axis=0)
+        _, _, vt = np.linalg.svd(centred, full_matrices=False)
+        pc1 = centred @ vt[0]
+        if pc1[0] > pc1.mean():
+            pc1 = -pc1
+        labels = result["dates"]
+        peak, trough = int(np.argmax(pc1)), int(np.argmin(pc1))
         return {
             **result,
-            "seasonal_amplitude": float(A),
-            "peak_step":          peak_idx,
-            "trough_step":        trough_idx,
-            "peak_date":          (dates or [f"t{i}" for i in range(T)])[peak_idx],
-            "trough_date":        (dates or [f"t{i}" for i in range(T)])[trough_idx],
+            "seasonal_amplitude": float((pc1.max() - pc1.min()) / 2),
+            "peak_step":          peak,
+            "trough_step":        trough,
+            "peak_date":          labels[peak],
+            "trough_date":        labels[trough],
+            "note":               "first principal component of the date embeddings, not a physical seasonal model",
         }
 
 
 # ── PrithviTasks — task-specific inference ────────────────────────────────────
 
 class PrithviTasks:
-    """Task-specific inference heads for Prithvi-EO-2.0.
+    """Task-level inference on preprocessed HLS-style imagery.
 
-    All task methods require preprocessed, validated input:
-    - 6 bands in HLS order: [Blue, Green, Red, NIR, SWIR1, SWIR2]
-    - Normalised to [0, 1] (HLS scale factor = 10000)
-    - Passed through ``client.prepare_for_ai()`` before calling
+    Inputs: a GeoTIFF with six bands in HLS order (see ``map_bands``), surface reflectance, passed
+    through ``client.prepare_for_ai()`` first.
 
-    Routing:
-        **Surrogate backbone** (no HuggingFace connection) → spectral
-        rule-based predictions from NDVI/MNDWI/NDBI/NBR indices.
-        Physically accurate. Accuracy improves significantly when the real
-        Prithvi HuggingFace weights are downloaded.
+    Two routes, reported in ``result["method"]``:
 
-        **Pretrained backbone** (HuggingFace) → dense backbone features
-        + task segmentation head with Gaussian-blended tiled inference.
+    * ``"backbone"`` -- the Prithvi encoder plus a segmentation head **you trained** (pass the
+      file written by :func:`save_prithvi_head` as ``head_weights={"land_cover": path}``).
+    * ``"spectral"`` -- no trained head for the task: documented index rules (NDVI/MNDWI/NDBI/NBR).
+      These are heuristics on reflectance, they do not use Prithvi, and they need no model download.
+
+    ``crop_mapping`` and ``biomass_estimation`` have no honest spectral rule and therefore raise
+    ``NotImplementedError`` until a trained head is supplied.
 
     Example::
 
-        tasks = PrithviTasks("prithvi_eo_2_0")
-
-        # Always pass the PREPROCESSED file (output of prepare_for_ai)
-        lc   = tasks.land_cover("preprocessed.tif", source="sentinel2")
-        crop = tasks.crop_mapping("preprocessed.tif", source="sentinel2")
-        fl   = tasks.flood_detection("preprocessed.tif", source="sentinel2")
-        burn = tasks.burn_scar_detection("preprocessed.tif", source="sentinel2")
+        tasks = PrithviTasks("prithvi_eo_2_0", head_weights={"land_cover": "heads/lc.pt"})
+        lc = tasks.land_cover("preprocessed.tif", source="sentinel2")     # method == "backbone"
+        fl = tasks.flood_detection("preprocessed.tif", source="sentinel2") # method == "spectral"
     """
 
-    # Module-level constants exposed as class attributes for ergonomic access
     LAND_COVER_CLASSES = LAND_COVER_CLASSES   # noqa: F821
     CROP_CLASSES       = CROP_CLASSES          # noqa: F821
 
-
     def __init__(self, model_name: str = "prithvi_eo_2_0",
-                 device: str | None = None) -> None:
+                 device: str | None = None,
+                 head_weights: dict[str, str] | None = None,
+                 allow_random_init: bool = False) -> None:
         self.model_name = model_name
-        self._prithvi   = Prithvi(model_name, device=device)
-        self._seg_heads: dict[str, Any] = {}   # cache task heads to avoid rebuilding
+        self._prithvi   = Prithvi(model_name, device=device, allow_random_init=allow_random_init)
+        self._head_weights = dict(head_weights or {})
+        self._seg_heads: dict[str, Any] = {}
 
     def _seg_head(self, task: str, n_classes: int) -> Any:
-        """Get or create a segmentation head for a task."""
+        """Segmentation model with the trained head for ``task`` loaded (cached)."""
         if task not in self._seg_heads:
-            self._prithvi._ensure_loaded()
-            self._seg_heads[task] = self._prithvi.build_segmentation_head(
-                n_classes, freeze_backbone=True
-            ).eval()
+            blob = _load_head_file(self._head_weights[task], self.model_name, task, n_classes)
+            self._prithvi._ensure_loaded(1)
+            model = self._prithvi.build_segmentation_head(n_classes, freeze_backbone=True)
+            model.head.load_state_dict(blob["state_dict"])        # strict: shape mismatch raises
+            self._seg_heads[task] = model.eval()
         return self._seg_heads[task]
 
-    # -----------------------------------------------------------------
-    # Canonical input band names for each source sensor
     _CANONICAL_BANDS = {
         "sentinel2": ["B02", "B03", "B04", "B08", "B11", "B12"],
         "landsat":   ["B2",  "B3",  "B4",  "B5",  "B6",  "B7"],
@@ -1075,26 +1284,17 @@ class PrithviTasks:
         source_bands: list[str] | None = None,
         output_path: str | None = None,
     ) -> dict[str, Any]:
-        """Segmentation inference — routes to spectral or tiled backbone path.
+        """Segmentation inference: trained head if available, else spectral rules (or an error)."""
+        use_backbone = task in self._head_weights
+        if not use_backbone and task == "crop_mapping":
+            raise NotImplementedError(
+                "Crop-type mapping cannot be done honestly from spectral thresholds on one date. "
+                "Train a head (Prithvi.build_segmentation_head + save_prithvi_head) and pass "
+                "head_weights={'crop_mapping': path}.")
 
-        Routing:
-        1. **Spectral** (surrogate model) — when the Prithvi backbone is a
-           ``PrithviSurrogate`` without pretrained weights, the task head
-           would be pure noise.  Instead, physics-informed spectral indices
-           (NDVI, MNDWI, NDBI, NBR, …) produce reliable predictions on
-           real satellite reflectance.
-
-        2. **Tiled backbone** (HuggingFace pretrained) — when a real Prithvi
-           model is loaded, we extract dense patch features and decode with
-           the segmentation head using tiled inference.
-        """
-
-        # Load and prepare data — always go through the full pipeline
         bands = source_bands or self._CANONICAL_BANDS.get(source)
-        data_hls = self._prithvi._load_geotiff(
-            image_path, source=source, source_bands=bands)
+        data_hls = self._prithvi._load_geotiff(image_path, source=source, source_bands=bands)
 
-        # Validate before touching a model
         val = validate_prithvi_input(data_hls, source=source)
         for err in val["errors"]:
             raise ValueError(f"[Prithvi input] {err}")
@@ -1102,49 +1302,31 @@ class PrithviTasks:
             logger.warning("[Prithvi input] %s", warn)
 
         H, W = data_hls.shape[1], data_hls.shape[2]
-
-        # ── Routing decision ─────────────────────────────────────────────
-        # If model is surrogate (random weights) → spectral prediction
-        # If model is a real HF model → backbone + head
-        self._prithvi._ensure_loaded()
-        is_surrogate = "Surrogate" in type(self._prithvi._model).__name__
-
-        if is_surrogate:
-            # ── Path A: spectral rule-based (always physically meaningful) ─
-            pred_np = self._spectral_predict(data_hls, task, n_classes)
-            logger.info(
-                "Prithvi [%s]: using spectral prediction (surrogate backbone — "
-                "no pretrained task weights available; set HF_TOKEN and "
-                "pip install transformers>=4.40 for full accuracy)",
-                task,
-            )
-        else:
-            # ── Path B: tiled Prithvi backbone + trained head ─────────────
+        if use_backbone:
             pred_np = self._backbone_predict(data_hls, task, n_classes, H, W)
-            logger.info("Prithvi [%s]: using pretrained backbone + task head", task)
+            logger.info("Prithvi [%s]: pretrained backbone + trained head", task)
+        else:
+            pred_np = self._spectral_predict(data_hls, task, n_classes)
+            logger.info("Prithvi [%s]: spectral-index rules (no trained head supplied)", task)
 
-        # Build per-class statistics
         unique, counts = np.unique(pred_np, return_counts=True)
-        class_pct = {
-            int(u): round(float(c / pred_np.size * 100), 2)
-            for u, c in zip(unique, counts)
-        }
-
+        class_pct = {int(u): round(float(c / pred_np.size * 100), 2) for u, c in zip(unique, counts)}
         result: dict[str, Any] = {
-            "prediction":   pred_np,            # (H, W) uint8
+            "prediction":   pred_np,
             "class_pct":    class_pct,
             "n_classes":    n_classes,
             "task":         task,
             "model":        self.model_name,
-            "method":       "spectral" if is_surrogate else "backbone",
+            "method":       "backbone" if use_backbone else "spectral",
             "shape":        pred_np.shape,
             "source":       source,
         }
-
+        if not use_backbone:
+            result["note"] = ("spectral-index rules on reflectance; Prithvi was not used. "
+                              "Pass head_weights for a learned prediction.")
         if output_path:
             self._save_prediction(pred_np, image_path, output_path)
             result["output_path"] = output_path
-
         return result
 
     def _spectral_predict(
@@ -1165,13 +1347,14 @@ class PrithviTasks:
             pred = np.clip(pred, 0, n_classes - 1).astype(np.uint8)
             return pred
 
+
     def _backbone_predict(
         self,
         data_hls: np.ndarray,
         task: str,
         n_classes: int,
-        orig_H: int,
-        orig_W: int,
+        orig_h: int,
+        orig_w: int,
     ) -> np.ndarray:
         """Tiled inference with the Prithvi backbone + task segmentation head."""
         import math
@@ -1182,8 +1365,8 @@ class PrithviTasks:
         model = self._seg_head(task, n_classes)
         model.eval()
 
-        TILE = 224
-        STEP = 196    # overlap = 224 - 196 = 28 px
+        TILE = self._prithvi._tile_size()
+        STEP = TILE * 7 // 8     # 1/8 overlap
         C, H, W = data_hls.shape
 
         pred_sum   = np.zeros((n_classes, H, W), dtype=np.float32)
@@ -1237,12 +1420,17 @@ class PrithviTasks:
         pred_np = pred_sum.argmax(axis=0).astype(np.uint8)
 
         # Upsample to original scene resolution if we resampled to 30m
-        if (orig_H, orig_W) != (H, W):
+        if (orig_h, orig_w) != (H, W):
             import cv2
-            pred_np = cv2.resize(pred_np, (orig_W, orig_H),
+            pred_np = cv2.resize(pred_np, (orig_w, orig_h),
                                   interpolation=cv2.INTER_NEAREST)
 
         return pred_np
+
+    # -----------------------------------------------------------------
+    # Task-specific public API
+    # -----------------------------------------------------------------
+
 
     # -----------------------------------------------------------------
     # Task-specific public API
@@ -1343,6 +1531,7 @@ class PrithviTasks:
         })
         return result
 
+
     def _save_prediction(
         self, pred: np.ndarray, reference_path: str, output_path: str
     ) -> None:
@@ -1371,6 +1560,8 @@ class PrithviTasks:
                                    interpolation=cv2.INTER_NEAREST).astype(np.uint8)
 
             profile.update(count=1, dtype="uint8", compress="lzw", nodata=255)
+            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                profile.pop(_k, None)
             with rasterio.open(output_path, "w", **profile) as dst:
                 dst.write(pred.astype(np.uint8)[np.newaxis])
 
@@ -1379,60 +1570,45 @@ class PrithviTasks:
         except Exception as exc:
             logger.warning("_save_prediction failed (%s) — file not written", exc)
 
-    def biomass_estimation(self, image_path: str,
-                            source: str = "hls") -> dict[str, Any]:
-        """Estimate above-ground biomass (t DM/ha) using Prithvi features + regression."""
+
+    def biomass_estimation(self, image_path: str, source: str = "hls") -> dict[str, Any]:
+        """Above-ground biomass from Prithvi features through a regression head **you trained**.
+
+        Needs ``head_weights={"biomass": path}`` (file from :func:`save_prithvi_head`-style
+        ``torch.save`` with ``task="biomass"``; see :func:`build_regression_head`).  The value is in
+        whatever units the head was trained on.  Without a head this raises -- the previous
+        version pushed features through an untrained MLP and multiplied by 300.
+        """
+        if "biomass" not in self._head_weights:
+            raise NotImplementedError(
+                "biomass_estimation needs a regression head trained on biomass reference data; pass "
+                "head_weights={'biomass': path}. No pretrained biomass head exists in this package.")
         import torch
-        self._prithvi._ensure_loaded()
-
-        data = self._prithvi._load_geotiff(image_path, source)
-        import cv2
-        data_r = np.stack([cv2.resize(data[b], (224, 224)) for b in range(data.shape[0])])
-        tensor = torch.tensor(data_r).unsqueeze(0).to(self._prithvi.device)
-
-        embed_dim = self._prithvi._spec.get("embed_dim", 768)
-        import torch.nn as nn
-
-        class BiomassHead(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.net = nn.Sequential(
-                    nn.Linear(embed_dim, 256), nn.ReLU(),
-                    nn.Linear(256, 64), nn.ReLU(),
-                    nn.Linear(64, 1), nn.ReLU(),  # biomass ≥ 0
-                )
-            def forward(self, x): return self.net(x) * 300  # scale to realistic range
-
-        biomass_head = BiomassHead().to(self._prithvi.device).eval()
+        blob = _load_head_file(self._head_weights["biomass"], self.model_name, "biomass", 1)
+        self._prithvi._ensure_loaded(1)
+        head = build_regression_head(int(self._prithvi._model.embed_dim)).to(self._prithvi.device).eval()
+        head.load_state_dict(blob["state_dict"])
+        feats = torch.from_numpy(self._prithvi.extract_features(image_path, source, pool="mean")).to(self._prithvi.device)
         with torch.no_grad():
-            out    = self._prithvi._model(pixel_values=tensor)
-            cls    = out.last_hidden_state[:, 0] if hasattr(out, "last_hidden_state") else out
-            biomass = biomass_head(cls).item()
-
-        return {"estimated_biomass_t_ha": round(biomass, 1),
-                "model": self.model_name, "source": source}
+            value = float(head(feats).item())
+        return {"estimated_biomass_t_ha": round(value, 3), "model": self.model_name, "source": source,
+                "method": "backbone"}
 
     def deforestation_detection(self, before_path: str, after_path: str,
                                   output_path: str | None = None) -> dict[str, Any]:
-        """Detect deforestation using Prithvi multi-temporal features."""
+        """Feature-space change between two dates (not specific to forest loss).
+
+        See :meth:`PrithviMultiTemporal.detect_change` for what the map means.
+        """
         mt = PrithviMultiTemporal(self.model_name, self._prithvi.device)
+        mt._prithvi = self._prithvi
         return mt.detect_change(before_path, after_path, output_path=output_path)
 
-    def _save_prediction(self, pred: np.ndarray, reference_path: str,
-                          output_path: str) -> None:
-        """Save a prediction raster using the reference GeoTIFF's CRS/transform."""
-        try:
-            import pathlib
 
-            import rasterio
-            pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            with rasterio.open(reference_path) as src:
-                profile = src.profile.copy()
-            profile.update(count=1, dtype="uint8", compress="lzw")
-            with rasterio.open(output_path, "w", **profile) as dst:
-                dst.write(pred[np.newaxis].astype(np.uint8))
-        except Exception as exc:
-            logger.warning("Save prediction failed: %s", exc)
+def build_regression_head(embed_dim: int) -> Any:
+    """MLP ``(B, embed_dim) -> (B, 1)`` used by :meth:`PrithviTasks.biomass_estimation`."""
+    import torch.nn as nn
+    return nn.Sequential(nn.Linear(embed_dim, 256), nn.ReLU(), nn.Linear(256, 64), nn.ReLU(), nn.Linear(64, 1))
 
 
 # ── Fine-tuning API ───────────────────────────────────────────────────────────
@@ -1450,24 +1626,17 @@ def finetune_prithvi(
     output_dir: str = "./checkpoints/prithvi/",
     **kwargs,
 ) -> dict[str, Any]:
-    """Fine-tune Prithvi-EO for a downstream geospatial task.
+    """Assemble the pieces of a Prithvi fine-tuning job.  **This does not train.**
 
-    Recommended hyperparameters (from Prithvi-EO-2.0 paper):
-    - Optimizer: AdamW, lr=5e-5, weight_decay=0.01
-    - Warmup: 5 epochs
-    - Mixed precision: BF16
-    - Batch size: 8 (GPU memory limited by 600M params)
+    Returns the segmentation model (backbone unfrozen), optimiser, cosine scheduler, mixed-precision
+    and checkpoint managers, ready to be driven by ``GeoTrainer`` or your own loop.  After training,
+    store the head with :func:`save_prithvi_head` and hand it to :class:`PrithviTasks`.
 
-    Args:
-        model_name: Prithvi variant
-        task: "land_cover" | "crop_mapping" | "flood_detection" |
-               "burn_scar" | "change_detection" | "biomass"
-        num_classes: Output class count
-        epochs: Training epochs
-        learning_rate: Base learning rate (5e-5 recommended)
+    ``dataset`` and ``distributed`` are accepted for backward compatibility but are not used here;
+    a warning is logged if they are set.
 
-    Returns:
-        Dict with model, optimizer, scheduler, checkpoint manager
+    Recommended hyperparameters (Prithvi-EO-2.0 paper): AdamW, lr 5e-5, weight decay 0.01, 5 warm-up
+    epochs, bf16, batch size 8.
     """
     try:
         import torch
@@ -1477,21 +1646,21 @@ def finetune_prithvi(
     except ImportError:
         return {"error": "torch + pygeovision.training required"}
 
+    if dataset is not None or distributed:
+        logger.warning("finetune_prithvi: `dataset` and `distributed` are not used; it only builds the "
+                       "training components.")
+
     prithvi = Prithvi(model_name, allow_random_init=kwargs.get("allow_random_init", False))
     prithvi.load()
-
     model = prithvi.build_segmentation_head(num_classes, freeze_backbone=False)
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=learning_rate, weight_decay=0.01,
-    )
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     mp_mgr    = MixedPrecisionManager(precision="bf16" if mixed_precision else "fp32")
     ckpt_mgr  = CheckpointManager(output_dir, monitor="val_iou", mode="max")
 
-    logger.info("Prithvi fine-tuning: %s | task=%s | classes=%d | epochs=%d",
+    logger.info("Prithvi fine-tuning components: %s | task=%s | classes=%d | epochs=%d",
                 model_name, task, num_classes, epochs)
-
     return {
         "model":        model,
         "optimizer":    optimizer,
@@ -1499,7 +1668,10 @@ def finetune_prithvi(
         "mp_manager":   mp_mgr,
         "ckpt_manager": ckpt_mgr,
         "config":       prithvi.finetune_config(),
+        "task":         task,
+        "num_classes":  num_classes,
         "status":       "ready",
+        "note":         "components only -- no training has been run",
     }
 
 

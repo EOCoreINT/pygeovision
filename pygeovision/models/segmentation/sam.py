@@ -22,8 +22,9 @@ def build_sam(variant: str = "vit-large", device: str = "cpu", **kwargs) -> Any:
         "vit-huge":     "facebook/sam-vit-huge",
         "vit-large":    "facebook/sam-vit-large",
         "vit-base":     "facebook/sam-vit-base",
-        "sam2-hiera-l": "facebook/sam2-hiera-large",
-        "sam2-hiera-b": "facebook/sam2-hiera-base-plus",
+        # transformers needs the "-hf" conversions; the un-suffixed repos are for the `sam2` package
+        "sam2-hiera-l": "facebook/sam2-hiera-large-hf",
+        "sam2-hiera-b": "facebook/sam2-hiera-base-plus-hf",
     }
     return GeoSAM(hf_id=HF_IDS.get(variant, HF_IDS["vit-large"]), device=device)
 
@@ -38,17 +39,30 @@ class GeoSAM:
         self._processor = None
 
     def _load(self) -> None:
-        if self._model: return
-        from transformers import SamModel, SamProcessor
-        self._processor = SamProcessor.from_pretrained(self.hf_id)
-        self._model = SamModel.from_pretrained(self.hf_id).to(self.device).eval()
+        if self._model is not None:
+            return
+        import transformers
+        is_sam2 = "sam2" in self.hf_id.lower()
+        model_cls = getattr(transformers, "Sam2Model" if is_sam2 else "SamModel", None)
+        proc_cls = getattr(transformers, "Sam2Processor" if is_sam2 else "SamProcessor", None)
+        if model_cls is None or proc_cls is None:
+            raise ImportError(
+                f"transformers {transformers.__version__} has no "
+                f"{'Sam2Model' if is_sam2 else 'SamModel'}; upgrade transformers."
+            )
+        self._processor = proc_cls.from_pretrained(self.hf_id)
+        self._model = model_cls.from_pretrained(self.hf_id).to(self.device).eval()
 
     def generate_masks(self, image_path: str, output_path: str | None = None,
                         points_per_side: int = 32, min_area_m2: float = 10.0) -> dict:
         """Generate segmentation masks for a full GeoTIFF."""
         from pygeovision.labeling.sam_auto import SAMAutoLabeler
-        labeler = SAMAutoLabeler(device=self.device)
-        labeler._model = self._model if self._model else None
+        self._load()
+        labeler = SAMAutoLabeler(model=self.hf_id, device=self.device)
+        # Share the weights already in memory.  Both halves are needed: the labeler's mask
+        # generator reads the processor, and with only the model set it crashed (the error
+        # was swallowed and the result was "0 masks").
+        labeler._model, labeler._processor = self._model, self._processor
         return labeler.auto_label(image_path, output_path or "./output/sam_masks.tif",
                                    points_per_side=points_per_side, min_area_m2=min_area_m2)
 

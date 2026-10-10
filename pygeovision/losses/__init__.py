@@ -22,13 +22,14 @@ from pygeovision.losses.segmentation import (
     LovaszLoss,
     OhemCrossEntropy,
     TverskyLoss,
+    WeightedSumLoss,
 )
 
 __all__ = [
     # Segmentation
     "DiceLoss", "FocalLoss", "TverskyLoss", "ComboLoss",
     "BoundaryAwareLoss", "LovaszLoss", "OhemCrossEntropy",
-    "GeospatialMixedLoss",
+    "GeospatialMixedLoss", "WeightedSumLoss",
     # Detection
     "CIoULoss", "DIoULoss", "GIoULoss", "SIoULoss",
     # Class balance

@@ -23,16 +23,22 @@ Real, documented sources for every constant below:
   - Landsat Collection 2 QA_PIXEL bit flags (USGS spec)
   - Sentinel-2 Scene Classification Layer (SCL) class values (ESA spec)
 
-Honest limitation, unchanged from the original: Sentinel-2 L2A products
-from 2022 onward can carry a per-scene BOA_ADD_OFFSET (a processing
-baseline change) that this module does not read -- it always uses the
-older, offset-free DN/10000 formula. Correct for most scenes; a small,
-roughly constant bias for newer-baseline scenes missing the offset.
+Sentinel-2 processing baseline 04.00 (products generated from 2022-01-25
+on, including the later reprocessing of the 2015-2021 archive) stores
+reflectance as DN = 10000 * reflectance + 1000. Reflectance is therefore
+(DN - 1000) / 10000 for those scenes and DN / 10000 for older ones; see
+``sentinel2_boa_add_offset``. Ignoring the offset adds 0.1 to every band,
+which is large for dark targets (water) and flattens every normalised
+difference index.
 """
 from __future__ import annotations
 
 import logging
+import re
+from datetime import date
 from pathlib import Path
+
+from pygeovision.data._profile import writable_profile
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +121,78 @@ def identify_sensor(scene_id: str) -> tuple[bool, bool]:
 LANDSAT_SR_SCALE = 0.0000275
 LANDSAT_SR_OFFSET = -0.2
 SENTINEL2_SR_SCALE = 1.0 / 10000.0
+
+# Sentinel-2 L2A processing baseline 04.00 (operational 2022-01-25) added a
+# +1000 DN offset to the stored values (the product's BOA_ADD_OFFSET).
+SENTINEL2_BOA_ADD_OFFSET_DN = 1000
+SENTINEL2_BASELINE_04_START = date(2022, 1, 25)
+
+_DT_TOKEN = re.compile(r"^(\d{4})(\d{2})(\d{2})T\d{6}$")
+_DATE_TOKEN = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
+
+
+def _token_date(token: str) -> date | None:
+    m = _DT_TOKEN.match(token) or _DATE_TOKEN.match(token)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def sentinel2_boa_add_offset(scene_id: str) -> int:
+    """DN offset to subtract before dividing by 10000 for a Sentinel-2 L2A scene.
+
+    Returns 1000 for processing baseline >= 04.00 and 0 for older products. The
+    baseline is read from the scene id, best source first:
+
+    1. an ``_N0510_`` baseline token (ESA product names);
+    2. the product-generation timestamp (last token of a Planetary Computer id,
+       ``S2B_MSIL2A_<sensing>_R094_T30UXC_<generated>``): every product generated
+       on or after 2022-01-25 is baseline 04.00 or newer;
+    3. the acquisition date (Earth Search ids, ``S2B_30UXC_20240626_0_L2A``):
+       acquired on or after 2022-01-25 means baseline 04.00 or newer.
+
+    An older acquisition whose id carries neither a baseline nor a generation
+    time is treated as offset-free, as it was before this existed.
+    """
+    sid = scene_id or ""
+    m = re.search(r"_N(\d{2})(\d{2})(?:_|\.|$)", sid)
+    if m:
+        return SENTINEL2_BOA_ADD_OFFSET_DN if int(m.group(1)) >= 4 else 0
+
+    tokens = [t for t in re.split(r"[_.]", sid) if t]
+    stamps = [(i, _token_date(t)) for i, t in enumerate(tokens) if _DT_TOKEN.match(t)]
+    if len(stamps) >= 2 and stamps[-1][1] is not None:
+        return SENTINEL2_BOA_ADD_OFFSET_DN if stamps[-1][1] >= SENTINEL2_BASELINE_04_START else 0
+
+    for t in tokens[1:]:
+        d = _token_date(t)
+        if d is not None and d.year >= 2015:
+            return SENTINEL2_BOA_ADD_OFFSET_DN if d >= SENTINEL2_BASELINE_04_START else 0
+    return 0
+
+
+def dn_to_reflectance(dn, scene_id: str, *, is_landsat: bool):
+    """Raw digital numbers -> surface reflectance (float32, 0-1), NaN where no data.
+
+    ``dn`` is (bands, rows, cols). A pixel with DN 0 in any band is fill (both
+    Sentinel-2 and Landsat use 0), so it becomes NaN in every band instead of a
+    real-looking reflectance of 0.
+    """
+    import numpy as np
+
+    raw = np.asarray(dn)
+    fill = (raw == 0).any(axis=0)
+    out = raw.astype(np.float32)
+    if is_landsat:
+        out = out * LANDSAT_SR_SCALE + LANDSAT_SR_OFFSET
+    else:
+        out = (out - sentinel2_boa_add_offset(scene_id)) * SENTINEL2_SR_SCALE
+    out = np.clip(out, 0.0, 1.0)
+    out[:, fill] = np.nan
+    return out
 
 # Real Landsat Collection 2 QA_PIXEL bit flags (USGS Landsat Collection
 # 2 Level-2 QA band specification). Bit 0 = Fill, 1 = Dilated Cloud,
@@ -212,6 +290,17 @@ def stack_and_prepare_bands(
                     )
                     stacked[i] = dst_arr
 
+    # Where the scene really holds data (DN 0 / nodata is outside the swath or the tile), recorded before any
+    # cloud masking so that "no imagery here" can be told from "cloud here". Written next to the stack.
+    footprint = (stacked != 0)
+    if np.issubdtype(stacked.dtype, np.floating):
+        footprint &= np.isfinite(stacked)
+    nodata_value = ref_profile.get("nodata")
+    if nodata_value is not None and nodata_value == nodata_value and nodata_value != 0:
+        footprint &= (stacked != nodata_value)
+    footprint = footprint.any(axis=0)
+    footprint_profile = writable_profile(ref_profile, count=1, dtype="uint8", nodata=None, compress="lzw")
+
     # ── Radiometric scaling: raw DN -> real physical reflectance ──────
     if apply_scale:
         if not (is_landsat or is_sentinel2):
@@ -222,12 +311,7 @@ def stack_and_prepare_bands(
                 f"Pass apply_scale=False to skip scaling and get raw DN "
                 f"values instead of a silently wrong reflectance conversion."
             )
-        stacked = stacked.astype(np.float32)
-        if is_landsat:
-            stacked = stacked * LANDSAT_SR_SCALE + LANDSAT_SR_OFFSET
-        else:
-            stacked = stacked * SENTINEL2_SR_SCALE
-        stacked = np.clip(stacked, 0.0, 1.0)
+        stacked = dn_to_reflectance(stacked, scene_id, is_landsat=is_landsat)
         out_dtype = "float32"
         out_nodata = np.nan
     else:
@@ -275,15 +359,29 @@ def stack_and_prepare_bands(
             "clouds/shadows.", scene_id,
         )
 
-    ref_profile.update(count=len(selected), dtype=out_dtype, nodata=out_nodata)
+    ref_profile = writable_profile(ref_profile, count=len(selected), dtype=out_dtype, nodata=out_nodata)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    footprint_path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(footprint_path(output_path), "w", **footprint_profile) as fp_dst:
+        fp_dst.write(footprint.astype("uint8"), 1)
     with rasterio.open(output_path, "w", **ref_profile) as dst:
         dst.write(stacked)
         for i, band in enumerate(bands):
             dst.set_band_description(i + 1, band)
+        if apply_scale and is_sentinel2:
+            dst.update_tags(
+                reflectance_scale=str(SENTINEL2_SR_SCALE),
+                boa_add_offset_dn=str(sentinel2_boa_add_offset(scene_id)),
+            )
 
     return output_path
+
+
+def footprint_path(stack_path: Path | str) -> Path:
+    """The data-footprint raster of a stacked scene, in a ``footprints`` folder beside it (1 = data there)."""
+    p = Path(stack_path)
+    return p.parent / "footprints" / p.name
 
 
 def crop_to_bbox(
@@ -307,9 +405,8 @@ def crop_to_bbox(
     a clear error rather than silently producing a degenerate crop.
     """
     import rasterio
-    from rasterio.mask import mask as rio_mask
+    import numpy as np
     from rasterio.warp import transform_bounds
-    from shapely.geometry import box, mapping
 
     input_path = Path(input_path)
     if output_path is None:
@@ -335,11 +432,20 @@ def crop_to_bbox(
                 f"doesn't actually contain the requested area."
             )
 
-        geom = [mapping(box(*crop_bbox))]
-        cropped, cropped_transform = rio_mask(src, geom, crop=True)
-        out_profile = src.profile.copy()
-        out_profile.update(
-            height=cropped.shape[1], width=cropped.shape[2], transform=cropped_transform,
+        # Every pixel the box touches is kept, with its data (a masked crop blanked the edge row/column that the
+        # box only partly covers, which showed up as a strip of missing data along the AOI border).
+        from rasterio.windows import Window, from_bounds
+        win = from_bounds(left, bottom, right, top, transform=src.transform)
+        eps = 1e-6
+        c0 = max(0, int(np.floor(win.col_off + eps)))
+        r0 = max(0, int(np.floor(win.row_off + eps)))
+        c1 = min(src.width, int(np.ceil(win.col_off + win.width - eps)))
+        r1 = min(src.height, int(np.ceil(win.row_off + win.height - eps)))
+        window = Window(c0, r0, max(1, c1 - c0), max(1, r1 - r0))
+        cropped = src.read(window=window)
+        cropped_transform = src.window_transform(window)
+        out_profile = writable_profile(
+            src.profile, height=cropped.shape[1], width=cropped.shape[2], transform=cropped_transform,
         )
 
     with rasterio.open(output_path, "w", **out_profile) as dst:

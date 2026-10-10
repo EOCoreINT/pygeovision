@@ -161,6 +161,8 @@ class UncertaintyEstimator:
 
             out_profile = profile.copy()
             out_profile.update(count=len(bands), dtype="float32", compress="lzw")
+            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                out_profile.pop(_k, None)
             with rasterio.open(str(op), "w", **out_profile) as dst:
                 dst.write(np.stack(bands))
                 dst.update_tags(bands="|".join(band_names), n_mc_passes=str(self.n_passes))

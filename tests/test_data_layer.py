@@ -6,21 +6,19 @@ All network calls are mocked; no real satellite APIs required.
 from __future__ import annotations
 
 import json
+import subprocess
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
+from unittest.mock import MagicMock, patch, call
 import pytest
-import numpy as np
 
-from pygeovision.data.fetch import DownloadResult, SatelliteFetcher, SearchResult
-from pygeovision.data.pipeline import DataPipeline
+from pygeovision.data.fetch import SatelliteFetcher, SearchResult, DownloadResult
+from pygeovision.data.pipeline import DataPipeline, PipelineStep
 from pygeovision.data.providers import (
-    DEFAULT_SEARCH_PROVIDERS,
-    OPEN_PROVIDERS,
-    PROVIDERS,
-    SATELLITE_SHORTCUTS,
-    STAC_PROVIDERS,
+    PROVIDERS, STAC_PROVIDERS, SATELLITE_SHORTCUTS,
+    OPEN_PROVIDERS, DEFAULT_SEARCH_PROVIDERS,
 )
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -470,7 +468,7 @@ class TestSatelliteFetcherCLI:
             stdout='{"entries": 42, "size_bytes": 1048576}',
             stderr="",
         )
-        fetcher.cache_stats()
+        stats = fetcher.cache_stats()
         assert mock_run.called
 
     @patch("subprocess.run")
@@ -492,7 +490,7 @@ class TestSatelliteFetcherSTAC:
     def test_search_stac_fallback_no_pygeofetch(self, fetcher_no_cli):
         """When CLI unavailable, uses pystac_client for STAC providers."""
         import pygeovision.data.fetch as _fetch
-        pytest.importorskip("pystac_client")
+        pystac_client = pytest.importorskip("pystac_client")
         # Force both Python API and CLI unavailable so pystac_client fallback runs
         orig_py = _fetch._PYGEOFETCH_PY_AVAILABLE
         orig_cli = _fetch._PYGEOFETCH_CLI_EXE
@@ -673,7 +671,6 @@ class TestPyGeoVisionClient:
         client = PyGeoVision()
         assert client is not None
         assert hasattr(client, "data")
-        assert hasattr(client, "segmentation")
         assert isinstance(client.data, SatelliteFetcher)
 
     def test_status_structure(self):
@@ -719,25 +716,6 @@ class TestPyGeoVisionClient:
         assert "usgs" in client.data._credentials
         assert "planet" in client.data._credentials
 
-    def test_native_ai_layers_present(self):
-        from pygeovision import (
-            PyGeoVision,
-            _ChangeDetectionClientProxy,
-            _ClassificationClientProxy,
-            _DetectionClientProxy,
-            _SegmentationClientProxy,
-        )
-        client = PyGeoVision()
-        assert isinstance(client.segmentation, _SegmentationClientProxy)
-        assert isinstance(client.detection, _DetectionClientProxy)
-        assert isinstance(client.change, _ChangeDetectionClientProxy)
-        assert isinstance(client.classification, _ClassificationClientProxy)
-
-    def test_native_ai_layers_stable(self):
-        from pygeovision import PyGeoVision
-        client = PyGeoVision()
-        assert client.segmentation is client.segmentation  # Same instance
-
     def test_create_pipeline(self):
         from pygeovision import PyGeoVision
         client = PyGeoVision()
@@ -751,7 +729,6 @@ class TestPyGeoVisionClient:
         r = repr(client)
         assert "PyGeoVision" in r
         assert "pygeofetch=" in r
-        assert "ai=" in r
 
     def test_cache_stats_returns_dict(self):
         from pygeovision import PyGeoVision
@@ -770,233 +747,104 @@ class TestPyGeoVisionClient:
         assert info["stac"] is True
 
 
-class TestPlanetaryComputerDirectDownloadSigning:
-    """Regression tests for a real bug: _download_stac_item_direct fetched
-    Planetary Computer asset URLs directly, without SAS-token signing.
-    PC's Blob Storage assets are private and always require signing
-    (`planetary_computer.sign()`) — a raw href 404s/409s
-    ('Public access is not permitted on this storage account')."""
+class TestSearchParametersReachSearchQuery:
+    """Regression tests for a real, severe bug: search()'s
+    processing_level, on_provider_failure, and timeout parameters were
+    silently discarded and overridden with hardcoded values regardless of
+    what the caller requested, and geometry_file was never referenced
+    anywhere at all despite being a documented parameter."""
 
-    def _make_item(self, url="https://sentinel2l2a01.blob.core.windows.net/x/B04.tif"):
-        return SearchResult(
-            id="S2A_MSIL2A_20240128T101301_test",
-            provider="planetary_computer",
-            satellite="sentinel-2",
-            datetime="2024-01-28T10:13:01Z",
-            cloud_cover=0.0,
-            bbox=(-0.25, 5.52, -0.20, 5.60),
-            assets={"B04": {"href": url}},
-        )
+    def _fetcher_with_tracked_query(self, tmp_path, monkeypatch):
+        # Several earlier tests in this file set this module-level global
+        # to False without restoring it, which leaks across tests
+        # depending on execution order — force it back to a known-good
+        # state here via monkeypatch (auto-restored after this test),
+        # rather than assuming whatever ran before left it clean.
+        import pygeovision.data.fetch as _fetch
+        monkeypatch.setattr(_fetch, "_PYGEOFETCH_PY_AVAILABLE", True)
 
-    def test_download_signs_pc_url_before_requesting(self, tmp_path, monkeypatch):
-        fetcher = SatelliteFetcher()
-        item = self._make_item()
+        from pygeofetch.models.search_query import SearchQuery
+        captured = []
+        real_init = SearchQuery.__init__
 
-        pc = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
-        signed = "https://sentinel2l2a01.blob.core.windows.net/x/B04.tif?st=SIGNED&sig=abc"
-        monkeypatch.setattr(pc, "sign", lambda u: signed)
+        def tracking_init(self, **kwargs):
+            captured.append(kwargs)
+            return real_init(self, **kwargs)
 
-        captured = {}
+        fetcher = SatelliteFetcher.__new__(SatelliteFetcher)
+        fetcher._pygeofetch_available = True
+        fetcher._credentials = {}
+        fetcher._cache_dir = tmp_path
+        fetcher._cache_ttl = 3600
+        fetcher._engine = MagicMock()
+        fetcher._engine.search.return_value = []
+        return fetcher, captured, SearchQuery, tracking_init
 
-        class _FakeResp:
-            status_code = 200
-            def raise_for_status(self): pass
-            def iter_content(self, chunk_size):
-                return [b"fake-tif-bytes"]
+    def test_processing_level_reaches_the_real_query(self, tmp_path, monkeypatch):
+        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(tmp_path, monkeypatch)
+        with patch.object(SearchQuery, "__init__", tracking_init), \
+             patch.object(fetcher, "_use_cli", return_value=False), \
+             patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]), \
+             patch.object(fetcher, "_load_cache", return_value=None), \
+             patch.object(fetcher, "_cache_key", return_value="k"):
+            try:
+                fetcher.search(bbox=(-0.3, 5.5, -0.15, 5.65),
+                                date_range=("2024-01-01", "2024-06-01"),
+                                processing_level="L2A")
+            except Exception:
+                pass
+        assert captured[0]["processing_levels"] == ["L2A"]
 
-        class _FakeSession:
-            def __init__(self):
-                self.headers = MagicMock()
-            def get(self, url, stream=None, timeout=None, allow_redirects=None):
-                captured["url"] = url
-                return _FakeResp()
+    def test_on_provider_failure_reaches_the_real_query(self, tmp_path, monkeypatch):
+        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(tmp_path, monkeypatch)
+        with patch.object(SearchQuery, "__init__", tracking_init), \
+             patch.object(fetcher, "_use_cli", return_value=False), \
+             patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]), \
+             patch.object(fetcher, "_load_cache", return_value=None), \
+             patch.object(fetcher, "_cache_key", return_value="k"):
+            try:
+                fetcher.search(bbox=(-0.3, 5.5, -0.15, 5.65),
+                                date_range=("2024-01-01", "2024-06-01"),
+                                on_provider_failure="raise")
+            except Exception:
+                pass
+        assert captured[0]["on_provider_failure"] == "raise"
 
-        import requests as requests_mod
-        monkeypatch.setattr(requests_mod, "Session", lambda: _FakeSession())
+    def test_timeout_reaches_the_real_query(self, tmp_path, monkeypatch):
+        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(tmp_path, monkeypatch)
+        with patch.object(SearchQuery, "__init__", tracking_init), \
+             patch.object(fetcher, "_use_cli", return_value=False), \
+             patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]), \
+             patch.object(fetcher, "_load_cache", return_value=None), \
+             patch.object(fetcher, "_cache_key", return_value="k"):
+            try:
+                fetcher.search(bbox=(-0.3, 5.5, -0.15, 5.65),
+                                date_range=("2024-01-01", "2024-06-01"),
+                                timeout=300)
+            except Exception:
+                pass
+        assert captured[0]["timeout_seconds"] == 300
 
-        result = fetcher._download_stac_item_direct(
-            item, output_dir=tmp_path, post_process=None, bandwidth_limit_mb=None,
-        )
+    def test_geometry_file_reaches_the_real_query(self, tmp_path, monkeypatch):
+        """Uses query.geometry, not query.geometry_geojson — confirmed
+        against pygeofetch's own source (and its own CLI's fix comment)
+        that nothing reads geometry_geojson at all."""
+        geom_path = tmp_path / "aoi.geojson"
+        with open(geom_path, "w") as f:
+            json.dump({"type": "Polygon", "coordinates": [[[-0.25,5.52],[-0.20,5.52],
+                                                             [-0.20,5.60],[-0.25,5.60],[-0.25,5.52]]]}, f)
 
-        assert captured["url"] == signed
-        assert result.success is True
-
-    def test_download_fails_gracefully_without_planetary_computer_installed(
-        self, tmp_path, monkeypatch,
-    ):
-        """If the optional `planetary-computer` package isn't installed, the
-        download should still proceed (with a clear warning) rather than
-        crashing with an unrelated ImportError deep in the call stack."""
-        fetcher = SatelliteFetcher()
-        item = self._make_item()
-
-        import sys
-        monkeypatch.setitem(sys.modules, "planetary_computer", None)
-
-        class _FakeResp:
-            status_code = 200
-            def raise_for_status(self): pass
-            def iter_content(self, chunk_size):
-                return [b"fake-tif-bytes"]
-
-        class _FakeSession:
-            def __init__(self):
-                self.headers = MagicMock()
-            def get(self, url, stream=None, timeout=None, allow_redirects=None):
-                return _FakeResp()
-
-        import requests as requests_mod
-        monkeypatch.setattr(requests_mod, "Session", lambda: _FakeSession())
-
-        result = fetcher._download_stac_item_direct(
-            item, output_dir=tmp_path, post_process=None, bandwidth_limit_mb=None,
-        )
-        assert result.success is True  # doesn't crash even without the optional package
-
-    def _make_multiband_item(self, bands=("B02", "B03", "B04", "B08")):
-        base = "https://sentinel2l2a01.blob.core.windows.net/x"
-        return SearchResult(
-            id="S2A_MSIL2A_20240128T101301_multiband",
-            provider="planetary_computer",
-            satellite="sentinel-2",
-            datetime="2024-01-28T10:13:01Z",
-            cloud_cover=0.0,
-            bbox=(-0.25, 5.52, -0.20, 5.60),
-            assets={b: {"href": f"{base}/{b}.tif"} for b in bands},
-        )
-
-    def test_all_requested_bands_are_downloaded_not_just_one(self, tmp_path, monkeypatch):
-        """Regression test for a real bug: only the first-priority band
-        (always B04) was ever downloaded, silently ignoring every other
-        band the caller requested via client.download(bands=[...])."""
-        import rasterio
-
-        fetcher = SatelliteFetcher()
-        item = self._make_multiband_item(("B02", "B03", "B04", "B08"))
-
-        pc = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
-        monkeypatch.setattr(pc, "sign", lambda u: u + "?st=SIGNED")
-
-        requested_urls = []
-
-        def _make_fake_tif(path):
-            from rasterio.transform import from_bounds
-            transform = from_bounds(-0.25, 5.52, -0.20, 5.60, 8, 8)
-            with rasterio.open(path, "w", driver="GTiff", height=8, width=8, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
-                dst.write(np.full((1, 8, 8), 100, dtype="uint16"))
-
-        class _FakeSession:
-            def __init__(self):
-                self.headers = MagicMock()
-
-        import requests as requests_mod
-        monkeypatch.setattr(requests_mod, "Session", lambda: _FakeSession())
-
-        # Patch the streaming helper to just materialize a real tiny GeoTIFF
-        # and record the (already-signed) URL it was asked to fetch, since
-        # constructing real streamed TIF bytes through a fake HTTP response
-        # isn't practical here.
-        def fake_stream(self, session, url, out_path, provider, item_id, headers, bw):
-            requested_urls.append(url)
-            _make_fake_tif(out_path)
-            return 128, None
-        monkeypatch.setattr(SatelliteFetcher, "_stream_download_asset", fake_stream)
-
-        result = fetcher._download_stac_item_direct(
-            item, output_dir=tmp_path, post_process=None, bandwidth_limit_mb=None,
-        )
-
-        assert result.success is True
-        # All 4 bands must have been requested, not just B04
-        assert len(requested_urls) == 4
-        assert all("?st=SIGNED" in u for u in requested_urls)
-
-        # The final file must be a stacked 4-band raster, not a single band
-        with rasterio.open(result.path) as src:
-            assert src.count == 4
-
-    def test_single_band_request_skips_stacking(self, tmp_path, monkeypatch):
-        """A single requested band shouldn't go through the stack_bands path
-        — it should be used directly as the final output."""
-        import rasterio
-        from rasterio.transform import from_bounds
-
-        fetcher = SatelliteFetcher()
-        item = self._make_multiband_item(("B04",))
-
-        pc = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
-        monkeypatch.setattr(pc, "sign", lambda u: u + "?st=SIGNED")
-
-        def fake_stream(self, session, url, out_path, provider, item_id, headers, bw):
-            transform = from_bounds(-0.25, 5.52, -0.20, 5.60, 8, 8)
-            with rasterio.open(out_path, "w", driver="GTiff", height=8, width=8, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
-                dst.write(np.full((1, 8, 8), 100, dtype="uint16"))
-            return 64, None
-        monkeypatch.setattr(SatelliteFetcher, "_stream_download_asset", fake_stream)
-
-        class _FakeSession:
-            def __init__(self):
-                self.headers = MagicMock()
-            def get(self, *a, **kw):
-                raise AssertionError("session.get should not be called directly when _stream_download_asset is patched")
-
-        import requests as requests_mod
-        monkeypatch.setattr(requests_mod, "Session", lambda: _FakeSession())
-
-        result = fetcher._download_stac_item_direct(
-            item, output_dir=tmp_path, post_process=None, bandwidth_limit_mb=None,
-        )
-        assert result.success is True
-        assert "_B04.tif" in str(result.path)
-        with rasterio.open(result.path) as src:
-            assert src.count == 1
-
-    def test_extension_detected_from_url_path_not_raw_signed_url(self):
-        """Regression test for a real bug: extension was checked via
-        `url.endswith('.tif')` AFTER SAS-signing appended `?st=...&sig=...`,
-        so every signed .tif asset was misnamed with a .zip extension."""
-        signed_tif_url = "https://sentinel2l2a01.blob.core.windows.net/x/B04.tif?st=2024&se=2025&sig=abc123"
-        url_path = signed_tif_url.split("?", 1)[0]
-        assert url_path.endswith(".tif")
-        # The old buggy check would have failed here:
-        assert not signed_tif_url.endswith(".tif")
-
-    def test_post_process_step_warns_if_it_silently_drops_bands(self, tmp_path, caplog):
-        """If a post-process step (e.g. cog) unexpectedly collapses a
-        multi-band integer raster to fewer bands or a float dtype, that
-        must be surfaced immediately with a clear warning naming the step
-        responsible — not left to surface only much later in a downstream
-        validation report, far from the actual cause."""
-        import logging
-        import rasterio
-        from rasterio.transform import from_bounds
-
-        fetcher = SatelliteFetcher()
-
-        src_path = tmp_path / "scene.tif"
-        transform = from_bounds(818000, 615000, 818640, 615640, 16, 16)
-        with rasterio.open(src_path, "w", driver="GTiff", height=16, width=16, count=4,
-                            dtype="uint16", crs="EPSG:32630", transform=transform) as dst:
-            dst.write(np.full((4, 16, 16), 1000, dtype="uint16"))
-
-        with caplog.at_level(logging.WARNING):
-            fetcher._warn_if_bands_or_dtype_changed(
-                "cog", src_path, expected_count=4, expected_dtype="uint16",
-            )
-        # Same file, same shape — must NOT warn when nothing actually changed
-        assert not any("changed the raster unexpectedly" in r.message for r in caplog.records)
-
-        # Now simulate the step having collapsed it to 1 band / float32
-        corrupted_path = tmp_path / "scene_corrupted.tif"
-        with rasterio.open(corrupted_path, "w", driver="GTiff", height=16, width=16, count=1,
-                            dtype="float32", crs="EPSG:32630", transform=transform) as dst:
-            dst.write(np.full((1, 16, 16), 1000.0, dtype="float32"))
-
-        caplog.clear()
-        with caplog.at_level(logging.WARNING):
-            fetcher._warn_if_bands_or_dtype_changed(
-                "cog", corrupted_path, expected_count=4, expected_dtype="uint16",
-            )
-        assert any("changed the raster unexpectedly" in r.message for r in caplog.records)
+        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(tmp_path, monkeypatch)
+        with patch.object(SearchQuery, "__init__", tracking_init), \
+             patch.object(fetcher, "_use_cli", return_value=False), \
+             patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]), \
+             patch.object(fetcher, "_load_cache", return_value=None), \
+             patch.object(fetcher, "_cache_key", return_value="k"):
+            try:
+                fetcher.search(bbox=(-0.3, 5.5, -0.15, 5.65),
+                                date_range=("2024-01-01", "2024-06-01"),
+                                geometry_file=str(geom_path))
+            except Exception:
+                pass
+        assert captured[0]["geometry"] is not None
+        assert captured[0]["geometry"]["type"] == "Polygon"

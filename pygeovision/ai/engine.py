@@ -90,11 +90,31 @@ class AIEngine:
             )
         return lbl.label_tiles(tiles, output_dir=output_dir)
 
-    def train(self, model: Any, train_dataset: Any, val_dataset: Any = None, **kwargs: Any) -> Any:
-        """Train a model with GeoTrainer."""
-        from pygeovision.ai.training.trainer import GeoTrainer
-        trainer = GeoTrainer(model=model, train_dataset=train_dataset, val_dataset=val_dataset, **kwargs)
-        return trainer.fit()
+    def train(self, model: Any, train_dataset: Any = None, val_dataset: Any = None,
+              config: Any = None, **kwargs: Any) -> Any:
+        """Train a model with :class:`~pygeovision.ai.training.trainer.GeoTrainer`.
+
+        ``config`` is a ``TrainingConfig`` (or a dict of its fields). Remaining keyword arguments are
+        routed by name: ``train_loader`` / ``val_loader`` / ``loss_fn`` / ``metric_fn`` go to ``fit()``,
+        anything else must be a ``TrainingConfig`` field (unknown names raise ``TypeError``).
+        """
+        import dataclasses
+
+        from pygeovision.ai.training.trainer import GeoTrainer, TrainingConfig
+
+        fit_names = {"train_loader", "val_loader", "loss_fn", "metric_fn"}
+        fit_kwargs = {k: kwargs.pop(k) for k in list(kwargs) if k in fit_names}
+        if isinstance(config, dict):
+            kwargs = {**config, **kwargs}
+            config = None
+        if kwargs:
+            known = {f.name for f in dataclasses.fields(TrainingConfig)}
+            unknown = sorted(set(kwargs) - known)
+            if unknown:
+                raise TypeError(f"train() got unknown arguments {unknown}; not TrainingConfig fields")
+            config = dataclasses.replace(config, **kwargs) if config is not None else TrainingConfig(**kwargs)
+        trainer = GeoTrainer(model, config)
+        return trainer.fit(train_dataset=train_dataset, val_dataset=val_dataset, **fit_kwargs)
 
     def infer(self, model: Any, input_path: str, output_path: str, num_classes: int = 2, **kwargs: Any) -> Any:
         """Run tiled inference on a large GeoTIFF scene."""

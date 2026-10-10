@@ -230,6 +230,8 @@ class GLCMTexture:
 
         out_profile = profile.copy()
         out_profile.update(count=len(features), dtype="float32", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            out_profile.pop(_k, None)
         if mode == "block":
             # Output is coarser than input by `window` — scale the
             # transform accordingly so it stays correctly georeferenced,

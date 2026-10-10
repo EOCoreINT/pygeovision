@@ -113,6 +113,8 @@ class EnsembleInference:
         label = np.argmax(fused, axis=0).astype(np.uint8)
         profile.update(count=1, dtype="uint8")
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(str(output_path), "w", **profile) as dst:
             dst.write(label[np.newaxis])
 

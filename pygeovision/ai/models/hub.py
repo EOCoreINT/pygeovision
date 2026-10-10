@@ -76,45 +76,60 @@ class ModelHub:
         model_name: str,
         checkpoint: str | None = None,
         device: str = "cpu",
+        *,
+        strict: bool = True,
+        allow_fallback: bool = False,
         **model_kwargs: Any,
     ) -> Any:
-        """Build and optionally load pretrained weights for a model.
+        """Build a model and, optionally, load your trained weights into it.
 
         Args:
             model_name: Model identifier from the PyGeoVision registry.
-            checkpoint: Path to a local checkpoint, HuggingFace Hub ID,
-                or URL. If None, uses pretrained ImageNet weights where
-                available.
+            checkpoint: Path to (or Hub ID / URL of) a state dict trained for *this* architecture,
+                class count and band count. When given, the architecture is built without
+                downloading ImageNet weights (``pretrained=False``) unless you pass ``pretrained``.
             device: Compute device to load the model on.
-            **model_kwargs: Architecture kwargs (e.g. num_classes, in_channels).
+            strict: Require the checkpoint's keys to match the model exactly (default). A checkpoint
+                for a different architecture / class count / band count then raises instead of
+                silently loading nothing. Pass ``False`` only for deliberate partial loads.
+            allow_fallback: If ``model_name`` cannot be built, substitute another model of the same
+                task. **Off by default**: a different architecture is not the model you asked for,
+                and its output would look like a result. When on, the returned model carries
+                ``_pygeovision_fallback_used`` / ``_pygeovision_actual_name`` and a warning is logged.
+            **model_kwargs: Architecture kwargs (e.g. num_classes, in_channels, pretrained).
 
         Returns:
             Instantiated (and optionally weight-loaded) PyTorch model.
 
+        Raises:
+            ModelLoadError: the model could not be built (and fallback is off), or the checkpoint does
+                not match it.
+
         Example:
             >>> model = hub.load("segformer_b2", num_classes=10, in_channels=6)
-            >>> model = hub.load("unet_resnet50", checkpoint="/path/to/best.pth")
+            >>> model = hub.load("unet_resnet50", checkpoint="/path/to/best.pth", num_classes=5)
         """
         import torch
 
-        from pygeovision.ai.models.registry import registry
+        from pygeovision.core.exceptions import ModelLoadError
 
+        if checkpoint is not None:
+            model_kwargs.setdefault("pretrained", False)
         logger.info("Building model: %s", model_name)
         attempted: list[tuple[str, str]] = []  # (model_name, error) for honest reporting
         try:
-            model = self._build_with_fallback(model_name, model_kwargs, attempted)
+            model = self._build_with_fallback(model_name, model_kwargs, attempted,
+                                              allow_fallback=allow_fallback)
         except Exception as exc:
             attempts_str = "; ".join(f"{n}: {e}" for n, e in attempted)
-            raise RuntimeError(
-                f"Could not build '{model_name}' or any real, related fallback model "
-                f"for the same task. Attempts: {attempts_str}"
+            raise ModelLoadError(
+                f"Could not build '{model_name}' ({attempts_str or exc}). Nothing was substituted"
+                + ("" if allow_fallback else "; pass allow_fallback=True to accept a different "
+                                              "same-task architecture.")
             ) from exc
 
-        if len(attempted) > 1:
-            # A fallback was genuinely used -- log clearly and mark the
-            # model so callers can introspect what actually got built,
-            # rather than silently returning something other than what
-            # was requested with no visible trace of the substitution.
+        if len(attempted) > 1 and attempted[-1][1] == "succeeded" and attempted[-1][0] != model_name:
+            # Only reachable with allow_fallback=True.
             logger.warning(
                 "Requested model '%s' failed to build (%s) -- fell back to "
                 "real, same-task model '%s' instead.",
@@ -130,7 +145,7 @@ class ModelHub:
         if checkpoint is not None:
             ckpt_path = self._resolve_checkpoint(checkpoint, model_name)
             logger.info("Loading checkpoint from %s", ckpt_path)
-            state = torch.load(ckpt_path, map_location=device)
+            state = torch.load(ckpt_path, map_location=device, weights_only=True)
 
             # Handle common checkpoint formats
             if isinstance(state, dict):
@@ -139,7 +154,14 @@ class ModelHub:
                         state = state[key]
                         break
 
-            missing, unexpected = model.load_state_dict(state, strict=False)
+            try:
+                missing, unexpected = model.load_state_dict(state, strict=strict)
+            except RuntimeError as exc:
+                raise ModelLoadError(
+                    f"checkpoint {ckpt_path} does not match '{model_name}' "
+                    f"({model_kwargs.get('num_classes', '?')} classes, "
+                    f"{model_kwargs.get('in_channels', '?')} bands): {str(exc)[:400]}"
+                ) from exc
             if missing:
                 logger.warning("Missing keys when loading checkpoint: %s", missing[:5])
             if unexpected:
@@ -151,6 +173,7 @@ class ModelHub:
 
     def _build_with_fallback(
         self, model_name: str, model_kwargs: dict[str, Any], attempted: list[tuple[str, str]],
+        allow_fallback: bool = True,
     ) -> Any:
         """Build model_name, falling back to real, same-task alternatives
         on genuine build failure (not just "name not found").
@@ -178,6 +201,9 @@ class ModelHub:
                 return get_model(model_name, **model_kwargs)
             except Exception as exc2:
                 attempted.append((model_name, str(exc2)))
+
+        if not allow_fallback:
+            raise RuntimeError(f"'{model_name}' failed to build")
 
         # Real, same-task fallback: determine the requested model's real
         # task from whichever registry actually has an entry for it, then

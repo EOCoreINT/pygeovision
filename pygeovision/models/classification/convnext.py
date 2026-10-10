@@ -1,4 +1,16 @@
-"""convnext — classification architecture. Delegates to registry.get_model() for construction."""
-from pygeovision.models.registry import get_model, model_registry
+"""ConvNeXt scene classifiers (timm)."""
+from __future__ import annotations
 
-__all__ = ["get_model", "model_registry"]
+from typing import Any
+
+from pygeovision.models.classification._timm import build_timm_classifier
+
+_IDS = {"t": "convnext_tiny", "s": "convnext_small", "b": "convnext_base", "l": "convnext_large"}
+
+
+def build_convnext(variant: str = "t", num_classes: int = 10, in_channels: int = 4,
+                   pretrained: bool = True, **kwargs: Any) -> Any:
+    """ConvNeXt tiny/small/base/large (``"t"|"s"|"b"|"l"``) classifier."""
+    if variant not in _IDS:
+        raise ValueError(f"variant must be one of {sorted(_IDS)}, got {variant!r}")
+    return build_timm_classifier(_IDS[variant], num_classes, in_channels, pretrained, **kwargs)

@@ -164,11 +164,6 @@ class BatchInferenceEngine:
         splits = [input_files[i::len(gpu_ids)] for i in range(len(gpu_ids))]
 
         def _gpu_worker(files, gpu_id):
-            BatchInferenceEngine(
-                self.model, device=f"cuda:{gpu_id}",
-                n_workers=2, chip_size=self.chip_size,
-                overlap=self.overlap, num_classes=self.num_classes,
-            )
             results = {"succeeded": [], "failed": []}
             for f in files:
                 out = Path(output_dir) / Path(f).name

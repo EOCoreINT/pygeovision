@@ -24,6 +24,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from pygeovision.core.exceptions import ModelLoadError
+
 logger = logging.getLogger(__name__)
 
 # Standard transformers-compatible CLIP repos.
@@ -64,6 +66,8 @@ class CLIPGeo:
     # Kept for backwards compatibility with any code reading HF_MODELS
     # directly — only the genuinely transformers-compatible entries.
     HF_MODELS = dict(_TRANSFORMERS_HF_MODELS)
+    # open_clip-format checkpoints (RemoteCLIP, GeoRSCLIP): name -> (architecture, repo, file)
+    OPENCLIP_CHECKPOINTS = dict(_OPENCLIP_CHECKPOINTS)
 
     def __init__(self, model: str = "openclip-b32", device: str | None = None,
                  cache_dir: str | None = None) -> None:
@@ -92,8 +96,8 @@ class CLIPGeo:
     def _load_transformers(self, hf_id_override: str | None = None) -> None:
         try:
             from transformers import CLIPModel, CLIPProcessor
-        except ImportError:
-            raise ImportError("transformers required: pip install transformers")
+        except ImportError as exc:
+            raise ImportError("transformers required: pip install transformers") from exc
         hf_id = hf_id_override or _TRANSFORMERS_HF_MODELS[self.model_name]
         self._processor = CLIPProcessor.from_pretrained(hf_id)
         self._model = CLIPModel.from_pretrained(hf_id).to(self.device).eval()
@@ -102,15 +106,15 @@ class CLIPGeo:
     def _load_open_clip(self) -> None:
         try:
             import open_clip
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
                 "open_clip_torch required for RemoteCLIP/GeoRSCLIP: "
                 "pip install open_clip_torch"
-            )
+            ) from exc
         try:
             from huggingface_hub import hf_hub_download
-        except ImportError:
-            raise ImportError("huggingface_hub required: pip install huggingface_hub")
+        except ImportError as exc:
+            raise ImportError("huggingface_hub required: pip install huggingface_hub") from exc
         import torch
 
         arch, repo_id, filename = _OPENCLIP_CHECKPOINTS[self.model_name]
@@ -121,12 +125,16 @@ class CLIPGeo:
         if isinstance(state_dict, dict) and "state_dict" in state_dict:
             state_dict = state_dict["state_dict"]
         msg = model.load_state_dict(state_dict, strict=False)
-        if msg.missing_keys or msg.unexpected_keys:
-            logger.warning(
-                "%s: checkpoint load had %d missing / %d unexpected keys — "
-                "verify the checkpoint matches architecture %r.",
-                self.model_name, len(msg.missing_keys), len(msg.unexpected_keys), arch,
-            )
+        if msg.missing_keys:
+            # Missing keys are layers left at random initialisation -- the model would "work"
+            # and give meaningless similarities.  Never hand that back as RemoteCLIP.
+            raise ModelLoadError(
+                f"{self.model_name}: checkpoint does not match architecture {arch!r}; "
+                f"{len(msg.missing_keys)} layer(s) would stay randomly initialised "
+                f"(first: {msg.missing_keys[:3]}).")
+        if msg.unexpected_keys:
+            logger.warning("%s: %d unexpected checkpoint key(s) ignored (first: %s).",
+                           self.model_name, len(msg.unexpected_keys), msg.unexpected_keys[:3])
         self._model = model.to(self.device).eval()
         self._preprocess = preprocess
         self._tokenizer = open_clip.get_tokenizer(arch)
@@ -174,10 +182,13 @@ class CLIPGeo:
 
     def embed_image(self, image_path: str) -> Any:
         """Get a normalised CLIP image embedding for semantic search."""
+        return self.embed_pil(self._load_image(image_path))
+
+    def embed_pil(self, img: Any) -> Any:
+        """Normalised embedding of a PIL image (``(D,)``), for callers that already hold pixels."""
         import torch
         import torch.nn.functional as F
         self._load()
-        img = self._load_image(image_path)
 
         if self._backend == "transformers":
             inputs = self._processor(images=img, return_tensors="pt").to(self.device)
@@ -221,7 +232,8 @@ class CLIPGeo:
                 img_emb = self.embed_image(str(p))
                 score = float(np.dot(query_emb, img_emb))
                 results.append({"path": str(p), "score": round(score, 4)})
-            except Exception:
+            except Exception as exc:
+                logger.warning("CLIP search: skipped %s (%s: %s)", p, type(exc).__name__, exc)
                 continue
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]

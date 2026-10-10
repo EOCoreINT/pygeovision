@@ -112,7 +112,7 @@ class TestSentinel2RadiometricScaling:
         pipeline = _make_pipeline()
         size = 20
         transform = from_bounds(-74.1, 40.6, -73.7, 40.9, size, size)
-        known_dn = 500  # reflectance = DN/10000 = 0.05
+        known_dn = 500  # pre-2022 baseline: reflectance = DN/10000 = 0.05 (2022+ scenes also subtract 1000)
         asset_paths = {}
         for key in ["B04", "B03", "B02"]:
             p = tmp_path / f"{key}.tif"
@@ -123,7 +123,7 @@ class TestSentinel2RadiometricScaling:
 
         stack_path = pipeline._stack_bands(
             asset_paths, tmp_path / "s2_stack.tif", bands=("red", "green", "blue"),
-            scene_id="S2A_MSIL2A_20240615T153941_R011_T18TXL", apply_cloud_mask=False,
+            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL", apply_cloud_mask=False,
         )
         with rasterio.open(stack_path) as src:
             data = src.read()

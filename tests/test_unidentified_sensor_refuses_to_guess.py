@@ -87,7 +87,7 @@ class TestUnidentifiedSensorRefusesToGuess:
 
         result = pipeline._stack_bands(
             asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="S2A_MSIL2A_20240615T153941_R011_T18TXL", apply_cloud_mask=False,
+            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL", apply_cloud_mask=False,
         )
         with rasterio.open(result) as src:
             data = src.read()

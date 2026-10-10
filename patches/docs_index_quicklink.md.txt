@@ -1,0 +1,1 @@
+- [Object-Based Image Analysis](obia/index.md) — segmentation, object features, rule/fuzzy/supervised classification, object-level accuracy, with a teaching guide

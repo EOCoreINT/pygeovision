@@ -1,117 +1,111 @@
-"""Tests confirming the final 10 pipelines are honest about not being
-implemented, completing this audit's full pass over all 25 originally
-generic _make_simple stubs (13 converted to real implementations, 12
-converted to honest, specific NotImplementedError -- zero remain as
-silent fake-success stubs).
+"""Tests confirming the real, current, honest state of the pipelines this
+audit's earlier round left as NotImplementedError stubs.
 
-Each of these 10 has a genuinely different, specific reason it wasn't
-implemented -- not a copy-pasted excuse:
-- air_quality_index, dust_storm_tracking: no real atmospheric data
-  provider exists in pygeofetch at all (confirmed by search)
-- solar_potential, archaeological_site: real DEM data source exists
-  (pygeofetch's OpentopographyProvider), but the required algorithm
-  (solar irradiance modeling / relief-model interpretation) is
-  genuinely complex, specialized work this cycle didn't implement
-- mine_detection, powerline_extraction, construction_progress,
-  aquaculture_mapping: need specialized trained detectors or
-  classifiers that don't exist in this codebase
-- reef_bleaching: needs real bathymetric water-column correction to
-  be reliable; a naive threshold would be noise-dominated
-- wind_farm_siting: needs real meteorological data, not satellite
-  imagery -- a fundamentally different data domain
+This supersedes an earlier version of this test file that documented a
+prior state: at that point, 10 pipelines were honest NotImplementedError
+stubs. In a later audit round, 9 of those 10 were given real, verified
+implementations (Horn's method slope/aspect for solar_potential, a real
+Local Relief Model for archaeological_site, real shape-fill-ratio
+classification for aquaculture_mapping, real size-filtered land-cover
+transitions for mine_detection/construction_progress, real NDVI-gap +
+shape-elongation detection for powerline_extraction, a real bi-temporal
+brightness-anomaly proxy for reef_bleaching, a real terrain/land-use
+suitability screen for wind_farm_siting, and a real visible-band haze
+proxy for dust_storm_tracking) -- each verified against synthetic ground
+truth or independent physical calculation at the time, not just written
+and assumed correct.
+
+Only air_quality_index remains a deliberate stub, for a different,
+specific reason than "no data provider exists" (which was true, but is
+not the deciding reason): the same haze-proxy technique used for
+dust_storm_tracking would risk being read as calibrated health guidance
+under this specific name, and no real, calibrated atmospheric-composition
+data source exists in this codebase's real dependencies to justify that
+framing even if the technique itself were reused.
 """
 import pytest
 from unittest.mock import MagicMock
 
 
-ALL_TEN = [
-    ("AirQualityIndexPipeline", "air_quality_index"),
-    ("DustStormTrackingPipeline", "dust_storm_tracking"),
-    ("SolarPotentialPipeline", "solar_potential"),
-    ("MineDetectionPipeline", "mine_detection"),
-    ("PowerlineExtractionPipeline", "powerline_extraction"),
-    ("AquacultureMappingPipeline", "aquaculture_mapping"),
-    ("ConstructionProgressPipeline", "construction_progress"),
-    ("ReefBleachingPipeline", "reef_bleaching"),
-    ("ArchaeologicalSitePipeline", "archaeological_site"),
-    ("WindFarmSitingPipeline", "wind_farm_siting"),
+NOW_REAL = [
+    "DustStormTrackingPipeline", "SolarPotentialPipeline", "MineDetectionPipeline",
+    "PowerlineExtractionPipeline", "AquacultureMappingPipeline",
+    "ConstructionProgressPipeline", "ReefBleachingPipeline",
+    "ArchaeologicalSitePipeline", "WindFarmSitingPipeline",
 ]
 
 
-class TestAllTenAreHonest:
-    @pytest.mark.parametrize("class_name,expected_name", ALL_TEN)
-    def test_raises_not_implemented_rather_than_fake_success(self, class_name, expected_name):
+class TestNineNowHaveRealImplementations:
+    """These 9 were honest NotImplementedError stubs at one point in this
+    audit; verify they no longer are, and their descriptions honestly
+    reflect that (say what they really do, not "NOT IMPLEMENTED")."""
+
+    @pytest.mark.parametrize("class_name", NOW_REAL)
+    def test_description_no_longer_claims_not_implemented(self, class_name):
+        import pygeovision.ai.pipelines.domains as domains
+        cls = getattr(domains, class_name)
+        assert "NOT IMPLEMENTED" not in cls.description, (
+            f"{class_name} has a real implementation now -- its description "
+            f"should say what it actually does, not claim it's unimplemented."
+        )
+        assert cls.description.startswith("Real "), (
+            f"{class_name}'s real description should be explicit that this "
+            f"is a genuine implementation, consistent with every other real "
+            f"pipeline's description convention in this codebase."
+        )
+
+    @pytest.mark.parametrize("class_name", NOW_REAL)
+    def test_run_does_not_raise_not_implemented(self, class_name, tmp_path):
+        """A real implementation may still fail for other real reasons
+        (no imagery found, invalid input) -- the one thing it must not do
+        is raise NotImplementedError, which would mean it's still a stub
+        despite its description claiming otherwise."""
         import pygeovision.ai.pipelines.domains as domains
         cls = getattr(domains, class_name)
         pipeline = cls(MagicMock())
+        try:
+            pipeline.run(bbox=(0, 0, 1, 1), output_dir=str(tmp_path))
+        except NotImplementedError:
+            pytest.fail(
+                f"{class_name}.run() raised NotImplementedError -- its "
+                f"description claims a real implementation, but the code "
+                f"doesn't match that claim."
+            )
+        except Exception:
+            pass  # any other real failure (mocked client, no real data) is fine
+
+
+class TestAirQualityIndexStillHonestlyUnimplemented:
+    """The one pipeline that's still a deliberate stub, and why."""
+
+    def test_raises_not_implemented(self):
+        import pygeovision.ai.pipelines.domains as domains
+        pipeline = domains.AirQualityIndexPipeline(MagicMock())
         with pytest.raises(NotImplementedError):
             pipeline.run(bbox=(0, 0, 1, 1), output_dir="./out")
 
-    @pytest.mark.parametrize("class_name,expected_name", ALL_TEN)
-    def test_registered_under_the_real_expected_name(self, class_name, expected_name):
+    def test_description_says_not_implemented(self):
         import pygeovision.ai.pipelines.domains as domains
-        cls = getattr(domains, class_name)
-        assert cls.name == expected_name
-
-    @pytest.mark.parametrize("class_name,expected_name", ALL_TEN)
-    def test_description_does_not_claim_it_works(self, class_name, expected_name):
-        import pygeovision.ai.pipelines.domains as domains
-        cls = getattr(domains, class_name)
-        assert "NOT IMPLEMENTED" in cls.description
-
-    @pytest.mark.parametrize("class_name,expected_name", ALL_TEN)
-    def test_registry_points_to_the_real_class_not_a_generic_stub(self, class_name, expected_name):
-        import pygeovision.ai.pipelines.domains as domains
-        registered_cls = domains._PIPELINE_REGISTRY[expected_name]
-        assert registered_cls.__name__ == class_name
-
-    def test_each_has_a_genuinely_distinct_reason_not_copy_pasted(self):
-        """Confirms the 10 error messages are actually different from
-        each other, not a templated excuse repeated 10 times."""
-        import pygeovision.ai.pipelines.domains as domains
-        reasons = set()
-        for class_name, _ in ALL_TEN:
-            cls = getattr(domains, class_name)
-            reasons.add(cls._REAL_REASON)
-        assert len(reasons) == len(ALL_TEN), "expected 10 genuinely distinct reasons, found duplicates"
+        assert "NOT IMPLEMENTED" in domains.AirQualityIndexPipeline.description
 
 
 class TestFullAuditComplete:
-    """The overall completion check for this multi-turn audit: zero
-    _make_simple() calls remain among the 51 registered pipelines."""
+    """The overall pipeline count, corrected for InSAR removal (a later,
+    separate audit decision than the stub-implementation work above):
+    two InSAR-dependent pipelines (permafrost_thaw, dam_safety) were
+    removed from scope entirely, not converted to stubs or
+    implementations -- 51 - 2 = 49."""
+
+    def test_all_49_pipelines_registered(self):
+        from pygeovision.ai.pipelines.domains import list_pipelines
+        names = list_pipelines()
+        assert len(names) == 49
+        assert "permafrost_thaw" not in names, "Removed with InSAR support"
+        assert "dam_safety" not in names, "Removed with InSAR support"
 
     def test_zero_generic_stub_calls_remain(self):
         import inspect
         import pygeovision.ai.pipelines.domains as domains
         source = inspect.getsource(domains)
-        # Only the function definition itself should remain -- zero calls
         call_count = source.count("_make_simple(") - source.count("def _make_simple(")
         assert call_count == 0
-
-    def test_all_51_pipelines_still_registered(self):
-        from pygeovision.ai.pipelines.domains import list_pipelines
-        assert len(list_pipelines()) == 51
-
-    def test_thirteen_real_plus_twelve_honest_equals_twenty_five(self):
-        """Sanity check on this audit's own accounting: 10 original +
-        13 real conversions + 12 honest not-implemented = 25 (the
-        original domains.py-registered count, before the 10 originally-
-        real named classes some of which had their own separate bugs
-        -- see the Tier 3 sweep, not yet done)."""
-        real_conversions = [
-            "WildfireSeverityPipeline", "GlacierMonitoringPipeline", "SnowCoverPipeline",
-            "WetlandMappingPipeline", "UrbanHeatIslandPipeline", "ParkingOccupancyPipeline",
-            "PortMonitoringPipeline", "LandcoverChangePipeline", "OilSpillDetectionPipeline",
-            "MangroveMappingPipeline", "PipelineLeakDetectionPipeline",
-            "CropYieldForecastPipeline", "BiodiversityHotspotPipeline",
-        ]
-        honest_not_implemented = [
-            "PermafrostThawPipeline", "DamSafetyPipeline",
-            "AirQualityIndexPipeline", "DustStormTrackingPipeline", "SolarPotentialPipeline",
-            "MineDetectionPipeline", "PowerlineExtractionPipeline", "AquacultureMappingPipeline",
-            "ConstructionProgressPipeline", "ReefBleachingPipeline", "ArchaeologicalSitePipeline",
-            "WindFarmSitingPipeline",
-        ]
-        assert len(real_conversions) == 13
-        assert len(honest_not_implemented) == 12
-        assert len(real_conversions) + len(honest_not_implemented) == 25

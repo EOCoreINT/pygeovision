@@ -149,7 +149,16 @@ class PredictionValidator:
         with rasterio.open(ground_truth_path) as src:
             gt = src.read(1).astype(np.int64)
             if gt.shape != pred.shape:
-                # Resample GT to match prediction shape
+                # Real bug fix, confirmed by direct testing: dst_transform
+                # below (pred_transform) is expressed in the PREDICTION's
+                # own CRS, not the ground truth's -- passing
+                # dst_crs=gt_src.crs here was internally inconsistent
+                # whenever the two rasters genuinely differ in CRS, and
+                # silently misaligned the resampled result (confirmed:
+                # two real, correctly-aligned all-label-1 rasters in
+                # different CRS reported 0% accuracy instead of ~100%
+                # before this fix). dst_crs must match dst_transform's
+                # own CRS, i.e. the prediction's.
                 from rasterio.warp import reproject
                 gt_resampled = np.zeros(pred.shape, dtype=np.int64)
                 with rasterio.open(ground_truth_path) as gt_src:
@@ -159,7 +168,7 @@ class PredictionValidator:
                         src_transform=gt_src.transform,
                         src_crs=gt_src.crs,
                         dst_transform=pred_transform,
-                        dst_crs=gt_src.crs,
+                        dst_crs=pred_profile["crs"],
                         resampling=Resampling.nearest,
                     )
                 gt = gt_resampled
@@ -172,6 +181,8 @@ class PredictionValidator:
             output_error_map = Path(output_error_map)
             output_error_map.parent.mkdir(parents=True, exist_ok=True)
             pred_profile.update(dtype="uint8", count=1, compress="lzw")
+            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                pred_profile.pop(_k, None)
             with rasterio.open(output_error_map, "w", **pred_profile) as dst:
                 dst.write(error_map[np.newaxis, ...])
             logger.info("Error map saved to %s", output_error_map)

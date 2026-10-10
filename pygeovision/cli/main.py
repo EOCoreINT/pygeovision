@@ -26,6 +26,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -33,12 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 def _setup_logging(verbose: bool) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    from pygeovision._logging import configure_logging
+
+    configure_logging(logging.DEBUG if verbose else logging.INFO, datefmt="%H:%M:%S")
 
 
 @click.group()
@@ -187,11 +185,9 @@ def data_search(bbox, date_str, start_date, end_date, providers, satellite,
     if date_str:
         if "/" in date_str:
             start, end = date_str.split("/", 1)
-        elif len(date_str) == 7:  # YYYY-MM
-            start = f"{date_str}-01"
-            end = f"{date_str}-28"
-        else:
-            start = end = date_str
+        else:                     # YYYY-MM (whole month) or YYYY-MM-DD
+            from pygeovision.data._dates import date_window
+            start, end = date_window(date_str)
     else:
         start = start_date or "2024-01-01"
         end = end_date or "2024-12-31"
@@ -318,8 +314,8 @@ def data_download(search_file, bbox, date_str, providers, output, parallel,
         fetcher = SatelliteFetcher()
         items = fetcher._parse_stac_geojson_file(Path(search_file))
     elif bbox and date_str:
-        start = f"{date_str}-01" if len(date_str) == 7 else date_str
-        end = f"{date_str}-28" if len(date_str) == 7 else date_str
+        from pygeovision.data._dates import date_window
+        start, end = date_window(date_str)
         prov_list = [p.strip() for p in providers.split(",")] if providers else None
         items = client.search(
             bbox=tuple(bbox), date_range=(start, end), providers=prov_list
@@ -359,6 +355,8 @@ def data_download(search_file, bbox, date_str, providers, output, parallel,
         click.echo(f"✗ {fail} failed", err=True)
     for r in results:
         click.echo(f"  {r}")
+    if fail:
+        sys.exit(1)
 
 
 @data.group()
@@ -395,11 +393,17 @@ def data_pipeline_run(yaml_file, step):
     from pygeovision import PyGeoVision
     client = PyGeoVision()
     click.echo(f"Running pipeline: {yaml_file}")
-    result = client.run_pipeline_yaml(yaml_file, step=step)
+    try:
+        result = client.run_pipeline_yaml(yaml_file, step=step)
+    except Exception as exc:  # noqa: BLE001 -- bad YAML, unknown step, missing credentials ...
+        raise click.ClickException(str(exc)) from exc
     if result.get("success"):
-        click.echo("✓ Pipeline completed successfully.")
+        click.echo(f"✓ Pipeline completed successfully ({result.get('duration_seconds', 0):.1f}s).")
+        for st in result.get("steps", []):
+            click.echo(f"  {st['step']}: {st['status']}")
     else:
-        click.echo(f"✗ Pipeline failed: {result.get('stderr', '')[:300]}", err=True)
+        msg = result.get("error") or result.get("stderr") or "see log"
+        click.echo(f"✗ Pipeline failed: {str(msg)[:300]}", err=True)
         sys.exit(1)
 
 
@@ -429,7 +433,8 @@ def pipeline_schedule(yaml_file, name, cron):
     if ok:
         click.echo(f"✓ Pipeline scheduled: {name or yaml_file}")
     else:
-        click.echo("✗ Scheduling failed (pygeofetch CLI required)", err=True)
+        click.echo("✗ Scheduling failed: the pipeline YAML is invalid (see the log line above)", err=True)
+        sys.exit(1)
 
 
 @pipeline.command("list")
@@ -442,7 +447,7 @@ def pipeline_list():
         click.echo("No scheduled pipelines.")
     else:
         for p in pipelines:
-            click.echo(f"  {p.get('name', 'unnamed')}: {p.get('schedule', 'no schedule')}")
+            click.echo(f"  {p.get('name', 'unnamed')}: {p.get('schedule') or 'no cron (manual)'}  [{p.get('file', '')}]")
 
 
 @pipeline.command("history")
@@ -456,7 +461,9 @@ def pipeline_history(limit):
         click.echo("No pipeline history.")
     else:
         for run in history:
-            click.echo(f"  {run}")
+            mark = "✓" if run.get("success") else "✗"
+            click.echo(f"  {mark} {run.get('started_at', '?')}  {run.get('pipeline')}  "
+                       f"{run.get('duration_seconds', 0):.1f}s" + (f"  {run['error']}" if run.get("error") else ""))
 
 
 @data.group()
@@ -534,12 +541,41 @@ def ai() -> None:
     """
 
 
+def _load_user_model(model, checkpoint, num_classes, in_channels, raster=None):
+    """Build ``model`` and load the user's trained ``checkpoint`` into it, strictly.
+
+    Inference CLI commands run *your* trained network: the registry ships architectures, not trained
+    weights, so without ``--checkpoint`` an architecture would answer with random output that looks
+    like a result. No model is substituted and a mismatching checkpoint fails loudly.
+    """
+    if not checkpoint:
+        raise click.UsageError(
+            "--checkpoint is required: PyGeoVision ships architectures, not trained weights. Train one "
+            "(pygeovision.ai.training.trainer.GeoTrainer) on labelled chips of your area and pass "
+            "its .pth here; it must match --model, --classes/--num-classes and the band count.")
+    if in_channels is None:
+        if raster is None:
+            raise click.UsageError("--in-channels is required (could not infer the band count)")
+        import rasterio
+        with rasterio.open(raster) as src:
+            in_channels = src.count
+    from pygeovision.ai.models.hub import ModelHub
+    try:
+        return ModelHub().load(model, checkpoint=str(checkpoint), num_classes=num_classes,
+                               in_channels=in_channels, device="cpu")
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(str(exc)) from exc
+
+
 @ai.command("segment")
 @click.argument("target", type=click.Choice(["buildings", "water", "sam", "custom"]))
 @click.option("--input", "-i", "input_path", required=True, type=click.Path(exists=True))
 @click.option("--output", "-o", required=True, help="Output mask GeoTIFF.")
-@click.option("--model", default=None, help="Model name or HuggingFace Hub ID (target=custom).")
-def ai_segment(target, input_path, output, model):
+@click.option("--model", default=None, help="Registry model name (target=custom), e.g. unet_resnet50.")
+@click.option("--checkpoint", type=click.Path(exists=True), default=None,
+              help="Your trained weights for --model (target=custom; required there).")
+@click.option("--num-classes", default=2, show_default=True, help="Classes the checkpoint was trained for.")
+def ai_segment(target, input_path, output, model, checkpoint, num_classes):
     """Segment geospatial features natively.
 
     \b
@@ -562,7 +598,10 @@ def ai_segment(target, input_path, output, model):
         if not model:
             click.echo("--model required for custom segmentation", err=True)
             sys.exit(1)
-        client.segmentation.custom(input_path, model, output_path=output)
+        m = _load_user_model(model, checkpoint, num_classes, None, raster=input_path)
+        res = client.segmentation.custom(input_path, m, output_path=output, num_classes=num_classes)
+        if isinstance(res, dict) and res.get("success") is False:
+            raise click.ClickException(str(res.get("error")))
 
     click.echo(f"✓ Segmentation complete → {output}")
 
@@ -571,8 +610,11 @@ def ai_segment(target, input_path, output, model):
 @click.argument("target", type=click.Choice(["generic", "ships", "cars", "custom"]))
 @click.option("--input", "-i", "input_path", required=True, type=click.Path(exists=True))
 @click.option("--output", "-o", required=True, help="Output detections GeoTIFF/GeoJSON.")
-@click.option("--model", default=None, help="Model path or Hub ID (target=custom).")
-def ai_detect(target, input_path, output, model):
+@click.option("--model", default=None, help="Registry model name (target=custom).")
+@click.option("--checkpoint", type=click.Path(exists=True), default=None,
+              help="Your trained weights for --model (target=custom; required there).")
+@click.option("--num-classes", default=2, show_default=True, help="Classes the checkpoint was trained for.")
+def ai_detect(target, input_path, output, model, checkpoint, num_classes):
     """Detect objects in satellite/aerial imagery using native YOLO.
 
     \b
@@ -595,7 +637,10 @@ def ai_detect(target, input_path, output, model):
         if not model:
             click.echo("--model required for custom detection", err=True)
             sys.exit(1)
-        client.detection.custom(input_path, model, output_path=output)
+        m = _load_user_model(model, checkpoint, num_classes, None, raster=input_path)
+        res = client.detection.custom(input_path, m, output_path=output, num_classes=num_classes)
+        if isinstance(res, dict) and res.get("success") is False:
+            raise click.ClickException(str(res.get("error")))
 
     click.echo(f"✓ Detection complete → {output}")
 
@@ -631,22 +676,53 @@ def ai_classify(mode, input_path, classes, output):
 @click.option("--before", required=True, type=click.Path(exists=True), help="Pre-event raster.")
 @click.option("--after", required=True, type=click.Path(exists=True), help="Post-event raster.")
 @click.option("--output", "-o", required=True, help="Output change mask GeoTIFF.")
-@click.option("--method", default="changeformer", show_default=True,
-              type=click.Choice(["changeformer", "spectral_diff"]))
-def ai_change(before, after, output, method):
-    """Bi-temporal change detection (native ChangeFormer, with a
-    dependency-free spectral-diff fallback).
+@click.option("--method", default="spectral_diff", show_default=True,
+              type=click.Choice(["spectral_diff", "changeformer", "bit", "dsamnet"]),
+              help="spectral_diff = change vector analysis + Otsu (no weights). The others run a "
+                   "siamese network and need --checkpoint.")
+@click.option("--checkpoint", type=click.Path(exists=True), default=None,
+              help="Trained weights (required for changeformer / bit / dsamnet).")
+@click.option("--num-classes", default=2, show_default=True, help="Network output classes.")
+@click.option("--min-magnitude", type=float, default=None,
+              help="spectral_diff only: absolute magnitude floor, in the raster's units.")
+def ai_change(before, after, output, method, checkpoint, num_classes, min_magnitude):
+    """Bi-temporal change detection.
+
+    The default is change vector analysis with an Otsu threshold; it needs no
+    weights. The network methods refuse to run without --checkpoint rather than
+    returning an untrained model's output.
 
     \b
     Example:
-        pygeovision ai change --before 2020.tif --after 2024.tif --output change.tif
+        pygeovision ai change --before 2020.tif --after 2024.tif -o change.tif
+        pygeovision ai change --before a.tif --after b.tif -o c.tif \\
+            --method changeformer --checkpoint cf.pth
     """
     from pygeovision import PyGeoVision
     client = PyGeoVision()
 
     click.echo(f"Running {method} change detection...")
-    client.change.detect(before, after, output_path=output, method=method)
+    kw = {}
+    if method == "spectral_diff":
+        if checkpoint:
+            raise click.UsageError("--checkpoint only applies to the network methods")
+        if min_magnitude is not None:
+            kw["min_magnitude"] = min_magnitude
+    else:
+        if min_magnitude is not None:
+            raise click.UsageError("--min-magnitude only applies to --method spectral_diff")
+        kw.update(checkpoint=checkpoint, num_classes=num_classes)
+    try:
+        result = client.change.detect(before, after, output_path=output, method=method, **kw)
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if isinstance(result, dict) and result.get("error"):
+        raise click.ClickException(str(result["error"]))
     click.echo(f"✓ Change detection complete → {output}")
+    if isinstance(result, dict):
+        for k in ("threshold", "change_fraction", "change_pct", "valid_fraction"):
+            if k in result:
+                click.echo(f"  {k}: {result[k]}")
 
 
 @ai.command("train")
@@ -674,13 +750,13 @@ def ai_train(task, data_dir, output, num_classes, epochs, backbone):
     click.echo(f"  Data: {data_dir} | Classes: {num_classes} | Epochs: {epochs} | Backbone: {backbone}")
 
     cfg = TrainingConfig(task=task, num_classes=num_classes, max_epochs=epochs)
-    click.echo(f"✓ Config ready. This command does NOT train anything itself -- build "
-               f"your model with the chosen backbone, then train it yourself:")
-    click.echo(f"    from pygeovision.ai.training.trainer import GeoTrainer")
+    click.echo("✓ Config ready. This command does NOT train anything itself -- build "
+               "your model with the chosen backbone, then train it yourself:")
+    click.echo("    from pygeovision.ai.training.trainer import GeoTrainer")
     click.echo(f"    model = get_model({backbone!r}, num_classes={num_classes}, pretrained=True)")
-    click.echo(f"    # To finetune from an existing checkpoint instead of pretrained weights:")
-    click.echo(f"    # cfg.checkpoint_path = '/path/to/existing_checkpoint.pth'")
-    click.echo(f"    GeoTrainer(model, cfg).fit(train_ds, val_ds)")
+    click.echo("    # To finetune from an existing checkpoint instead of pretrained weights:")
+    click.echo("    # cfg.checkpoint_path = '/path/to/existing_checkpoint.pth'")
+    click.echo("    GeoTrainer(model, cfg).fit(train_ds, val_ds)")
     click.echo(f"  Real output path (only written once you actually call .fit() yourself, "
                f"not by this command): {output}")
     click.echo(f"  Config: {cfg.__dict__}")
@@ -688,29 +764,31 @@ def ai_train(task, data_dir, output, num_classes, epochs, backbone):
 
 @ai.command("infer")
 @click.option("--input", "-i", "input_path", required=True, type=click.Path(exists=True))
-@click.option("--model", "-m", required=True, help="Model path or registry name.")
+@click.option("--model", "-m", required=True, help="Registry model name (see `pygeovision ai-models list`).")
+@click.option("--checkpoint", required=True, type=click.Path(exists=True),
+              help="Your trained weights for --model (state dict from GeoTrainer).")
 @click.option("--output", "-o", required=True, help="Output prediction GeoTIFF.")
 @click.option("--num-classes", default=2, show_default=True)
+@click.option("--in-channels", type=int, default=None, help="Bands the model was trained on (default: the input's).")
 @click.option("--tile-size", default=512, show_default=True)
 @click.option("--overlap", default=64, show_default=True)
-def ai_infer(input_path, model, output, num_classes, tile_size, overlap):
-    """Run tiled inference on a large GeoTIFF using PyGeoVision's native
-    model registry and Gaussian-blended tiled inference engine.
+def ai_infer(input_path, model, checkpoint, output, num_classes, in_channels, tile_size, overlap):
+    """Run tiled inference on a large GeoTIFF with your trained model.
 
     \b
     Example:
-        pygeovision ai infer --input large_scene.tif \\
-            --model unet_resnet50 --output pred.tif --num-classes 5
+        pygeovision ai infer --input large_scene.tif --model unet_resnet50 \\
+            --checkpoint best.pth --output pred.tif --num-classes 5
     """
-    from pygeovision.ai.inference import TiledInference
-    from pygeovision.ai.models import ModelHub
+    from pygeovision.inference.tiled import TiledInference
 
     click.echo(f"Running tiled inference: {input_path} → {output}")
-    hub = ModelHub()
-    m = hub.load(model, num_classes=num_classes)
-    engine = TiledInference(m, tile_size=tile_size, overlap=overlap)
-    engine.run(input_path, output, num_classes=num_classes)
-    click.echo(f"✓ Inference complete → {output}")
+    m = _load_user_model(model, checkpoint, num_classes, in_channels, raster=input_path)
+    engine = TiledInference(model=m, chip_size=tile_size, overlap=overlap, num_classes=num_classes)
+    result = engine.infer(input_path, output)
+    if not result.get("success"):
+        raise click.ClickException(str(result.get("error")))
+    click.echo(f"✓ Inference complete → {output}  ({result.get('n_chips', 0)} chips)")
 
 
 @ai.command("chips")
@@ -753,8 +831,12 @@ def ai_chips(image, label, output, chip_size, overlap):
 
                 img_path = out_dir / "images" / f"chip_{row}_{col}.tif"
                 lbl_path = out_dir / "labels" / f"chip_{row}_{col}.tif"
+                from pygeovision.data._profile import writable_profile
+                img_profile = writable_profile(img_profile)
                 with rasterio.open(img_path, "w", **img_profile) as dst:
                     dst.write(img_chip)
+                from pygeovision.data._profile import writable_profile
+                lbl_profile = writable_profile(lbl_profile)
                 with rasterio.open(lbl_path, "w", **lbl_profile) as dst:
                     dst.write(lbl_chip, 1)
                 n_chips += 1
@@ -793,6 +875,8 @@ def ai_cloud_mask(input_path, output, brightness_threshold):
 
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     profile.update(count=1, dtype="uint8", compress="lzw")
+    for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        profile.pop(_k, None)
     with rasterio.open(output, "w", **profile) as dst:
         dst.write(cloud_mask[np.newaxis])
 
@@ -802,68 +886,86 @@ def ai_cloud_mask(input_path, output, brightness_threshold):
 # End-to-end PIPELINE commands (pygeofetch data + native AI)
 # =========================================================================
 
+def _parse_param(raw: str) -> tuple[str, Any]:
+    """'key=value' -> (key, value); value is parsed as JSON when it is valid JSON."""
+    if "=" not in raw:
+        raise click.BadParameter(f"--param expects KEY=VALUE, got {raw!r}")
+    key, _, text = raw.partition("=")
+    try:
+        return key.strip(), json.loads(text)
+    except ValueError:
+        return key.strip(), text
+
+
 @cli.command("channel")
-@click.argument("pipeline_name", type=click.Choice([
-    "change_detection", "land_cover", "building_footprints",
-    "crop_monitoring", "disaster_assessment", "deforestation",
-    "urban_growth", "water_bodies", "solar_detection", "carbon_estimation",
-    "list",
-]))
+@click.argument("pipeline_name")
 @click.option("--bbox", nargs=4, type=float, default=None,
               metavar="MIN_LON MIN_LAT MAX_LON MAX_LAT")
 @click.option("--output", "-o", default="./pipeline_output", show_default=True)
-@click.option("--date", default="2024-06", help="YYYY-MM acquisition date.")
-@click.option("--date-before", default=None, help="Before date (bi-temporal channel).")
-@click.option("--date-after", default=None, help="After date (bi-temporal channel).")
-@click.option("--model", default=None, help="Override default AI model.")
-@click.option("--source", default=None, help="Data source override (e.g. worldcover).")
+@click.option("--date", default=None, help="YYYY-MM acquisition date (single-date pipelines).")
+@click.option("--date-before", default=None, help="Earlier date (bi-temporal pipelines).")
+@click.option("--date-after", default=None, help="Later date (bi-temporal pipelines).")
+@click.option("--dates", default=None, help="Comma-separated dates (vegetation_indices).")
+@click.option("--model", default=None, help="Model name (pipelines that run a network).")
+@click.option("--checkpoint", default=None, type=click.Path(),
+              help="Your trained .pth weights; required by every 'needs_weights' pipeline.")
+@click.option("--source", default=None, help="Data source override (land_cover: worldcover | dynamic_world).")
 @click.option("--provider", multiple=True,
               help="Restrict search to this provider (repeatable, e.g. "
-                   "--provider planetary_computer --provider aws_earth). "
-                   "Real, recognised providers depend on your PyGeoFetch "
-                   "installation and credentials — an unrecognised name is "
+                   "--provider planetary_computer). An unrecognised name is "
                    "rejected by the search layer itself, not validated here.")
-def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, model, source, provider):
-    """Run a complete end-to-end geospatial AI channel.
+@click.option("--param", "params", multiple=True, metavar="KEY=VALUE",
+              help="Any other pipeline argument, e.g. --param anomaly_threshold=0.2 "
+                   "--param dem_type=cop30 (repeatable; values are parsed as JSON when possible).")
+@click.option("--no-report", is_flag=True,
+              help="Skip the map, vector layers and reports (also: PYGEOVISION_REPORT=0).")
+@click.option("--report-formats", default="pdf,xlsx,docx", show_default=True,
+              help="Report formats: any of pdf, xlsx (Excel), docx (Word); 'none' for no reports.")
+@click.option("--vector-formats", default="gpkg,geojson", show_default=True,
+              help="Vector formats: any of gpkg, geojson, shp, kml; 'none' for no vector files.")
+@click.option("--class-names", default=None,
+              help="Comma-separated names for the classes 0,1,2... of a network you trained "
+                   "(labels the map, tables and vector attributes).")
+@click.option("--report-title", default=None, help="Replace the report title.")
+def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, dates,
+                 model, checkpoint, source, provider, params, no_report, report_formats,
+                 vector_formats, class_names, report_title):
+    """Run an end-to-end geospatial pipeline by name.
 
-    Downloads satellite data via pygeofetch then applies a native AI model.
-
-    \b
-    Available channel:
-        building_footprints    Segment buildings (SAM)
-        land_cover             Land cover classification (ESA WorldCover)
-        change_detection       Bi-temporal change detection (ChangeFormer)
-        water_bodies           Surface water mapping (NDWI)
-        solar_detection        Solar panel detection
-        crop_monitoring        Crop type mapping
-        disaster_assessment    Rapid damage assessment
-        deforestation          Forest loss detection
-        urban_growth           Urban expansion monitoring
-        carbon_estimation      Biomass/carbon via NDVI
-        list                   Show all available channel
+    Downloads imagery with PyGeoFetch, then computes an index, a terrain
+    product, a reference map, or runs your own trained network.
+    ``pygeovision channel list`` shows every pipeline and whether it runs
+    out of the box ("ready") or needs your trained weights
+    ("needs_weights", pass --checkpoint). Removed pipelines explain why.
 
     \b
     Examples:
-        pygeovision channel building_footprints \\
-            --bbox -0.15 51.47 -0.10 51.52 --date 2024-06
-
-        pygeovision channel change_detection \\
-            --bbox -74.1 40.6 -73.7 40.9 \\
-            --date-before 2020-01 --date-after 2024-01
+        pygeovision channel list
 
         pygeovision channel water_bodies \\
-            --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --source ndwi
+            --bbox -0.15 51.47 -0.10 51.52 --date 2024-06
 
-        pygeovision channel land_cover \\
-            --bbox -0.45 5.50 0.05 5.75 --date 2024-01 \\
-            --provider planetary_computer
+        pygeovision channel wildfire_severity \\
+            --bbox -122.6 39.7 -121.9 40.2 \\
+            --date-before 2018-10 --date-after 2018-12
+
+        pygeovision channel building_footprints \\
+            --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 \\
+            --checkpoint runs/buildings/best.pth
+
+        pygeovision channel crop_health --bbox ... \\
+            --date-before 2024-05 --date-after 2024-08 --param anomaly_threshold=0.2
     """
-    from pygeovision.ai.pipelines import list_pipelines
+    from pygeovision.ai.pipelines import list_pipelines, pipeline_catalogue, pipeline_kinds
 
     if pipeline_name == "list":
-        click.echo("\nAvailable PyGeoVision end-to-end pipelines:\n")
+        kinds = pipeline_kinds()
+        catalogue = pipeline_catalogue()
+        click.echo(f"\n{len(kinds)} PyGeoVision pipelines "
+                   f"({sum(k == 'ready' for k in kinds.values())} ready, "
+                   f"{sum(k == 'needs_weights' for k in kinds.values())} need your trained weights):\n")
         for name in list_pipelines():
-            click.echo(f"  {name}")
+            click.echo(f"  {name:26s} {kinds[name]:13s} {catalogue[name].description}")
         return
 
     if not bbox:
@@ -873,46 +975,110 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, mod
     from pygeovision import PyGeoVision
     client = PyGeoVision()
 
-    kwargs = {"date": date}
-    # Real fix, confirmed by direct inspection: date_before/date_after
-    # are not real parameter names on disaster_assessment (pre_date/
-    # post_date), deforestation (baseline_year/analysis_year), or
-    # urban_growth (start_year/end_year) -- passing the generic names
-    # through unchanged for these three pipelines meant the flags were
-    # silently absorbed into **kwargs and never used, with the real
-    # pipeline falling back to its own hardcoded default dates
-    # regardless of what was requested.
-    _year_only = {"deforestation", "urban_growth"}
-    _param_names = {
-        "disaster_assessment": ("pre_date", "post_date"),
-        "deforestation":       ("baseline_year", "analysis_year"),
-        "urban_growth":        ("start_year", "end_year"),
-    }.get(pipeline_name, ("date_before", "date_after"))
-    if date_before:
-        kwargs[_param_names[0]] = date_before[:4] if pipeline_name in _year_only else date_before
-    if date_after:
-        kwargs[_param_names[1]] = date_after[:4] if pipeline_name in _year_only else date_after
-    if model: kwargs["model"] = model
-    if source: kwargs["source"] = source
-    if provider: kwargs["providers"] = list(provider)
+    # Only pass what the user actually gave, so a pipeline's own defaults apply
+    # and a flag it does not understand is never silently dropped by us.
+    kwargs: dict[str, Any] = {}
+    for key, value in (("date", date), ("date_before", date_before), ("date_after", date_after),
+                       ("model", model), ("checkpoint", checkpoint), ("source", source)):
+        if value:
+            kwargs[key] = value
+    if dates:
+        kwargs["dates"] = [d.strip() for d in dates.split(",") if d.strip()]
+    if provider:
+        kwargs["providers"] = list(provider)
+    for raw in params:
+        key, value = _parse_param(raw)
+        kwargs[key] = value
+    if no_report:
+        kwargs["report"] = False
+    else:
+        kwargs["report_formats"] = report_formats
+        kwargs["vector_formats"] = vector_formats
+        if class_names:
+            kwargs["class_names"] = [c.strip() for c in class_names.split(",")]
+        if report_title:
+            kwargs["report_title"] = report_title
 
-    click.echo(f"Running channel '{pipeline_name}'...")
-    click.echo(f"  bbox={tuple(bbox)} | date={date} | output={output}")
+    click.echo(f"Running pipeline '{pipeline_name}'...")
+    click.echo(f"  bbox={tuple(bbox)} | output={output}")
 
-    result = client.pipeline(pipeline_name, bbox=tuple(bbox), output_dir=output, **kwargs)
+    try:
+        result = client.pipeline(pipeline_name, bbox=tuple(bbox), output_dir=output, **kwargs)
+    except ValueError as exc:  # unknown or removed pipeline
+        click.echo(f"\n✗ {exc}", err=True)
+        sys.exit(2)
 
     if result.success:
-        click.echo("\n✓ channel complete!")
+        click.echo("\n✓ pipeline complete")
         if result.output_path:
             click.echo(f"  Output: {result.output_path}")
         if result.stats:
             click.echo("  Stats:")
             for k, v in result.stats.items():
+                if isinstance(v, dict):
+                    continue
                 fmt_v = f"{v:.4f}" if isinstance(v, float) else v
                 click.echo(f"    {k}: {fmt_v}")
+        _echo_deliverables(result)
     else:
-        click.echo(f"\n✗ channel failed: {result.error}", err=True)
+        click.echo(f"\n✗ pipeline failed: {result.error}", err=True)
         sys.exit(1)
+
+
+def _echo_deliverables(result) -> None:
+    """Print where the map, vectors and reports went (or why they are missing)."""
+    d = getattr(result, "deliverables", None)
+    if d is None:
+        err = result.metadata.get("deliverables_error")
+        if err:
+            click.echo(f"\n  Deliverables NOT created: {err}", err=True)
+        return
+    click.echo(f"\n  Deliverables: {d.directory}")
+    names = {"pdf": "PDF report", "docx": "Word report", "xlsx": "Excel report"}
+    for fmt, p in d.reports.items():
+        click.echo(f"    {names.get(fmt, fmt):13s} {p.name}")
+    for p in d.maps:
+        click.echo(f"    {'Map':13s} maps/{p.name}")
+    for fmt, paths in d.vectors.items():
+        click.echo(f"    {'Vectors ' + fmt:13s} {', '.join(x.name for x in paths)}")
+    for w in d.warnings:
+        click.echo(f"    ! {w}", err=True)
+
+
+@cli.command("report")
+@click.argument("output_dir", type=click.Path(exists=True, file_okay=False))
+@click.option("--formats", "report_formats", default="pdf,xlsx,docx", show_default=True,
+              help="Report formats: pdf, xlsx, docx ('none' for none).")
+@click.option("--vector-formats", default="gpkg,geojson", show_default=True,
+              help="Vector formats: gpkg, geojson, shp, kml ('none' for none).")
+@click.option("--class-names", default=None, help="Comma-separated class names for a trained network's classes 0,1,2...")
+@click.option("--title", default=None, help="Replace the report title.")
+@click.option("--no-vectors", is_flag=True, help="Do not write vector files.")
+@click.option("--no-maps", is_flag=True, help="Do not draw maps and charts.")
+def report_cmd(output_dir, report_formats, vector_formats, class_names, title, no_vectors, no_maps):
+    """Rebuild the map, vectors and reports of an earlier pipeline run.
+
+    OUTPUT_DIR is the -o directory of a `pygeovision channel` run. Nothing is
+    downloaded or re-analysed: the output rasters and run_summary.json are read.
+    Use it to add a format (for example --formats pdf,docx --vector-formats shp,kml)
+    or to name the classes of a network you trained.
+    """
+    from pygeovision.reporting import regenerate
+    try:
+        d = regenerate(output_dir, report_formats=report_formats, vector_formats=vector_formats,
+                       make_vectors=not no_vectors, make_maps=not no_maps, title=title,
+                       class_names=[c.strip() for c in class_names.split(",")] if class_names else None)
+    except FileNotFoundError as exc:
+        click.echo(f"\n✗ {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:  # noqa: BLE001 - report the reason, not a traceback
+        click.echo(f"\n✗ could not rebuild the deliverables: {exc}", err=True)
+        sys.exit(1)
+
+    class _R:                       # lets _echo_deliverables print a plain Deliverables
+        deliverables, metadata = d, {}
+    click.echo("\n✓ deliverables rebuilt")
+    _echo_deliverables(_R)
 
 
 # =========================================================================
@@ -1065,6 +1231,10 @@ def doctor_cmd():
                 extra = f"  v{val['version']}"
             if val.get("cuda"):
                 extra += f"  CUDA ({val.get('gpu', 'GPU')})"
+            if "providers_configured" in val:
+                extra += f"  {val['providers_configured']} provider(s) with stored credentials"
+            if "entries" in val:
+                extra += f"  {val['entries']} entries"
             if val.get("error"):
                 extra = f"  ERROR: {val['error']}"
             click.echo(f"  {ok_icon}  {key:<18}{extra}")
@@ -1075,10 +1245,13 @@ def doctor_cmd():
     click.echo(f"  → {summary}")
     click.echo()
 
-    # Actionable advice
+    # Actionable advice; a failed check makes the command exit non-zero
+    failed = [k for k, v in result.items() if isinstance(v, dict) and "ok" in v and not v["ok"]]
     for key, val in result.items():
         if isinstance(val, dict) and not val.get("ok") and val.get("error"):
             click.echo(f"  ⚠  {key}: {val['error']}")
+    if failed:
+        sys.exit(1)
 
 
 
@@ -1166,62 +1339,68 @@ def infer_grp():
 
 @infer_grp.command("predict")
 @click.argument("image_path")
-@click.option("--model", "-m", default="unet_resnet50", show_default=True)
+@click.option("--model", "-m", default="unet_resnet50", show_default=True, help="Registry model name.")
+@click.option("--checkpoint", required=True, type=click.Path(exists=True),
+              help="Your trained weights for --model (state dict from GeoTrainer).")
 @click.option("--output", "-o", default=None)
 @click.option("--classes", "-c", type=int, default=2, show_default=True)
+@click.option("--in-channels", type=int, default=None, help="Bands the model was trained on (default: the input's).")
 @click.option("--chip-size", default=512, show_default=True)
 @click.option("--overlap", default=64, show_default=True)
 @click.option("--blend", default="gaussian", show_default=True,
                type=click.Choice(["gaussian","linear","constant"]))
 @click.option("--device", default=None, help="cuda|cpu|mps")
-def infer_predict(image_path, model, output, classes, chip_size, overlap, blend, device):
-    """Run tiled inference on a GeoTIFF."""
+def infer_predict(image_path, model, checkpoint, output, classes, in_channels, chip_size, overlap, blend, device):
+    """Run tiled inference on a GeoTIFF with your trained model."""
     import pathlib
     output = output or str(pathlib.Path(image_path).with_suffix("")) + f"_{model}_pred.tif"
     click.echo(f"\n  Inference: {image_path}")
     click.echo(f"  Model:     {model} | classes={classes} | chip={chip_size} | blend={blend}")
+    m = _load_user_model(model, checkpoint, classes, in_channels, raster=image_path)
+    from pygeovision.inference.tiled import TiledInference
     try:
-        # Real fix, confirmed by direct testing: the previous default
-        # ("unet-r50") was removed from the registry in an earlier
-        # cleanup as a fake/misleading entry -- get_model('unet-r50')
-        # now raises KeyError, breaking this command for any user
-        # relying on the default. Routes through ModelHub.load() rather
-        # than calling the raw registry directly, so this command gets
-        # the real, tested fallback (checks both registries, falls back
-        # to a real same-task model on failure) instead of a single
-        # hardcoded name that can break the same way again later.
-        from pygeovision.ai.models.hub import ModelHub
-        m = ModelHub().load(model, num_classes=classes, device=device or "cpu")
-        from pygeovision.inference.tiled import TiledInference
         inf = TiledInference(model=m, chip_size=chip_size, overlap=overlap,
                               blend_mode=blend, num_classes=classes, device=device)
         result = inf.infer(image_path, output)
-        click.echo(f"  ✓ Output:  {output}")
-        click.echo(f"  ✓ Chips:   {result.get('n_chips',0)} | Time: {result.get('duration_seconds',0)}s\n")
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
+        sys.exit(1)
+    if not result.get("success"):
+        click.echo(f"  ✗ {result.get('error')}", err=True)
+        sys.exit(1)
+    click.echo(f"  ✓ Output:  {output}")
+    click.echo(f"  ✓ Chips:   {result.get('n_chips',0)} | Time: {result.get('duration_seconds',0)}s\n")
 
 @infer_grp.command("batch")
-@click.argument("input_dir")
+@click.argument("input_dir", type=click.Path(exists=True, file_okay=False))
 @click.argument("output_dir")
-@click.option("--model", "-m", default="unet_resnet50")
+@click.option("--model", "-m", default="unet_resnet50", show_default=True, help="Registry model name.")
+@click.option("--checkpoint", required=True, type=click.Path(exists=True),
+              help="Your trained weights for --model (state dict from GeoTrainer).")
+@click.option("--classes", "-c", type=int, default=2, show_default=True)
+@click.option("--in-channels", type=int, default=None,
+              help="Bands the model was trained on (default: the first input file's).")
 @click.option("--workers", "-w", default=2, show_default=True)
 @click.option("--pattern", default="*.tif", show_default=True)
-def infer_batch(input_dir, output_dir, model, workers, pattern):
-    """Run batch inference on a directory of GeoTIFFs."""
+def infer_batch(input_dir, output_dir, model, checkpoint, classes, in_channels, workers, pattern):
+    """Run batch inference on a directory of GeoTIFFs with your trained model."""
     click.echo(f"\n  Batch inference: {input_dir} → {output_dir}")
+    first = next(iter(sorted(Path(input_dir).glob(pattern))), None)
+    if first is None:
+        raise click.ClickException(f"no files matching {pattern!r} in {input_dir}")
+    m = _load_user_model(model, checkpoint, classes, in_channels, raster=first)
     try:
         from pygeovision.inference.batch import BatchInferenceEngine
-        # Real fix, same regression and same fix as infer_predict above:
-        # "unet-r50" was removed from the registry as a fake entry.
-        from pygeovision.ai.models.hub import ModelHub
-        m = ModelHub().load(model, device="cpu")
-        engine = BatchInferenceEngine(model=m, n_workers=workers)
+        engine = BatchInferenceEngine(model=m, n_workers=workers, num_classes=classes)
         result = engine.run_directory(input_dir, output_dir, pattern=pattern)
-        click.echo(f"  ✓ {result.get('n_success',0)}/{result.get('n_success',0)+result.get('n_failed',0)} succeeded")
-        click.echo(f"  ✓ Time: {result.get('total_time_s',0)}s | {result.get('throughput_fps',0)} fps\n")
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
+        sys.exit(1)
+    n_ok, n_bad = result.get("n_success", 0), result.get("n_failed", 0)
+    click.echo(f"  {'✓' if not n_bad else '✗'} {n_ok}/{n_ok + n_bad} succeeded")
+    click.echo(f"  Time: {result.get('total_time_s',0)}s | {result.get('throughput_fps',0)} fps\n")
+    if n_bad or not n_ok:
+        sys.exit(1)
 
 
 # ── label ─────────────────────────────────────────────────────────────────────
@@ -1243,6 +1422,7 @@ def label_osm(bbox, output, categories):
         click.echo(f"  ✓ {result['n_features']} features → {output}")
     else:
         click.echo(f"  ✗ {result.get('error')}", err=True)
+        sys.exit(1)
 
 @label_grp.command("quality")
 @click.argument("label_path")
@@ -1276,18 +1456,26 @@ def explain_grp():
 @click.option("--model", "-m", required=True)
 @click.option("--output", "-o", default=None)
 @click.option("--class-idx", "-c", default=1, type=int)
-def explain_gradcam(image_path, model, output, class_idx):
+@click.option("--checkpoint", type=click.Path(exists=True), default=None,
+              help="Your trained weights for --model (strict load). Saliency of an untrained model is noise.")
+@click.option("--classes", default=2, show_default=True, type=int)
+@click.option("--in-channels", default=None, type=int, help="Default: the image's band count.")
+def explain_gradcam(image_path, model, output, class_idx, checkpoint, classes, in_channels):
     """Generate GradCAM saliency map."""
     output = output or image_path.replace(".tif", "_gradcam.tif")
     try:
         from pygeovision.explainability.gradcam import GradCAM
-        from pygeovision.models.registry import get_model
-        m = get_model(model)
+        if in_channels is None:
+            import rasterio
+            with rasterio.open(image_path) as src:
+                in_channels = src.count
+        m = _registry_model(model, classes, in_channels, checkpoint)
         cam = GradCAM(m)
         cam.batch_explain(image_path, output, class_idx=class_idx)
         click.echo(f"  ✓ GradCAM → {output}")
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
+        sys.exit(1)
 
 
 # ── monitor ───────────────────────────────────────────────────────────────────
@@ -1323,27 +1511,46 @@ def pipeline_grp():
     """Pipeline management — create, run, schedule workflows."""
 
 @pipeline_grp.command("run")
-@click.argument("yaml_path")
-@click.option("--dry-run", is_flag=True)
-def pipeline_run(yaml_path, dry_run):
-    """Run a YAML pipeline."""
+@click.argument("yaml_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--dry-run", is_flag=True, help="Check the step graph without running anything.")
+@click.option("--set", "overrides", multiple=True, metavar="STEP.PARAM=VALUE",
+              help="Override a step parameter (value parsed as JSON, else a string); repeatable.")
+def pipeline_run(yaml_path, dry_run, overrides):
+    """Run a YAML pipeline (steps: search, download, infer, export).
+
+    \b
+    Example:
+        pygeovision pipeline run urban.yaml --set search.bbox='[15.0,45.1,15.1,45.2]' \\
+            --set search.date_range='["2024-06-01","2024-06-30"]' --set infer.checkpoint=best.pth
+    """
     from pygeovision.pipelines.orchestrator import Pipeline
+    from pygeovision.pipelines.yaml_parser import PipelineYAMLParser
     click.echo(f"\n  Loading pipeline: {yaml_path}")
     try:
-        p = Pipeline.from_yaml(yaml_path)
-        click.echo(f"  Pipeline: {p.name} ({len(p._steps)} steps)")
-        result = p.run(dry_run=dry_run)
-        status = "✓" if result.success else "✗"
-        click.echo(f"  {status} {result.steps_completed} completed in {result.duration_s}s\n")
-    except Exception as exc:
-        click.echo(f"  ✗ {exc}", err=True)
+        parser = PipelineYAMLParser()
+        config = parser.apply_overrides(parser.load(yaml_path), list(overrides))
+        p = Pipeline.from_config(config)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"  Pipeline: {p.name} ({len(p._steps)} steps){'  [dry run]' if dry_run else ''}")
+    ctx = {}
+    if not dry_run:
+        from pygeovision import PyGeoVision
+        ctx["client"] = PyGeoVision()
+    result = p.run(ctx, dry_run=dry_run)
+    click.echo(f"  {'✓' if result.success else '✗'} completed: {result.steps_completed} in {result.duration_s}s")
+    if not result.success:
+        click.echo(f"  failed: {result.steps_failed}\n  {result.error}", err=True)
+        sys.exit(1)
+    click.echo()
 
 @pipeline_grp.command("list-templates")
 def pipeline_list_templates():
     """List available YAML pipeline templates."""
-    import pathlib
-    templates = list(pathlib.Path("/home/claude/pgv/pygeovision/pipelines/templates").glob("*.yaml"))
-    click.echo(f"\n  Available templates ({len(templates)}):\n")
+    import pygeovision.pipelines as _pp
+    tdir = Path(_pp.__file__).parent / "templates"
+    templates = sorted(tdir.glob("*.yaml"))
+    click.echo(f"\n  Available templates ({len(templates)}) in {tdir}:\n")
     for t in templates:
         click.echo(f"  • {t.stem:<25} ({t.name})")
     click.echo()
@@ -1354,25 +1561,52 @@ def pipeline_list_templates():
 def edge_grp():
     """Edge deployment — ONNX export, Jetson conversion."""
 
+
+def _registry_model(name, classes, in_channels, checkpoint=None):
+    """``pygeovision.models.registry.get_model`` + optional strict load of the user's trained weights.
+
+    With ``checkpoint`` the architecture is built without downloading pretrained weights (they would be
+    overwritten anyway) and the state dict must match it exactly.
+    """
+    from pygeovision.models.registry import get_model
+    kw = {"pretrained": False} if checkpoint else {}
+    try:
+        m = get_model(name, num_classes=classes, in_channels=in_channels, **kw)
+        if checkpoint:
+            import torch
+            state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+            if isinstance(state, dict):
+                for key in ("model_state_dict", "state_dict", "model", "network"):
+                    if key in state:
+                        state = state[key]
+                        break
+            m.load_state_dict(state, strict=True)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(str(exc)) from exc
+    return m
+
 @edge_grp.command("export-onnx")
 @click.argument("model_name")
 @click.option("--output", "-o", default="./model.onnx")
 @click.option("--classes", default=2, show_default=True, type=int)
 @click.option("--in-channels", default=4, show_default=True, type=int)
 @click.option("--input-size", default=512, show_default=True, type=int)
-def edge_export_onnx(model_name, output, classes, in_channels, input_size):
+@click.option("--checkpoint", type=click.Path(exists=True), default=None,
+              help="Your trained weights (strict load). Without it the registry's pretrained "
+                   "initialisation is exported -- fine for latency tests, not a trained model.")
+def edge_export_onnx(model_name, output, classes, in_channels, input_size, checkpoint):
     """Export a model to ONNX format."""
     click.echo(f"\n  Exporting {model_name} → ONNX ({output})")
     try:
         from pygeovision.edge.onnx_rt import ONNXRuntimeInference
-        from pygeovision.models.registry import get_model
-        m = get_model(model_name, num_classes=classes, in_channels=in_channels)
+        m = _registry_model(model_name, classes, in_channels, checkpoint)
         ONNXRuntimeInference.from_pytorch(
             m, output, input_shape=(1, in_channels, input_size, input_size), simplify=False
         )
         click.echo(f"  ✓ ONNX exported: {output}\n")
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
+        sys.exit(1)
 
 @edge_grp.command("benchmark-onnx")
 @click.argument("onnx_path")
@@ -1388,6 +1622,7 @@ def edge_benchmark(onnx_path, device, runs):
         click.echo(f"  Mean: {result['mean_ms']} ms | P95: {result['p95_ms']} ms | {result['fps']} FPS\n")
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
+        sys.exit(1)
 
 
 # ── cloud ─────────────────────────────────────────────────────────────────────
@@ -1409,6 +1644,7 @@ def cloud_deploy_aws(model_path, endpoint_name, region, instance):
         click.echo(f"  ✓ Endpoint live: {result.get('endpoint_url')}\n")
     else:
         click.echo(f"  ✗ {result.get('error')}\n", err=True)
+        sys.exit(1)
 
 @cloud_grp.command("deploy-gcp")
 @click.argument("model_path")
@@ -1420,7 +1656,9 @@ def cloud_deploy_gcp(model_path, endpoint_name, project, region):
     from pygeovision.cloud.deploy import GCPDeployer
     click.echo(f"\n  Deploying to GCP Vertex AI: {endpoint_name}")
     result = GCPDeployer(project_id=project, region=region).deploy(model_path, endpoint_name)
-    click.echo(f"  {'✓' if result.get('success') else '✗'} {result}\n")
+    click.echo(f"  {'✓' if result.get('success') else '✗'} {result}\n", err=not result.get("success"))
+    if not result.get("success"):
+        sys.exit(1)
 
 
 # ── vlm ───────────────────────────────────────────────────────────────────────
@@ -1562,16 +1800,26 @@ def datasets_search(query, limit):
 def datasets_info(name):
     """Show full metadata for a dataset."""
     from pygeovision.datasets.loader import DatasetLoader
-    DatasetLoader().info(name)
+    try:
+        DatasetLoader().info(name)
+    except KeyError as exc:
+        raise click.ClickException(str(exc.args[0])) from exc
 
 
 @datasets.command("download")
 @click.argument("name")
 @click.option("--output", "-o", default=None, help="Output directory.")
 def datasets_download(name, output):
-    """Download and extract a dataset by name."""
+    """Show where dataset NAME can be obtained.
+
+    No catalogued dataset has a direct file link (they sit behind project pages, registration or
+    terms), so this never downloads: it exits 1 and prints the page to visit.
+    """
     from pygeovision.datasets.loader import DatasetLoader
-    DatasetLoader().download(name, output)
+    try:
+        DatasetLoader().download(name, output)
+    except (KeyError, ValueError) as exc:
+        raise click.ClickException(str(exc.args[0])) from exc
 
 
 @datasets.command("top")
@@ -1599,7 +1847,10 @@ def datasets_top(task, n):
 def datasets_similar(name, n):
     """Find datasets similar to NAME using the EarthNets similarity formula."""
     from pygeovision.datasets.registry import dataset_registry
-    similar = dataset_registry.similar_to(name, n=n)
+    try:
+        similar = dataset_registry.similar_to(name, n=n)
+    except KeyError as exc:
+        raise click.ClickException(str(exc.args[0])) from exc
     click.echo(f"\nDatasets most similar to '{name}':\n")
     dataset_registry.print_table(similar)
 
@@ -2310,3 +2561,263 @@ def post_export(input_path, output, fmt):
     from pygeovision.data.postprocess import PostProcessor
     out = PostProcessor().export(input_path, output, fmt=fmt)
     click.echo(f"  ✓ Exported ({fmt.upper()}) → {out}")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# obia — object-based image analysis
+# ═══════════════════════════════════════════════════════════════════════════
+@cli.group("obia")
+def obia_grp():
+    """Object-based image analysis — segment, describe, classify, assess.
+
+    \b
+    Typical sequence:
+        pygeovision obia demo ./obia_demo
+        pygeovision obia segment ./obia_demo/scene.tif --scale 20 --output-labels labels.tif
+        pygeovision obia features ./obia_demo/scene.tif labels.tif --output features.csv
+        pygeovision obia classify ./obia_demo/scene.tif labels.tif \\
+            --samples ./obia_demo/reference.gpkg --class-column class --output classified.gpkg
+        pygeovision obia assess-classification labels.tif classified.gpkg \\
+            ./obia_demo/reference.gpkg --class-column class
+    """
+
+
+def _obia_parse_params(pairs):
+    out = {}
+    for p in pairs:
+        if "=" not in p:
+            raise click.BadParameter(f"--param expects key=value, got {p!r}")
+        k, v = p.split("=", 1)
+        try:
+            out[k.strip()] = int(v)
+        except ValueError:
+            try:
+                out[k.strip()] = float(v)
+            except ValueError:
+                out[k.strip()] = v
+    return out
+
+
+def _obia_read_labels(path):
+    import rasterio
+    with rasterio.open(path) as src:
+        return src.read(1).astype("int64"), src.transform, src.crs
+
+
+@obia_grp.command("demo")
+@click.argument("output_dir")
+@click.option("--size", default=160, show_default=True, help="Scene width/height in pixels.")
+@click.option("--seed", default=0, show_default=True, help="Random seed (a different scene per seed).")
+def obia_demo(output_dir, size, seed):
+    """Write a synthetic teaching scene with known reference data.
+
+    Creates scene.tif (blue, green, red, nir), reference.gpkg (reference objects
+    with a 'class' column) and reference_ids.tif (one id per reference object).
+    """
+    import os
+
+    from pygeovision.obia import make_demo_scene, save_raster
+    os.makedirs(output_dir, exist_ok=True)
+    sc = make_demo_scene(size, seed)
+    r = sc.raster
+    save_raster(os.path.join(output_dir, "scene.tif"), r.image, r.transform, r.crs, r.band_names)
+    save_raster(os.path.join(output_dir, "reference_ids.tif"), sc.ref_labels, r.transform, r.crs, dtype="int32")
+    sc.reference.to_file(os.path.join(output_dir, "reference.gpkg"), driver="GPKG")
+    click.echo(f"  ✓ Demo scene ({size}x{size}, seed {seed}) → {output_dir}")
+    click.echo(f"    classes: {', '.join(sc.class_names)}")
+
+
+@obia_grp.command("segment")
+@click.argument("input_path")
+@click.option("--method", default="multires", show_default=True,
+              type=click.Choice(["multires", "slic", "felzenszwalb", "quickshift", "watershed", "chessboard"]))
+@click.option("--scale", default=None, type=float, help="Scale parameter (multires; felzenszwalb).")
+@click.option("--color-weight", default=0.9, show_default=True, help="multires: weight of spectral vs shape criterion.")
+@click.option("--compactness-weight", default=0.5, show_default=True, help="multires: compactness vs smoothness.")
+@click.option("--param", "params", multiple=True, help="Extra method parameter, key=value (repeatable).")
+@click.option("--output-labels", required=True, help="Output GeoTIFF of object ids.")
+@click.option("--output-vector", default=None, help="Optional vector output (.gpkg/.geojson).")
+def obia_segment(input_path, method, scale, color_weight, compactness_weight, params,
+                 output_labels, output_vector):
+    """Segment a raster into image objects."""
+    from pygeovision.obia import segment
+    kw = _obia_parse_params(params)
+    if method == "multires":
+        kw.update(color_weight=color_weight, compactness_weight=compactness_weight)
+    if scale is not None:
+        kw["scale"] = scale
+    seg = segment(input_path, method, **kw)
+    seg.save(output_labels)
+    click.echo(f"  ✓ {seg.n_objects} objects ({method}) → {output_labels}")
+    if output_vector:
+        seg.to_vector().to_file(output_vector)
+        click.echo(f"  ✓ Object polygons → {output_vector}")
+
+
+@obia_grp.command("features")
+@click.argument("input_path")
+@click.argument("labels_path")
+@click.option("--output", required=True, help="Output .csv, or a vector file (.gpkg/.geojson) to keep geometry.")
+@click.option("--texture", "texture", multiple=True, help="Band/layer name to compute GLCM texture for (repeatable).")
+@click.option("--indices/--no-indices", default=True, show_default=True, help="Add NDVI/NDWI when bands allow.")
+def obia_features(input_path, labels_path, output, texture, indices):
+    """Compute the object feature table (spectral, shape, texture, context)."""
+    from pygeovision.obia import extract_features, labels_to_gdf, load_raster, spectral_layers
+    rd = load_raster(input_path)
+    lab, tr, crs = _obia_read_labels(labels_path)
+    extra = spectral_layers(rd) if indices else None
+    F = extract_features(lab, rd, extra_layers=extra, texture_layers=list(texture) or None)
+    if output.lower().endswith(".csv"):
+        F.to_csv(output)
+    else:
+        labels_to_gdf(lab, tr, crs, F).to_file(output)
+    click.echo(f"  ✓ {len(F)} objects × {F.shape[1]} features → {output}")
+
+
+@obia_grp.command("classify")
+@click.argument("input_path")
+@click.argument("labels_path")
+@click.option("--output", required=True, help="Output vector file (.gpkg/.geojson).")
+@click.option("--samples", default=None, help="Vector file of training polygons/points (supervised).")
+@click.option("--rules", default=None, help="YAML rule file (rule-based): rules: [{class: water, when: 'mean_ndwi > 0.3'}].")
+@click.option("--class-column", default="class", show_default=True)
+@click.option("--method", default="rf", show_default=True, type=click.Choice(["rf", "knn", "svm", "tree"]))
+@click.option("--output-raster", default=None, help="Also write classes as a GeoTIFF (codes in the class table).")
+def obia_classify(input_path, labels_path, output, samples, rules, class_column, method, output_raster):
+    """Classify objects from samples (supervised) or a YAML rule set."""
+    import geopandas as gpd
+
+    from pygeovision.obia import (
+        ObjectClassifier,
+        RuleBasedClassifier,
+        extract_features,
+        load_raster,
+        samples_from_geometries,
+        save_raster,
+        spectral_layers,
+    )
+    if bool(samples) == bool(rules):
+        raise click.UsageError("give exactly one of --samples or --rules")
+    rd = load_raster(input_path)
+    lab, tr, crs = _obia_read_labels(labels_path)
+    F = extract_features(lab, rd, extra_layers=spectral_layers(rd))
+    if rules:
+        import yaml
+        with open(rules) as fh:
+            spec = yaml.safe_load(fh)
+        rb = RuleBasedClassifier([(r["class"], r["when"]) for r in spec["rules"]],
+                                 default=spec.get("default", "unclassified"))
+        res = rb.classify(F)
+    else:
+        gdf = gpd.read_file(samples)
+        if crs is not None and gdf.crs is not None:
+            gdf = gdf.to_crs(crs)
+        s = samples_from_geometries(lab, gdf, class_column, tr)
+        if s.empty:
+            raise click.ClickException("no image object overlaps the sample geometries")
+        res = ObjectClassifier(method).fit(F, s).predict(F)
+        click.echo(f"  trained on {len(s)} sample objects ({s.nunique()} classes)")
+        click.echo("  note: judge accuracy with reference data that was NOT used for training")
+    res.to_vector(lab, tr, crs).to_file(output)
+    click.echo(f"  ✓ Classified {len(res.classes)} objects → {output}")
+    click.echo("  " + res.summary().to_string().replace("\n", "\n  "))
+    if output_raster:
+        save_raster(output_raster, res.to_raster(lab), tr, crs, dtype="uint8")
+        codes = ", ".join(f"{c}={i}" for c, i in res.codes().items())
+        click.echo(f"  ✓ Class raster → {output_raster}  (codes: {codes}; 0 = unclassified)")
+
+
+@obia_grp.command("scale")
+@click.argument("input_path")
+@click.option("--scales", default="5,10,15,20,30,40,60,80", show_default=True, help="Comma-separated scales.")
+@click.option("--reference", default=None, help="Reference object polygons: also report segmentation quality per scale.")
+@click.option("--output", default=None, help="Write the table to CSV.")
+def obia_scale(input_path, scales, reference, output):
+    """Compare scale parameters (diagnostics; with --reference also over/under-segmentation)."""
+    import geopandas as gpd
+
+    from pygeovision.obia import (
+        load_raster,
+        rasterize_geometries,
+        scale_diagnostics,
+        scale_vs_reference,
+    )
+    sc = [float(x) for x in scales.split(",")]
+    rd = load_raster(input_path)
+    if reference:
+        gdf = gpd.read_file(reference)
+        if rd.crs is not None and gdf.crs is not None:
+            gdf = gdf.to_crs(rd.crs)
+        ref, _ = rasterize_geometries(gdf, rd.shape, rd.transform)
+        df = scale_vs_reference(rd, sc, ref)
+        best = df["mean_D"].idxmin()
+        click.echo(df.round(3).to_string())
+        click.echo(f"\n  best scale by D (lower = better): {best:g}")
+    else:
+        df = scale_diagnostics(rd, sc)
+        click.echo(df.round(2).to_string())
+        cand = df.index[df["candidate"]].tolist()
+        click.echo(f"\n  ROC-LV candidate scales (heuristic — verify visually): {cand or 'none'}")
+    if output:
+        df.to_csv(output)
+        click.echo(f"  ✓ → {output}")
+
+
+@obia_grp.command("assess-segmentation")
+@click.argument("labels_path")
+@click.argument("reference_path")
+@click.option("--output", default=None, help="Per-reference-object table as CSV.")
+def obia_assess_seg(labels_path, reference_path, output):
+    """Over-/under-segmentation of a label raster against reference objects."""
+    import geopandas as gpd
+
+    from pygeovision.obia import rasterize_geometries, segmentation_quality
+    lab, tr, crs = _obia_read_labels(labels_path)
+    gdf = gpd.read_file(reference_path)
+    if crs is not None and gdf.crs is not None:
+        gdf = gdf.to_crs(crs)
+    ref, _ = rasterize_geometries(gdf, lab.shape, tr)
+    table, summ = segmentation_quality(lab, ref)
+    click.echo(f"  reference objects: {summ['n_reference']}   segments: {summ['n_segments_total']}")
+    click.echo(f"  mean over-segmentation : {summ['mean_over_seg']:.3f}   (0 = none)")
+    click.echo(f"  mean under-segmentation: {summ['mean_under_seg']:.3f}   (0 = none)")
+    click.echo(f"  mean D                 : {summ['mean_D']:.3f}   (0 = perfect)")
+    click.echo(f"  mean QR (Jaccard)      : {summ['mean_QR']:.3f}   (1 = perfect)")
+    if output:
+        table.to_csv(output)
+        click.echo(f"  ✓ → {output}")
+
+
+@obia_grp.command("assess-classification")
+@click.argument("labels_path")
+@click.argument("classified_path")
+@click.argument("reference_path")
+@click.option("--class-column", default="class", show_default=True, help="Class column in the reference file.")
+@click.option("--weight-by-area/--count-objects", default=True, show_default=True)
+@click.option("--output", default=None, help="Write the confusion matrix to CSV.")
+def obia_assess_cls(labels_path, classified_path, reference_path, class_column, weight_by_area, output):
+    """Object-based accuracy of a classification against reference polygons/points."""
+    import geopandas as gpd
+    import numpy as np
+    import pandas as pd
+
+    from pygeovision.obia import confusion_report, samples_from_geometries
+    lab, tr, crs = _obia_read_labels(labels_path)
+    cl = gpd.read_file(classified_path)
+    pred = cl.set_index("obj_id")["class"]
+    ref_gdf = gpd.read_file(reference_path)
+    if crs is not None and ref_gdf.crs is not None:
+        ref_gdf = ref_gdf.to_crs(crs)
+    ref = samples_from_geometries(lab, ref_gdf, class_column, tr)
+    if ref.empty:
+        raise click.ClickException("no object is covered by the reference geometries")
+    w = None
+    if weight_by_area:
+        w = pd.Series(np.bincount(lab.ravel()), dtype=float)
+    rep = confusion_report(ref, pred, w)
+    click.echo(f"  assessed {rep['n_objects']} objects ({'area-weighted' if weight_by_area else 'unweighted'})")
+    click.echo(f"  overall accuracy: {rep['overall_accuracy']:.3f}   kappa: {rep['kappa']:.3f}")
+    click.echo("\n" + rep["per_class"].round(3).to_string())
+    click.echo("\n  confusion (rows = reference, columns = predicted):\n" + rep["confusion"].round(0).astype(int).to_string())
+    if output:
+        rep["confusion"].to_csv(output)
+        click.echo(f"\n  ✓ → {output}")

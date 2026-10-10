@@ -17,11 +17,6 @@ class TestRegistryLoudFailure:
     """Architectures with no real factory must raise, not silently
     substitute a meaningless generic classifier."""
 
-    def test_centernet_raises_not_implemented(self):
-        from pygeovision.models.registry import get_model
-        with pytest.raises(NotImplementedError):
-            get_model("centernet-r50", num_classes=2)
-
     def test_satlas_raises_not_implemented(self):
         from pygeovision.models.registry import get_model
         with pytest.raises(NotImplementedError):

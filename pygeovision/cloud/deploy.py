@@ -7,28 +7,33 @@ from __future__ import annotations
 import json
 import logging
 import os
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class CloudDeployer:
-    """Base class for cloud deployment."""
+class CloudDeployer(ABC):
+    """Abstract base class for cloud deployment; use :meth:`from_provider` or a concrete subclass."""
 
     def __init__(self, provider: str, region: str | None = None) -> None:
         self.provider = provider
         self.region = region
 
+    @abstractmethod
     def deploy(self, model_path: str, endpoint_name: str, **kwargs) -> dict[str, Any]:
         raise NotImplementedError
 
+    @abstractmethod
     def predict(self, endpoint_name: str, input_data: Any) -> Any:
         raise NotImplementedError
 
+    @abstractmethod
     def delete_endpoint(self, endpoint_name: str) -> dict[str, Any]:
         raise NotImplementedError
 
+    @abstractmethod
     def list_endpoints(self) -> list[str]:
         raise NotImplementedError
 

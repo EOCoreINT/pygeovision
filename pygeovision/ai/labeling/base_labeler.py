@@ -43,6 +43,8 @@ class LabelingResult:
         Whether this tile was skipped (insufficient data coverage).
     error : str or None
         Error message if labeling failed.
+    metadata : dict
+        Strategy-specific extras (e.g. class names, cell size). Never used for control flow.
     """
 
     tile_id: str
@@ -52,6 +54,7 @@ class LabelingResult:
     class_distribution: dict[str, float] = field(default_factory=dict)
     skipped: bool = False
     error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def success(self) -> bool:
@@ -112,22 +115,57 @@ class BaseLabeler(ABC):
         """
         Generate labels for a single tile.
 
+        This is the canonical contract every labeler follows (and the one the pipelines call):
+
         Parameters
         ----------
-        tile : TileMetadata
-            Tile to label.
-        output_dir : Path
-            Directory to write the label GeoTIFF.
-        task : str
-            AI task type.
+        tile_path : Path
+            The imagery chip on disk.
+        tile_metadata : TileMetadata or None
+            Georeferencing / bookkeeping for the chip; may be ``None`` when the chip's own
+            georeferencing is enough.
+        output_path : Path
+            Exact file to write the label GeoTIFF to (not a directory).
         **kwargs
             Strategy-specific parameters.
 
         Returns
         -------
         LabelingResult
+            Failures are *returned* (``error`` set), not raised, so one bad tile never aborts a batch.
         """
         ...
+
+    def _call_label_tile(
+        self, tile: TileMetadata, output_dir: Path, task: str, **kwargs: Any
+    ) -> LabelingResult:
+        """Adapt a :class:`TileMetadata` to whichever ``label_tile`` flavour this labeler implements.
+
+        Two flavours exist: the canonical ``(tile_path, tile_metadata, output_path)`` and the
+        geometry-only ``(tile, output_dir, task)`` used by the vector-source labelers (OSM,
+        Microsoft Buildings), which never read the imagery.
+        """
+        import inspect  # noqa: PLC0415
+
+        params = inspect.signature(self.label_tile).parameters
+        if "tile" in params:
+            return self.label_tile(tile=tile, output_dir=output_dir, task=task, **kwargs)
+        chip = (tile.extra or {}).get("tile_path")
+        if not chip or not Path(chip).exists():
+            return LabelingResult(
+                tile_id=tile.tile_id,
+                source=self.name,
+                error=(
+                    f"imagery chip for tile {tile.tile_id} is not on disk; "
+                    "tile the raster with save_tiles=True (or set tile.extra['tile_path'])"
+                ),
+            )
+        return self.label_tile(
+            tile_path=Path(chip),
+            tile_metadata=tile,
+            output_path=output_dir / f"{tile.tile_id}.tif",
+            **kwargs,
+        )
 
     def label_tiles(
         self,
@@ -177,7 +215,7 @@ class BaseLabeler(ABC):
         # Process tiles (sequential for stability; subclasses can override with threads)
         for i, tile in enumerate(tiles):
             try:
-                result = self.label_tile(tile=tile, output_dir=output_dir, task=task, **kwargs)
+                result = self._call_label_tile(tile, output_dir, task, **kwargs)
                 if result.success:
                     success_count += 1
                 elif result.skipped:
@@ -290,6 +328,8 @@ class BaseLabeler(ABC):
         import rasterio
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(mask.astype(profile.get("dtype", "uint8")), 1)
         return output_path

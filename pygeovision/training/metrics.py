@@ -53,12 +53,22 @@ class SegmentationMetrics:
             fn = cm.sum(1) - tp
             iou = tp / (tp + fp + fn + 1e-10)
             f1  = 2 * tp / (2 * tp + fp + fn + 1e-10)
-            per_class_iou = {f"iou_class_{i}": float(iou[i]) for i in range(self.num_classes)}
+            precision = tp / (tp + fp + 1e-10)
+            recall = tp / (tp + fn + 1e-10)
+            # Per-class numbers matter for rare classes: the mean over classes is
+            # dominated by the (easy) background, so a model that finds no mining
+            # at all still scores a high mean IoU.
+            per_class = {}
+            for i in range(self.num_classes):
+                per_class[f"iou_class_{i}"] = float(iou[i])
+                per_class[f"f1_class_{i}"] = float(f1[i])
+                per_class[f"precision_class_{i}"] = float(precision[i])
+                per_class[f"recall_class_{i}"] = float(recall[i])
             return {
                 "mean_iou":  float(iou.mean()),
                 "mean_f1":   float(f1.mean()),
                 "accuracy":  float(tp.sum() / (cm.sum() + 1e-10)),
-                **per_class_iou,
+                **per_class,
             }
         except Exception:
             return {"mean_iou": 0.0, "mean_f1": 0.0, "accuracy": 0.0}

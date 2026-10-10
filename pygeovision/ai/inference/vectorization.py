@@ -332,6 +332,8 @@ class Vectorizer:
             mask = np.full(out_shape, background, dtype=np.uint8)
 
         profile.update(dtype="uint8", count=1, compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(output_path, "w", **profile) as dst:

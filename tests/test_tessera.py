@@ -1,4 +1,4 @@
-"""Tests for pygeovision.advanced.foundation.tessera_geo.TesseraGeo.
+"""Tests for pygeovision.models.foundation.tessera.TesseraGeo.
 
 Real gap found and fixed: TESSERA (satellite embeddings foundation model)
 was a confirmed honest stub — models/foundation/tessera.py correctly
@@ -20,7 +20,7 @@ rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
 
 
 def _mock_tessera(monkeypatch=None):
-    from pygeovision.advanced.foundation.tessera_geo import TesseraGeo
+    from pygeovision.models.foundation.tessera import TesseraGeo
     from unittest.mock import MagicMock
 
     tessera = TesseraGeo.__new__(TesseraGeo)
@@ -41,7 +41,7 @@ class TestRegistrySpecExists:
 
     def test_get_model_returns_real_tesserageo(self):
         from pygeovision.models.registry import get_model
-        from pygeovision.advanced.foundation.tessera_geo import TesseraGeo
+        from pygeovision.models.foundation.tessera import TesseraGeo
         model = get_model("tessera")
         assert isinstance(model, TesseraGeo)
 

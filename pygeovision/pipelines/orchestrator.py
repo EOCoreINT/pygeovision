@@ -53,6 +53,7 @@ class Pipeline:
         """Execute the pipeline."""
         ctx = context or {}
         completed, failed = [], []
+        errors: dict[str, str] = {}
         t_start = time.time()
 
         # Build execution order (topological sort)
@@ -66,6 +67,7 @@ class Pipeline:
             if any(d in failed for d in deps):
                 logger.warning("Skipping '%s' — dependency failed", step_name)
                 failed.append(step_name)
+                errors[step_name] = "skipped: a dependency failed"
                 continue
 
             logger.info("Running step: %s", step_name)
@@ -76,9 +78,10 @@ class Pipeline:
                 completed.append(step_name)
                 continue
 
-            # Execute with retry
+            # Execute with retry (a StepError is deterministic -- retrying cannot help)
+            from pygeovision.pipelines.steps import StepError
             last_exc = None
-            max_retries = getattr(step, "retry_on_fail", 1)
+            max_retries = max(1, getattr(step, "retry_on_fail", 1))
             for attempt in range(max_retries):
                 try:
                     result = step.run(ctx) if hasattr(step, "run") else {}
@@ -94,6 +97,10 @@ class Pipeline:
                     completed.append(step_name)
                     last_exc = None
                     break
+                except StepError as exc:
+                    last_exc = exc
+                    logger.error("Step '%s' failed: %s", step_name, exc)
+                    break
                 except Exception as exc:
                     last_exc = exc
                     if attempt < max_retries - 1:
@@ -102,6 +109,7 @@ class Pipeline:
 
             if last_exc:
                 failed.append(step_name)
+                errors[step_name] = str(last_exc)
                 for hook in self._hooks.get("on_error", []):
                     hook(step, ctx, last_exc)
                 logger.error("Step '%s' failed after %d attempts: %s", step_name, max_retries, last_exc)
@@ -117,6 +125,7 @@ class Pipeline:
             steps_failed=failed,
             duration_s=round(duration, 2),
             outputs=ctx,
+            error="; ".join(f"{k}: {v}" for k, v in errors.items()) or None,
         )
 
     def _topo_sort(self) -> list[Any]:

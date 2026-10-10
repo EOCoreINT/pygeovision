@@ -159,6 +159,8 @@ class ChangeFormer:
         import pathlib
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         profile.update(count=1, dtype="uint8", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(pred[np.newaxis])
             dst.update_tags(method="ChangeFormer", change_pct=f"{change_pct:.2f}")

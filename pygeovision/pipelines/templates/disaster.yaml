@@ -1,11 +1,14 @@
+# Disaster pipeline scaffold: search -> download -> infer -> export.
+#
+# This is a starting point, not a ready model: the domain only names the output folder.
+# Before it can run you must supply
+#   * the area and dates          --set search.bbox='[MIN_LON,MIN_LAT,MAX_LON,MAX_LAT]'
+#                                 --set search.date_range='["2024-06-01","2024-06-30"]'
+#   * YOUR trained network        --set infer.checkpoint=best.pth   (PyGeoVision ships no trained weights)
+#     and, if different,          --set infer.model=NAME --set infer.num_classes=N
+# e.g.  pygeovision pipeline run disaster.yaml --set search.bbox='[15.0,45.1,15.1,45.2]' ...
 name: disaster_pipeline
-description: "PyGeoVision disaster analysis pipeline"
-version: "2.0"
-
-defaults:
-  cloud_cover_max: 15
-  resolution_m: 10
-  output_dir: ./output/disaster/
+description: "Disaster scaffold (bring your own area, dates and trained checkpoint)"
 
 steps:
   - name: search
@@ -20,6 +23,7 @@ steps:
     depends_on: [search]
     retry_on_fail: 3
     params:
+      output_dir: ./output/disaster/data/
       parallel: 4
       post_process: [reproject:EPSG:4326, cog]
 
@@ -27,14 +31,16 @@ steps:
     action: infer
     depends_on: [download]
     params:
-      model: unet-r50
+      model: unet_resnet50
+      num_classes: 2
       chip_size: 512
       overlap: 64
       blend_mode: gaussian
+      output_dir: ./output/disaster/predictions/
 
   - name: export
     action: export
     depends_on: [infer]
     params:
       format: geojson
-      output_dir: ./output/disaster/
+      output_dir: ./output/disaster/vectors/

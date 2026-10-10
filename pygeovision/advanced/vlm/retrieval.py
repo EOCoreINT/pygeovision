@@ -12,7 +12,7 @@ class GeoImageRetrieval:
     """Image-to-image and text-to-image retrieval for geospatial archives."""
 
     def __init__(self, model: str = "openclip-b32") -> None:
-        from pygeovision.advanced.vlm.clip_geo import CLIPGeo
+        from pygeovision.models.vlm.clip import CLIPGeo
         self._clip = CLIPGeo(model=model)
         self._index: dict[str, Any] = {}
 
@@ -25,7 +25,7 @@ class GeoImageRetrieval:
                 emb = self._clip.embed_image(str(p))
                 self._index[str(p)] = emb.tolist()
             except Exception as exc:
-                logger.debug("Skipping %s: %s", p, exc)
+                logger.warning("Skipping %s: %s: %s", p, type(exc).__name__, exc)
         if save_path:
             with open(save_path, "w") as f:
                 json.dump(self._index, f)

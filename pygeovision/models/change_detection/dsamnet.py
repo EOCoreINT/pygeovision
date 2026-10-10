@@ -311,6 +311,8 @@ class DSAMNetChangeDetector:
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         out_profile = profile.copy()
         out_profile.update(count=1, dtype="uint8", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            out_profile.pop(_k, None)
         with rasterio.open(output_path, "w", **out_profile) as dst:
             dst.write(pred[np.newaxis])
             dst.update_tags(method="DSAMNet", change_pct=f"{change_pct:.2f}")
@@ -331,6 +333,8 @@ class DSAMNetChangeDetector:
             ))
             dist_profile = profile.copy()
             dist_profile.update(count=1, dtype="float32", compress="lzw")
+            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                dist_profile.pop(_k, None)
             with rasterio.open(dist_path, "w", **dist_profile) as dst:
                 dst.write(dist_np[np.newaxis])
             result["distance_map_path"] = dist_path

@@ -23,6 +23,51 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+class _AugmentedSegmentationDataset:
+    """Real fix, confirmed necessary by direct inspection: `augment`/
+    `flip_prob`/`rotate_limit`/`scale_limit`/`brightness_limit`/
+    `contrast_limit` were real TrainingConfig fields with zero
+    references anywhere in this file before this fix -- setting
+    `augment=True` had no effect on training at all, despite a real,
+    substantial, already-built augmentation module
+    (`pygeovision.ai.data.augmentations.GeoAugmentationPipeline`)
+    existing elsewhere in this codebase, just never wired in here.
+
+    Wraps a real segmentation dataset, applying that real pipeline to
+    each sample. Assumes the standard PyTorch segmentation-dataset
+    convention: `dataset[i]` returns a real `(image, mask)` tuple,
+    `image` as a real `(C, H, W)` tensor/array. Scoped to segmentation
+    only -- detection samples have a genuinely different real format
+    (boxes/labels, not a mask) that the real augmentation pipeline
+    isn't built for; `augment=True` has no effect for
+    `task="detection"`, logged once at construction.
+    """
+
+    def __init__(self, dataset: Any, mode: str = "medium") -> None:
+        from pygeovision.ai.data.augmentations import GeoAugmentationPipeline
+        self._dataset = dataset
+        self._pipeline = GeoAugmentationPipeline.for_task("segmentation", mode=mode)
+
+    def __len__(self) -> int:
+        return len(self._dataset)
+
+    def __getitem__(self, idx: int) -> Any:
+        import numpy as np
+        import torch
+
+        image, mask = self._dataset[idx]
+        image_np = image.numpy() if hasattr(image, "numpy") else np.asarray(image)
+        mask_np = mask.numpy() if hasattr(mask, "numpy") else np.asarray(mask)
+        # CHW -> HWC for albumentations' real, documented convention
+        image_hwc = np.transpose(image_np, (1, 2, 0)) if image_np.ndim == 3 else image_np
+
+        result = self._pipeline(image=image_hwc, mask=mask_np)
+        aug_image, aug_mask = result["image"], result["mask"]
+        aug_image_chw = np.transpose(aug_image, (2, 0, 1)) if aug_image.ndim == 3 else aug_image
+
+        return torch.as_tensor(aug_image_chw.copy()).float(), torch.as_tensor(aug_mask.copy()).long()
+
+
 @dataclass
 class TrainingConfig:
     """Complete training configuration for GeoTrainer."""
@@ -48,6 +93,12 @@ class TrainingConfig:
     pretrained: bool = True
     freeze_backbone: bool = False
     checkpoint_path: str | None = None  # real path to an existing .pth to finetune from
+    #: Train the backbone only after the first N epochs (the head trains alone
+    #: before that). ``None`` keeps ``freeze_backbone`` semantics (all or nothing).
+    unfreeze_backbone_epoch: int | None = None
+    #: Backbone learning rate = ``learning_rate * backbone_lr_scale`` (e.g. 0.1
+    #: to fine-tune a pretrained encoder gently while the head learns faster).
+    backbone_lr_scale: float = 1.0
 
     # ── Optimisation ──────────────────────────────────────────────────
     optimizer: str = "adamw"          # adamw | sgd | lion | lars
@@ -88,6 +139,9 @@ class TrainingConfig:
     checkpoint_metric: str = "val_iou"
     checkpoint_mode: str = "max"
     checkpoint_every_n_epochs: int = 1
+    #: Continue an interrupted run from ``<output_dir>/checkpoints/last.pth``
+    #: (model, optimizer, scheduler, history and early-stopping state).
+    resume: bool = False
 
     # ── Augmentation ──────────────────────────────────────────────────
     augment: bool = True
@@ -152,21 +206,74 @@ class EarlyStopping:
         return improved
 
 
+_BACKBONE_KEYS = ("encoder", "backbone", "patch_embed", "segformer.encoder")
+
+
+def _is_backbone(param_name: str) -> bool:
+    return any(k in param_name for k in _BACKBONE_KEYS)
+
+
+def _unwrap(model: Any) -> Any:
+    """The plain module under DDP / DataParallel / torch.compile wrappers.
+
+    State dicts saved from a wrapped model carry ``module.`` / ``_orig_mod.``
+    key prefixes that a plain model cannot load, so checkpoints are always
+    written from the unwrapped module.
+
+    Only real ``nn.Module`` wrappers are unwrapped, by looking at their
+    registered submodules (never ``hasattr``, which a mock or any object with a
+    dynamic ``__getattr__`` answers "yes" to forever), and the walk is bounded.
+    """
+    try:
+        import torch
+    except ImportError:
+        return model
+    for _ in range(8):
+        if not isinstance(model, torch.nn.Module):
+            return model
+        inner = model._modules.get("_orig_mod")                       # torch.compile
+        if inner is None and type(model).__name__ in ("DistributedDataParallel", "DataParallel"):
+            inner = model._modules.get("module")
+        if inner is None:
+            return model
+        model = inner
+    return model
+
+
 class CheckpointManager:
-    """Save top-k checkpoints + last checkpoint."""
+    """Best-k model checkpoints plus a full-state ``last.pth`` for resuming.
+
+    * ``epoch_XXXX_<metric>_<score>.pth``: weights of the best ``top_k`` epochs.
+    * ``best.pth``: copy of the single best one (a stable name for inference).
+    * ``last.pth``: the complete training state after the most recent epoch,
+      written every epoch (atomically) whether or not it was a top-k epoch.
+    """
 
     def __init__(self, output_dir: Path, top_k: int = 3, metric: str = "val_iou", mode: str = "max") -> None:
-        self.dir = output_dir / "checkpoints"
+        self.dir = Path(output_dir) / "checkpoints"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.top_k = top_k
         self.metric = metric
         self.mode = mode
-        self._history: list[tuple] = []  # (score, path)
+        self._history: list[tuple] = []  # (score, path), best first
+
+    @property
+    def last_path(self) -> Path:
+        return self.dir / "last.pth"
+
+    def _better(self, a: float, b: float) -> bool:
+        return a > b if self.mode == "max" else a < b
 
     def save(self, model: Any, epoch: int, metrics: dict[str, float]) -> Path | None:
+        """Write this epoch's weights if it is in the best ``top_k``; else return None."""
+        if self.top_k <= 0:
+            return None
         try:
             import torch
-            score = metrics.get(self.metric, 0.0)
+            score = float(metrics.get(self.metric, 0.0))
+            if len(self._history) >= self.top_k and not self._better(score, self._history[-1][0]):
+                return None
+            model = _unwrap(model)
             path = self.dir / f"epoch_{epoch:04d}_{self.metric}_{score:.4f}.pth"
             torch.save({
                 "epoch": epoch,
@@ -176,26 +283,43 @@ class CheckpointManager:
                 "score": score,
             }, path)
             self._history.append((score, path))
-            # Keep only top-k
-            reverse = (self.mode == "max")
-            self._history.sort(key=lambda x: x[0], reverse=reverse)
+            self._history.sort(key=lambda x: x[0], reverse=(self.mode == "max"))
             while len(self._history) > self.top_k:
                 _, old_path = self._history.pop()
                 if old_path.exists():
                     old_path.unlink()
-            # Save last
-            last_path = self.dir / "last.pth"
-            import shutil
-            shutil.copy(path, last_path)
+            if self._history[0][1] == path:
+                import shutil
+                shutil.copy(path, self.dir / "best.pth")
             return path
         except Exception as exc:
             logger.warning("Checkpoint save failed: %s", exc)
+            return None
+
+    def save_state(self, state: dict[str, Any]) -> Path | None:
+        """Atomically write the full training state to ``last.pth``."""
+        try:
+            import torch
+            tmp = self.dir / "last.pth.tmp"
+            torch.save(state, tmp)
+            os.replace(tmp, self.last_path)
+            return self.last_path
+        except Exception as exc:
+            logger.warning("Saving last.pth failed: %s", exc)
             return None
 
     def best_path(self) -> Path | None:
         if not self._history:
             return None
         return self._history[0][1]
+
+    def state(self) -> list[tuple[float, str]]:
+        return [(score, str(path)) for score, path in self._history]
+
+    def load_state(self, entries: list[Any]) -> None:
+        """Restore the best-k list after a resume (files that no longer exist are dropped)."""
+        self._history = [(float(sc), Path(pth)) for sc, pth in entries if Path(pth).exists()]
+        self._history.sort(key=lambda x: x[0], reverse=(self.mode == "max"))
 
 
 class GeoTrainer:
@@ -264,6 +388,12 @@ class GeoTrainer:
                     self._device = torch.device("cpu")
             elif isinstance(self.cfg.devices, int):
                 self._device = torch.device(f"cuda:{self.cfg.devices}")
+            elif isinstance(self.cfg.devices, str):
+                # "cpu", "cuda", "cuda:1", "mps" -- previously every string
+                # (including "cpu") silently selected CUDA.
+                self._device = torch.device(self.cfg.devices)
+            elif isinstance(self.cfg.devices, (list, tuple)) and self.cfg.devices:
+                self._device = torch.device(f"cuda:{self.cfg.devices[0]}")
             else:
                 self._device = torch.device("cuda")
         except ImportError:
@@ -377,7 +507,11 @@ class GeoTrainer:
             import torch
 
             from pygeovision.training.metrics import SegmentationMetrics
-            from pygeovision.training.optimizer import build_optimizer, build_scheduler
+            from pygeovision.training.optimizer import (
+                build_optimizer,
+                build_scheduler,
+                scheduler_steps_per_batch,
+            )
         except ImportError as exc:
             logger.error("torch not installed: %s", exc)
             return {"error": str(exc)}
@@ -418,6 +552,17 @@ class GeoTrainer:
         collate_fn = _detection_collate if self.cfg.task == "detection" else None
 
         # Build DataLoaders if datasets provided
+        if train_dataset is not None and self.cfg.augment:
+            if self.cfg.task == "segmentation":
+                train_dataset = _AugmentedSegmentationDataset(train_dataset)
+            else:
+                logger.warning(
+                    "cfg.augment=True has no effect for task=%r -- the real "
+                    "augmentation pipeline (GeoAugmentationPipeline) is only "
+                    "wired in for segmentation, since detection samples have "
+                    "a genuinely different real format (boxes/labels, not a "
+                    "mask) it isn't built for.", self.cfg.task,
+                )
         if train_loader is None and train_dataset is not None:
             train_loader = torch.utils.data.DataLoader(
                 train_dataset,
@@ -480,29 +625,99 @@ class GeoTrainer:
                     f"a specific checkpoint was explicitly requested."
                 ) from exc
 
-        if self.cfg.freeze_backbone:
-            _backbone_keys = ("encoder", "backbone", "patch_embed", "segformer.encoder")
-            n_frozen = 0
-            for name, param in model.named_parameters():
-                if any(k in name for k in _backbone_keys):
-                    param.requires_grad = False
-                    n_frozen += 1
-            if n_frozen == 0:
-                logger.warning(
-                    "freeze_backbone=True but no parameters matched the real "
-                    "backbone-name patterns %s -- this model's real parameter "
-                    "names don't match any of them, so nothing was actually "
-                    "frozen. Check model.named_parameters() to find the real "
-                    "prefix this model uses for its backbone/encoder.",
-                    _backbone_keys,
-                )
-            else:
-                logger.info("freeze_backbone=True: froze %d real backbone parameter(s).", n_frozen)
+        # ── Metrics, checkpointing and early-stopping objects ─────────────
+        # (built before the optimizer so a resume can restore their state)
+        #
+        # Detection's default early-stopping/checkpoint metric is "val_map50"/"max"
+        # (per-pixel IoU does not exist for boxes). Only auto-switch while the
+        # segmentation default "val_iou" is still in place, so an explicit user
+        # choice (including "val_loss") is respected.
+        es_metric, es_mode = self.cfg.early_stopping_metric, self.cfg.early_stopping_mode
+        ckpt_metric, ckpt_mode = self.cfg.checkpoint_metric, self.cfg.checkpoint_mode
+        if self.cfg.task == "detection":
+            if es_metric == "val_iou":
+                es_metric, es_mode = "val_map50", "max"
+            if ckpt_metric == "val_iou":
+                ckpt_metric, ckpt_mode = "val_map50", "max"
 
-        # Build optimizer and scheduler
-        optimizer = build_optimizer(model, self.cfg)
-        n_steps = len(train_loader) if train_loader else 100
-        scheduler = build_scheduler(optimizer, self.cfg, steps_per_epoch=n_steps)
+        early_stopping = EarlyStopping(self.cfg.early_stopping_patience, es_metric, es_mode)
+        ckpt_mgr = CheckpointManager(self.output_dir, self.cfg.save_top_k, ckpt_metric, ckpt_mode)
+        # SegmentationMetrics (per-pixel confusion matrix / IoU) does not apply to
+        # bounding-box detection outputs, so it is skipped for the detection task.
+        metrics_obj = SegmentationMetrics(self.cfg.num_classes) if self.cfg.task != "detection" else None
+        history: dict[str, list] = {"train_loss": [], "val_loss": [], "val_iou": [], "val_map50": []}
+        global_step = 0
+
+        # ── Resume an interrupted run ──────────────────────────────────────
+        start_epoch = 0
+        resume_state: dict[str, Any] | None = None
+        if self.cfg.resume:
+            if ckpt_mgr.last_path.exists():
+                try:
+                    resume_state = torch.load(ckpt_mgr.last_path, map_location="cpu", weights_only=True)
+                    _unwrap(model).load_state_dict(resume_state["model_state_dict"])
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"resume=True but {ckpt_mgr.last_path} could not be restored into this "
+                        f"model: {exc}. Refusing to continue from different weights. Delete the "
+                        f"file (or set resume=False) to start a fresh run."
+                    ) from exc
+                if "optimizer_state_dict" not in resume_state:
+                    logger.warning("%s holds weights only (no optimizer state); starting epoch 1 "
+                                   "from those weights.", ckpt_mgr.last_path)
+                    resume_state = None
+                else:
+                    start_epoch = int(resume_state["epoch"])
+                    history = {k: list(v) for k, v in resume_state.get("history", history).items()}
+                    global_step = int(resume_state.get("global_step", 0))
+                    logger.info("Resuming from %s after epoch %d.", ckpt_mgr.last_path, start_epoch)
+            else:
+                logger.info("resume=True but %s does not exist; starting a fresh run.", ckpt_mgr.last_path)
+
+        # ── Freezing (all-or-nothing, or staged) ───────────────────────────
+        # freeze_backbone=True freezes the encoder for the whole run.
+        # unfreeze_backbone_epoch=N freezes it for the first N epochs only.
+        staged = self.cfg.unfreeze_backbone_epoch is not None
+        n_unfreeze = int(self.cfg.unfreeze_backbone_epoch or 0)
+        freeze_now = (self.cfg.freeze_backbone or staged) and not (staged and start_epoch >= n_unfreeze)
+        if self.cfg.freeze_backbone or staged:
+            n_backbone = sum(1 for n, _ in model.named_parameters() if _is_backbone(n))
+            if n_backbone == 0:
+                logger.warning(
+                    "Backbone freezing requested but no parameters matched the backbone-name "
+                    "patterns %s, so nothing was frozen. Check model.named_parameters() for "
+                    "this architecture's encoder prefix.", _BACKBONE_KEYS,
+                )
+            elif freeze_now:
+                for n, prm in model.named_parameters():
+                    if _is_backbone(n):
+                        prm.requires_grad = False
+                logger.info("Froze %d backbone parameter tensor(s)%s.", n_backbone,
+                            f" for the first {n_unfreeze} epoch(s)" if staged else "")
+
+        # ── Optimizer and scheduler ────────────────────────────────────────
+        # A separate backbone learning rate (or a later unfreeze) needs the
+        # backbone in the optimizer from the start: PyTorch skips parameters
+        # without gradients, and a parameter missing from the optimizer would
+        # stay untrained even after it is unfrozen.
+        has_backbone = any(_is_backbone(n) for n, _ in model.named_parameters())
+        if has_backbone and (staged or self.cfg.backbone_lr_scale != 1.0):
+            head = [prm for n, prm in model.named_parameters() if not _is_backbone(n) and prm.requires_grad]
+            groups = [{"params": head, "lr": self.cfg.learning_rate}]
+            if not (self.cfg.freeze_backbone and not staged):
+                backbone = [prm for n, prm in model.named_parameters() if _is_backbone(n)]
+                groups.append({"params": backbone, "lr": self.cfg.learning_rate * self.cfg.backbone_lr_scale})
+            optimizer = build_optimizer(model, self.cfg, param_groups=groups)
+        else:
+            optimizer = build_optimizer(model, self.cfg)
+        try:
+            n_loader = len(train_loader)
+        except TypeError:
+            n_loader = None
+        accum = max(1, int(self.cfg.grad_accumulation_steps))
+        steps_per_epoch = -(-n_loader // accum) if n_loader else 100
+        scheduler = build_scheduler(optimizer, self.cfg, steps_per_epoch=steps_per_epoch)
+        per_batch_scheduler = scheduler_steps_per_batch(self.cfg.scheduler)
 
         # Real fix: torchvision detection models compute their own loss
         # internally when called as model(images, targets) in training
@@ -515,37 +730,42 @@ class GeoTrainer:
         autocast_ctx = self._build_precision_context()
         scaler = self._build_scaler()
 
-        # Real fix: early_stopping_metric/checkpoint_metric default to
-        # "val_iou"/"max", which genuinely doesn't exist for detection
-        # (no per-pixel IoU applies to bounding-box outputs) -- only
-        # auto-switch when still at that segmentation-oriented default,
-        # so an explicit user override for either field is respected.
-        es_metric, es_mode = self.cfg.early_stopping_metric, self.cfg.early_stopping_mode
-        ckpt_metric, ckpt_mode = self.cfg.checkpoint_metric, self.cfg.checkpoint_mode
-        if self.cfg.task == "detection":
-            if es_metric == "val_iou":
-                es_metric, es_mode = "val_loss", "min"
-            if ckpt_metric == "val_iou":
-                ckpt_metric, ckpt_mode = "val_loss", "min"
+        if resume_state is not None:
+            try:
+                optimizer.load_state_dict(resume_state["optimizer_state_dict"])
+                if scheduler is not None and resume_state.get("scheduler_state_dict"):
+                    scheduler.load_state_dict(resume_state["scheduler_state_dict"])
+                if scaler is not None and resume_state.get("scaler_state_dict"):
+                    scaler.load_state_dict(resume_state["scaler_state_dict"])
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Could not restore optimizer/scheduler state from {ckpt_mgr.last_path}: {exc}. "
+                    f"The optimizer layout differs from the interrupted run (changed "
+                    f"unfreeze_backbone_epoch / backbone_lr_scale / optimizer / scheduler?). "
+                    f"Use the original settings to resume, or resume=False to start fresh."
+                ) from exc
+            es_state = resume_state.get("early_stopping", {})
+            early_stopping.best = es_state.get("best")
+            early_stopping.counter = int(es_state.get("counter", 0))
+            early_stopping.should_stop = bool(es_state.get("should_stop", False))
+            ckpt_mgr.load_state(resume_state.get("checkpoints", []))
 
-        # Training bookkeeping
-        early_stopping = EarlyStopping(self.cfg.early_stopping_patience, es_metric, es_mode)
-        ckpt_mgr = CheckpointManager(self.output_dir, self.cfg.save_top_k, ckpt_metric, ckpt_mode)
-        # Real fix: SegmentationMetrics (per-pixel confusion matrix / IoU)
-        # genuinely doesn't apply to bounding-box detection outputs --
-        # skipped entirely for the detection task rather than silently
-        # computing meaningless numbers.
-        metrics_obj = SegmentationMetrics(self.cfg.num_classes) if self.cfg.task != "detection" else None
-
-        history: dict[str, list] = {"train_loss": [], "val_loss": [], "val_iou": []}
-        float("-inf") if self.cfg.checkpoint_mode == "max" else float("inf")
-        global_step = 0
         t_start = time.time()
 
         logger.info("Starting training: %d epochs | device=%s | precision=%s | strategy=%s",
                     self.cfg.max_epochs, device, self.cfg.precision, self.cfg.strategy)
 
-        for epoch in range(1, self.cfg.max_epochs + 1):
+        epoch = start_epoch
+        for epoch in range(start_epoch + 1, self.cfg.max_epochs + 1):
+            # Staged fine-tuning: the backbone joins in after the first N epochs.
+            if staged and freeze_now and epoch > n_unfreeze:
+                for n, prm in model.named_parameters():
+                    if _is_backbone(n):
+                        prm.requires_grad = True
+                freeze_now = False
+                logger.info("Epoch %d: backbone unfrozen (learning rate x%g).",
+                            epoch, self.cfg.backbone_lr_scale)
+
             # ── Train ───────────────────────────────────────────────
             model.train()
             epoch_loss = 0.0
@@ -608,8 +828,8 @@ class GeoTrainer:
                     else:
                         loss.backward()
 
-                    # Gradient accumulation
-                    if (batch_idx + 1) % self.cfg.grad_accumulation_steps == 0:
+                    # Gradient accumulation (the last, partial window is flushed too)
+                    if (batch_idx + 1) % accum == 0 or (n_loader is not None and batch_idx + 1 == n_loader):
                         if self.cfg.grad_clip > 0:
                             if scaler is not None:
                                 scaler.unscale_(optimizer)
@@ -620,9 +840,9 @@ class GeoTrainer:
                         else:
                             optimizer.step()
                         optimizer.zero_grad(set_to_none=True)
-                        if scheduler is not None and not isinstance(
-                            scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
-                        ):
+                        # Only step-based schedules advance per optimizer step; epoch-based
+                        # ones (cosine, step) advance once per epoch, further below.
+                        if scheduler is not None and per_batch_scheduler:
                             scheduler.step()
                         global_step += 1
 
@@ -653,6 +873,20 @@ class GeoTrainer:
                     # gradient tracking/backprop, so this is genuinely a
                     # real, no-training-happening validation pass, just
                     # using train()-mode's real loss-computation path.
+                    #
+                    # Real fix, addressing a confirmed gap: DetectionMetrics
+                    # (real torchmetrics-backed mAP) existed elsewhere in
+                    # this codebase, independently verified correct, but
+                    # was never actually called here -- validation only
+                    # ever computed val_loss, with no real accuracy signal
+                    # available for early stopping or checkpoint selection.
+                    # A second, eval()-mode forward pass on the same batch
+                    # gets real predictions to feed it (the model can't
+                    # return both a loss dict and predictions from one
+                    # forward call), at the real cost of double compute
+                    # during detection validation specifically.
+                    from pygeovision.training.metrics import DetectionMetrics
+                    det_metrics = DetectionMetrics(num_classes=self.cfg.num_classes)
                     model.train()
                     with torch.no_grad():
                         for batch in val_loader:
@@ -668,7 +902,22 @@ class GeoTrainer:
                                 loss = sum(loss_dict.values())
                             val_loss += loss.item()
                             n_val += 1
+
+                            model.eval()
+                            try:
+                                preds = model(images)
+                                det_metrics.update(
+                                    [{k: v.detach().cpu() for k, v in p.items()} for p in preds],
+                                    [{k: v.detach().cpu() for k, v in t.items()} for t in targets],
+                                )
+                            except Exception as exc:
+                                logger.warning(
+                                    "Skipping real mAP update for a detection val batch "
+                                    "(val_loss is still accumulated correctly): %s", exc,
+                                )
+                            model.train()
                     model.eval()  # restore for any caller inspecting the model after fit()
+                    det_computed = det_metrics.compute()
                 else:
                     model.eval()
                     with torch.no_grad():
@@ -705,8 +954,27 @@ class GeoTrainer:
                     "epoch": float(epoch),
                     "lr": optimizer.param_groups[0]["lr"],
                 }
+                # Per-class numbers (val_iou_class_1, val_f1_class_1, val_recall_class_1, ...)
+                # so a rare class can drive early stopping / checkpoint selection.
+                for key, value in computed.items():
+                    if key not in ("mean_iou", "mean_f1", "accuracy"):
+                        val_metrics[f"val_{key}"] = value
+                # Real fix: merge in the real, newly-computed mAP metrics
+                # for detection tasks -- det_computed only exists when
+                # self.cfg.task == "detection" (set in the branch above).
+                if self.cfg.task == "detection":
+                    val_metrics["val_map50"] = det_computed.get("mAP50", 0.0)
+                    val_metrics["val_map50_95"] = det_computed.get("mAP50_95", 0.0)
+                    if "note" in det_computed:
+                        val_metrics["_map_note"] = det_computed["note"]
                 history["val_loss"].append(val_metrics["val_loss"])
                 history["val_iou"].append(val_metrics["val_iou"])
+                history.setdefault("lr", []).append(float(val_metrics["lr"]))
+                if self.cfg.task == "detection":
+                    history["val_map50"].append(val_metrics["val_map50"])
+                for key, value in val_metrics.items():
+                    if key.startswith("val_") and "_class_" in key:
+                        history.setdefault(key, []).append(value)
 
                 # LR scheduler plateau step
                 if scheduler is not None and isinstance(
@@ -723,20 +991,43 @@ class GeoTrainer:
                     val_metrics["val_iou"], optimizer.param_groups[0]["lr"],
                 )
 
-                # Checkpoint
-                if epoch % self.cfg.checkpoint_every_n_epochs == 0:
-                    ckpt_path = ckpt_mgr.save(model, epoch, val_metrics)
-                    if ckpt_path:
-                        logger.debug("Saved checkpoint: %s", ckpt_path)
-
-                # Early stopping
-                if not early_stopping.update(val_metrics):
-                    if early_stopping.should_stop:
-                        logger.info("Early stopping at epoch %d (patience=%d)",
-                                    epoch, self.cfg.early_stopping_patience)
-                        break
+                # Early stopping bookkeeping (the break happens after this epoch's state is saved)
+                early_stopping.update(val_metrics)
             else:
+                val_metrics = {}
                 logger.info("Epoch %d/%d | train_loss=%.4f", epoch, self.cfg.max_epochs, avg_train_loss)
+
+            # Epoch-based schedules (cosine, step) advance once per epoch.
+            if (scheduler is not None and not per_batch_scheduler
+                    and not isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)):
+                scheduler.step()
+
+            # Best-k weights (needs validation metrics)
+            if val_loader is not None and epoch % self.cfg.checkpoint_every_n_epochs == 0:
+                ckpt_path = ckpt_mgr.save(model, epoch, val_metrics)
+                if ckpt_path:
+                    logger.debug("Saved checkpoint: %s", ckpt_path)
+
+            # Full state of the finished epoch, for resume=True (written atomically)
+            if self.cfg.save_last:
+                ckpt_mgr.save_state({
+                    "epoch": epoch,
+                    "model_state_dict": _unwrap(model).state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
+                    "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
+                    "history": history,
+                    "global_step": global_step,
+                    "early_stopping": {"best": early_stopping.best, "counter": early_stopping.counter,
+                                       "should_stop": early_stopping.should_stop},
+                    "checkpoints": ckpt_mgr.state(),
+                    "metrics": val_metrics,
+                })
+
+            if val_loader is not None and early_stopping.should_stop:
+                logger.info("Early stopping at epoch %d (patience=%d)",
+                            epoch, self.cfg.early_stopping_patience)
+                break
 
         duration = time.time() - t_start
 
@@ -754,6 +1045,8 @@ class GeoTrainer:
             "best_metric_name": es_metric,
             "best_metric_value": early_stopping.best,
             "history": history,
+            "last_checkpoint": str(ckpt_mgr.last_path) if ckpt_mgr.last_path.exists() else None,
+            "resumed_from_epoch": start_epoch or None,
         }
         # Real fix: this key was always literally named "best_val_iou"
         # even for detection, where the tracked value is actually
@@ -762,6 +1055,10 @@ class GeoTrainer:
         # specific key when it's genuinely an IoU value.
         if es_metric == "val_iou":
             result["best_val_iou"] = early_stopping.best
+        # Matching, honest convenience alias for the newly-available
+        # real mAP metric.
+        if es_metric == "val_map50":
+            result["best_val_map50"] = early_stopping.best
         logger.info("Training complete: %.1f min | best=%s=%.4f",
                     duration / 60,
                     self.cfg.early_stopping_metric,

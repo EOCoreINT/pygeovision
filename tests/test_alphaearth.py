@@ -1,4 +1,4 @@
-"""Tests for pygeovision.advanced.foundation.alphaearth_geo.AlphaEarthGeo.
+"""Tests for pygeovision.models.foundation.alphaearth_geo.AlphaEarthGeo.
 
 Real gap found and fixed: AlphaEarth Foundations (Google DeepMind's
 Satellite Embedding dataset) had zero presence anywhere in pygeovision,
@@ -27,18 +27,18 @@ class TestRegistryWiring:
 
     def test_get_model_returns_real_alphaearthgeo(self):
         from pygeovision.models.registry import get_model
-        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         model = get_model("alphaearth")
         assert isinstance(model, AlphaEarthGeo)
 
 
 class TestAlphaEarthGeoConstants:
     def test_real_collection_id(self):
-        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         assert AlphaEarthGeo.COLLECTION == "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL"
 
     def test_64_bands_named_a00_to_a63(self):
-        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         assert len(AlphaEarthGeo.BANDS) == 64
         assert AlphaEarthGeo.BANDS[0] == "A00"
         assert AlphaEarthGeo.BANDS[-1] == "A63"
@@ -49,7 +49,7 @@ class TestEmbeddingsAtPointsRequestConstruction:
     ee module (no real EE credentials available in this environment)."""
 
     def test_builds_correct_collection_and_date_filter(self, monkeypatch):
-        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         from unittest.mock import MagicMock
 
         mock_ee = MagicMock()
@@ -70,7 +70,7 @@ class TestEmbeddingsAtPointsRequestConstruction:
         """Points outside coverage (no feature returned by EE) must come
         back as NaN rows, not silently zero or misaligned."""
         import numpy as np
-        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         from unittest.mock import MagicMock
 
         mock_ee = MagicMock()
@@ -93,7 +93,7 @@ class TestEmbeddingsAtPointsRequestConstruction:
 
 class TestEmbeddingsForBboxRequestConstruction:
     def test_starts_real_export_task(self, monkeypatch):
-        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         from unittest.mock import MagicMock
 
         mock_ee = MagicMock()
@@ -112,7 +112,7 @@ class TestEmbeddingsForBboxRequestConstruction:
         mock_task.start.assert_called_once()
 
     def test_missing_earthengine_api_gives_clear_error(self, monkeypatch):
-        from pygeovision.advanced.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
 
         ae = AlphaEarthGeo()
 

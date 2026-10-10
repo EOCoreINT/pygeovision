@@ -1,4 +1,8 @@
-"""PyGeoVision AI training package."""
+"""PyGeoVision AI training package.
+
+``GeoTrainer`` and ``TrainingConfig`` here are the one trainer. They are also
+importable from ``pygeovision.training`` (same objects).
+"""
 
 try:
     from pygeovision.ai.training.callbacks import (
@@ -10,14 +14,16 @@ try:
     )
     from pygeovision.ai.training.losses import DiceFocalLoss, DiceLoss, FocalLoss, get_loss
     from pygeovision.ai.training.metrics import AverageMeter, BinaryMetrics, ConfusionMatrix
-    from pygeovision.ai.training.trainer import GeoTrainer, TrainingResult
+    from pygeovision.ai.training.trainer import CheckpointManager, GeoTrainer, TrainingConfig
     _TORCH_AVAILABLE = True
 except (ImportError, AttributeError):
+    # torch is not installed: the trainer and the torch-based losses cannot be
+    # imported. They are None rather than missing so ``import`` of this package works.
     _TORCH_AVAILABLE = False
     GeoTrainer = None  # type: ignore[assignment,misc]
-    TrainingResult = None  # type: ignore[assignment,misc]
+    TrainingConfig = None  # type: ignore[assignment,misc]
+    CheckpointManager = None  # type: ignore[assignment,misc]
 
-    # Non-torch components — import unconditionally
     try:
         from pygeovision.ai.training.callbacks import (
             Callback,
@@ -26,9 +32,8 @@ except (ImportError, AttributeError):
             MLflowLogger,
             ModelCheckpoint,
         )
-        from pygeovision.ai.training.losses import DiceFocalLoss, DiceLoss, FocalLoss, get_loss
         from pygeovision.ai.training.metrics import AverageMeter, BinaryMetrics, ConfusionMatrix
-    except Exception:
+    except (ImportError, AttributeError):
         pass
 
 from pygeovision.ai.training.distributed import (
@@ -41,7 +46,7 @@ from pygeovision.ai.training.distributed import (
 )
 
 __all__ = [
-    "GeoTrainer", "TrainingResult",
+    "GeoTrainer", "TrainingConfig", "CheckpointManager",
     "get_loss", "DiceLoss", "FocalLoss", "DiceFocalLoss",
     "ConfusionMatrix", "BinaryMetrics", "AverageMeter",
     "Callback", "EarlyStopping", "ModelCheckpoint", "MLflowLogger", "LRSchedulerCallback",

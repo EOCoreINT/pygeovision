@@ -288,13 +288,9 @@ class TestVectorizer:
 class TestDeadOptimizersModuleRemoved:
     """pygeovision.ai.training.optimizers (plural) was confirmed
     completely dead code: neither real GeoTrainer implementation ever
-    imported from it. ai.training.trainer.GeoTrainer's own comment
-    acknowledged this directly, and it actually gets its real
-    optimizer/scheduler logic from the sibling pygeovision.training.
-    optimizer module instead (confirmed by reading its real import).
-    Removed the dead file entirely rather than leave a second,
-    never-reached implementation with its own, different, untested API
-    sitting alongside the real one."""
+    imported from it. Removed the dead file entirely rather than leave
+    a second, never-reached implementation with its own, different,
+    untested API sitting alongside the real one."""
 
     def test_dead_module_no_longer_exists(self):
         with pytest.raises(ImportError):

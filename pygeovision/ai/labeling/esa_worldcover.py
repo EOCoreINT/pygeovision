@@ -43,9 +43,12 @@ WORLDCOVER_CLASSES: dict[int, str] = {
 }
 
 # AWS Open Data Registry: ESA WorldCover
-_WORLDCOVER_S3_BASE = "s3://esa-worldcover/v200/{year}/map"
+# The 2020 edition is algorithm version v100, the 2021 edition v200; the two
+# are not directly comparable (ESA says not to use them for change detection).
+_WORLDCOVER_VERSION = {2020: "v100", 2021: "v200"}
+_WORLDCOVER_S3_BASE = "s3://esa-worldcover/{version}/{year}/map"
 _WORLDCOVER_HTTP_BASE = (
-    "https://esa-worldcover.s3.amazonaws.com/v200/{year}/map"
+    "https://esa-worldcover.s3.amazonaws.com/{version}/{year}/map"
 )
 
 # Tile grid: 3°×3° tiles named ESA_WorldCover_10m_{year}_v200_N{lat}E{lon}_Map.tif
@@ -156,9 +159,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
         try:
             import pyproj
             import rasterio
-            from rasterio.warp import Resampling, reproject
             from shapely.geometry import box
-            from shapely.ops import transform as shapely_transform
         except ImportError as exc:
             raise LabelingError(
                 "esa_worldcover labeler requires rasterio, pyproj, and shapely. "
@@ -329,8 +330,9 @@ class ESAWorldCoverLabeler(BaseLabeler):
 
         lat_str = f"{'N' if lat >= 0 else 'S'}{abs(lat):02d}"
         lon_str = f"{'E' if lon >= 0 else 'W'}{abs(lon):03d}"
+        version = _WORLDCOVER_VERSION[self.config.year]
         filename = (
-            f"ESA_WorldCover_10m_{self.config.year}_v200"
+            f"ESA_WorldCover_10m_{self.config.year}_{version}"
             f"_{lat_str}{lon_str}_Map.tif"
         )
         local_path = self.config.cache_dir / filename
@@ -338,7 +340,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
         if local_path.exists():
             return local_path
 
-        url = f"{_WORLDCOVER_HTTP_BASE.format(year=self.config.year)}/{filename}"
+        url = f"{_WORLDCOVER_HTTP_BASE.format(version=version, year=self.config.year)}/{filename}"
         logger.info("Downloading WorldCover tile: %s", filename)
         try:
             resp = requests.get(url, timeout=self.config.request_timeout, stream=True)

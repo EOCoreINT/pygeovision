@@ -72,6 +72,8 @@ def _save_index(arr: np.ndarray, ref_path: str, output_path: str, nodata: float 
     with r.open(ref_path) as ref:
         profile = ref.profile.copy()
     profile.update(count=1, dtype="float32", nodata=nodata, compress="lzw")
+    for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        profile.pop(_k, None)
     with r.open(output_path, "w", **profile) as dst:
         dst.write(arr.astype(np.float32)[np.newaxis])
     return output_path

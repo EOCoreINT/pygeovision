@@ -257,6 +257,8 @@ class PostProcessor:
         )
 
         profile.update(count=1, dtype=dtype, nodata=nodata, compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(burned[np.newaxis])
@@ -305,6 +307,8 @@ class PostProcessor:
         sieved = rio_sieve(data.astype(np.int32), min_pixels, connectivity=connectivity)
 
         profile.update(count=1, dtype="int32", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(sieved[np.newaxis])
@@ -386,6 +390,8 @@ class PostProcessor:
             filled = rio_fill(data, mask=mask, max_search_distance=100)
 
         profile.update(count=1, dtype="float32", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(filled[np.newaxis])
@@ -421,6 +427,8 @@ class PostProcessor:
 
         out = np.where(prob >= threshold, 1, nodata).astype(np.uint8)
         profile.update(count=1, dtype="uint8", nodata=int(nodata), compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(out[np.newaxis])
@@ -1158,6 +1166,8 @@ class PostProcessor:
                     blockxsize=512,
                     blockysize=512,
                 )
+                from pygeovision.data._profile import writable_profile
+                profile = writable_profile(profile)
                 with rasterio.open(output_path, "w", **profile) as dst:
                     for i in range(1, src.count + 1):
                         dst.write(src.read(i), i)

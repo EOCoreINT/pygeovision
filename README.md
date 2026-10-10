@@ -1,254 +1,285 @@
-<!-- <div align="center">
-<img src="icon/pygeovision_logo.png" alt="PyGeoFetch Logo" width="350"> -->
+<div align="center">
 
+<img src="https://raw.githubusercontent.com/EOCoreINT/pygeovision/main/icon/pygeovision_logo.png" alt="PyGeoVision logo" width="320">
 
-<!-- ## ⚠️ Important Note
+# PyGeoVision
 
-This project is **actively under development**. While the core functionality 
-is production-ready and thoroughly tested, some advanced features are still 
-being refined. -->
+**From "I need imagery of this place" to a finished map, mask or dataset — search, preprocess, model and assess in one package.**
 
-[![image](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22258220.svg)](https://doi.org/10.5281/zenodo.22258220)
-[![image](https://img.shields.io/pypi/pyversions/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
-[![Tests](https://img.shields.io/badge/Tests-864_passing-22c55e?style=flat-square&logo=pytest&logoColor=white)](https://pygeovision.readthedocs.io/en/latest/)
-[![pygeofetch](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://appiahkubis14.github.io/pygeofetch-docs/)
-<!-- [![Models](https://img.shields.io/badge/Models-119%2B_native-a855f7?style=flat-square)](#-ai-inference--fully-pretrained) -->
+[![PyPI](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
+[![Python](https://img.shields.io/pypi/pyversions/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Providers](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://appiahkubis14.github.io/pygeofetch-docs/)
+[![Pipelines](https://img.shields.io/badge/Pipelines-25-22c55e?style=flat-square)](#-end-to-end-pipelines)
+[![Models](https://img.shields.io/badge/Registered_architectures-77-a855f7?style=flat-square)](#-models-and-training)
+[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://appiahkubis14.github.io/pygeovision-docs/)
 
-**Go from "I need imagery of this place" to a finished map, mask, or dataset — without stitching together a satellite API, a preprocessing pipeline, and a separate AI platform yourself.**
+[Features](#-features) · [Install](#-installation) · [Quick start](#-quick-start) · [CLI](#-command-line) · [Pipelines](#-end-to-end-pipelines) · [OBIA](#-object-based-image-analysis-obia) · [Status](#-project-status) · [Docs](#-documentation)
 
 </div>
 
 ---
 
-## 📖 What PyGeoVision does for you
+> **Status: actively developed.** The core workflow (search → download → preprocess → run a model →
+> assess) is tested, but not everything is equally mature. [Project status](#-project-status) lists what
+> is partial, optional or deliberately unimplemented, so you know before you rely on it.
 
-Applying AI to satellite imagery today usually means gluing together several unrelated tools: one library to find and download scenes, another to preprocess them, a separate AI platform (with its own account and licensing) to run models, and custom glue code to keep it all working together. Every join in that chain is a place things quietly break.
+## Why PyGeoVision
 
-PyGeoVision replaces that chain with one package:
+Applying AI to satellite imagery usually means gluing together a data-download library, a preprocessing
+pipeline, a modelling framework and a pile of custom code. PyGeoVision puts those steps behind one
+package, so there are fewer joins in the chain for things to quietly break.
 
-- **You get one search/download call across 22 satellite providers** — Sentinel, Landsat, Planet, Maxar, Copernicus, USGS, and more — instead of learning 22 different APIs and managing 22 sets of credentials.
-- **You get real AI models that run inside PyGeoVision itself** — segmentation, detection, change detection, classification, foundation models — with no separate AI-platform account, API key, or licensing fee. Every prediction runs on code that ships in this package.
-- **You get the boring-but-critical middle step handled for you**: cloud masking, atmospheric correction, reprojection, tiling, band normalization — the preprocessing work that otherwise eats most of a project's time.
-- **You get 51 ready-made pipelines** for common jobs (building footprints, change detection, land cover, flood/water mapping, deforestation, crop monitoring, disaster assessment) that take you from a bounding box to a finished output in one function call.
-- **You get it as a CLI, a Python library, and a deployable inference server** — so the same models work whether you're exploring in a notebook, automating a pipeline, or serving predictions in production.
+- **One search/download interface across 22 providers** (Sentinel, Landsat, Planet, Maxar, Copernicus,
+  USGS and more) through [PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/), with credentials
+  stored once in the system keyring.
+- **Models that run inside the package** — segmentation, detection, change detection, classification and
+  foundation-model embeddings — with no separate AI-platform account.
+- **25 pipelines** from a bounding box to a finished output — 19 run out of the box, 6 run a model you trained.
+- **A training stack** with fine-tuning, geospatial losses and tiled inference for full scenes.
+- **Object-based image analysis** — segmentation, object features, rule/fuzzy/supervised classification
+  and object-level accuracy.
+- **A CLI and a Python API** that cover the same ground.
 
-In short: fewer libraries to learn, fewer accounts to manage, less glue code to maintain, and a shorter path from "I have a location and a question" to "I have an answer."
+It is aimed at geospatial researchers who want satellite data and AI in one import, ML practitioners who
+would rather not hand-roll provider APIs, and teams who need scriptable, schedulable workflows.
 
----
+## ✨ Features
 
-## 📝 Who this is for
-
-- **Geospatial researchers** who want to go from satellite search to AI inference in one import, without installing or licensing a separate AI platform.
-- **AI/ML practitioners** who want satellite data without hand-rolling API clients, auth flows, and file-format handling for each provider.
-- **Organizations** who need production tooling — a CLI, a REST/WebSocket inference server, YAML-scheduled pipelines, experiment tracking — not just a research script.
-
-Existing tools like TorchGeo and TerraTorch provide excellent modeling building blocks but leave data acquisition as a separate problem. PyGeoVision owns both ends of that pipeline, in one package.
-
----
-
-### 🛰️ Satellite Data — 22 Providers, One Interface
-
-Instead of learning a different API for every satellite provider, you search and download the same way regardless of which one has the imagery you need.
-
-- Unified search and download across Sentinel, Landsat, Planet, Maxar, Airbus, USGS, Copernicus, NASA, JAXA, and more
-- Credentials handled once via system keyring — no scattered API keys in scripts
-- Parallel downloads with checksum verification, resume support, and bandwidth throttling
-- Full optical preprocessing built in: atmospheric correction, cloud masking, topographic correction, pan-sharpening, mosaicking, re-projection — so you don't write this yourself. SAR/InSAR processing (despeckle, calibration, flood mapping, interferometry) is handled by calling [pygeofetch](https://pypi.org/project/pygeofetch/)'s real, native SAR/InSAR modules directly — see the SAR & InSAR section below
-- Post-processing chains (reproject → compress → NDVI/NDWI → Cloud Optimized GeoTIFF) as one call
-- YAML pipelines with cron scheduling for recurring jobs
-
-### 🤖 AI Inference — Fully Native, No External Platform
-
-Every model below runs inside PyGeoVision — there's no separate AI platform to sign up for, and no calls leaving your infrastructure unless you choose cloud deployment.
-
-- **Segmentation** — buildings, water (NDWI), general SAM auto-segmentation, or bring your own model
-- **Detection** — general objects, ships, cars via native YOLO, or your own model
-- **Classification** — CLIP zero-shot scene classification, ESA WorldCover land cover
-- **Change detection** — a bi-temporal transformer (ChangeFormer), with a dependency-free spectral-diff fallback if you don't need the full model
-- **Foundation models** — NASA Prithvi-EO-2.0, DINOv3, SAM, TESSERA satellite embeddings, AlphaEarth Foundations
-- **Explainability** — GradCAM/GradCAM++, uncertainty estimation, attention maps, SHAP, so predictions aren't a black box
-- **Monitoring** — drift detection, performance tracking, alerting for models in production
-- **Deployment** — ONNX Runtime, NVIDIA Jetson, AWS SageMaker, Azure ML, GCP Vertex AI
-- **Inference server** — FastAPI REST + WebSocket, with batch inference and a model registry, for when you need to serve predictions rather than run them ad hoc
-
-### ⚙️ End-to-End Pipelines (51)
-
-Each of these takes you from a bounding box and a date to a finished output — no manual wiring between data, preprocessing, and model.
-
-| Pipeline | What you get |
-|----------|-------------|
-| `building_footprints` | Segmented buildings as GeoTIFF/vector, from Sentinel-2 or NAIP |
-| `change_detection` | A change mask between two dates |
-| `land_cover` | A classified land-cover map |
-| `water_bodies` | A water extent mask (NDWI-based) |
-| `solar_detection` | Detected solar installations |
-| `crop_monitoring` | A crop-type map from a seasonal image stack |
-| `disaster_assessment` | A damage assessment from post-event imagery |
-| `deforestation` | A forest-loss mask between two dates |
-| `urban_growth` | An urban-expansion map between two dates |
-| `carbon_estimation` | An NDVI-based vegetation/carbon proxy (an uncalibrated screening estimate — see the docs for what it can and can't be used for) |
-
-*(41 more pipelines are available — run `pygeovision pipeline list` for the full catalogue.)*
-
-### 🧠 A Training Stack, Not Just Inference
-
-If the built-in models aren't enough, you can train your own without leaving the package.
-
-- 119+ registered architectures — U-Net, SegFormer, DeepLabV3+, FCOS, ViT, ChangeFormer, YOLOv8/v9, foundation-model backbones, and more
-- Specialist losses for real geospatial imbalance problems (Dice, Focal, Tversky, Boundary-Aware, Lovász, OHEM, Combo, Class-Balanced)
-- Distributed multi-GPU training, mixed precision, gradient accumulation
-- `TiledInference` with Gaussian-blended tiling, so a model trained on small chips runs cleanly on a full scene
-- Built-in experiment tracking and drift detection for the training-to-production handoff
-
-### 🏷️ Automated Labeling — Skip Manual Annotation
-
-Training data is usually the real bottleneck. PyGeoVision can generate labels for you from seven sources — OpenStreetMap, Microsoft Global Buildings, Google Open Buildings, ESA WorldCover, Google Dynamic World, SAM auto-labeling, and foundation-model labeling — so you can get a first training set without annotating from scratch.
-
-### 🛰️ SAR & InSAR — via PyGeoFetch, Not a Duplicate Wrapper
-
-SAR/InSAR processing (despeckle, radiometric calibration, flood mapping, InSAR coherence, interferogram generation, phase unwrapping, SLC InSAR) is handled by [pygeofetch](https://pypi.org/project/pygeofetch/) directly — a real, independently-verified implementation, not something PyGeoVision duplicates. Install it (`pip install pygeofetch`) and call `pygeofetch.processing.sar.SARProcessor` / `pygeofetch.sar.*` / `pygeofetch.insar.*` directly for despeckling, calibration, flood mapping, coherence, and the full InSAR pipeline.
-
-What PyGeoVision *does* still own on the SAR side, since it's genuinely model-integration work, not raw signal processing:
-
-- **SAR-to-foundation-model bridging** — maps 2-band SAR (VV/VH) into the band formats Prithvi and DINOv3 expect, via `pygeovision.models.adapters.sar_prithvi` / `sar_dinov3` / `sar_channel_manager`, including pre/post co-registration for change detection and input validation before model calls
-
----
+| Area | What you get |
+|---|---|
+| **Data** | Search and download from 22 providers; parallel, resumable downloads with checksum verification; chained post-processing (`unzip`, `reproject`, `compress`, `resample`, `clip`, `merge`, `ndvi`/`ndwi`, `pan-sharpen`, `atmospheric:sen2cor`, `cog`); YAML pipelines with cron scheduling |
+| **Preprocessing** | Cloud masking, normalisation, band stacking and AI-ready preparation (`prepare_for_ai`); 21 spectral indices and transforms (NDVI, EVI, NBR, tasselled cap, PCA, …); a data validator that can repair common problems |
+| **Segmentation** | Buildings, water (NDWI), SAM, or your own model |
+| **Detection** | Generic objects, ships, cars (YOLO — needs the optional `ultralytics` package) |
+| **Classification** | CLIP zero-shot scene classification; ESA WorldCover land cover |
+| **Change detection** | Change vector analysis (Otsu) with no weights, or ChangeFormer / BIT / DSAMNet with your own trained checkpoint |
+| **Foundation models** | Prithvi-EO, DINOv2, SAM, CLIP/RemoteCLIP, DOFA, TESSERA and AlphaEarth embeddings |
+| **Labeling** | Generate training labels from OpenStreetMap, Microsoft and Google building footprints, ESA WorldCover, Dynamic World, SAM and foundation models |
+| **OBIA** | Scale-controlled segmentation, object features, rule/fuzzy/supervised classification, object-level accuracy |
+| **Explainability** | Grad-CAM / Grad-CAM++, uncertainty estimation, attention maps, SHAP |
+| **Monitoring** | Drift detection, performance tracking and alerting for deployed models |
+| **Deployment** | ONNX Runtime, NVIDIA Jetson, and AWS SageMaker / Azure ML / GCP Vertex AI deployers |
 
 ## 📦 Installation
 
 ```bash
-pip install pygeovision                      # core: data search/download + basic inference
-pip install "pygeovision[geo]"                # + rasterio, geopandas, rioxarray
-pip install "pygeovision[train]"              # + PyTorch, SMP, transformers, timm
-pip install "pygeovision[foundation]"         # + Prithvi-EO-2.0, DINOv3
-pip install "pygeovision[vlm]"                # + CLIP, Moondream
-pip install "pygeovision[labeling]"           # + auto-labeling sources
-pip install "pygeovision[xai]"                # + explainability
-pip install "pygeovision[timeseries]"         # + time-series analysis
-pip install "pygeovision[serve]"              # + FastAPI inference server
-pip install "pygeovision[edge]"               # + ONNX Runtime edge deployment
-pip install "pygeovision[cloud]"              # + AWS/Azure/GCP deployment SDKs
-pip install "pygeovision[enterprise]"         # + RBAC, SSO, audit logging
-pip install "pygeovision[all]"                # everything except cloud/edge (install those explicitly)
+pip install pygeovision                     # core: data search/download + band-math inference
+pip install "pygeovision[geo]"              # rasterio, geopandas, rioxarray, ...
+pip install "pygeovision[train]"            # PyTorch, timm, segmentation-models-pytorch, albumentations, ...
+pip install "pygeovision[foundation]"       # transformers, scikit-learn, umap, faiss (foundation models)
+pip install "pygeovision[obia]"             # scikit-image, scikit-learn, rasterio, geopandas (OBIA)
+pip install "pygeovision[report]"           # map, vector layers and PDF/Word/Excel reports for every pipeline run
+pip install "pygeovision[all]"              # everything except cloud/edge
 ```
 
-**Requirements:** Python 3.10+ · PyTorch 2.0+ is only needed for training or deep-model inference — search, download, NDWI/NDVI segmentation, and land-cover labeling all work without it.
+Other extras: `vlm` (CLIP), `labeling`, `xai`, `monitoring`, `advanced`, `geo3d`, `viz`, `edge`
+(ONNX Runtime), `cloud` (AWS/Azure/GCP SDKs), `dev` (tests and linters).
 
----
+**Requirements:** Python 3.10+. PyTorch is only needed for training and deep-model inference; search,
+download, NDWI/NDVI segmentation and the OBIA module work without it.
 
-## ⚡ Quick Start
+## ⚡ Quick start
 
-A real workflow — search, download, and run a foundation model — in about 15 lines:
+Search, download, prepare and classify one scene:
 
 ```python
 import pygeovision as pgv
 
 client = pgv.PyGeoVision()
 
-# Search and download Sentinel-2 for a bounding box
 results = client.search(bbox=(38.6, 8.9, 38.95, 9.15),
-                         date_range=("2024-01-01", "2024-04-30"),
-                         cloud_cover_max=15)
+                        date_range=("2024-01-01", "2024-04-30"),
+                        cloud_cover_max=15)
 scene = client.download(results[:1], output_dir="./data",
-                         bands=["B02","B03","B04","B08","B11","B12"])[0]
+                        bands=["B02", "B03", "B04", "B08", "B11", "B12"])[0]
 
-# Preprocess (cloud masking, normalization, band mapping) and predict land cover
 ready = client.prepare_for_ai(scene.path, model_type="foundation",
-                               output_path="./data/ready.tif")
-client.classify.land_cover(ready["output_path"], output_path="./land_cover.tif")
+                              output_path="./data/ready.tif")
+client.classification.land_cover(ready["output_path"], output_path="./land_cover.tif")
 ```
 
-`client.validator.validate(...)` will check any of these outputs — raw, preprocessed, or predicted — and auto-fix common issues (bad CRS, wrong nodata, out-of-range values) rather than just flagging them.
-
-The same set of models covers segmentation, detection, and change detection just as directly:
+Segmentation, detection and change detection follow the same pattern:
 
 ```python
 client.segmentation.buildings("scene.tif", output_path="buildings.tif")
 client.detection.ships("port.tif", output_path="ships.tif")
-client.change.detect(before="2020.tif", after="2024.tif", output_path="change.tif")
+client.change.detect("2020.tif", "2024.tif", output_path="change.tif")
 ```
 
-...and SAR/InSAR uses pygeofetch directly — despeckle and calibrate a Sentinel-1 scene, then run interferogram/coherence processing:
+`client.validator` checks rasters and can auto-fix common problems before they reach a model.
 
-```python
-from pygeofetch.processing.sar import SARProcessor
+## 🖥️ Command line
 
-sar = SARProcessor()
-despeckled = sar.despeckle("s1_raw.tif", filter="lee")
-calibrated = sar.calibrate(despeckled.output_path, output_type="sigma0", in_db=True)
-# Full InSAR pipeline (interferogram, unwrapping, timeseries): see pygeofetch.insar.*
-```
-
----
-
-## 🖥️ Command Line
-
-Everything above is also a CLI command, for scripting or scheduled jobs:
+Everything above is also available from the shell:
 
 ```bash
-pygeovision data search --bbox -74.1 40.6 -73.7 40.9 --providers planetary_computer
-pygeovision data download --bbox -74.1 40.6 -73.7 40.9 --output ./data/
+pygeovision data search --bbox -74.1 40.6 -73.7 40.9 --date 2024-06 --satellite sentinel-2
+pygeovision data download --bbox -74.1 40.6 -73.7 40.9 --date 2024-06 --output ./data/
 
 pygeovision ai segment buildings --input scene.tif --output buildings.tif
 pygeovision ai change --before 2020.tif --after 2024.tif --output change.tif
 
-pygeovision pipeline building_footprints --bbox -74.1 40.6 -73.7 40.9 --date 2024-06
-pygeovision pipeline list
+pygeovision channel list
+pygeovision channel building_footprints --bbox -0.15 51.47 -0.10 51.52 --date 2024-06
 
-pygeovision status   # what's installed and working
-pygeovision doctor   # diagnose a broken setup
+pygeovision status    # what is installed and working
+pygeovision doctor    # diagnose a broken setup
 ```
 
-Run `pygeovision --help` for the full command tree — it also covers `models`, `label`, `explain`, `monitor`, `edge`, `cloud`, `vlm`, `timeseries`, `validate`, `preprocess`, `indices`, `postprocess`, `benchmark`, and `datasets`. SAR/InSAR preprocessing is via pygeofetch directly (`pygeofetch.processing.sar.SARProcessor`, `pygeofetch.insar.*`) rather than through PyGeoVision.
+`pygeovision --help` shows the full tree: `data`, `ai`, `channel`, `pipeline` (YAML workflows), `models`,
+`zoo`, `label`, `explain`, `monitor`, `edge`, `cloud`, `vlm`, `timeseries`, `validate`, `preprocess`,
+`indices`, `postprocess`, `benchmark`, `datasets`, `infer` and `obia`.
 
----
+[`CLI_TESTING_GUIDE.md`](CLI_TESTING_GUIDE.md) has a runnable example for every command, including all 25
+pipelines, and says which ones need network access, credentials or your own trained weights.
+`python tools/verify_cli_guide.py` runs the offline examples on synthetic data.
 
-## 🌐 Serving Predictions in Production
+## 🛰️ End-to-end pipelines
 
-When you need to serve models rather than run them ad hoc, the same models are available behind a REST + WebSocket API:
+The catalogue holds **25 pipelines**, all runnable from Python (`client.pipeline(name, ...)`) and from the CLI
+(`pygeovision channel <name>`). `pygeovision channel list` shows each one and its kind:
+
+- **19 run out of the box.** Each is a documented index, terrain product or published reference map, computed
+  on valid pixels only (cloud- and shadow-masked pixels are nodata, never a class).
+- **6 need a model you trained** (`building_footprints`, `solar_detection`, `crop_monitoring`,
+  `disaster_assessment`, `deforestation`, `urban_growth`). PyGeoVision ships no weights for them; without
+  `checkpoint=` they refuse to run, before downloading any imagery.
+
+Every run also leaves a **presentation-ready deliverables folder** (needs `pip install "pygeovision[report]"`):
+
+```
+<out>/deliverables/<pipeline>_report.pdf | .docx | .xlsx   cover, key figures, map, tables, method, limitations, references
+<out>/deliverables/maps/*.png                              map (scale bar, north arrow, legend with areas) and charts
+<out>/deliverables/vectors/<pipeline>.gpkg                 GeoPackage: aoi + classified polygons + per-class summary
+<out>/deliverables/vectors/geojson/ | shapefile/ | kml/    the same layers in other formats
+<out>/run_summary.json                                     machine-readable statistics
+```
+
+Areas in the report are measured on the output rasters on the WGS84 ellipsoid and agree with the statistics the
+pipeline prints. Choose formats with `--report-formats pdf,docx,xlsx` and `--vector-formats gpkg,geojson,shapefile,kml`,
+switch off with `--no-report` (or `PYGEOVISION_REPORT=0`), and rebuild from a finished run with
+`pygeovision report <out>`. In Python: `client.pipeline("flood_mapping", ..., report_formats=["pdf"])`
+and `result.deliverables`.
+
+| Pipeline | Output |
+|---|---|
+| `water_bodies` | Water extent (NDWI), or your model with `method="model"` |
+| `change_detection` | Change mask between two dates (change vector analysis, or your model) |
+| `land_cover` | ESA WorldCover 2021 reference map for the area (static; not a change product) |
+| `crop_health` · `vegetation_indices` · `water_quality` | NDVI anomaly, NDVI/EVI/NDWI time series, chlorophyll proxy (NDCI) |
+| `flood_mapping` · `coastal_monitoring` · `wetland_mapping` | Flood extent vs permanent water, shoreline change, wetland water/vegetation classes |
+| `wildfire_severity` | dNBR burn severity (USGS classes) |
+| `snow_cover` · `glacier_monitoring` | NDSI snow map, glacier-area change |
+| `urban_heat_island` · `land_surface_temperature` · `volcano_monitoring` | Landsat surface temperature and thresholded hot spots |
+| `biodiversity_hotspot` | Land-cover diversity (Shannon) hotspots |
+| `solar_potential` · `archaeological_site` · `wind_farm_siting` | DEM-based terrain suitability and relief layers (OpenTopography key needed) |
+| `building_footprints` · `solar_detection` · `crop_monitoring` | Segmentation with **your** checkpoint |
+| `disaster_assessment` · `deforestation` · `urban_growth` | Bi-temporal change maps with **your** siamese checkpoint |
+
+The other 24 of the original 49 were removed before launch because they could not produce a correct result
+(untrained networks, placeholder indices, invented constants). Each removal has a documented reason: see
+[removed pipelines](docs/pipelines/removed.md).
 
 ```python
-from pygeovision.serving.api import create_app
-import uvicorn
-
-uvicorn.run(create_app(auth_keys={"myuser": "myapikey"}), host="0.0.0.0", port=8080)
+client.pipeline("wildfire_severity", bbox=bbox, output_dir="out", date_before="2018-10", date_after="2018-12")
+client.pipeline("building_footprints", bbox=bbox, output_dir="out", date="2024-06",
+                checkpoint="runs/buildings/checkpoints/best.pth")
 ```
 
-This gives you `POST /predict`, `POST /predict/batch`, `GET /models`, `POST /models/register`, `GET /metrics`, and `WS /ws/stream` — the same models, ready for a production traffic pattern instead of a single script run.
+## 🧠 Models and training
 
----
+- **77 registered architectures** (`pygeovision models list`): SegFormer, Mask2Former, DETR/RT-DETR,
+  ChangeFormer, ViT, SAM, CLIP, DINOv2, Prithvi, DOFA and more, plus a 14-model native hub
+  (U-Net, DeepLabV3+, FCOS, RetinaNet, Siamese U-Net, …). 63 registry entries build real models; 14 are
+  explicit placeholders that raise a clear error — see [Choosing a model](docs/models/choosing-a-model.md).
+- **Fine-tuning:** start from a checkpoint, freeze the backbone, and train with geospatially aware
+  augmentation; detection training reports real mAP.
+- **Losses:** Dice, Focal, Tversky, Boundary-aware, Lovász, Combo and a geospatial mixed loss; GIoU/DIoU/CIoU/SIoU
+  for boxes.
+- **Scale:** mixed precision, gradient accumulation and distributed multi-GPU training.
+- **Tiled inference:** Gaussian-blended tiles so a model trained on small chips runs on a full scene;
+  ONNX export; ensembling and prediction validation.
+
+## 🧩 Object-based image analysis (OBIA)
+
+Analyse imagery as objects instead of pixels: segment, describe, classify, assess.
+
+```python
+from pygeovision import obia
+
+scene = obia.make_demo_scene()                       # synthetic scene with known truth (offline)
+seg   = obia.segment(scene.raster, "multires", scale=20)
+feats = obia.extract_features(seg.labels, scene.raster,
+                              extra_layers=obia.spectral_layers(scene.raster))
+rules = obia.RuleBasedClassifier([("water", "mean_ndwi > 0.3"),
+                                  ("bare_field", "mean_ndvi <= 0.55"),
+                                  ("cropland", "mean_ndvi > 0.55")])
+result = rules.classify(feats)
+```
+
+It includes six segmentation methods (including Baatz & Schäpe-style region merging with a scale parameter —
+*not* a clone of eCognition), spectral/shape/GLCM-texture/context features, rule-based, fuzzy and supervised
+classifiers, and object-level accuracy and segmentation-quality metrics. Try it with
+`pygeovision obia demo ./obia_demo`, work through the tutorial scripts in [`examples/obia/`](examples/obia),
+and see [docs/obia](docs/obia/index.md) for the guide and its limitations.
+
+## 📌 Project status
+
+Things worth knowing before you build on it:
+
+- **Five of the 79 registry entries are placeholders** (`dinov3_segmentor`, `changestar-r18`, `satlas-pretrain`,
+  `chatearthnet`, `lisat-7b`): they are discoverable but deliberately raise `NotImplementedError` instead of
+  silently building a different architecture. The other 74 build real networks; pretrained loads need network
+  access (and, for gated repos such as DINOv3, an accepted licence) and raise `ModelLoadError` rather than
+  falling back to random weights unless you pass `allow_random_init=True`.
+- **Everything in the deep-learning layer was verified offline** - synthetic rasters, randomly initialised tiny
+  models and stand-ins - never with pretrained weights, a GPU or real scenes. Treat first runs on your data as
+  validation runs.
+- **YOLO detection needs `ultralytics`**, which is not installed by any extra: `pip install ultralytics`.
+- **Pipelines were tested on synthetic rasters with known answers, not on live imagery.** Optical pipelines
+  are still limited by clouds, haze and shadow; pick dates in the same season.
+- **`client.detection.ships/cars` use a general-purpose (COCO) detector** that is not suited to 10 m pixels.
+- **Inference commands run your own trained network.** `infer predict|batch`, `ai infer`, `ai segment|detect
+  custom` and the `changeformer|bit|dsamnet` methods of `ai change` require `--checkpoint`; the registry holds
+  architectures, not trained weights. For change maps from a bounding box use
+  `pygeovision channel change_detection`.
+- **Some features download model weights on first use** (for example ImageNet or Hugging Face weights);
+  fully offline environments need them cached beforehand.
+- **Removed from earlier versions:** the inference server, enterprise/RBAC layer, SAR/InSAR processing and the
+  planner agent are not part of the package. See the [roadmap](docs/reference/roadmap.md) for the history and
+  the direct replacements.
 
 ## 🧪 Testing
 
 ```bash
-pip install "pygeovision[dev,train,geo]"
+pip install "pygeovision[dev,train,geo,obia]"
 pytest tests/
 ```
 
-864 tests pass with the full stack (including PyTorch) installed; 620 pass without PyTorch, covering everything except deep-model training/inference paths.
-
----
+With the full stack installed, the offline suite (`tests/test_live.py` excluded) runs about 1,300 tests, all of which
+pass without network access, GPU or pretrained weights. To exercise every CLI command and all 25 pipelines by hand,
+follow [CLI_TESTING_GUIDE.md](CLI_TESTING_GUIDE.md).
 
 ## 📋 Documentation
 
-Full docs, tutorials, example notebooks, pipeline configuration guides, and the contributing guide are at **https://pygeovision.readthedocs.io/en/latest/**.
+Full documentation is at **https://appiahkubis14.github.io/pygeovision-docs/**. To build it locally:
 
----
+```bash
+pip install -r docs/requirements.txt
+sphinx-build -b html docs docs/_build/html
+```
 
 ## 🤝 Contributing
 
-Contributions of all kinds are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started.
-
----
+Contributions are welcome — see [docs/contributing.md](docs/contributing.md) to get started.
 
 ## 📄 License
 
-PyGeoVision is free and open source software, licensed under the [Apache 2.0 License](LICENSE).
-
----
+PyGeoVision is free and open-source software, released under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
-PyGeoVision's satellite data layer is built on **[PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/)**, a universal satellite data pipeline that handles search, download, authentication, caching, and pipeline orchestration. Every AI capability — segmentation, detection, classification, change detection, foundation models, training, and serving — is implemented natively inside PyGeoVision itself.
+The satellite data layer is built on **[PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/)**,
+a universal satellite data pipeline that handles search, download, authentication, caching and pipeline
+orchestration. The modelling, training, labeling and OBIA layers are implemented inside PyGeoVision itself.

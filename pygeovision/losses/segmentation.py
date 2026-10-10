@@ -14,6 +14,7 @@ Includes:
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +46,16 @@ class DiceLoss:
         per_class: bool = True,
         reduction: str = "mean",
         ignore_index: int = 255,
+        classes: Sequence[int] | None = None,
     ) -> None:
+        """``classes`` restricts the loss to those class indices. With a rare
+        foreground class, ``classes=[1]`` stops the (always easy) background
+        Dice from diluting the loss."""
         self.smooth = smooth
         self.per_class = per_class
         self.reduction = reduction
         self.ignore_index = ignore_index
+        self.classes = list(classes) if classes is not None else None
 
     def __call__(self, predictions: Any, targets: Any) -> Any:
         torch = _check_torch()
@@ -73,6 +79,10 @@ class DiceLoss:
         intersection = (probs * targets_one_hot).sum(dims)
         cardinality   = probs.sum(dims) + targets_one_hot.sum(dims)
         dice = (2.0 * intersection + self.smooth) / (cardinality + self.smooth)
+        if self.classes is not None:
+            if max(self.classes) >= C or min(self.classes) < 0:
+                raise ValueError(f"DiceLoss classes={self.classes} out of range for {C} classes")
+            dice = dice[self.classes]
 
         if not self.per_class:
             dice = dice.mean()
@@ -99,12 +109,18 @@ class FocalLoss:
 
     def __init__(
         self,
-        alpha: float = 0.25,
+        alpha: float | Sequence[float] = 0.25,
         gamma: float = 2.0,
         ignore_index: int = 255,
         reduction: str = "mean",
     ) -> None:
-        self.alpha = alpha
+        """
+        ``alpha`` is either one number, which scales the whole loss (all classes
+        alike), or one weight **per class** (``[w_background, w_class1, ...]``), the
+        class-balancing alpha_t of Lin et al. (2017). For a rare positive class use
+        e.g. ``alpha=[0.25, 0.75]`` to weight the rare class 3x higher.
+        """
+        self.alpha = list(alpha) if isinstance(alpha, (list, tuple)) else alpha
         self.gamma = gamma
         self.ignore_index = ignore_index
         self.reduction = reduction
@@ -116,7 +132,19 @@ class FocalLoss:
         ce = F.cross_entropy(predictions, targets.long(),
                               ignore_index=self.ignore_index, reduction="none")
         pt = torch.exp(-ce)
-        focal = self.alpha * (1 - pt) ** self.gamma * ce
+        if isinstance(self.alpha, list):
+            if len(self.alpha) != predictions.shape[1]:
+                raise ValueError(
+                    f"FocalLoss alpha has {len(self.alpha)} per-class weights but the model "
+                    f"outputs {predictions.shape[1]} classes."
+                )
+            weights = torch.tensor(self.alpha, dtype=ce.dtype, device=ce.device)
+            safe = targets.long().clone()
+            safe[safe == self.ignore_index] = 0
+            alpha_t = weights[safe]
+        else:
+            alpha_t = self.alpha
+        focal = alpha_t * (1 - pt) ** self.gamma * ce
 
         if self.reduction == "mean":
             valid = (targets != self.ignore_index).sum().clamp(min=1)
@@ -190,6 +218,27 @@ class ComboLoss:
         dice = self._dice(predictions, targets)
         ce = F.cross_entropy(predictions, targets.long(), ignore_index=self.ignore_index)
         return self.dice_weight * dice + self.ce_weight * ce
+
+
+class WeightedSumLoss:
+    """Weighted sum of losses, e.g. focal + dice for a rare class.
+
+    Example::
+
+        loss_fn = WeightedSumLoss([(0.5, FocalLoss(alpha=[0.25, 0.75])), (0.5, DiceLoss())])
+    """
+
+    def __init__(self, terms: Sequence[tuple[float, Any]]) -> None:
+        if not terms:
+            raise ValueError("WeightedSumLoss needs at least one (weight, loss) term")
+        self.terms = list(terms)
+
+    def __call__(self, predictions: Any, targets: Any) -> Any:
+        total = None
+        for weight, loss in self.terms:
+            value = weight * loss(predictions, targets)
+            total = value if total is None else total + value
+        return total
 
 
 class BoundaryAwareLoss:

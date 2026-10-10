@@ -228,16 +228,15 @@ class SAMLabeler(BaseLabeler):
                 "transform": transform,
                 "compress": "lzw",
             }
-            self._write_label_geotiff(instance_mask.astype(np.uint16), output_path, meta)
+            self._write_mask_geotiff(instance_mask.astype(np.uint16), output_path, meta)
 
             num_segments = int(instance_mask.max())
             coverage = float(np.sum(instance_mask > 0)) / instance_mask.size
 
             return LabelingResult(
-                tile_path=tile_path,
+                tile_id=str(tile_path),
                 label_path=output_path,
-                success=True,
-                labeler="sam",
+                source="sam",
                 class_distribution={
                     "background": float(np.sum(instance_mask == 0)) / instance_mask.size,
                     "segmented": coverage,
@@ -253,10 +252,9 @@ class SAMLabeler(BaseLabeler):
         except Exception as exc:
             logger.error("SAMLabeler failed for %s: %s", tile_path, exc)
             return LabelingResult(
-                tile_path=tile_path,
-                label_path=output_path,
-                success=False,
-                labeler="sam",
+                tile_id=str(tile_path),
+                label_path=None,
+                source="sam",
                 error=str(exc),
             )
 

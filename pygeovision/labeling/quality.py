@@ -273,6 +273,8 @@ class LabelQualityAssessor:
                 except ImportError:
                     pass
 
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(str(output_path), "w", **profile) as dst:
             dst.write(cleaned[np.newaxis])
             dst.update_tags(cleaned_by="LabelQualityAssessor", min_area_m2=str(min_area_m2))

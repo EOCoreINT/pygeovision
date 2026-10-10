@@ -202,6 +202,8 @@ class FewShotLearner:
                     chip = image[:, row:r2, col:c2]
                     tmp_profile = profile.copy()
                     tmp_profile.update(height=r2-row, width=c2-col)
+                    from pygeovision.data._profile import writable_profile
+                    tmp_profile = writable_profile(tmp_profile)
                     with rasterio.open(tmp_path, "w", **tmp_profile) as dst:
                         dst.write(chip)
                     pred = self.predict([tmp_path])[0]
@@ -219,6 +221,8 @@ class FewShotLearner:
             pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             out_profile = profile.copy()
             out_profile.update(count=1, dtype="uint8", compress="lzw")
+            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                out_profile.pop(_k, None)
             with rasterio.open(output_path, "w", **out_profile) as dst:
                 dst.write(label[np.newaxis])
                 class_map = {str(i): name for i, name in enumerate(self._class_names)}

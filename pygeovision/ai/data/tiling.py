@@ -300,13 +300,15 @@ class TilingEngine:
 
                         # Optionally save tile GeoTIFF
                         if self.config.save_tiles and self.config.output_dir:
-                            self._save_tile(
+                            saved = self._save_tile(
                                 data=data,
                                 meta=meta,
                                 src_profile=src.profile,
                                 band_indices=band_indices,
                                 nodata=nodata,
                             )
+                            if saved and saved != Path():
+                                meta.extra["tile_path"] = str(saved)
 
                         tile_count += 1
                         yield meta, data
@@ -444,6 +446,8 @@ class TilingEngine:
         if nodata is not None:
             profile["nodata"] = nodata
 
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 

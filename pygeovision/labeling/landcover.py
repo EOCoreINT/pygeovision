@@ -358,6 +358,8 @@ def _merge_and_clip(
         profile.update(height=mosaic.shape[1], width=mosaic.shape[2],
                         transform=transform, compress="lzw", count=1)
         output.parent.mkdir(parents=True, exist_ok=True)
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(str(output), "w", **profile) as dst:
             dst.write(mosaic)
 
@@ -369,6 +371,8 @@ def _merge_and_clip(
                 clipped, clip_transform = rio_mask(src, shapes, crop=True)
                 clip_profile = src.profile.copy()
             clip_profile.update(height=clipped.shape[1], width=clipped.shape[2], transform=clip_transform)
+            from pygeovision.data._profile import writable_profile
+            clip_profile = writable_profile(clip_profile)
             with rasterio.open(str(output), "w", **clip_profile) as dst:
                 dst.write(clipped)
 

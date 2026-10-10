@@ -30,7 +30,7 @@ class TestPrithviRegistry:
     def test_prithvi_eo_2_0_specs(self):
         from pygeovision.models.foundation.prithvi import PRITHVI_MODELS
         spec = PRITHVI_MODELS["prithvi_eo_2_0"]
-        assert spec["params_m"] == 600
+        assert spec["params_m"] == 300      # the repo it loads is the 300M model (key used to claim 600)
         assert spec["n_bands"] == 6
         assert spec["embed_dim"] == 1024
         assert spec["coverage"] == "Global"
@@ -51,7 +51,7 @@ class TestPrithviRegistry:
     def test_get_prithvi_info(self):
         from pygeovision.models.foundation.prithvi import get_prithvi_info
         info = get_prithvi_info("prithvi_eo_2_0")
-        assert info["params_m"] == 600
+        assert info["params_m"] == 300
         assert "sentinel2_mapping" in info
         assert "landsat_mapping" in info
         assert "band_order" in info
@@ -65,7 +65,8 @@ class TestPrithviRegistry:
         from pygeovision.models.registry import model_registry
         assert "prithvi_eo_1_0" in model_registry
         assert "prithvi_eo_2_0" in model_registry
-        assert model_registry["prithvi_eo_2_0"].params_m == 600
+        assert model_registry["prithvi_eo_2_0"].params_m == 300
+        assert model_registry["prithvi_eo_2_0_600m"].params_m == 600
 
     def test_prithvi_multispectral_flag(self):
         from pygeovision.models.registry import model_registry
@@ -92,7 +93,7 @@ class TestPrithviBandHandling:
         assert SENTINEL2_TO_PRITHVI["B05"] == 6   # Red Edge 1
         assert SENTINEL2_TO_PRITHVI["B06"] == 7   # Red Edge 2
         assert SENTINEL2_TO_PRITHVI["B07"] == 8   # Red Edge 3
-        assert SENTINEL2_TO_PRITHVI["B8A"] == 9   # NIR Narrow
+        assert SENTINEL2_TO_PRITHVI["B8A"] == 3   # HLS band 4 is *narrow* NIR = B8A
 
     def test_landsat_mapping_correct(self):
         from pygeovision.models.foundation.prithvi import LANDSAT_TO_PRITHVI
@@ -145,28 +146,24 @@ class TestPrithviBandHandling:
 class TestPrithviLoading:
     def test_load_hf_raises_clearly_on_real_failure_by_default(self, monkeypatch):
         """load_prithvi_hf must raise clearly on a genuine load failure --
-        not silently substitute a randomly-initialized model. This
-        replaces an earlier test that expected the opposite (a silent
-        "surrogate" fallback), which was itself the real, severe bug
-        fixed in an earlier audit round: a caller had no reliable way to
-        know they'd received meaningless, untrained weights instead of
-        the real, pretrained model. Mocks the real failure point
-        directly rather than relying on this environment's network
-        availability, so the test is deterministic in any environment."""
-        from transformers import AutoModel
+        not silently substitute a randomly-initialized model. Mocks the
+        real failure point directly rather than relying on this
+        environment's network availability, so the test is deterministic
+        in any environment."""
+        import huggingface_hub
+
         def _raise(*a, **kw):
             raise OSError("simulated real network failure")
-        monkeypatch.setattr(AutoModel, "from_pretrained", _raise)
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", _raise)
 
-        from pygeovision.models.foundation.prithvi import load_prithvi_hf
-        with pytest.raises(RuntimeError):
+        from pygeovision.models.foundation.prithvi import PrithviLoadError, load_prithvi_hf
+        with pytest.raises(RuntimeError) as err:
             load_prithvi_hf("prithvi_eo_1_0", device="cpu")
+        assert isinstance(err.value, PrithviLoadError)
 
     def test_load_hf_allow_random_init_opts_in_explicitly(self):
         """The only way to get an architecture-only model now is the
-        real, explicit allow_random_init=True opt-in -- and the result
-        is clearly marked so it can't be silently mistaken for a real,
-        pretrained model."""
+        real, explicit allow_random_init=True opt-in."""
         from pygeovision.models.foundation.prithvi import load_prithvi_hf
         model = load_prithvi_hf("prithvi_eo_1_0", device="cpu", allow_random_init=True)
         assert model is not None
@@ -495,35 +492,23 @@ class TestPrithviTasks:
         assert 0.0 <= result["flood_pct"] <= 100.0
         assert result["n_classes"] == 2
 
-    def test_biomass_estimation(self, tmp_path):
-        import rasterio
-        from rasterio.transform import from_bounds
-
-        from pygeovision.models.foundation.prithvi import (
-            PRITHVI_MODELS,
-            PrithviTasks,
-            _build_prithvi_surrogate,
-        )
-
-        data = (np.random.rand(6, 32, 32) * 8000).astype(np.float32)
-        t    = from_bounds(0, 0, 1, 1, 32, 32)
-        p    = tmp_path / "bio.tif"
-        with rasterio.open(str(p), "w", driver="GTiff", height=32, width=32,
-                            count=6, dtype="float32", crs="EPSG:4326", transform=t) as dst:
-            dst.write(data)
-
+    def test_biomass_without_a_trained_head_refuses(self, tmp_path):
+        """It used to push features through an UNTRAINED MLP and multiply by 300."""
+        from pygeovision.models.foundation.prithvi import PrithviTasks
         tasks = PrithviTasks("prithvi_eo_1_0")
-        tasks._prithvi._model = _build_prithvi_surrogate(PRITHVI_MODELS["prithvi_eo_1_0"])
+        with pytest.raises(NotImplementedError, match="trained"):
+            tasks.biomass_estimation(str(tmp_path / "anything.tif"))
 
-        result = tasks.biomass_estimation(str(p))
-        assert "estimated_biomass_t_ha" in result
-        assert result["estimated_biomass_t_ha"] >= 0.0
+    def test_crop_mapping_without_a_trained_head_refuses(self, tmp_path):
+        from pygeovision.models.foundation.prithvi import PrithviTasks
+        with pytest.raises(NotImplementedError, match="Crop-type"):
+            PrithviTasks("prithvi_eo_1_0").crop_mapping(str(tmp_path / "anything.tif"))
 
 
 # ── finetune_prithvi ─────────────────────────────────────────────────────────
 
 class TestFinetunePrithvi:
-    def test_returns_training_components(self):
+    def test_returns_training_components(self, tmp_path):
         from pygeovision.models.foundation.prithvi import finetune_prithvi
         result = finetune_prithvi(
             model_name="prithvi_eo_1_0",
@@ -531,6 +516,7 @@ class TestFinetunePrithvi:
             num_classes=10,
             epochs=5,
             allow_random_init=True,
+            output_dir=str(tmp_path),
         )
         if "error" not in result:
             assert "model" in result

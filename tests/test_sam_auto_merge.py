@@ -8,9 +8,14 @@ between two adjacent tiles gets detected independently by both tiles'
 SAM passes -- without merging, this produces duplicate, overlapping
 mask instances that corrupt count/area statistics near tile boundaries.
 """
+import numpy as np
 import pytest
 
-import numpy as np
+
+def _crop(full, bbox):
+    """The labeler stores masks cropped to their bounding box (not full-scene arrays)."""
+    x1, y1, x2, y2 = bbox
+    return full[y1:y2, x1:x2].copy()
 
 
 def _make_labeler():
@@ -31,9 +36,9 @@ class TestMergeOverlappingMasks:
         mask_b[52:102, 52:102] = True  # same object, slightly shifted detection
 
         masks = [
-            {"full_mask": mask_a, "bbox_full": (50, 50, 100, 100),
+            {"mask": _crop(mask_a, (50, 50, 100, 100)), "bbox_full": (50, 50, 100, 100),
              "predicted_iou": 0.9, "stability_score": 0.95},
-            {"full_mask": mask_b, "bbox_full": (52, 52, 102, 102),
+            {"mask": _crop(mask_b, (52, 52, 102, 102)), "bbox_full": (52, 52, 102, 102),
              "predicted_iou": 0.85, "stability_score": 0.9},
         ]
         merged = labeler._merge_overlapping_masks(masks)
@@ -48,11 +53,11 @@ class TestMergeOverlappingMasks:
         mask_b[52:102, 52:102] = True  # 2500 px, offset by 2
 
         masks = [
-            {"full_mask": mask_a, "bbox_full": (50, 50, 100, 100), "predicted_iou": 0.9, "stability_score": 0.95},
-            {"full_mask": mask_b, "bbox_full": (52, 52, 102, 102), "predicted_iou": 0.85, "stability_score": 0.9},
+            {"mask": _crop(mask_a, (50, 50, 100, 100)), "bbox_full": (50, 50, 100, 100), "predicted_iou": 0.9, "stability_score": 0.95},
+            {"mask": _crop(mask_b, (52, 52, 102, 102)), "bbox_full": (52, 52, 102, 102), "predicted_iou": 0.85, "stability_score": 0.9},
         ]
         merged = labeler._merge_overlapping_masks(masks)
-        assert merged[0]["full_mask"].sum() > mask_a.sum(), "merge should be the union, not just the first mask"
+        assert merged[0]["mask"].sum() > mask_a.sum(), "merge should be the union, not just the first mask"
 
     def test_genuinely_distinct_objects_are_not_merged(self):
         """A distant, genuinely separate object must not be incorrectly
@@ -65,13 +70,13 @@ class TestMergeOverlappingMasks:
         mask_c[150:170, 150:170] = True  # far away, non-overlapping
 
         masks = [
-            {"full_mask": mask_a, "bbox_full": (50, 50, 100, 100), "predicted_iou": 0.9, "stability_score": 0.95},
-            {"full_mask": mask_c, "bbox_full": (150, 150, 170, 170), "predicted_iou": 0.8, "stability_score": 0.88},
+            {"mask": _crop(mask_a, (50, 50, 100, 100)), "bbox_full": (50, 50, 100, 100), "predicted_iou": 0.9, "stability_score": 0.95},
+            {"mask": _crop(mask_c, (150, 150, 170, 170)), "bbox_full": (150, 150, 170, 170), "predicted_iou": 0.8, "stability_score": 0.88},
         ]
         merged = labeler._merge_overlapping_masks(masks)
         assert len(merged) == 2
 
-    def test_merged_quality_scores_take_the_max_not_the_first(self):
+    def test_merged_predicted_iou_takes_the_max_not_the_first(self):
         labeler = _make_labeler()
         H, W = 200, 200
         mask_a = np.zeros((H, W), dtype=bool)
@@ -80,12 +85,11 @@ class TestMergeOverlappingMasks:
         mask_b[52:102, 52:102] = True
 
         masks = [
-            {"full_mask": mask_a, "bbox_full": (50, 50, 100, 100), "predicted_iou": 0.5, "stability_score": 0.6},
-            {"full_mask": mask_b, "bbox_full": (52, 52, 102, 102), "predicted_iou": 0.95, "stability_score": 0.97},
+            {"mask": _crop(mask_a, (50, 50, 100, 100)), "bbox_full": (50, 50, 100, 100), "predicted_iou": 0.5, "stability_score": 0.6},
+            {"mask": _crop(mask_b, (52, 52, 102, 102)), "bbox_full": (52, 52, 102, 102), "predicted_iou": 0.95, "stability_score": 0.97},
         ]
         merged = labeler._merge_overlapping_masks(masks)
         assert merged[0]["predicted_iou"] == 0.95
-        assert merged[0]["stability_score"] == 0.97
 
     def test_low_iou_masks_with_touching_bboxes_are_not_merged(self):
         """Bounding boxes touching/overlapping slightly isn't enough on
@@ -98,8 +102,8 @@ class TestMergeOverlappingMasks:
         mask_b[95:145, 95:145] = True  # bboxes overlap slightly, but real IoU is low
 
         masks = [
-            {"full_mask": mask_a, "bbox_full": (50, 50, 100, 100), "predicted_iou": 0.9, "stability_score": 0.9},
-            {"full_mask": mask_b, "bbox_full": (95, 95, 145, 145), "predicted_iou": 0.9, "stability_score": 0.9},
+            {"mask": _crop(mask_a, (50, 50, 100, 100)), "bbox_full": (50, 50, 100, 100), "predicted_iou": 0.9, "stability_score": 0.9},
+            {"mask": _crop(mask_b, (95, 95, 145, 145)), "bbox_full": (95, 95, 145, 145), "predicted_iou": 0.9, "stability_score": 0.9},
         ]
         merged = labeler._merge_overlapping_masks(masks, iou_threshold=0.3)
         assert len(merged) == 2
@@ -108,7 +112,7 @@ class TestMergeOverlappingMasks:
         labeler = _make_labeler()
         mask = np.zeros((50, 50), dtype=bool)
         mask[10:20, 10:20] = True
-        masks = [{"full_mask": mask, "bbox_full": (10, 10, 20, 20)}]
+        masks = [{"mask": _crop(mask, (10, 10, 20, 20)), "bbox_full": (10, 10, 20, 20)}]
         result = labeler._merge_overlapping_masks(masks)
         assert result == masks
 

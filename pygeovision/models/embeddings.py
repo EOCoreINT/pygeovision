@@ -4,9 +4,8 @@ Unified embeddings interface across pygeovision's real foundation models.
 This does not reimplement embedding extraction -- it dispatches to each
 model's own, already-verified real method (DOFA's real
 extract_dofa_embedding, Prithvi's real Prithvi.extract_features(),
-DINOv3Backbone's real extract_embeddings() -- genuinely DINOv2 weights,
-see pygeovision.models.foundation.dinov3's module docstring --,
-CLIPGeo's real embed_image(), TesseraGeo's real embeddings_for_bbox()).
+DINOv3Backbone's extract_embeddings() (real facebook/dinov3-* weights;
+gated), CLIPGeo's real embed_image(), TesseraGeo's real embeddings_for_bbox()).
 
 The real inputs these models need are genuinely different -- some take
 an in-memory array plus a sensor name, some take a file path, one
@@ -69,7 +68,7 @@ class GeoEmbeddings:
         detail (confirmed this session: the same model instance
         correctly embeds both 9-band Sentinel-2 and 3-band NAIP input).
         """
-        from pygeovision.models.foundation.dofa import load_dofa_hf, extract_dofa_embedding
+        from pygeovision.models.foundation.dofa import extract_dofa_embedding, load_dofa_hf
         if self._dofa_model is None or getattr(self._dofa_model, "_pygeovision_model_name", None) != model_name:
             self._dofa_model = load_dofa_hf(model_name, device=self.device, allow_random_init=allow_random_init)
             self._dofa_model._pygeovision_model_name = model_name
@@ -85,17 +84,17 @@ class GeoEmbeddings:
             self._prithvi = Prithvi(variant=variant, device=self.device).load()
         return self._prithvi.extract_features(image_path, source=source).squeeze()
 
-    def dinov2(self, image: str | Any, model_name: str = "dinov3_vitl16_sat") -> np.ndarray:
-        """Real DINOv2 embedding (genuinely DINOv2 weights, despite the
-        real registry/model names using "dinov3" — see
-        `pygeovision.models.foundation.dinov3`'s module docstring for
-        the full, honest detail found and fixed earlier this project).
-        Accepts a real file path or an already-loaded image.
-        """
+    def dinov3(self, image: str | Any, model_name: str = "dinov3_vitl16_sat") -> np.ndarray:
+        """Global DINOv3 embedding ``(D,)`` from the real ``facebook/dinov3-*`` checkpoint (gated: accept the
+        licence and authenticate; failure raises ``ModelLoadError``). Accepts a raster path or an array."""
         from pygeovision.models.foundation.dinov3 import DINOv3Backbone
         if self._dinov3 is None or getattr(self._dinov3, "model_name", None) != model_name:
             self._dinov3 = DINOv3Backbone(model_name=model_name, device=self.device)
         return self._dinov3.extract_embeddings(image).squeeze()
+
+    def dinov2(self, image: str | Any, model_name: str = "dinov3_vitl16_sat") -> np.ndarray:
+        """Deprecated alias of :meth:`dinov3` (kept for old callers; the name was a misnomer)."""
+        return self.dinov3(image, model_name)
 
     def clip(self, image_path: str, model: str = "remoteclip-l14") -> np.ndarray:
         """Real, L2-normalized CLIP embedding. Defaults to `remoteclip-l14`
@@ -103,7 +102,7 @@ class GeoEmbeddings:
         confirmed this project to meaningfully outperform generic CLIP
         on satellite imagery.
         """
-        from pygeovision.advanced.vlm.clip_geo import CLIPGeo
+        from pygeovision.models.vlm.clip import CLIPGeo
         if self._clip is None or self._clip.model_name != model:
             self._clip = CLIPGeo(model=model, device=self.device)
         return self._clip.embed_image(image_path)

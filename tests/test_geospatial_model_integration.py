@@ -45,9 +45,9 @@ class TestTiledInferenceLoudFailure:
         Verified directly: this specific incompatibility (wrong argument
         count) is now caught even earlier than the original version of
         this test expected -- a real pre-flight dummy-forward-pass check
-        (added in a separate audit round) catches it before the tile loop
-        starts at all, returning an honest success=False with a clear
-        error rather than wasting time on the full tile loop first."""
+        catches it before the tile loop starts at all, returning an
+        honest success=False with a clear error rather than wasting time
+        on the full tile loop first."""
         from pygeovision.inference.tiled import TiledInference
 
         class IncompatibleModel(torch.nn.Module):

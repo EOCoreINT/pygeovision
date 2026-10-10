@@ -12,10 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 REQUIRED_FIELDS = {"name", "steps"}
-VALID_ACTIONS = {
-    "search", "download", "infer", "export", "label",
-    "train", "evaluate", "alert", "notify", "custom",
-}
+# Actions a YAML file can use. Anything else needs a Python function (Step(..., _fn=...)), which YAML
+# cannot express, so it is rejected here instead of running as a silent no-op.
+VALID_ACTIONS = {"search", "download", "infer", "export"}
 
 
 class PipelineYAMLParser:
@@ -98,8 +97,9 @@ class PipelineYAMLParser:
             if "action" not in step:
                 raise ValueError(f"Step '{step['name']}' missing 'action' field")
             if step["action"] not in VALID_ACTIONS:
-                logger.warning("Step '%s' has unknown action '%s'",
-                               step["name"], step["action"])
+                raise ValueError(
+                    f"Step '{step['name']}' has action '{step['action']}'; YAML pipelines support "
+                    f"{sorted(VALID_ACTIONS)} (other behaviour needs a Python Step with a function)")
             step_names.add(step["name"])
 
         # Check dependency references
@@ -107,6 +107,29 @@ class PipelineYAMLParser:
             for dep in step.get("depends_on", []):
                 if dep not in step_names:
                     raise ValueError(f"Step '{step['name']}' depends on unknown step '{dep}'")
+
+    @staticmethod
+    def apply_overrides(config: dict, overrides: list[str]) -> dict:
+        """Apply ``step.param=value`` overrides (value parsed as JSON, else kept as a string).
+
+        Example: ``["search.bbox=[15.0,45.1,15.1,45.2]", "infer.checkpoint=best.pth"]``.
+        """
+        import json
+        by_name = {s["name"]: s for s in config.get("steps", [])}
+        for item in overrides:
+            key, sep, raw = item.partition("=")
+            step_name, dot, param = key.partition(".")
+            if not sep or not dot or not param:
+                raise ValueError(f"override {item!r} must look like step.param=value")
+            if step_name not in by_name:
+                raise ValueError(f"override {item!r}: no step named {step_name!r} "
+                                 f"(steps: {sorted(by_name)})")
+            try:
+                value = json.loads(raw)
+            except ValueError:
+                value = raw
+            by_name[step_name].setdefault("params", {})[param] = value
+        return config
 
     def from_dict(self, config: dict) -> Pipeline:
         from pygeovision.pipelines.orchestrator import Pipeline

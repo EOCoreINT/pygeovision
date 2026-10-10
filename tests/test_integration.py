@@ -22,15 +22,25 @@ def mock_sv_with_geotiff(mock_pgv_client, small_geotiff):
 
 
 class TestBuildingFootprintsPipeline:
-    def test_pipeline_with_no_imagery(self, tmp_dir, mock_pgv_client):
+    def test_pipeline_refuses_without_trained_weights(self, tmp_dir, mock_pgv_client):
         from pygeovision.ai.pipelines import get_pipeline
+        pipeline = get_pipeline("building_footprints", mock_pgv_client)
+        result = pipeline.run(bbox=(-0.1, 51.4, 0.0, 51.5), output_dir=tmp_dir, date="2024-06")
+        assert result.success is False
+        assert "trained weights" in result.error
+        mock_pgv_client.search.assert_not_called()
+
+    def test_pipeline_with_no_imagery(self, tmp_dir, mock_pgv_client):
+        torch = pytest.importorskip("torch")
+        from pygeovision.ai.models.registry import registry
+        from pygeovision.ai.pipelines import get_pipeline
+        ckpt = tmp_dir / "ck.pth"
+        torch.save(registry.build("unet_resnet50", num_classes=2, in_channels=3,
+                                  pretrained=False).state_dict(), ckpt)
         mock_pgv_client.search.return_value = []
         pipeline = get_pipeline("building_footprints", mock_pgv_client)
-        result = pipeline.run(
-            bbox=(-0.1, 51.4, 0.0, 51.5),
-            output_dir=tmp_dir,
-            date="2024-06",
-        )
+        result = pipeline.run(bbox=(-0.1, 51.4, 0.0, 51.5), output_dir=tmp_dir,
+                              date="2024-06", checkpoint=str(ckpt))
         assert result.success is False
         assert "No imagery" in result.error
 

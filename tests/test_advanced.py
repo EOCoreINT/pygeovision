@@ -155,7 +155,7 @@ class TestCLIPGeo:
 
     def test_hf_models_registry(self):
         from pygeovision.advanced.vlm.clip_geo import CLIPGeo
-        assert "remoteclip-b32" in CLIPGeo.HF_MODELS
+        assert "remoteclip-b32" in CLIPGeo.OPENCLIP_CHECKPOINTS   # open_clip format, not transformers
         assert "openclip-b32" in CLIPGeo.HF_MODELS
 
     def test_search_empty_dir(self, tmp_path):

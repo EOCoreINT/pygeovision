@@ -22,14 +22,21 @@ class TestFoundationModelRegistry:
     satellite-pretrained" variants that loaded the identical, generic,
     non-satellite DINOv2 weights regardless of which _sat name was
     requested. All 18 were removed from the registry rather than
-    relabeled, since a genuinely correct DINOv3 integration would need
-    real, separately-verified DINOv3 weights this codebase does not have.
+    relabeled. Real DINOv3 (gated facebook/dinov3-* repos) is now reachable through
+    ``pygeovision.models.foundation.dinov3.DINOv3Backbone``; it is deliberately not in the registry
+    (see tests/test_dinov3.py).
     """
 
-    def test_mislabeled_dinov3_entries_removed(self):
+    def test_mislabeled_dinov3_backbone_entries_removed(self):
+        """dinov3_segmentor is a real, deliberate exception -- a real,
+        named concept restored as an honest, registered-but-failing
+        stub, since a DINOv3 segmentation head genuinely cannot work
+        regardless of the backbone-mislabeling issue below."""
         from pygeovision.models.registry import model_registry, list_models
-        dinov3_named = [n for n in list_models() if "dinov3" in n.lower()]
-        assert dinov3_named == [], f"Expected zero, found: {dinov3_named}"
+        backbone_variants = [
+            n for n in list_models() if "dinov3" in n.lower() and n != "dinov3_segmentor"
+        ]
+        assert backbone_variants == [], f"Expected zero, found: {backbone_variants}"
 
     def test_real_dinov2_entries_present(self):
         from pygeovision.models.registry import model_registry
@@ -39,7 +46,8 @@ class TestFoundationModelRegistry:
     # Prithvi models
     @pytest.mark.parametrize("name,params,pretrain", [
         ("prithvi_eo_1_0", 100, "HLS-US"),
-        ("prithvi_eo_2_0", 600, "HLS-Global"),
+        ("prithvi_eo_2_0", 300, "HLS-Global"),
+        ("prithvi_eo_2_0_600m", 600, "HLS-Global"),
     ])
     def test_prithvi_in_registry(self, name, params, pretrain):
         from pygeovision.models.registry import model_registry
@@ -55,16 +63,17 @@ class TestFoundationModelRegistry:
         real DOFA integration added since (see Model Registry docs)."""
         from pygeovision.models.registry import model_registry
         foundation = model_registry.list(task="foundation")
-        assert len(foundation) == 11, f"Expected 11 real foundation models, got {len(foundation)}"
+        # 11 + prithvi-600m + prithvi_eo_2_0_600m (the 2.0-600M repo exists and is now loadable)
+        assert len(foundation) == 13, f"Expected 13 real foundation models, got {len(foundation)}"
 
     def test_registry_summary(self):
-        """Real, current total after removing 59 confirmed-fake entries
-        (121 -> 62) and later additions (DOFA, LISAt) and restorations
-        (centernet-r50, satlas-pretrain, changestar-r18, chatearthnet as
-        honestly-failing, discoverable entries) -- 68 total."""
+        """Real, current total: 62 (post-cleanup) + LISAt + DOFA (base
+        and large) + 9 real, honestly-failing restorations (unet-r50/
+        r101/efficientb4, deeplab-r50/r101, pspnet-r50, fcn-r50,
+        upernet-swin-b, dinov3_segmentor) = 77, + 2 Prithvi-EO-2.0-600M entries = 79."""
         from pygeovision.models.registry import model_registry
         s = model_registry.summary()
-        assert s["total"] == 68, f"Expected 68 real registry entries, got {s['total']}"
+        assert s["total"] == 79, f"Expected 79 real registry entries, got {s['total']}"
         assert "foundation" in s["by_task"]
 
     def test_list_satellite_pretrained(self):
@@ -72,15 +81,17 @@ class TestFoundationModelRegistry:
         sat = [n for n in list_models()
                if model_registry[n].pretrained_on in
                ("SAT-493M", "HLS-US", "HLS-Global", "Sentinel-1/2,NAIP,EnMAP,Gaofen")]
-        assert len(sat) == 5, f"Expected 5 real sat/HLS-pretrained entries, got {sat}"
+        assert len(sat) == 6, f"Expected 6 real sat/HLS-pretrained entries, got {sat}"
 
-    def test_search_dinov3_returns_nothing(self):
-        """A real, honest consequence of removing every dinov3-named
-        entry: searching for one now correctly returns nothing, rather
-        than the 12+ fake matches it used to."""
+    def test_search_dinov3_returns_only_the_honest_stub(self):
+        """A real, honest consequence of removing every mislabeled
+        dinov3 backbone entry: searching for "dinov3" now correctly
+        returns only the deliberate, honest dinov3_segmentor stub,
+        rather than the 12+ fake backbone matches it used to."""
         from pygeovision.models.registry import model_registry
         results = model_registry.search("dinov3")
-        assert len(results) == 0
+        names = [r.name for r in results]
+        assert names == ["dinov3_segmentor"], f"Expected only the honest stub, got: {names}"
 
     def test_search_prithvi(self):
         from pygeovision.models.registry import model_registry
@@ -156,7 +167,9 @@ class TestBandMappingIntegration:
         from pygeovision.models.foundation.prithvi import SENTINEL2_TO_PRITHVI
         # Verify 6-band subset is Blue/Green/Red/NIR/SWIR1/SWIR2
         core_bands = {k: v for k, v in SENTINEL2_TO_PRITHVI.items() if v < 6}
-        assert len(core_bands) == 6
+        # six HLS slots; slot 3 (NIR) accepts B8A (HLS narrow NIR) or B08 (stand-in)
+        assert sorted(set(core_bands.values())) == [0, 1, 2, 3, 4, 5]
+        assert core_bands["B8A"] == core_bands["B08"] == 3
 
     def test_landsat_complete_mapping(self):
         from pygeovision.models.foundation.prithvi import map_bands
@@ -273,39 +286,44 @@ class TestEndToEndFoundation:
         assert "flood_pct" in flood
         assert 0.0 <= flood["flood_pct"] <= 100.0
 
-        biomass = tasks.biomass_estimation(str(p))
-        assert "estimated_biomass_t_ha" in biomass
+        # no trained head -> no biomass number (it used to be an untrained MLP times 300)
+        with pytest.raises(NotImplementedError):
+            tasks.biomass_estimation(str(p))
+        assert lc["method"] == "spectral" and flood["method"] == "spectral"
 
     def test_dinov3_chm_pipeline(self, tmp_path):
-        """CHMv2 canopy height pipeline: predict → biomass → deforestation."""
+        """CHMv2 canopy height: predict (real head interface) -> deforestation; biomass is not offered.
+        A deterministic stand-in replaces the gated checkpoint (see tests/test_dinov3.py for depth)."""
+        from types import SimpleNamespace
+
         import rasterio
-        import torch.nn as nn
-        from rasterio.transform import from_bounds
+        import torch
+        from rasterio.transform import from_origin
 
         from pygeovision.models.foundation.dinov3 import CHMv2Model
 
-        data = (np.random.rand(4, 64, 64) * 10000).astype(np.float32)
-        t    = from_bounds(0, 0, 1, 1, 64, 64)
+        class Fake(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.p = torch.nn.Parameter(torch.zeros(1))
+
+            def forward(self, pixel_values):
+                return SimpleNamespace(predicted_depth=pixel_values.mean(1) * 3.0 + 5.0)
+
+        data = (np.random.rand(3, 64, 64) * 255).astype(np.uint8)
         for name in ["chm_before.tif", "chm_after.tif"]:
-            p = tmp_path / name
-            with rasterio.open(str(p), "w", driver="GTiff", height=64, width=64,
-                                count=4, dtype="float32", crs="EPSG:4326", transform=t) as dst:
+            with rasterio.open(str(tmp_path / name), "w", driver="GTiff", height=64, width=64, count=3,
+                               dtype="uint8", crs="EPSG:32633", transform=from_origin(0, 640, 10, 10)) as dst:
                 dst.write(data)
 
-        class FakeBack(nn.Module):
-            def forward(self, x):
-                import torch; return torch.randn(x.shape[0], 197, 1024)
-
-        chm = CHMv2Model()
-        chm._backbone._model    = FakeBack()
-        chm._backbone._transform = None
-        chm._backbone._is_sat   = False
-
+        chm = CHMv2Model(device="cpu")
+        chm._model = Fake()
         result = chm.predict_canopy_height(str(tmp_path / "chm_before.tif"))
-        assert "height_map" in result or "error" in result
-        if "height_map" in result:
-            assert result["height_map"].ndim == 2
-            assert result["statistics"]["mean_m"] >= 0.0
+        assert result["height_map"].shape == (64, 64) and result["statistics"]["mean_m"] >= 0.0
+        defo = chm.detect_deforestation(str(tmp_path / "chm_before.tif"), str(tmp_path / "chm_after.tif"))
+        assert defo["deforested_pct"] == 0.0               # identical scenes -> no loss
+        with pytest.raises(NotImplementedError):
+            chm.estimate_biomass(str(tmp_path / "chm_before.tif"))
 
     def test_model_registry_completeness(self):
         """Final check: real, current foundation model entries -- zero
@@ -314,15 +332,13 @@ class TestEndToEndFoundation:
         from pygeovision.models.registry import model_registry, list_models
         foundation = set(model_registry.list(task="foundation"))
         # Real, current state: zero dinov3-named entries (all 12 backbone
-        # variants were confirmed mislabeled -- see TestFoundationModelRegistry
-        # above for the full detail -- and removed).
-        dinov3_named = [n for n in list_models() if "dinov3" in n.lower()]
-        assert dinov3_named == [], f"Expected zero, found: {dinov3_named}"
+        # variants were confirmed mislabeled and removed), except the
+        # deliberate dinov3_segmentor honest stub restored separately.
+        dinov3_backbones = [n for n in list_models() if "dinov3" in n.lower() and n != "dinov3_segmentor"]
+        assert dinov3_backbones == [], f"Expected zero, found: {dinov3_backbones}"
         # Both real Prithvi models
         assert "prithvi_eo_1_0" in model_registry
         assert "prithvi_eo_2_0" in model_registry
-        # The real, dedicated DOFA integration added since (torchgeo-based,
-        # verified this project to correctly embed both 9-band Sentinel-2
-        # and 3-band NAIP input with the same model instance)
+        # The real, dedicated DOFA integration
         assert "dofa-base" in model_registry
         print(f"\n  ✓ Foundation models: {len(foundation)} in registry")

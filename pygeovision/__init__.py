@@ -63,14 +63,14 @@ Quick start:
 from __future__ import annotations
 
 import logging
+import os
 import platform
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pygeovision._version import __version__
-from pygeovision.agent import GeoAgent  # autonomous geospatial AI agent
 from pygeovision.ai.models.zoo import ModelSpec, ModelZoo, model_zoo
-from pygeovision.ai.pipelines.domains import list_pipelines as list_all_pipelines
+from pygeovision.ai.pipelines import list_pipelines as list_all_pipelines
 from pygeovision.core.config import PyGeoVisionConfig
 from pygeovision.core.exceptions import (  # noqa: F401
     AIEngineError,
@@ -92,7 +92,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "PyGeoVision",
-    "GeoAgent",
     "__version__",
     "PyGeoVisionError",
     "SatelliteFetcher",
@@ -178,10 +177,9 @@ class PyGeoVision:
         pygeofetch_cmd: str = "pygeofetch",   # kept for backward compat, unused
         log_level: str = "INFO",
     ) -> None:
-        logging.basicConfig(
-            level=getattr(logging, log_level.upper(), logging.INFO),
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        )
+        from pygeovision._logging import configure_logging
+
+        configure_logging(getattr(logging, log_level.upper(), logging.INFO))
 
         self.config = PyGeoVisionConfig.load(config_path) if config_path else PyGeoVisionConfig()
 
@@ -407,7 +405,8 @@ class PyGeoVision:
             selected = client.select_covering_scenes(results, aoi.bbox)
             downloads = client.download(selected, output_dir="./data/", bands=BANDS)
         """
-        from shapely.geometry import box as shp_box, shape as shp_shape
+        from shapely.geometry import box as shp_box
+        from shapely.geometry import shape as shp_shape
 
         aoi_box = shp_box(*bbox)
         selected, covered = [], None
@@ -582,15 +581,13 @@ class PyGeoVision:
             >>> for d in downloads:
             ...     print(d)
         """
-        # If bands requested, filter assets on each SearchResult so that
-        # only those band assets are passed to pygeofetch's download engine.
-        if bands:
-            for item in (items if isinstance(items, list) else [items]):
-                if item.assets:
-                    item.assets = {
-                        k: v for k, v in item.assets.items()
-                        if k in bands or any(b.lower() in k.lower() for b in bands)
-                    }
+        # Band selection is done once, in the data layer
+        # (SatelliteFetcher.download), which filters BOTH the SearchResult
+        # wrapper and the native satellite_data the engine really reads,
+        # using pygeofetch's alias-aware resolver. This facade used to
+        # filter only the wrapper with a substring match and never pass
+        # `bands` on, so every engine download fetched all ~15 assets of a
+        # Sentinel-2 scene (400 MB to 1 GB) even when 2 bands were needed.
         return self.data.download(
             items=items,
             output_dir=output_dir,
@@ -603,6 +600,7 @@ class PyGeoVision:
             on_failure=on_failure,
             overwrite=overwrite,
             notify_webhook=notify_webhook,
+            bands=bands,
         )
 
     # ------------------------------------------------------------------
@@ -616,50 +614,77 @@ class PyGeoVision:
         output_dir: str | Path = "./pipeline_output",
         **kwargs: Any,
     ) -> Any:
-        """Run an end-to-end geospatial pipeline (data + AI).
+        """Run an end-to-end pipeline: imagery from PyGeoFetch, then an index,
+        terrain calculation, reference product or your own trained model.
 
-        Downloads imagery via pygeofetch then runs a native AI model.
-
-        Available pipelines:
-            change_detection     Bi-temporal change detection
-            land_cover           Global land cover (ESA WorldCover)
-            building_footprints  Building segmentation (SAM)
-            crop_monitoring      Crop type mapping
-            disaster_assessment  Rapid damage assessment
-            deforestation        Forest loss detection
-            urban_growth         Urban expansion monitoring
-            water_bodies         Surface water mapping (NDWI)
-            solar_detection      Solar panel detection
-            carbon_estimation    Biomass/carbon via NDVI
+        ``pygeovision.list_all_pipelines()`` lists every name, and
+        ``pygeovision.ai.pipelines.pipeline_kinds()`` says which ones run
+        out of the box (``"ready"``) and which need ``checkpoint=`` weights
+        you trained (``"needs_weights"``). A pipeline that was removed
+        raises a ValueError that explains why.
 
         Args:
-            pipeline_name: Pipeline name from the list above.
+            pipeline_name: A name from ``list_all_pipelines()``.
             bbox: (min_lon, min_lat, max_lon, max_lat).
             output_dir: Output directory for results.
-            **kwargs: Pipeline-specific arguments (date, date_before,
-                      date_after, model, source, method, etc.).
+            **kwargs: Pipeline-specific arguments. Bi-temporal pipelines
+                take ``date_before`` / ``date_after``; single-date ones
+                take ``date``; ``needs_weights`` pipelines take
+                ``checkpoint``.
 
         Returns:
-            PipelineResult with output_path and stats.
+            PipelineResult with ``success``, ``output_path``, ``stats``
+            and, on failure, ``error``.
 
         Example:
             >>> result = client.pipeline(
-            ...     "building_footprints",
-            ...     bbox=(-0.15, 51.47, -0.10, 51.52),
-            ...     date="2024-06",
+            ...     "wildfire_severity", bbox=(-122.6, 39.7, -121.9, 40.2),
+            ...     date_before="2018-10", date_after="2018-12",
             ... )
-            >>> print(f"Coverage: {result.stats['building_coverage']:.1%}")
+            >>> print(result.stats["burned_area_ha"])
 
             >>> result = client.pipeline(
-            ...     "change_detection",
-            ...     bbox=(-74.1, 40.6, -73.7, 40.9),
-            ...     date_before="2020-01",
-            ...     date_after="2024-01",
+            ...     "building_footprints", bbox=(-0.15, 51.47, -0.10, 51.52),
+            ...     date="2024-06", checkpoint="runs/buildings/best.pth",
             ... )
         """
         from pygeovision.ai.pipelines import get_pipeline
+        want_report = kwargs.pop("report", None)
+        report_formats = kwargs.pop("report_formats", None)
+        vector_formats = kwargs.pop("vector_formats", None)
+        class_names = kwargs.pop("class_names", None)
+        report_title = kwargs.pop("report_title", None)
+        if want_report is None:
+            want_report = os.environ.get("PYGEOVISION_REPORT", "1").strip().lower() not in ("0", "false", "no", "off")
         p = get_pipeline(pipeline_name, pgv_client=self)
-        return p.run(bbox=bbox, output_dir=output_dir, **kwargs)
+        result = p.run(bbox=bbox, output_dir=output_dir, **kwargs)
+        if want_report and result.success:
+            self._attach_deliverables(result, bbox, output_dir, kwargs, report_formats, vector_formats, class_names, report_title)
+        return result
+
+    @staticmethod
+    def _attach_deliverables(result, bbox, output_dir, kwargs, report_formats, vector_formats, class_names, title) -> None:
+        """Write the map, vectors and reports for a finished run. Never turns a good analysis into a failure."""
+        import logging
+
+        from pygeovision.reporting import (
+            DEFAULT_VECTOR_FORMATS,
+            REPORT_FORMATS,
+            generate_deliverables,
+        )
+        log = logging.getLogger("pygeovision")
+        if getattr(result, "output_path", None) is None:      # nothing was written, so there is nothing to map or report
+            return
+        params = {k: (Path(str(v)).name if k == "checkpoint" and v else v) for k, v in kwargs.items() if k != "providers"}
+        try:
+            result.deliverables = generate_deliverables(
+                result, bbox, output_dir, parameters=params,
+                report_formats=REPORT_FORMATS if report_formats is None else report_formats,
+                vector_formats=DEFAULT_VECTOR_FORMATS if vector_formats is None else vector_formats,
+                class_names=class_names, title=title)
+        except Exception as exc:  # noqa: BLE001 - the analysis outputs are already on disk
+            log.warning("Deliverables (map, vectors, reports) could not be created: %s", exc, exc_info=True)
+            result.metadata["deliverables_error"] = str(exc)
 
     def create_pipeline(
         self,
@@ -795,12 +820,11 @@ class PyGeoVision:
         }
 
         # pygeofetch status
-        pf_status = self.data.status()
         info["pygeofetch"] = {
             "available": self.data._has_pygeofetch(),
             "version": self.data._pygeofetch_version(),
-            "providers": 22,
-            "open_providers": len([p for p in pf_status.get("open_providers", [])]),
+            "providers": len(self.data.list_providers()),
+            "open_providers": len(self.data.list_providers(open_only=True)),
         }
 
         # torch status
@@ -981,7 +1005,7 @@ class PyGeoVision:
         except ImportError:
             ai_stack = "torch-not-installed"
         from pygeovision.ai.models.zoo import model_zoo
-        from pygeovision.ai.pipelines.domains import list_pipelines
+        from pygeovision.ai.pipelines import list_pipelines
         from pygeovision.datasets.registry import dataset_registry
         return (
             f"PyGeoVision(v{__version__} | "
@@ -1222,6 +1246,23 @@ class _PointCloudClientProxy:
     def __repr__(self): return "PointCloudLayer(processor|canopy_height_model)"
 
 
+def _resolve_trained_model(model, checkpoint, num_classes, in_channels, image_path):
+    """Return ``model`` if it is already a module; else build the named architecture and load ``checkpoint``."""
+    if not isinstance(model, str):
+        return model
+    if not checkpoint:
+        raise ValueError(
+            f"model={model!r} is a registry name, and PyGeoVision ships architectures, not trained weights "
+            f"-- pass checkpoint='model.pth' (trained on your own labelled chips), or pass a built model.")
+    if in_channels is None:
+        import rasterio
+        with rasterio.open(image_path) as src:
+            in_channels = src.count
+    from pygeovision.ai.models.hub import ModelHub
+    return ModelHub().load(model, checkpoint=str(checkpoint), num_classes=num_classes,
+                           in_channels=in_channels, device="cpu")
+
+
 class _SegmentationClientProxy:
     """client.segmentation — raster segmentation (buildings, water, general SAM)."""
     def buildings(self, image_path, output_path="./output/buildings.tif", **kw):
@@ -1243,6 +1284,8 @@ class _SegmentationClientProxy:
         water_mask = (ndwi > ndwi_threshold).astype(np.uint8)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         profile.update(count=1, dtype="uint8", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(water_mask[np.newaxis])
         return {"output_path": output_path, "n_water_pixels": int(water_mask.sum()),
@@ -1254,25 +1297,19 @@ class _SegmentationClientProxy:
                                             points_per_side=points_per_side, **kw)
     
     def custom(self, image_path, model, output_path="./output/pred.tif",
-               chip_size=512, overlap=128, **kw):
-        """Run any custom PyTorch segmentation model with tiled inference.
+               chip_size=512, overlap=128, checkpoint=None, num_classes=2, in_channels=None, **kw):
+        """Run your own trained segmentation model with tiled inference.
 
         Args:
-            model: Either a real, already-built PyTorch model, or a
-                real model name from the registry (e.g.
-                "unet_resnet50") -- resolved via ModelHub.load(). Real
-                fix, confirmed by direct testing: previously a string
-                name was passed straight to TiledInference, which
-                requires a real, callable model object -- this failed
-                with a confusing "band count"/"str object is not
-                callable" error rather than building the named model.
+            model: an already-built (and trained) ``torch.nn.Module``, or a registry name such as
+                ``"unet_resnet50"``. A name needs ``checkpoint=`` -- the registry ships architectures,
+                not trained weights, and an untrained one returns random output. The checkpoint is
+                loaded strictly (it must match the architecture, ``num_classes`` and band count).
         """
         from pygeovision.inference.tiled import TiledInference
-        if isinstance(model, str):
-            from pygeovision.ai.models.hub import ModelHub
-            model = ModelHub().load(model, device="cpu")
+        model = _resolve_trained_model(model, checkpoint, num_classes, in_channels, image_path)
         return TiledInference(model=model, chip_size=chip_size, overlap=overlap,
-                               **kw).infer(image_path, output_path)
+                              num_classes=num_classes, **kw).infer(image_path, output_path)
     def __repr__(self): return "SegmentationLayer(buildings|water|sam|custom)"
 
 
@@ -1283,68 +1320,107 @@ class _DetectionClientProxy:
         return GeoYOLO(num_classes=num_classes, class_names=class_names).detect(
             image_path, output_path=output_path, **kw)
     def ships(self, image_path, output_path=None, **kw):
-        from pygeovision.models.detection.yolo import GeoYOLO, COCO_SHIP_CLASSES
+        from pygeovision.models.detection.yolo import COCO_SHIP_CLASSES, GeoYOLO
         return GeoYOLO(num_classes=1, class_names=["ship"],
                         coco_class_filter=COCO_SHIP_CLASSES).detect(
             image_path, output_path=output_path, **kw)
     def cars(self, image_path, output_path=None, **kw):
-        from pygeovision.models.detection.yolo import GeoYOLO, COCO_CAR_CLASSES
+        from pygeovision.models.detection.yolo import COCO_CAR_CLASSES, GeoYOLO
         return GeoYOLO(num_classes=1, class_names=["car"],
                         coco_class_filter=COCO_CAR_CLASSES).detect(
             image_path, output_path=output_path, **kw)
-    def custom(self, image_path, model, output_path="./output/detections.tif", **kw):
-        """Run any custom PyTorch detection model with tiled inference.
-
-        Real fix, same as _SegmentationClientProxy.custom(): accepts
-        either a real, already-built model or a real registry name
-        string, resolved via ModelHub.load() -- previously a string
-        name was passed straight to TiledInference, which needs a
-        real, callable model object.
-        """
+    def custom(self, image_path, model, output_path="./output/detections.tif",
+               checkpoint=None, num_classes=2, in_channels=None, **kw):
+        """Run your own trained model with tiled inference (same contract as ``segmentation.custom``)."""
         from pygeovision.inference.tiled import TiledInference
-        if isinstance(model, str):
-            from pygeovision.ai.models.hub import ModelHub
-            model = ModelHub().load(model, device="cpu")
-        return TiledInference(model=model, **kw).infer(image_path, output_path)
+        model = _resolve_trained_model(model, checkpoint, num_classes, in_channels, image_path)
+        return TiledInference(model=model, num_classes=num_classes, **kw).infer(image_path, output_path)
     def __repr__(self): return "DetectionLayer(generic|ships|cars|custom)"
 
 
 class _ChangeDetectionClientProxy:
-    """client.change — bi-temporal change detection (ChangeFormer, with a
-    dependency-free spectral-diff fallback)."""
+    """client.change — bi-temporal change detection.
+
+    ``method="spectral_diff"`` (default) is change vector analysis with an Otsu threshold: no weights,
+    no network. ``method="changeformer" | "bit" | "dsamnet"`` run a siamese network and **require**
+    ``checkpoint=`` -- weights you trained with :class:`~pygeovision.ai.training.trainer.GeoTrainer`
+    (an untrained network returns random output that looks like a result, so there is no silent
+    fallback to the spectral method: a missing checkpoint or a failed load raises).
+    """
+    _NETWORKS = ("changeformer", "bit", "dsamnet")
+
     def detect(self, before, after, output_path="./output/change.tif",
-               method="changeformer", **kw):
-        if method == "changeformer":
-            try:
-                from pygeovision.models.change_detection.changeformer import ChangeDetection
-                cd = ChangeDetection(model_variant="changeformer", **kw)
-                cd.build()
-                return cd.detect(before, after, output_path=output_path)
-            except Exception as exc:
-                logging.getLogger(__name__).debug(
-                    "ChangeFormer unavailable (%s) — using spectral-diff fallback", exc)
-        return self._diff_change(before, after, output_path)
-    def _diff_change(self, before, after, output_path):
+               method="spectral_diff", checkpoint=None, num_classes=2, in_channels=None, **kw):
+        if method == "spectral_diff":
+            return self._diff_change(before, after, output_path, **kw)
+        if method not in self._NETWORKS:
+            raise ValueError(f"method must be 'spectral_diff' or one of {self._NETWORKS}, got {method!r}")
+        if not checkpoint:
+            raise ValueError(
+                f"method={method!r} runs a neural network and PyGeoVision ships no trained weights for "
+                f"it -- pass checkpoint='model.pth' (trained on your own bi-temporal chips), or use "
+                f"method='spectral_diff', which needs none.")
+        if not Path(checkpoint).is_file():
+            raise FileNotFoundError(f"checkpoint not found: {checkpoint}")
+        import rasterio
+        import torch
+
+        from pygeovision.models.change_detection.changeformer import ChangeDetection
+        if in_channels is None:
+            with rasterio.open(before) as src:
+                in_channels = src.count
+        cd = ChangeDetection(model_variant=method, num_classes=num_classes,
+                             in_channels=in_channels, **kw)
+        net = cd.build()
+        state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+        if isinstance(state, dict):
+            for key in ("model_state_dict", "state_dict", "model", "network"):
+                if key in state:
+                    state = state[key]
+                    break
+        net.load_state_dict(state, strict=True)    # mismatched architecture/bands/classes fails loudly
+        return cd.detect(before, after, output_path=output_path)
+
+    def _diff_change(self, before, after, output_path, min_magnitude=None):
+        """Change vector analysis: Euclidean per-pixel band-difference length, Otsu-thresholded.
+
+        ``min_magnitude`` is an absolute floor in the rasters' own units; it stops Otsu from splitting
+        pure sensor noise into "changed"/"unchanged" on a scene that did not change. Pixels that are
+        nodata in either raster are written as 255 and excluded from the statistics.
+        """
         import numpy as np
         import rasterio
+
+        from pygeovision.ai.pipelines import _otsu_threshold
         with rasterio.open(before) as s1:
             img1 = s1.read().astype(np.float32)
-            profile = s1.profile
+            ok1 = s1.read_masks().all(axis=0) > 0
+            profile = s1.profile.copy()
         with rasterio.open(after) as s2:
             img2 = s2.read().astype(np.float32)
+            ok2 = s2.read_masks().all(axis=0) > 0
         if img1.shape != img2.shape:
-            from scipy.ndimage import zoom as nd_zoom
-            scale = (1.0, img1.shape[1] / img2.shape[1], img1.shape[2] / img2.shape[2])
-            img2 = nd_zoom(img2, scale, order=1)
-        diff = np.abs(img1 - img2).mean(axis=0)
-        threshold = np.percentile(diff, 90)
-        change_mask = (diff > threshold).astype(np.uint8)
+            raise ValueError(f"before/after rasters differ in shape {img1.shape} vs {img2.shape}; "
+                             "resample to a common grid first (pygeovision preprocess align)")
+        valid = ok1 & ok2 & np.isfinite(img1).all(0) & np.isfinite(img2).all(0)
+        if not valid.any():
+            raise ValueError("no pixel is valid in both rasters")
+        magnitude = np.sqrt(((img1 - img2) ** 2).sum(axis=0))
+        otsu = _otsu_threshold(magnitude[valid])
+        threshold = max(otsu, float(min_magnitude or 0.0))
+        changed = (magnitude > threshold) & valid
+        mask = np.where(valid, changed, 255).astype(np.uint8)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        profile.update(count=1, dtype="uint8", compress="lzw")
+        profile.update(count=1, dtype="uint8", nodata=255, compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
-            dst.write(change_mask[np.newaxis])
-        return {"output_path": output_path, "method": "spectral_diff",
-                "change_fraction": round(float(change_mask.mean()), 4)}
+            dst.write(mask[np.newaxis])
+            dst.update_tags(method="spectral_diff", threshold=f"{threshold:.6g}")
+        return {"output_path": str(output_path), "method": "spectral_diff",
+                "threshold": round(float(threshold), 6),
+                "change_fraction": round(float(changed[valid].mean()), 4),
+                "valid_fraction": round(float(valid.mean()), 4)}
     def __repr__(self): return "ChangeDetectionLayer(detect)"
 
 

@@ -62,13 +62,60 @@ class TestSharedModuleDirectly:
                 dst.write(np.full((size, size), 500, dtype="uint16"), 1)
             asset_paths[key] = p
 
+        # A 2021 scene (processing baseline < 04.00): reflectance = DN / 10000.
         result = stack_and_prepare_bands(
             asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="S2A_MSIL2A_20240615T153941_R011_T18TXL", apply_cloud_mask=False,
+            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL", apply_cloud_mask=False,
         )
         with rasterio.open(result) as src:
             data = src.read()
         assert abs(data[0, 0, 0] - 0.05) < 1e-4
+
+    def test_sentinel2_baseline_04_offset_is_removed(self, tmp_path):
+        """Scenes from 2022-01-25 on store DN = 10000*reflectance + 1000."""
+        from pygeovision.data.radiometric import stack_and_prepare_bands
+
+        size = 20
+        transform = from_bounds(-74.1, 40.6, -73.7, 40.9, size, size)
+        asset_paths = {}
+        for key in ["B04", "B03", "B02"]:
+            p = tmp_path / f"{key}.tif"
+            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
+                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+                dst.write(np.full((size, size), 1500, dtype="uint16"), 1)   # 0.05 reflectance
+            asset_paths[key] = p
+
+        result = stack_and_prepare_bands(
+            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+            scene_id="S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111", apply_cloud_mask=False,
+        )
+        with rasterio.open(result) as src:
+            data = src.read()
+            assert src.tags()["boa_add_offset_dn"] == "1000"
+        assert abs(data[0, 0, 0] - 0.05) < 1e-4
+
+    def test_sentinel2_nodata_dn_zero_becomes_nan_not_zero_reflectance(self, tmp_path):
+        from pygeovision.data.radiometric import stack_and_prepare_bands
+
+        size = 4
+        transform = from_bounds(-74.1, 40.6, -73.7, 40.9, size, size)
+        asset_paths = {}
+        for key in ["B04", "B03", "B02"]:
+            arr = np.full((size, size), 1500, dtype="uint16")
+            arr[0, 0] = 0                                                  # swath-edge fill
+            p = tmp_path / f"{key}.tif"
+            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
+                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+                dst.write(arr, 1)
+            asset_paths[key] = p
+        result = stack_and_prepare_bands(
+            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+            scene_id="S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111", apply_cloud_mask=False,
+        )
+        with rasterio.open(result) as src:
+            data = src.read()
+        assert np.isnan(data[:, 0, 0]).all()
+        assert np.isfinite(data[:, 1, 1]).all()
 
     def test_unidentified_sensor_still_refuses_to_guess(self, tmp_path):
         from pygeovision.data.radiometric import stack_and_prepare_bands
@@ -116,7 +163,7 @@ class TestPrepareStackPublicMethod:
         fetcher = SatelliteFetcher.__new__(SatelliteFetcher)
         result = fetcher.prepare_stack(
             asset_paths, tmp_path / "stack.tif",
-            scene_id="S2A_MSIL2A_20240615T153941_R011_T18TXL",
+            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL",
         )
         with rasterio.open(result) as src:
             data = src.read()
@@ -143,7 +190,7 @@ class TestPrepareStackPublicMethod:
         stack_path = fetcher.prepare_stack(
             asset_paths, tmp_path / "stack.tif",
             bands=("blue", "green", "red", "nir"),
-            scene_id="S2A_MSIL2A_20240615T153941_R011_T18TXL",
+            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL",
             apply_cloud_mask=False,
         )
 

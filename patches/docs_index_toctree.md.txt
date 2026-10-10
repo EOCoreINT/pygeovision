@@ -1,0 +1,14 @@
+```{toctree}
+:maxdepth: 2
+:caption: Object-Based Image Analysis
+:hidden:
+
+obia/index
+obia/segmentation
+obia/scale-selection
+obia/features
+obia/classification
+obia/accuracy
+obia/teaching-guide
+```
+

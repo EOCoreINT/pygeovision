@@ -293,16 +293,10 @@ class LabelStudioLabeler(BaseLabeler):
                     "Run export_tiles() first.",
                     tile_path.name,
                 )
-                mask = np.zeros((height, width), dtype=np.uint8)
-                self._write_label_geotiff(
-                    mask, output_path,
-                    {"driver": "GTiff", "dtype": "uint8", "width": width,
-                     "height": height, "count": 1, "crs": crs,
-                     "transform": transform, "compress": "lzw"}
-                )
+                # No label file is written: an all-background raster would look like a real
+                # "nothing here" annotation to anything reading the output directory.
                 return LabelingResult(
-                    tile_path=tile_path, label_path=output_path,
-                    success=False, labeler="label_studio",
+                    tile_id=str(tile_path), label_path=None, source="label_studio",
                     error="no_task_found",
                 )
 
@@ -313,8 +307,7 @@ class LabelStudioLabeler(BaseLabeler):
                     "Task for %s has no annotations yet.", tile_path.name
                 )
                 return LabelingResult(
-                    tile_path=tile_path, label_path=output_path,
-                    success=False, labeler="label_studio",
+                    tile_id=str(tile_path), label_path=None, source="label_studio",
                     error="no_annotations",
                 )
 
@@ -337,7 +330,7 @@ class LabelStudioLabeler(BaseLabeler):
                 "transform": transform,
                 "compress": "lzw",
             }
-            self._write_label_geotiff(mask, output_path, meta)
+            self._write_mask_geotiff(mask, output_path, meta)
 
             unique = np.unique(mask)
             stats = {
@@ -347,10 +340,9 @@ class LabelStudioLabeler(BaseLabeler):
             }
 
             return LabelingResult(
-                tile_path=tile_path,
+                tile_id=str(tile_path),
                 label_path=output_path,
-                success=True,
-                labeler="label_studio",
+                source="label_studio",
                 class_distribution=stats,
                 metadata={
                     "project_id": self.config.project_id,
@@ -366,10 +358,9 @@ class LabelStudioLabeler(BaseLabeler):
                 "LabelStudioLabeler failed for %s: %s", tile_path, exc
             )
             return LabelingResult(
-                tile_path=tile_path,
-                label_path=output_path,
-                success=False,
-                labeler="label_studio",
+                tile_id=str(tile_path),
+                label_path=None,
+                source="label_studio",
                 error=str(exc),
             )
 

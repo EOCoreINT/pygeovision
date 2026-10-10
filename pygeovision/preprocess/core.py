@@ -173,6 +173,8 @@ class Preprocessor:
             src0.dtypes[0]
 
         profile.update(count=len(band_paths), compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
 
         with rasterio.open(output_path, "w", **profile) as dst:
             for idx, bp in enumerate(band_paths, start=1):
@@ -340,6 +342,8 @@ class Preprocessor:
                 compress="lzw",
             )
 
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 
@@ -442,6 +446,8 @@ class Preprocessor:
                 compress="lzw",
             )
 
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 
@@ -612,6 +618,8 @@ class Preprocessor:
             for s in srcs:
                 s.close()
 
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(mosaic_arr)
 
@@ -672,6 +680,8 @@ class Preprocessor:
             data[b][cloud] = nodata
 
         profile.update(nodata=nodata, dtype="float32", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 
@@ -741,6 +751,8 @@ class Preprocessor:
             data[b][mask] = nodata
 
         profile.update(nodata=nodata, dtype="float32", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 
@@ -865,6 +877,8 @@ class Preprocessor:
 
         out = out.astype(out_dtype)
         profile.update(dtype=out_dtype, compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(out)
 
@@ -942,6 +956,8 @@ class Preprocessor:
                 compress="lzw",
             )
 
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 

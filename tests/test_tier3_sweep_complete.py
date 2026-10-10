@@ -47,14 +47,13 @@ class TestCategoryASilentFallbacksFixed:
         mock_pgv = MagicMock()
         pipeline.pgv = mock_pgv
         pipeline._pgv = mock_pgv
+        fake_path = tmp_path / "scene.tif"
+        fake_path.write_bytes(b"fake")
+        pipeline._search_and_download = MagicMock(return_value=fake_path)
         return pipeline, mock_pgv
 
     def test_crop_type_mapping_fails_loudly_not_silently(self, tmp_path):
         pipeline, mock_pgv = self._make_pipeline("CropTypeMappingPipeline", tmp_path)
-        pipeline._search = MagicMock(return_value=[MagicMock()])
-        fake_download = MagicMock(success=True, path=str(tmp_path / "scene.tif"))
-        (tmp_path / "scene.tif").write_bytes(b"fake")
-        mock_pgv.download.return_value = [fake_download]
         mock_pgv.segmentation.custom.side_effect = RuntimeError("model not found")
 
         result = pipeline.run(bbox=(0, 0, 1, 1), output_dir=str(tmp_path / "out"), date="2024-06")
@@ -63,9 +62,6 @@ class TestCategoryASilentFallbacksFixed:
 
     def test_irrigation_detection_fails_loudly_not_silently(self, tmp_path):
         pipeline, mock_pgv = self._make_pipeline("IrrigationDetectionPipeline", tmp_path)
-        pipeline._search = MagicMock(return_value=[MagicMock()])
-        fake_download = MagicMock(success=True, path=str(tmp_path / "scene.tif"))
-        mock_pgv.download.return_value = [fake_download]
         mock_pgv.segmentation.water.side_effect = RuntimeError("water model failed")
 
         result = pipeline.run(bbox=(0, 0, 1, 1), output_dir=str(tmp_path / "out"), date="2024-06")
@@ -74,22 +70,14 @@ class TestCategoryASilentFallbacksFixed:
 
     def test_road_extraction_fails_loudly_not_silently(self, tmp_path):
         pipeline, mock_pgv = self._make_pipeline("RoadExtractionPipeline", tmp_path)
-        pipeline._search = MagicMock(return_value=[MagicMock()])
-        fake_path = tmp_path / "scene.tif"; fake_path.write_bytes(b"fake")
-        fake_download = MagicMock(success=True, path=str(fake_path))
-        mock_pgv.download.return_value = [fake_download]
-        mock_pgv.detection.generic.side_effect = RuntimeError("detector unavailable")
+        mock_pgv.segmentation.custom.side_effect = RuntimeError("segmentation model unavailable")
 
         result = pipeline.run(bbox=(0, 0, 1, 1), output_dir=str(tmp_path / "out"), date="2024-06")
         assert not result.success
-        assert "detector unavailable" in result.error
+        assert "segmentation model unavailable" in result.error
 
     def test_ocean_ship_detection_fails_loudly_not_silently(self, tmp_path):
         pipeline, mock_pgv = self._make_pipeline("OceanShipDetectionPipeline", tmp_path)
-        pipeline._search = MagicMock(return_value=[MagicMock()])
-        fake_path = tmp_path / "scene.tif"; fake_path.write_bytes(b"fake")
-        fake_download = MagicMock(success=True, path=str(fake_path))
-        mock_pgv.download.return_value = [fake_download]
         mock_pgv.detection.ships.side_effect = RuntimeError("ships detector failed")
 
         result = pipeline.run(bbox=(0, 0, 1, 1), output_dir=str(tmp_path / "out"), date="2024-06")
@@ -98,25 +86,19 @@ class TestCategoryASilentFallbacksFixed:
 
     def test_flood_mapping_fails_loudly_not_silently(self, tmp_path):
         pipeline, mock_pgv = self._make_pipeline("FloodMappingPipeline", tmp_path)
-        pipeline._search = MagicMock(return_value=[MagicMock()])
-        fake_path = tmp_path / "scene.tif"; fake_path.write_bytes(b"fake")
-        fake_download = MagicMock(success=True, path=str(fake_path))
-        mock_pgv.download.return_value = [fake_download]
         mock_pgv.segmentation.water.side_effect = RuntimeError("flood model failed")
 
         result = pipeline.run(bbox=(0, 0, 1, 1), output_dir=str(tmp_path / "out"), date="2024-06")
         assert not result.success
+        assert "flood model failed" in result.error
 
     def test_landslide_detection_fails_loudly_not_silently(self, tmp_path):
         pipeline, mock_pgv = self._make_pipeline("LandslideDetectionPipeline", tmp_path)
-        pipeline._search = MagicMock(return_value=[MagicMock()])
-        fake_path = tmp_path / "scene.tif"; fake_path.write_bytes(b"fake")
-        fake_download = MagicMock(success=True, path=str(fake_path))
-        mock_pgv.download.return_value = [fake_download]
         mock_pgv.segmentation.custom.side_effect = RuntimeError("landslide model failed")
 
         result = pipeline.run(bbox=(0, 0, 1, 1), output_dir=str(tmp_path / "out"), date="2024-06")
         assert not result.success
+        assert "landslide model failed" in result.error
 
     def test_zero_bare_except_exception_remain(self):
         """Direct source check -- confirms all 9 silent-catch sites

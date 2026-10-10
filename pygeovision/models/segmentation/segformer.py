@@ -1,56 +1,42 @@
-"""SegFormer for geospatial semantic segmentation."""
+"""SegFormer (Mix Transformer encoder + all-MLP head) for geospatial segmentation."""
+from __future__ import annotations
+
+from types import SimpleNamespace
 from typing import Any
 
+# Encoder-only ImageNet checkpoints published by NVIDIA.  The decode head is
+# initialised randomly and must be trained.
+MIT_ENCODERS = {f"b{i}": f"nvidia/mit-b{i}" for i in range(6)}
 
-def build_segformer(variant: str = "b2", num_classes: int = 2, in_channels: int = 4,
-                     pretrained: bool = True, **kwargs) -> Any:
-    """Build SegFormer (Mix Transformer backbone + lightweight head).
 
-    Args:
-        variant: "b0" | "b1" | "b2" | "b3" | "b4" | "b5"
-        num_classes: Segmentation classes
-        in_channels: Input channels (adapted via 1×1 conv if != 3)
+def build_segformer(
+    variant: str = "b2",
+    num_classes: int = 2,
+    in_channels: int = 4,
+    pretrained: bool = True,
+    allow_random_init: bool = False,
+    **kwargs: Any,
+) -> Any:
+    """Build SegFormer-B0..B5.
 
-    Example::
+    ``pretrained=True`` loads the ImageNet Mix-Transformer *encoder* (the decode
+    head starts random); ``pretrained=False`` builds the architecture offline.
+    Bands other than three are handled by widening the patch-embedding conv.
 
-        model = build_segformer("b2", num_classes=7, in_channels=4)
+    Returns a module whose ``forward(x)`` gives ``(B, num_classes, H, W)`` logits at
+    the input resolution (the raw model emits 1/4 resolution; the adapter resizes).
+
+    Raises:
+        ModelLoadError: pretrained weights could not be loaded (and
+            ``allow_random_init`` is false).
     """
-    HF_IDS = {
-        "b0": "nvidia/mit-b0", "b1": "nvidia/mit-b1",
-        "b2": "nvidia/mit-b2", "b3": "nvidia/mit-b3",
-        "b4": "nvidia/mit-b4", "b5": "nvidia/mit-b5",
-    }
-    try:
-        import torch
-        import torch.nn as nn
-        from transformers import SegformerConfig, SegformerForSemanticSegmentation
+    from pygeovision.models._hf import build_hf_model
 
-        hf_id = HF_IDS.get(variant, HF_IDS["b2"])
-        config = SegformerConfig.from_pretrained(hf_id)
-        config.num_labels = num_classes
-        config.id2label = {i: str(i) for i in range(num_classes)}
-        config.label2id = {str(i): i for i in range(num_classes)}
-
-        if pretrained:
-            model = SegformerForSemanticSegmentation.from_pretrained(
-                hf_id, config=config, ignore_mismatched_sizes=True,
-            )
-        else:
-            model = SegformerForSemanticSegmentation(config)
-
-        # Handle non-3-channel input
-        if in_channels != 3:
-            old_conv = model.segformer.encoder.patch_embeddings[0].proj
-            new_conv = nn.Conv2d(in_channels, old_conv.out_channels,
-                                  kernel_size=old_conv.kernel_size,
-                                  stride=old_conv.stride, padding=old_conv.padding)
-            with torch.no_grad():
-                # Copy first 3 channel weights, initialise remaining
-                new_conv.weight[:, :min(3, in_channels)] = old_conv.weight[:, :min(3, in_channels)]
-                if in_channels > 3:
-                    nn.init.kaiming_normal_(new_conv.weight[:, 3:])
-            model.segformer.encoder.patch_embeddings[0].proj = new_conv
-
-        return model
-    except ImportError:
-        raise ImportError("pip install transformers torch")
+    if variant not in MIT_ENCODERS:
+        raise ValueError(f"variant must be one of {sorted(MIT_ENCODERS)}, got {variant!r}")
+    spec = SimpleNamespace(
+        name=f"segformer-{variant}", family="segformer", task="segmentation",
+        hf_id=MIT_ENCODERS[variant],
+    )
+    return build_hf_model(spec, num_classes, in_channels, pretrained,
+                          allow_random_init=allow_random_init, **kwargs)

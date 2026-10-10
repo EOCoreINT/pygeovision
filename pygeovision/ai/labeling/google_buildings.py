@@ -140,8 +140,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
         try:
             import pyproj
             import rasterio
-            from rasterio.transform import from_bounds
-            from shapely.geometry import box, shape
+            from shapely.geometry import box
             from shapely.ops import transform as shapely_transform
         except ImportError as exc:
             raise LabelingError(
@@ -190,7 +189,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
                 "transform": transform,
                 "compress": "lzw",
             }
-            self._write_label_geotiff(mask, output_path, meta)
+            self._write_mask_geotiff(mask, output_path, meta)
 
             stats = self._compute_class_distribution(
                 mask,
@@ -202,10 +201,9 @@ class GoogleBuildingsLabeler(BaseLabeler):
             building_coverage = float(np.sum(mask == self.config.building_value)) / mask.size
 
             return LabelingResult(
-                tile_path=tile_path,
+                tile_id=str(tile_path),
                 label_path=output_path,
-                success=True,
-                labeler="google_buildings",
+                source="google_buildings",
                 class_distribution=stats,
                 metadata={
                     "building_coverage": building_coverage,
@@ -220,10 +218,9 @@ class GoogleBuildingsLabeler(BaseLabeler):
                 "GoogleBuildingsLabeler failed for %s: %s", tile_path, exc
             )
             return LabelingResult(
-                tile_path=tile_path,
-                label_path=output_path,
-                success=False,
-                labeler="google_buildings",
+                tile_id=str(tile_path),
+                label_path=None,
+                source="google_buildings",
                 error=str(exc),
             )
 
@@ -354,6 +351,8 @@ class GoogleBuildingsLabeler(BaseLabeler):
         """
         import json
 
+        from shapely import wkt
+        from shapely.errors import ShapelyError
         from shapely.geometry import box, shape
 
         # Check cache
@@ -373,6 +372,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
 
         query_box = box(*bbox_wgs84)
         buildings: list[dict[str, Any]] = []
+        bad_rows = 0
 
         with gzip.open(cache_path, "rt") as fh:
             reader = csv.DictReader(fh)
@@ -382,16 +382,22 @@ class GoogleBuildingsLabeler(BaseLabeler):
                     if confidence < self.config.confidence_threshold:
                         continue
 
-                    geom = shape(json.loads(row["geometry"]))
+                    raw = row["geometry"].strip()
+                    # Open Buildings CSVs carry WKT; accept GeoJSON too.
+                    geom = shape(json.loads(raw)) if raw.startswith("{") else wkt.loads(raw)
                     if not query_box.intersects(geom):
                         continue
 
                     buildings.append(
                         {"geometry": geom, "confidence": confidence}
                     )
-                except (KeyError, ValueError, json.JSONDecodeError):
+                except (KeyError, ValueError, json.JSONDecodeError, ShapelyError):
+                    bad_rows += 1
                     continue
 
+        if bad_rows:
+            logger.warning("GOB tile %s: %d rows had unreadable geometry/confidence and were skipped",
+                           tile_name, bad_rows)
         return buildings
 
     def _rasterize_polygons(

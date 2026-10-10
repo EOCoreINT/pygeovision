@@ -153,93 +153,38 @@ def build_segformer(
         in_channels: Number of input channels.
         num_classes: Number of output classes.
         pretrained: Load ImageNet-21k pretrained weights.
-        **kwargs: Additional model args.
+        allow_random_init: If true, a failed pretrained download returns a flagged random
+            model instead of raising.
 
     Returns:
-        SegFormer model (HuggingFace transformers or timm).
+        A module whose ``forward(x)`` returns ``(B, num_classes, H, W)`` logits at the input
+        resolution.  The raw Hugging Face model emits 1/4 resolution and a ``ModelOutput``;
+        the wrapper resizes and unwraps so the trainer, losses and tiled inference work
+        unchanged.  ``pretrained=False`` builds offline.
 
     Example:
         >>> model = build_segformer(model_size="b5", num_classes=20)
     """
-    _SIZES = {
-        "b0": "nvidia/segformer-b0-finetuned-ade-512-512",
-        "b1": "nvidia/segformer-b1-finetuned-ade-512-512",
-        "b2": "nvidia/segformer-b2-finetuned-ade-512-512",
-        "b3": "nvidia/segformer-b3-finetuned-ade-512-512",
-        "b4": "nvidia/segformer-b4-finetuned-ade-512-512",
-        "b5": "nvidia/segformer-b5-finetuned-ade-640-640",
-    }
-    if model_size not in _SIZES:
+    from types import SimpleNamespace
+
+    from pygeovision.models._hf import build_hf_model
+
+    if model_size not in ("b0", "b1", "b2", "b3", "b4", "b5"):
         raise ValueError(
-            f"model_size must be one of {list(_SIZES.keys())}, got {model_size!r}"
+            f"model_size must be one of ['b0', 'b1', 'b2', 'b3', 'b4', 'b5'], got {model_size!r}"
         )
-
-    try:
-        from transformers import SegformerConfig, SegformerForSemanticSegmentation
-
-        if pretrained:
-            model = SegformerForSemanticSegmentation.from_pretrained(
-                _SIZES[model_size],
-                num_labels=num_classes,
-                ignore_mismatched_sizes=True,
-            )
-        else:
-            config = SegformerConfig(
-                num_labels=num_classes,
-                **kwargs,
-            )
-            model = SegformerForSemanticSegmentation(config)
-
-        # Patch first convolution for non-RGB inputs
-        if in_channels != 3:
-            import torch.nn as nn
-            first_conv = model.segformer.encoder.patch_embeddings[0].proj
-            new_conv = nn.Conv2d(
-                in_channels,
-                first_conv.out_channels,
-                kernel_size=first_conv.kernel_size,
-                stride=first_conv.stride,
-                padding=first_conv.padding,
-            )
-            if pretrained:
-                # Initialize new channels from mean of RGB weights
-                import torch
-                with torch.no_grad():
-                    new_conv.weight[:, :3] = first_conv.weight
-                    if in_channels > 3:
-                        mean_w = first_conv.weight.mean(dim=1, keepdim=True)
-                        for c in range(3, in_channels):
-                            new_conv.weight[:, c:c+1] = mean_w
-            model.segformer.encoder.patch_embeddings[0].proj = new_conv
-
-        logger.info(
-            "Built SegFormer-%s(in_channels=%d, num_classes=%d)",
-            model_size.upper(), in_channels, num_classes,
-        )
-        return model
-
-    except ImportError:
-        pass
-
-    # Fallback: use timm SegFormer
-    try:
-        import timm
-        timm_name = f"mit_{model_size}"  # e.g. mit_b2
-        backbone = timm.create_model(
-            timm_name,
-            pretrained=pretrained,
-            in_chans=in_channels,
-            num_classes=0,
-        )
-        logger.info(
-            "Built SegFormer-%s via timm (in_channels=%d)", model_size, in_channels
-        )
-        return backbone
-    except Exception as exc:
-        raise ImportError(
-            "SegFormer requires transformers or timm. "
-            "Install: pip install transformers  OR  pip install timm"
-        ) from exc
+    hf_id = {"b5": "nvidia/segformer-b5-finetuned-ade-640-640"}.get(
+        model_size, f"nvidia/segformer-{model_size}-finetuned-ade-512-512")
+    spec = SimpleNamespace(name=f"segformer-{model_size}", family="segformer",
+                           task="segmentation", hf_id=hf_id)
+    allow_random_init = kwargs.pop("allow_random_init", False)
+    if kwargs:
+        raise TypeError(f"build_segformer got unexpected keyword arguments: {sorted(kwargs)}")
+    model = build_hf_model(spec, num_classes, in_channels, pretrained,
+                           allow_random_init=allow_random_init)
+    logger.info("Built SegFormer-%s(in_channels=%d, num_classes=%d)",
+                model_size.upper(), in_channels, num_classes)
+    return model
 
 
 def build_fpn(

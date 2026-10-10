@@ -185,6 +185,8 @@ class GradCAM:
         saliency_map /= np.maximum(count_map, 1e-10)
 
         profile.update(count=1, dtype="float32", compress="lzw")
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(saliency_map[np.newaxis])
             dst.update_tags(method="GradCAM", class_idx=str(class_idx))

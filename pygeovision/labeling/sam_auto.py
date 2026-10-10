@@ -13,21 +13,63 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _tile_origins(size: int, chip: int, overlap: int) -> list[int]:
+    """Start offsets of overlapping tiles covering ``size`` pixels.
+
+    The last tile ends exactly at ``size``; no tile is emitted that lies wholly inside the
+    previous tile's footprint (the old ``range(0, size, stride)`` did, which processed a
+    useless sliver when ``size`` was a multiple of ``chip``).
+    """
+    stride = chip - overlap
+    starts = [0]
+    while starts[-1] + chip < size:
+        starts.append(starts[-1] + stride)
+    return starts
+
+
+def _pixel_area_m2(transform: Any, crs: Any, height: int) -> float:
+    """Ground area of one pixel in square metres.
+
+    For a projected CRS this is ``|a*e|`` (assumed to be in metres).  For a geographic CRS the
+    pixel size is in degrees, so the old ``|a*e|`` gave an "area in m2" that was really deg^2
+    (about 1e-10 of the truth) and made every ``min_area_m2`` filter drop nothing.
+    """
+    import math
+
+    if crs is not None and getattr(crs, "is_geographic", False):
+        lat = transform.f + transform.e * (height / 2.0)
+        m_lat = 111_320.0
+        m_lon = 111_320.0 * math.cos(math.radians(lat))
+        return abs(transform.a) * m_lon * abs(transform.e) * m_lat
+    return abs(transform.a * transform.e)
+
+
+def _to_numpy_bool(seg: Any) -> Any:
+    import numpy as np
+
+    if hasattr(seg, "detach"):
+        seg = seg.detach().cpu().numpy()
+    return np.asarray(seg).astype(bool)
+
+
 class SAMAutoLabeler:
     """Automated label generation using Segment Anything Model (SAM/SAM2).
 
-    Zero-shot segmentation — generates high-quality binary or multi-class masks
-    from satellite imagery without any training data.
+    Zero-shot segmentation -- generates instance masks from satellite imagery without any
+    training data.  Works through Hugging Face ``transformers`` (``AutoModelForMaskGeneration``),
+    so both the SAM and SAM2 families load.
 
     Supports:
-        - Automatic mask generation (grid-based point prompts)
-        - GroundedSAM (text-prompt driven)
-        - SAM2 (video SAM for time-series)
-        - Post-filtering by area, stability, IoU quality
+        - Automatic mask generation (grid of point prompts, tiled over large scenes)
+        - GroundedSAM (text-prompt driven; needs the ``groundingdino`` package)
+        - Post-filtering by area, predicted IoU and stability
+
+    Masks are held as bounding-box crops, not full-scene arrays, so memory grows with the
+    size of the objects rather than with ``n_masks * scene_size``.
 
     Example::
 
-        labeler = SAMAutoLabeler(model="sam-vit-huge")
+        labeler = SAMAutoLabeler(model="sam-vit-base")
         result = labeler.auto_label(
             image_path="./data/aerial.tif",
             output_path="./labels/sam_masks.tif",
@@ -40,9 +82,13 @@ class SAMAutoLabeler:
         "sam-vit-huge":   "facebook/sam-vit-huge",
         "sam-vit-large":  "facebook/sam-vit-large",
         "sam-vit-base":   "facebook/sam-vit-base",
-        "sam2-hiera-l":   "facebook/sam2-hiera-large",
-        "sam2-hiera-b":   "facebook/sam2-hiera-base-plus",
-        "geosam-vit-h":   "wangyi111/GeoSAM",
+        "sam2-hiera-l":   "facebook/sam2-hiera-large-hf",
+        "sam2-hiera-b":   "facebook/sam2-hiera-base-plus-hf",
+    }
+    # Names that used to be accepted but point at repositories that do not exist.
+    _REMOVED = {
+        "geosam-vit-h": "'wangyi111/GeoSAM' is not a Hugging Face repository. Use a SAM name from "
+                        "HF_MODELS, or SamGeoLabeler (segment-geospatial) for remote-sensing SAM.",
     }
 
     def __init__(
@@ -53,6 +99,8 @@ class SAMAutoLabeler:
         gdino_config_path: str | None = None,
         gdino_checkpoint_path: str | None = None,
     ) -> None:
+        if model in self._REMOVED:
+            raise ValueError(f"Model '{model}' is not available: {self._REMOVED[model]}")
         self.model_name = model
         self.model_id = self.HF_MODELS.get(model, model)
         self.device = device or self._auto_device()
@@ -60,7 +108,8 @@ class SAMAutoLabeler:
         self._model = None
         self._processor = None
         self._mask_generator = None
-        # GroundingDINO (used by grounded_label) — lazily loaded and cached.
+        self._chip_errors: list[str] = []
+        # GroundingDINO (used by grounded_label) -- lazily loaded and cached.
         self._gdino_config_path = gdino_config_path
         self._gdino_checkpoint_path = gdino_checkpoint_path
         self._gdino_model = None
@@ -74,27 +123,23 @@ class SAMAutoLabeler:
             return "cpu"
 
     def _load(self) -> None:
-        if self._model is not None:
+        if self._model is not None and self._processor is not None:
             return
         try:
-            from transformers import SamModel, SamProcessor
-            logger.info("Loading SAM: %s → %s", self.model_name, self.device)
-            self._processor = SamProcessor.from_pretrained(self.model_id, cache_dir=self.cache_dir)
-            self._model = SamModel.from_pretrained(self.model_id, cache_dir=self.cache_dir)
-            self._model.to(self.device)
-            logger.info("SAM loaded")
+            from transformers import AutoModelForMaskGeneration, AutoProcessor
         except ImportError as exc:
-            raise ImportError(f"transformers + torch required: pip install transformers torch ({exc})")
+            raise ImportError(f"transformers + torch required: pip install transformers torch ({exc})") from exc
+        logger.info("Loading SAM: %s -> %s", self.model_name, self.device)
+        self._processor = AutoProcessor.from_pretrained(self.model_id, cache_dir=self.cache_dir)
+        self._model = AutoModelForMaskGeneration.from_pretrained(self.model_id, cache_dir=self.cache_dir)
+        self._model.to(self.device).eval()
+        logger.info("SAM loaded")
 
     def _load_mask_generator(self):
-        """Build (and cache) a "segment everything" pipeline reusing the
-        already-loaded SamModel/SamProcessor weights.
+        """Build (and cache) a "segment everything" pipeline reusing the loaded weights.
 
-        `transformers` does not expose `SamAutomaticMaskGenerator` — that
-        class only exists in Meta's separate `segment_anything` package.
-        The equivalent grid-of-points "segment everything" functionality is
-        the mask-generation pipeline, built here from the already-loaded
-        model/processor so weights aren't downloaded/loaded twice.
+        ``transformers`` has no ``SamAutomaticMaskGenerator`` (that is Meta's separate
+        ``segment_anything`` package); the equivalent is the ``mask-generation`` pipeline.
         """
         if self._mask_generator is not None:
             return self._mask_generator
@@ -104,8 +149,34 @@ class SAMAutoLabeler:
             task="mask-generation",
             model=self._model,
             image_processor=self._processor.image_processor,
+            device=self.device,
         )
         return self._mask_generator
+
+    # ------------------------------------------------------------------ auto labelling
+
+    @staticmethod
+    def _read_rgb(src: Any, rgb_bands: tuple[int, int, int] | None):
+        """Read three display bands as uint8, ignoring nodata when stretching."""
+        import numpy as np
+
+        if rgb_bands is None:
+            rgb_bands = tuple(range(1, min(src.count, 3) + 1))  # type: ignore[assignment]
+        if any(b < 1 or b > src.count for b in rgb_bands):
+            raise ValueError(f"rgb_bands {rgb_bands} out of range for a {src.count}-band raster")
+        data = src.read(list(rgb_bands), masked=True).astype("float32")
+        out = np.zeros(data.shape, dtype="float32")
+        for b in range(data.shape[0]):
+            valid = data[b].compressed()
+            if valid.size == 0:
+                continue
+            p2, p98 = np.percentile(valid, (2, 98))
+            out[b] = np.clip((data[b].filled(p2) - p2) / (p98 - p2 + 1e-8) * 255, 0, 255)
+        if out.shape[0] == 1:
+            out = np.repeat(out, 3, axis=0)
+        elif out.shape[0] == 2:
+            out = np.stack([out[0], out[1], out[0]], axis=0)
+        return out[:3].transpose(1, 2, 0).astype(np.uint8)
 
     def auto_label(
         self,
@@ -120,26 +191,37 @@ class SAMAutoLabeler:
         chip_size: int = 1024,
         overlap: int = 128,
         merge_overlapping: bool = True,
+        rgb_bands: tuple[int, int, int] | None = None,
     ) -> dict[str, Any]:
         """Generate automatic segmentation masks from a GeoTIFF.
 
-        Uses grid-based SAM prompting with filtering by quality and area.
-
         Args:
-            image_path: Input GeoTIFF (any number of bands)
-            output_path: Output binary/instance label GeoTIFF
-            output_vector: Optional GeoJSON of mask polygons
-            points_per_side: Grid density for automatic prompting
-            pred_iou_thresh: Minimum predicted IoU quality
-            stability_score_thresh: Minimum mask stability score
-            min_area_m2: Minimum mask area in square metres
-            max_area_m2: Maximum mask area (filters huge background)
-            chip_size: Processing tile size in pixels
-            overlap: Overlap between tiles in pixels
+            image_path: Input GeoTIFF.  SAM takes three display bands.
+            output_path: Output instance-label GeoTIFF (0 = none, 1..N = instance id).
+            output_vector: Optional GeoJSON of mask polygons.
+            points_per_side: Grid density of point prompts per tile.
+            pred_iou_thresh: Minimum predicted mask quality (IoU).
+            stability_score_thresh: Minimum mask stability under a threshold shift.
+            min_area_m2: Minimum mask ground area in square metres.
+            max_area_m2: Maximum mask area (filters huge background).
+            chip_size: Processing tile size in pixels.
+            overlap: Overlap between tiles in pixels (must be smaller than ``chip_size``).
+            merge_overlapping: Merge the same object detected in two overlapping tiles.
+            rgb_bands: 1-based band numbers to use as (R, G, B).  Defaults to bands 1-3, which is
+                only correct if the file is stored R, G, B -- Sentinel-2 files commonly are
+                B2, B3, B4 (blue, green, red) and need ``rgb_bands=(3, 2, 1)``.
 
         Returns:
-            Dict with n_masks, output_path, quality stats
+            Dict with n_masks, output_path, quality stats.  ``success`` is False when no mask
+            survived or when tiles failed to process (``n_chip_errors``).
         """
+        if chip_size < 64:
+            raise ValueError(f"chip_size must be >= 64, got {chip_size}")
+        if not 0 <= overlap < chip_size:
+            raise ValueError(f"overlap must satisfy 0 <= overlap < chip_size, got {overlap} / {chip_size}")
+        if points_per_side < 1:
+            raise ValueError(f"points_per_side must be >= 1, got {points_per_side}")
+
         image_path = Path(image_path)
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -147,130 +229,117 @@ class SAMAutoLabeler:
         try:
             import numpy as np
             import rasterio
-            from PIL import Image
         except ImportError as exc:
-            raise ImportError(f"rasterio + Pillow required: {exc}")
+            raise ImportError(f"rasterio required: {exc}") from exc
 
-        # Load image
         with rasterio.open(str(image_path)) as src:
             profile = src.profile.copy()
             transform = src.transform
             crs = src.crs
             H, W = src.height, src.width
-            # Read RGB (first 3 bands) and normalise
-            n_bands = min(src.count, 3)
-            data = src.read(list(range(1, n_bands + 1))).astype(float)
-            # Normalise each band to 0-255
-            for b in range(data.shape[0]):
-                p2, p98 = np.percentile(data[b], (2, 98))
-                data[b] = np.clip((data[b] - p2) / (p98 - p2 + 1e-8) * 255, 0, 255)
-            if data.shape[0] == 1:
-                data = np.repeat(data, 3, axis=0)
-            elif data.shape[0] == 2:
-                data = np.stack([data[0], data[1], data[0]], axis=0)
-            rgb = data[:3].transpose(1, 2, 0).astype(np.uint8)
+            rgb = self._read_rgb(src, rgb_bands)
 
-        # Load SAM model
         self._load()
-
-        # Process in tiles
-        all_masks = []
+        self._chip_errors = []
         t_start = time.time()
-        stride = chip_size - overlap
 
-        for row in range(0, H, stride):
-            for col in range(0, W, stride):
-                r2, c2 = min(row + chip_size, H), min(col + chip_size, W)
-                chip = rgb[row:r2, col:c2]
-                chip_masks = self._process_chip(
-                    chip, points_per_side, pred_iou_thresh, stability_score_thresh
-                )
-                # Offset masks to full-image coordinates
-                for m in chip_masks:
-                    full_mask = np.zeros((H, W), dtype=bool)
-                    ch, cw = m["segmentation"].shape
-                    full_mask[row:row+ch, col:col+cw] = m["segmentation"]
-                    m["full_mask"] = full_mask
-                    m["bbox_full"] = (col, row, col+cw, row+ch)
-                all_masks.extend(chip_masks)
+        all_masks: list[dict] = []
+        n_tiles = 0
+        for row in _tile_origins(H, chip_size, overlap):
+            for col in _tile_origins(W, chip_size, overlap):
+                chip = rgb[row:row + chip_size, col:col + chip_size]
+                n_tiles += 1
+                all_masks.extend(self._process_chip(
+                    chip, points_per_side, pred_iou_thresh, stability_score_thresh, row=row, col=col))
 
-        # Merge masks that were independently detected in the overlapping
-        # region between adjacent tiles — without this, the same real
-        # object gets counted as two separate mask instances near every
-        # tile boundary, corrupting count/area statistics. Previously
-        # accepted (merge_overlapping, defaulting to True) but never
-        # referenced anywhere in this function.
         if merge_overlapping and overlap > 0:
             all_masks = self._merge_overlapping_masks(all_masks)
 
-        # Filter by area
-        pixel_area_m2 = abs(transform.a * transform.e)
-        filtered_masks = []
+        pixel_area_m2 = _pixel_area_m2(transform, crs, H)
+        filtered: list[dict] = []
         for m in all_masks:
-            area_px = m["full_mask"].sum()
-            area_m2 = area_px * pixel_area_m2
-            if area_m2 < min_area_m2:
+            area_m2 = float(m["mask"].sum()) * pixel_area_m2
+            if area_m2 < min_area_m2 or (max_area_m2 and area_m2 > max_area_m2):
                 continue
-            if max_area_m2 and area_m2 > max_area_m2:
-                continue
-            m["area_m2"] = float(area_m2)
-            filtered_masks.append(m)
+            m["area_m2"] = area_m2
+            filtered.append(m)
+        logger.info("SAM: %d masks (of %d) passed filters", len(filtered), len(all_masks))
 
-        logger.info("SAM: %d masks (of %d) passed filters", len(filtered_masks), len(all_masks))
-
-        # Build instance label raster
+        # Paint large masks first so a small object inside a large one keeps its own id.
         label = np.zeros((H, W), dtype=np.uint32)
-        for i, m in enumerate(filtered_masks, start=1):
-            label[m["full_mask"]] = i
+        for i, m in sorted(enumerate(filtered, start=1), key=lambda t: -t[1]["mask"].sum()):
+            x1, y1, x2, y2 = m["bbox_full"]
+            m["instance_id"] = i
+            label[y1:y2, x1:x2][m["mask"]] = i
 
-        # Save raster
         out_profile = profile.copy()
-        out_profile.update(count=1, dtype="uint32", compress="lzw")
+        out_profile.update(count=1, dtype="uint32", compress="lzw", nodata=None)
+        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            out_profile.pop(_k, None)
         with rasterio.open(str(output_path), "w", **out_profile) as dst:
             dst.write(label[np.newaxis])
-            dst.update_tags(
-                source="SAM_AutoLabel",
-                model=self.model_name,
-                n_masks=str(len(filtered_masks)),
-            )
+            dst.update_tags(source="SAM_AutoLabel", model=self.model_name, n_masks=str(len(filtered)))
 
-        # Export vector
+        vector_error = None
         if output_vector:
-            self._masks_to_vector(filtered_masks, transform, crs, output_vector)
+            try:
+                self._masks_to_vector(filtered, transform, crs, output_vector)
+            except Exception as exc:
+                vector_error = f"{type(exc).__name__}: {exc}"
+                logger.warning("Mask vectorisation failed: %s", vector_error)
 
+        n_failed = len(self._chip_errors)
+        if n_failed:
+            error: str | None = (
+                f"{n_failed} of {n_tiles} tile(s) failed and are missing from the labels; "
+                f"first error: {self._chip_errors[0]}")
+        elif not filtered:
+            error = (f"SAM found {len(all_masks)} raw mask(s) but 0 survived quality/area "
+                     f"filtering -- the output raster contains no real labels.")
+        else:
+            error = None
+        n = max(len(filtered), 1)
         return {
-            "success": len(filtered_masks) > 0,
-            "n_masks": len(filtered_masks),
+            "success": bool(filtered) and n_failed < n_tiles,
+            "n_masks": len(filtered),
             "n_raw_masks": len(all_masks),
+            "n_tiles": n_tiles,
+            "n_chip_errors": n_failed,
             "output_path": str(output_path),
-            "output_vector": output_vector,
+            "output_vector": None if vector_error else output_vector,
+            "vector_error": vector_error,
             "duration_seconds": round(time.time() - t_start, 1),
             "model": self.model_name,
-            "error": None if filtered_masks else (
-                f"SAM found {len(all_masks)} raw mask(s) but 0 survived quality "
-                f"filtering -- the output raster contains no real labels."
-            ),
+            "error": error,
             "quality_stats": {
-                "mean_pred_iou": float(
-                    sum(m.get("predicted_iou", 0) for m in filtered_masks) / max(len(filtered_masks), 1)
-                ),
-                "mean_stability": float(
-                    sum(m.get("stability_score", 0) for m in filtered_masks) / max(len(filtered_masks), 1)
-                ),
+                "mean_pred_iou": float(sum(m.get("predicted_iou", 0) for m in filtered) / n),
+                # The pipeline applies the stability threshold internally and does not return
+                # the per-mask stability value, so none is reported rather than a fake one.
+                "stability_score_thresh": stability_score_thresh,
             },
         }
 
-    def _merge_overlapping_masks(self, masks: list[dict], iou_threshold: float = 0.3) -> list[dict]:
-        """Merge masks that are almost certainly the same real object,
-        independently detected once per overlapping tile.
+    @staticmethod
+    def _make_entry(seg: Any, row: int, col: int, predicted_iou: float) -> dict | None:
+        """Crop a tile-local boolean mask to its bounding box and place it in scene coordinates."""
+        import numpy as np
 
-        A cheap bounding-box intersection check first (avoiding real
-        IoU computation, which needs the full boolean arrays, for mask
-        pairs nowhere near each other), then real IoU on the actual
-        boolean masks for genuine candidates. Merging is a logical OR
-        of the two masks (the union of both detections) rather than
-        picking one arbitrarily — keeps whichever detection was more
-        complete rather than truncating either.
+        ys, xs = np.nonzero(seg)
+        if ys.size == 0:
+            return None
+        y0, y1, x0, x1 = int(ys.min()), int(ys.max()) + 1, int(xs.min()), int(xs.max()) + 1
+        return {
+            "mask": seg[y0:y1, x0:x1].copy(),
+            "bbox_full": (col + x0, row + y0, col + x1, row + y1),
+            "predicted_iou": predicted_iou,
+        }
+
+    def _merge_overlapping_masks(self, masks: list[dict], iou_threshold: float = 0.3) -> list[dict]:
+        """Merge masks that are almost certainly the same object, found once per overlapping tile.
+
+        Each mask is ``{"mask": bool crop, "bbox_full": (x1, y1, x2, y2), ...}``.  A cheap
+        bounding-box test first, then the real IoU on the pixels in the two boxes' union.
+        Merging is the union of the two masks, not an arbitrary pick of one.
         """
         if len(masks) < 2:
             return masks
@@ -281,6 +350,19 @@ class SAMAutoLabeler:
             ax1, ay1, ax2, ay2 = a["bbox_full"]
             bx1, by1, bx2, by2 = b["bbox_full"]
             return not (ax2 <= bx1 or bx2 <= ax1 or ay2 <= by1 or by2 <= ay1)
+
+        def _canvas(a, b):
+            x1 = min(a["bbox_full"][0], b["bbox_full"][0])
+            y1 = min(a["bbox_full"][1], b["bbox_full"][1])
+            x2 = max(a["bbox_full"][2], b["bbox_full"][2])
+            y2 = max(a["bbox_full"][3], b["bbox_full"][3])
+            out = []
+            for m in (a, b):
+                c = np.zeros((y2 - y1, x2 - x1), dtype=bool)
+                mx1, my1, mx2, my2 = m["bbox_full"]
+                c[my1 - y1:my2 - y1, mx1 - x1:mx2 - x1] = m["mask"]
+                out.append(c)
+            return out[0], out[1], (x1, y1, x2, y2)
 
         merged_flags = [False] * len(masks)
         result = []
@@ -294,70 +376,63 @@ class SAMAutoLabeler:
                 candidate = masks[j]
                 if not _bbox_overlap(current, candidate):
                     continue
-                inter = np.logical_and(current["full_mask"], candidate["full_mask"]).sum()
-                union = np.logical_or(current["full_mask"], candidate["full_mask"]).sum()
-                iou = inter / union if union > 0 else 0.0
-                if iou >= iou_threshold:
+                ca, cb, box = _canvas(current, candidate)
+                inter = np.logical_and(ca, cb).sum()
+                union = np.logical_or(ca, cb).sum()
+                if (inter / union if union > 0 else 0.0) >= iou_threshold:
                     current = dict(current)
-                    current["full_mask"] = np.logical_or(current["full_mask"], candidate["full_mask"])
+                    current["mask"] = np.logical_or(ca, cb)
+                    current["bbox_full"] = box
                     current["predicted_iou"] = max(
-                        current.get("predicted_iou", 0), candidate.get("predicted_iou", 0),
-                    )
-                    current["stability_score"] = max(
-                        current.get("stability_score", 0), candidate.get("stability_score", 0),
-                    )
+                        current.get("predicted_iou", 0), candidate.get("predicted_iou", 0))
                     merged_flags[j] = True
             result.append(current)
 
-        n_merged = len(masks) - len(result)
-        if n_merged > 0:
-            logger.info("SAM: merged %d duplicate mask(s) from tile overlap regions", n_merged)
+        if len(masks) > len(result):
+            logger.info("SAM: merged %d duplicate mask(s) from tile overlap regions",
+                        len(masks) - len(result))
         return result
 
     def _process_chip(
         self, chip: Any, points_per_side: int,
-        pred_iou_thresh: float, stability_thresh: float
+        pred_iou_thresh: float, stability_thresh: float,
+        row: int = 0, col: int = 0,
     ) -> list[dict]:
-        """Run SAM "segment everything" mode on one image chip via the
-        transformers mask-generation pipeline.
+        """Run SAM "segment everything" on one tile and return masks in scene coordinates.
 
-        Note: unlike Meta's original `SamAutomaticMaskGenerator`, the
-        transformers pipeline does not accept `pred_iou_thresh`/
-        `stability_score_thresh`/`points_per_side` as constructor
-        arguments — grid density is handled internally. We instead filter
-        the returned per-mask IoU scores ourselves, and use that same score
-        as a stability proxy since the pipeline doesn't expose the two
-        separately.
+        ``points_per_side``, ``pred_iou_thresh`` and ``stability_thresh`` are handed to the
+        pipeline, which applies them (the previous version dropped all three, then re-filtered
+        the *IoU* score against the *stability* threshold, which discarded most good masks).
+        A failure is recorded in ``self._chip_errors`` and logged -- never silently turned into
+        "no masks here".
         """
         try:
             from PIL import Image
             generator = self._load_mask_generator()
-            img_pil = Image.fromarray(chip)
-            outputs = generator(img_pil, points_per_batch=64)
-
-            masks_out = []
+            outputs = generator(
+                Image.fromarray(chip), points_per_batch=64, points_per_crop=points_per_side,
+                pred_iou_thresh=pred_iou_thresh, stability_score_thresh=stability_thresh,
+            )
+            entries = []
             for seg, score in zip(outputs["masks"], outputs["scores"]):
-                score = float(score)
-                if score < pred_iou_thresh or score < stability_thresh:
-                    continue
-                masks_out.append({
-                    "segmentation": seg,
-                    "predicted_iou": score,
-                    "stability_score": score,
-                })
-            return masks_out
+                entry = self._make_entry(_to_numpy_bool(seg), row, col, float(score))
+                if entry is not None:
+                    entries.append(entry)
+            return entries
         except Exception as exc:
-            logger.debug("SAM chip failed: %s", exc)
+            msg = f"tile at row={row}, col={col}: {type(exc).__name__}: {exc}"
+            logger.warning("SAM tile failed -- %s", msg)
+            self._chip_errors.append(msg)
             return []
+
+    # --------------------------------------------------------------- grounded labelling
 
     def _load_gdino(self) -> Any:
         """Load (and cache) the GroundingDINO model used by grounded_label().
 
-        Uses the standard Swin-T OGC config shipped inside the
-        `groundingdino` package by default, and auto-downloads the matching
-        pretrained checkpoint from HuggingFace Hub if not already cached.
-        Both can be overridden via `gdino_config_path`/`gdino_checkpoint_path`
-        for custom deployments.
+        Uses the Swin-T OGC config shipped inside the ``groundingdino`` package and the
+        matching checkpoint from the Hugging Face Hub, unless overridden by
+        ``gdino_config_path`` / ``gdino_checkpoint_path``.
         """
         if self._gdino_model is not None:
             return self._gdino_model
@@ -368,8 +443,7 @@ class SAMAutoLabeler:
         if config_path is None:
             import groundingdino
             config_path = str(
-                Path(groundingdino.__file__).parent / "config" / "GroundingDINO_SwinT_OGC.py"
-            )
+                Path(groundingdino.__file__).parent / "config" / "GroundingDINO_SwinT_OGC.py")
 
         checkpoint_path = self._gdino_checkpoint_path
         if checkpoint_path is None:
@@ -384,6 +458,61 @@ class SAMAutoLabeler:
         self._gdino_model = load_gdino(config_path, checkpoint_path)
         return self._gdino_model
 
+    @staticmethod
+    def _gdino_image_tensor(rgb: Any) -> Any:
+        """Preprocess an RGB array the way ``groundingdino.util.inference.load_image`` does.
+
+        ``predict`` expects this normalised tensor, not a PIL image (passing the PIL image, as
+        the previous version did, fails inside the model).
+        """
+        import groundingdino.datasets.transforms as GT
+        from PIL import Image
+
+        transform = GT.Compose([
+            GT.RandomResize([800], max_size=1333),
+            GT.ToTensor(),
+            GT.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ])
+        tensor, _ = transform(Image.fromarray(rgb), None)
+        return tensor
+
+    @staticmethod
+    def _gdino_boxes_to_pixels(boxes: Any, width: int, height: int) -> Any:
+        """GroundingDINO returns normalised ``cx, cy, w, h``; SAM wants pixel ``x1, y1, x2, y2``."""
+        import numpy as np
+
+        b = np.asarray(boxes.detach().cpu().numpy() if hasattr(boxes, "detach") else boxes,
+                       dtype="float64").reshape(-1, 4)
+        cx, cy, w, h = b[:, 0] * width, b[:, 1] * height, b[:, 2] * width, b[:, 3] * height
+        return np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], axis=1)
+
+    def _segment_box(self, rgb: Any, box_xyxy: Any) -> Any | None:
+        """Best SAM mask (H, W bool) for one pixel-space box, or ``None``."""
+        import numpy as np
+        import torch
+        from PIL import Image
+
+        self._load()
+        inputs = self._processor(
+            images=Image.fromarray(rgb), input_boxes=[[[float(v) for v in box_xyxy]]],
+            return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            outputs = self._model(**{k: v for k, v in inputs.items()
+                                     if k in ("pixel_values", "input_boxes")}, multimask_output=True)
+        if "reshaped_input_sizes" in inputs:  # SAM v1
+            masks = self._processor.post_process_masks(
+                outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(),
+                inputs["reshaped_input_sizes"].cpu())
+        else:  # SAM2
+            masks = self._processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu())
+        cand = masks[0]                      # (point_batch, n_masks, H, W)
+        cand = cand.reshape(-1, *cand.shape[-2:])
+        iou = outputs.iou_scores.reshape(-1).cpu().numpy()
+        if cand.shape[0] == 0:
+            return None
+        best = int(np.argmax(iou[: cand.shape[0]]))
+        return _to_numpy_bool(cand[best])
+
     def grounded_label(
         self,
         image_path: str | Path,
@@ -392,13 +521,12 @@ class SAMAutoLabeler:
         output_vector: str | None = None,
         box_threshold: float = 0.3,
         text_threshold: float = 0.25,
+        rgb_bands: tuple[int, int, int] | None = None,
     ) -> dict[str, Any]:
-        """Generate labels using GroundedSAM — text-prompt driven segmentation.
+        """Generate labels using GroundedSAM -- text-prompt driven segmentation.
 
-        Combines Grounding DINO (text → bbox) + SAM (bbox → mask).
-
-        Args:
-            prompts: List of natural language prompts, e.g. ["building", "swimming pool"]
+        Combines Grounding DINO (text -> box) and SAM (box -> mask).  Class ``k`` in the
+        output raster is ``prompts[k-1]``.  Requires the ``groundingdino`` package.
         """
         try:
             from groundingdino.util.inference import predict as gdino_predict
@@ -410,12 +538,9 @@ class SAMAutoLabeler:
         except ImportError as exc:
             return {"success": False, "error": f"GroundingDINO not available: {exc}"}
         except Exception as exc:
-            return {"success": False,
-                    "error": f"Failed to load GroundingDINO model/checkpoint: {exc}"}
+            return {"success": False, "error": f"Failed to load GroundingDINO model/checkpoint: {exc}"}
 
         logger.info("GroundedSAM: prompts=%s", prompts)
-        self._load()
-
         image_path = Path(image_path)
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -423,109 +548,98 @@ class SAMAutoLabeler:
         try:
             import numpy as np
             import rasterio
-            from PIL import Image
+
+            self._load()
             with rasterio.open(str(image_path)) as src:
                 profile = src.profile.copy()
+                transform, crs = src.transform, src.crs
                 H, W = src.height, src.width
-                data = src.read(list(range(1, min(src.count, 3) + 1))).astype(float)
-                for b in range(data.shape[0]):
-                    p2, p98 = np.percentile(data[b], (2, 98))
-                    data[b] = np.clip((data[b]-p2)/(p98-p2+1e-8)*255, 0, 255)
-                if data.shape[0] == 1:
-                    data = np.repeat(data, 3, axis=0)
-                rgb = data[:3].transpose(1, 2, 0).astype(np.uint8)
+                rgb = self._read_rgb(src, rgb_bands)
 
+            tensor = self._gdino_image_tensor(rgb)
             label = np.zeros((H, W), dtype=np.uint8)
-            all_boxes = []
-
+            detections: list[tuple[Any, int]] = []
             for class_idx, prompt in enumerate(prompts, start=1):
-                # Grounding DINO detects boxes
-                boxes, logits, phrases = gdino_predict(
-                    model=gdino_model,
-                    image=Image.fromarray(rgb),
-                    caption=prompt,
-                    box_threshold=box_threshold,
-                    text_threshold=text_threshold,
-                )
-                all_boxes.extend([(b, class_idx, p) for b, p in zip(boxes, phrases)])
+                boxes, _logits, _phrases = gdino_predict(
+                    model=gdino_model, image=tensor, caption=prompt,
+                    box_threshold=box_threshold, text_threshold=text_threshold,
+                    device=self.device)
+                for box in self._gdino_boxes_to_pixels(boxes, W, H):
+                    detections.append((box, class_idx))
 
-            # SAM segments each detected box
-            n_masks_applied = 0
-            if all_boxes:
-                import torch
-                processor = self._processor
-                for box, class_idx, phrase in all_boxes:
-                    inputs = processor(
-                        images=Image.fromarray(rgb),
-                        input_boxes=[[box.tolist()]],
-                        return_tensors="pt",
-                    ).to(self.device)
-                    with torch.no_grad():
-                        outputs = self._model(**inputs)
-                    masks = processor.post_process_masks(
-                        outputs.pred_masks, inputs["original_sizes"],
-                        inputs["reshaped_input_sizes"]
-                    )
-                    if masks and masks[0].shape[0] > 0:
-                        best = masks[0][0].cpu().numpy()
-                        label[best > 0.5] = class_idx
-                        n_masks_applied += 1
+            kept: list[dict] = []
+            for box, class_idx in detections:
+                mask = self._segment_box(rgb, box)
+                if mask is None or not mask.any():
+                    continue
+                label[mask] = class_idx
+                entry = self._make_entry(mask, 0, 0, 0.0)
+                if entry is not None:
+                    entry["class_id"] = class_idx
+                    kept.append(entry)
 
             out_profile = profile.copy()
-            out_profile.update(count=1, dtype="uint8", compress="lzw")
+            out_profile.update(count=1, dtype="uint8", compress="lzw", nodata=None)
+            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                out_profile.pop(_k, None)
             with rasterio.open(str(output_path), "w", **out_profile) as dst:
                 dst.write(label[np.newaxis])
                 dst.update_tags(source="GroundedSAM", prompts=str(prompts))
+            vector_error = None
+            if output_vector:
+                try:
+                    self._masks_to_vector(kept, transform, crs, output_vector)
+                except Exception as exc:
+                    vector_error = f"{type(exc).__name__}: {exc}"
+                    logger.warning("Mask vectorisation failed: %s", vector_error)
 
-            # Real fix, same pattern found and fixed elsewhere in this
-            # file: previously returned success=True regardless of
-            # whether Grounding DINO found any real boxes for the given
-            # prompts, or SAM produced any real masks for those boxes --
-            # both are real, plausible "the prompts don't match anything
-            # in this image" outcomes.
             return {
-                "success": n_masks_applied > 0,
-                "n_prompts": len(prompts), "n_boxes_detected": len(all_boxes),
-                "n_masks_applied": n_masks_applied, "output_path": str(output_path),
-                "error": None if n_masks_applied > 0 else (
-                    f"0 real masks applied for prompts={prompts} -- Grounding DINO "
-                    f"found {len(all_boxes)} box(es), but none produced a usable SAM mask."
-                ),
+                "success": len(kept) > 0,
+                "n_prompts": len(prompts), "n_boxes_detected": len(detections),
+                "n_masks_applied": len(kept), "output_path": str(output_path),
+                "output_vector": None if (vector_error or not output_vector) else output_vector,
+                "vector_error": vector_error,
+                "error": None if kept else (
+                    f"0 masks applied for prompts={prompts} -- Grounding DINO found "
+                    f"{len(detections)} box(es), none produced a usable SAM mask."),
             }
         except Exception as exc:
-            return {"success": False, "error": str(exc)}
+            logger.exception("GroundedSAM failed")
+            return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
 
     def _masks_to_vector(self, masks, transform, crs, output_path):
-        """Convert mask list to GeoJSON polygons."""
-        try:
-            import json
+        """Write mask polygons as WGS84 GeoJSON."""
+        import json
 
-            import numpy as np
-            import rasterio.features
+        import numpy as np
+        import rasterio.features
+        from rasterio.warp import transform_geom
+        from rasterio.windows import Window
+        from rasterio.windows import transform as window_transform
 
-            features = []
-            for i, m in enumerate(masks):
-                shapes = list(rasterio.features.shapes(
-                    m["full_mask"].astype(np.uint8), transform=transform
-                ))
-                for geom, val in shapes:
-                    if val == 1:
-                        features.append({
-                            "type": "Feature",
-                            "geometry": geom,
-                            "properties": {
-                                "mask_id": i,
-                                "area_m2": m.get("area_m2", 0),
-                                "pred_iou": m.get("predicted_iou", 0),
-                                "stability": m.get("stability_score", 0),
-                            },
-                        })
-
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "w") as f:
-                json.dump({"type": "FeatureCollection", "features": features}, f)
-        except Exception as exc:
-            logger.warning("Mask vectorisation failed: %s", exc)
+        # RFC 7946 GeoJSON is WGS84 only; writing projected coordinates with no CRS would be
+        # silently wrong in any GIS, so reproject.
+        reproject = crs is not None and crs.to_epsg() != 4326
+        features = []
+        for i, m in enumerate(masks):
+            x1, y1, x2, y2 = m["bbox_full"]
+            local = window_transform(Window(x1, y1, x2 - x1, y2 - y1), transform)
+            for geom, val in rasterio.features.shapes(m["mask"].astype(np.uint8), transform=local):
+                if val == 1:
+                    if reproject:
+                        geom = transform_geom(crs, "EPSG:4326", geom)
+                    features.append({
+                        "type": "Feature", "geometry": geom,
+                        "properties": {
+                            "mask_id": m.get("instance_id", i),
+                            "class_id": m.get("class_id"),
+                            "area_m2": m.get("area_m2", 0),
+                            "pred_iou": m.get("predicted_iou", 0),
+                        },
+                    })
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w") as f:
+            json.dump({"type": "FeatureCollection", "features": features}, f)
 
 
 class SamGeoLabeler:

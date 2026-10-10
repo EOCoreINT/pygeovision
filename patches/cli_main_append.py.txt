@@ -1,0 +1,433 @@
+# ═══════════════════════════════════════════════════════════════════════
+# POSTPROCESS command group
+# ═══════════════════════════════════════════════════════════════════════
+
+@cli.group("postprocess")
+def postprocess_grp():
+    """Postprocess model predictions — vectorise, smooth, statistics, export."""
+
+
+@postprocess_grp.command("vectorise")
+@click.argument("input_path")
+@click.option("--output", required=True, help="Output GeoJSON path.")
+@click.option("--target-class", default=None, type=int, help="Only vectorise this class.")
+@click.option("--min-area", default=0.0, type=float, help="Minimum polygon area in m².")
+@click.option("--simplify", default=0.0, type=float, help="Douglas-Peucker tolerance.")
+@click.option("--validate", is_flag=True, default=False)
+def post_vectorise(input_path, output, target_class, min_area, simplify, validate):
+    """Vectorise a classification raster to GeoJSON polygons.
+
+    \b
+    Example:
+        pygeovision postprocess vectorise pred.tif --output buildings.geojson --target-class 1 --min-area 50
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    post = PostProcessor()
+    out = post.vectorise(input_path, output, target_class=target_class,
+                          min_area_m2=min_area, simplify_tolerance=simplify)
+    import json
+    with open(out) as f:
+        features = json.load(f).get("features", [])
+    n = len(features)
+    click.echo(f"  ✓ Vectorised → {out}  ({n} features)")
+
+    if validate:
+        from shapely.geometry import shape as shp_shape
+        n_invalid = 0
+        for feat in features:
+            try:
+                geom = shp_shape(feat["geometry"])
+                if not geom.is_valid:
+                    n_invalid += 1
+            except Exception:
+                n_invalid += 1
+        status = "PASSED" if n_invalid == 0 else f"FAILED ({n_invalid}/{n} invalid geometries)"
+        click.echo(f"  Validation: {status}")
+
+
+@postprocess_grp.command("sieve")
+@click.argument("input_path")
+@click.option("--min-pixels", default=10, show_default=True, type=int)
+@click.option("--output", default=None)
+def post_sieve(input_path, min_pixels, output):
+    """Remove small patches from a classification raster.
+
+    \b
+    Example:
+        pygeovision postprocess sieve pred.tif --min-pixels 10
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    out = PostProcessor().sieve_filter(input_path, min_pixels, output_path=output)
+    click.echo(f"  ✓ Sieve (min={min_pixels}px) → {out}")
+
+
+@postprocess_grp.command("smooth")
+@click.argument("input_path")
+@click.option("--output", required=True)
+@click.option("--tolerance", default=0.5, show_default=True, type=float)
+def post_smooth(input_path, output, tolerance):
+    """Smooth vector polygon boundaries.
+
+    \b
+    Example:
+        pygeovision postprocess smooth buildings.geojson --output smooth.geojson --tolerance 0.5
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    out = PostProcessor().smooth(input_path, output, tolerance=tolerance)
+    click.echo(f"  ✓ Smoothed → {out}")
+
+
+@postprocess_grp.command("regularise")
+@click.argument("input_path")
+@click.option("--output", required=True)
+@click.option("--min-area", default=10.0, type=float, show_default=True)
+def post_regularise(input_path, output, min_area):
+    """Regularise building footprints to minimum rotated rectangles.
+
+    \b
+    Example:
+        pygeovision postprocess regularise buildings.geojson --output regular.geojson
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    out = PostProcessor().regularise_buildings(input_path, output, min_area_m2=min_area)
+    click.echo(f"  ✓ Regularised → {out}")
+
+
+@postprocess_grp.command("zonal-stats")
+@click.argument("raster_path")
+@click.argument("vector_path")
+@click.option("--output", required=True)
+@click.option("--stats", default="mean,std,min,max,count", show_default=True)
+def post_zonal_stats(raster_path, vector_path, output, stats):
+    """Compute per-zone raster statistics.
+
+    \b
+    Example:
+        pygeovision postprocess zonal-stats ndvi.tif fields.geojson --output stats.geojson
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    stat_list = [s.strip() for s in stats.split(",")]
+    out = PostProcessor().zonal_statistics(raster_path, vector_path, output, stats=stat_list)
+    click.echo(f"  ✓ Zonal statistics → {out}")
+
+
+@postprocess_grp.command("accuracy")
+@click.argument("prediction_path")
+@click.argument("reference_path")
+@click.option("--class-names", default=None, help="Comma-separated class names.")
+def post_accuracy(prediction_path, reference_path, class_names):
+    """Compute accuracy metrics vs a reference raster.
+
+    \b
+    Example:
+        pygeovision postprocess accuracy pred.tif ref.tif --class-names Background,Building,Road
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    names = [n.strip() for n in class_names.split(",")] if class_names else None
+    report = PostProcessor().accuracy_assessment(prediction_path, reference_path, class_names=names)
+    click.echo(f"\n  Overall Accuracy : {report['overall_accuracy']:.4f}")
+    click.echo(f"  Cohen's κ        : {report['kappa']:.4f}")
+    click.echo(f"  Mean IoU         : {report['mean_iou']:.4f}")
+    click.echo(f"  Total pixels     : {report['total_pixels']:,}")
+    click.echo("\n  Per-class metrics:")
+    click.echo(f"  {'Class':<6} {'Name':<16} {'Precision':>10} {'Recall':>8} {'F1':>8} {'IoU':>8}")
+    click.echo(f"  {'─'*6} {'─'*16} {'─'*10} {'─'*8} {'─'*8} {'─'*8}")
+    names_list = report.get("class_names", [])
+    for i, (cls, m) in enumerate(report["per_class"].items()):
+        nm = names_list[i] if i < len(names_list) else str(cls)
+        click.echo(f"  {cls:<6} {nm:<16} {m['precision']:>10.4f} "
+                   f"{m['recall']:>8.4f} {m['f1']:>8.4f} {m['iou']:>8.4f}")
+
+
+@postprocess_grp.command("class-stats")
+@click.argument("prediction_path")
+def post_class_stats(prediction_path):
+    """Print per-class pixel count and area statistics.
+
+    \b
+    Example:
+        pygeovision postprocess class-stats prediction.tif
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    stats = PostProcessor().class_statistics(prediction_path)
+    click.echo(f"\n  {'Class':>6} {'Pixels':>12} {'Area (ha)':>12} {'Area km²':>12} {'Pct':>8}")
+    click.echo(f"  {'─'*6} {'─'*12} {'─'*12} {'─'*12} {'─'*8}")
+    for cls, info in sorted(stats.items()):
+        click.echo(f"  {cls:>6} {info['pixels']:>12,} {info['area_ha']:>12.3f} "
+                   f"{info['area_km2']:>12.5f} {info['pct']:>7.2f}%")
+
+
+@postprocess_grp.command("cog")
+@click.argument("input_path")
+@click.option("--output", default=None)
+def post_cog(input_path, output):
+    """Convert a GeoTIFF to Cloud-Optimized GeoTIFF.
+
+    \b
+    Example:
+        pygeovision postprocess cog prediction.tif --output prediction_cog.tif
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    out = PostProcessor().to_cog(input_path, output_path=output)
+    click.echo(f"  ✓ COG → {out}")
+
+
+@postprocess_grp.command("export")
+@click.argument("input_path")
+@click.option("--output", required=True)
+@click.option("--format", "fmt", default="geojson",
+              type=click.Choice(["geojson","shp","gpkg","kml"]), show_default=True)
+def post_export(input_path, output, fmt):
+    """Export vector to GeoJSON, Shapefile, GeoPackage, or KML.
+
+    \b
+    Example:
+        pygeovision postprocess export buildings.geojson --output buildings.gpkg --format gpkg
+    """
+    from pygeovision.data.postprocess import PostProcessor
+    out = PostProcessor().export(input_path, output, fmt=fmt)
+    click.echo(f"  ✓ Exported ({fmt.upper()}) → {out}")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# obia — object-based image analysis
+# ═══════════════════════════════════════════════════════════════════════════
+@cli.group("obia")
+def obia_grp():
+    """Object-based image analysis — segment, describe, classify, assess.
+
+    \b
+    Typical sequence:
+        pygeovision obia demo ./obia_demo
+        pygeovision obia segment ./obia_demo/scene.tif --scale 20 --output-labels labels.tif
+        pygeovision obia features ./obia_demo/scene.tif labels.tif --output features.csv
+        pygeovision obia classify ./obia_demo/scene.tif labels.tif \\
+            --samples ./obia_demo/reference.gpkg --class-column class --output classified.gpkg
+        pygeovision obia assess-classification labels.tif classified.gpkg \\
+            ./obia_demo/reference.gpkg --class-column class
+    """
+
+
+def _obia_parse_params(pairs):
+    out = {}
+    for p in pairs:
+        if "=" not in p:
+            raise click.BadParameter(f"--param expects key=value, got {p!r}")
+        k, v = p.split("=", 1)
+        try:
+            out[k.strip()] = int(v)
+        except ValueError:
+            try:
+                out[k.strip()] = float(v)
+            except ValueError:
+                out[k.strip()] = v
+    return out
+
+
+def _obia_read_labels(path):
+    import rasterio
+    with rasterio.open(path) as src:
+        return src.read(1).astype("int64"), src.transform, src.crs
+
+
+@obia_grp.command("demo")
+@click.argument("output_dir")
+@click.option("--size", default=160, show_default=True, help="Scene width/height in pixels.")
+@click.option("--seed", default=0, show_default=True, help="Random seed (a different scene per seed).")
+def obia_demo(output_dir, size, seed):
+    """Write a synthetic teaching scene with known reference data.
+
+    Creates scene.tif (blue, green, red, nir), reference.gpkg (reference objects
+    with a 'class' column) and reference_ids.tif (one id per reference object).
+    """
+    import os
+    from pygeovision.obia import make_demo_scene, save_raster
+    os.makedirs(output_dir, exist_ok=True)
+    sc = make_demo_scene(size, seed)
+    r = sc.raster
+    save_raster(os.path.join(output_dir, "scene.tif"), r.image, r.transform, r.crs, r.band_names)
+    save_raster(os.path.join(output_dir, "reference_ids.tif"), sc.ref_labels, r.transform, r.crs, dtype="int32")
+    sc.reference.to_file(os.path.join(output_dir, "reference.gpkg"), driver="GPKG")
+    click.echo(f"  ✓ Demo scene ({size}x{size}, seed {seed}) → {output_dir}")
+    click.echo(f"    classes: {', '.join(sc.class_names)}")
+
+
+@obia_grp.command("segment")
+@click.argument("input_path")
+@click.option("--method", default="multires", show_default=True,
+              type=click.Choice(["multires", "slic", "felzenszwalb", "quickshift", "watershed", "chessboard"]))
+@click.option("--scale", default=None, type=float, help="Scale parameter (multires; felzenszwalb).")
+@click.option("--color-weight", default=0.9, show_default=True, help="multires: weight of spectral vs shape criterion.")
+@click.option("--compactness-weight", default=0.5, show_default=True, help="multires: compactness vs smoothness.")
+@click.option("--param", "params", multiple=True, help="Extra method parameter, key=value (repeatable).")
+@click.option("--output-labels", required=True, help="Output GeoTIFF of object ids.")
+@click.option("--output-vector", default=None, help="Optional vector output (.gpkg/.geojson).")
+def obia_segment(input_path, method, scale, color_weight, compactness_weight, params,
+                 output_labels, output_vector):
+    """Segment a raster into image objects."""
+    from pygeovision.obia import segment
+    kw = _obia_parse_params(params)
+    if method == "multires":
+        kw.update(color_weight=color_weight, compactness_weight=compactness_weight)
+    if scale is not None:
+        kw["scale"] = scale
+    seg = segment(input_path, method, **kw)
+    seg.save(output_labels)
+    click.echo(f"  ✓ {seg.n_objects} objects ({method}) → {output_labels}")
+    if output_vector:
+        seg.to_vector().to_file(output_vector)
+        click.echo(f"  ✓ Object polygons → {output_vector}")
+
+
+@obia_grp.command("features")
+@click.argument("input_path")
+@click.argument("labels_path")
+@click.option("--output", required=True, help="Output .csv, or a vector file (.gpkg/.geojson) to keep geometry.")
+@click.option("--texture", "texture", multiple=True, help="Band/layer name to compute GLCM texture for (repeatable).")
+@click.option("--indices/--no-indices", default=True, show_default=True, help="Add NDVI/NDWI when bands allow.")
+def obia_features(input_path, labels_path, output, texture, indices):
+    """Compute the object feature table (spectral, shape, texture, context)."""
+    from pygeovision.obia import extract_features, load_raster, labels_to_gdf, spectral_layers
+    rd = load_raster(input_path)
+    lab, tr, crs = _obia_read_labels(labels_path)
+    extra = spectral_layers(rd) if indices else None
+    F = extract_features(lab, rd, extra_layers=extra, texture_layers=list(texture) or None)
+    if output.lower().endswith(".csv"):
+        F.to_csv(output)
+    else:
+        labels_to_gdf(lab, tr, crs, F).to_file(output)
+    click.echo(f"  ✓ {len(F)} objects × {F.shape[1]} features → {output}")
+
+
+@obia_grp.command("classify")
+@click.argument("input_path")
+@click.argument("labels_path")
+@click.option("--output", required=True, help="Output vector file (.gpkg/.geojson).")
+@click.option("--samples", default=None, help="Vector file of training polygons/points (supervised).")
+@click.option("--rules", default=None, help="YAML rule file (rule-based): rules: [{class: water, when: 'mean_ndwi > 0.3'}].")
+@click.option("--class-column", default="class", show_default=True)
+@click.option("--method", default="rf", show_default=True, type=click.Choice(["rf", "knn", "svm", "tree"]))
+@click.option("--output-raster", default=None, help="Also write classes as a GeoTIFF (codes in the class table).")
+def obia_classify(input_path, labels_path, output, samples, rules, class_column, method, output_raster):
+    """Classify objects from samples (supervised) or a YAML rule set."""
+    import geopandas as gpd
+    from pygeovision.obia import (ObjectClassifier, RuleBasedClassifier, extract_features,
+                                  load_raster, samples_from_geometries, save_raster, spectral_layers)
+    if bool(samples) == bool(rules):
+        raise click.UsageError("give exactly one of --samples or --rules")
+    rd = load_raster(input_path)
+    lab, tr, crs = _obia_read_labels(labels_path)
+    F = extract_features(lab, rd, extra_layers=spectral_layers(rd))
+    if rules:
+        import yaml
+        with open(rules) as fh:
+            spec = yaml.safe_load(fh)
+        rb = RuleBasedClassifier([(r["class"], r["when"]) for r in spec["rules"]],
+                                 default=spec.get("default", "unclassified"))
+        res = rb.classify(F)
+    else:
+        gdf = gpd.read_file(samples)
+        if crs is not None and gdf.crs is not None:
+            gdf = gdf.to_crs(crs)
+        s = samples_from_geometries(lab, gdf, class_column, tr)
+        if s.empty:
+            raise click.ClickException("no image object overlaps the sample geometries")
+        res = ObjectClassifier(method).fit(F, s).predict(F)
+        click.echo(f"  trained on {len(s)} sample objects ({s.nunique()} classes)")
+        click.echo("  note: judge accuracy with reference data that was NOT used for training")
+    res.to_vector(lab, tr, crs).to_file(output)
+    click.echo(f"  ✓ Classified {len(res.classes)} objects → {output}")
+    click.echo("  " + res.summary().to_string().replace("\n", "\n  "))
+    if output_raster:
+        save_raster(output_raster, res.to_raster(lab), tr, crs, dtype="uint8")
+        codes = ", ".join(f"{c}={i}" for c, i in res.codes().items())
+        click.echo(f"  ✓ Class raster → {output_raster}  (codes: {codes}; 0 = unclassified)")
+
+
+@obia_grp.command("scale")
+@click.argument("input_path")
+@click.option("--scales", default="5,10,15,20,30,40,60,80", show_default=True, help="Comma-separated scales.")
+@click.option("--reference", default=None, help="Reference object polygons: also report segmentation quality per scale.")
+@click.option("--output", default=None, help="Write the table to CSV.")
+def obia_scale(input_path, scales, reference, output):
+    """Compare scale parameters (diagnostics; with --reference also over/under-segmentation)."""
+    import geopandas as gpd
+    from pygeovision.obia import (load_raster, rasterize_geometries, scale_diagnostics,
+                                  scale_vs_reference)
+    sc = [float(x) for x in scales.split(",")]
+    rd = load_raster(input_path)
+    if reference:
+        gdf = gpd.read_file(reference)
+        if rd.crs is not None and gdf.crs is not None:
+            gdf = gdf.to_crs(rd.crs)
+        ref, _ = rasterize_geometries(gdf, rd.shape, rd.transform)
+        df = scale_vs_reference(rd, sc, ref)
+        best = df["mean_D"].idxmin()
+        click.echo(df.round(3).to_string())
+        click.echo(f"\n  best scale by D (lower = better): {best:g}")
+    else:
+        df = scale_diagnostics(rd, sc)
+        click.echo(df.round(2).to_string())
+        cand = df.index[df["candidate"]].tolist()
+        click.echo(f"\n  ROC-LV candidate scales (heuristic — verify visually): {cand or 'none'}")
+    if output:
+        df.to_csv(output)
+        click.echo(f"  ✓ → {output}")
+
+
+@obia_grp.command("assess-segmentation")
+@click.argument("labels_path")
+@click.argument("reference_path")
+@click.option("--output", default=None, help="Per-reference-object table as CSV.")
+def obia_assess_seg(labels_path, reference_path, output):
+    """Over-/under-segmentation of a label raster against reference objects."""
+    import geopandas as gpd
+    from pygeovision.obia import rasterize_geometries, segmentation_quality
+    lab, tr, crs = _obia_read_labels(labels_path)
+    gdf = gpd.read_file(reference_path)
+    if crs is not None and gdf.crs is not None:
+        gdf = gdf.to_crs(crs)
+    ref, _ = rasterize_geometries(gdf, lab.shape, tr)
+    table, summ = segmentation_quality(lab, ref)
+    click.echo(f"  reference objects: {summ['n_reference']}   segments: {summ['n_segments_total']}")
+    click.echo(f"  mean over-segmentation : {summ['mean_over_seg']:.3f}   (0 = none)")
+    click.echo(f"  mean under-segmentation: {summ['mean_under_seg']:.3f}   (0 = none)")
+    click.echo(f"  mean D                 : {summ['mean_D']:.3f}   (0 = perfect)")
+    click.echo(f"  mean QR (Jaccard)      : {summ['mean_QR']:.3f}   (1 = perfect)")
+    if output:
+        table.to_csv(output)
+        click.echo(f"  ✓ → {output}")
+
+
+@obia_grp.command("assess-classification")
+@click.argument("labels_path")
+@click.argument("classified_path")
+@click.argument("reference_path")
+@click.option("--class-column", default="class", show_default=True, help="Class column in the reference file.")
+@click.option("--weight-by-area/--count-objects", default=True, show_default=True)
+@click.option("--output", default=None, help="Write the confusion matrix to CSV.")
+def obia_assess_cls(labels_path, classified_path, reference_path, class_column, weight_by_area, output):
+    """Object-based accuracy of a classification against reference polygons/points."""
+    import geopandas as gpd
+    import numpy as np
+    import pandas as pd
+    from pygeovision.obia import confusion_report, samples_from_geometries
+    lab, tr, crs = _obia_read_labels(labels_path)
+    cl = gpd.read_file(classified_path)
+    pred = cl.set_index("obj_id")["class"]
+    ref_gdf = gpd.read_file(reference_path)
+    if crs is not None and ref_gdf.crs is not None:
+        ref_gdf = ref_gdf.to_crs(crs)
+    ref = samples_from_geometries(lab, ref_gdf, class_column, tr)
+    if ref.empty:
+        raise click.ClickException("no object is covered by the reference geometries")
+    w = None
+    if weight_by_area:
+        w = pd.Series(np.bincount(lab.ravel()), dtype=float)
+    rep = confusion_report(ref, pred, w)
+    click.echo(f"  assessed {rep['n_objects']} objects ({'area-weighted' if weight_by_area else 'unweighted'})")
+    click.echo(f"  overall accuracy: {rep['overall_accuracy']:.3f}   kappa: {rep['kappa']:.3f}")
+    click.echo("\n" + rep["per_class"].round(3).to_string())
+    click.echo("\n  confusion (rows = reference, columns = predicted):\n" + rep["confusion"].round(0).astype(int).to_string())
+    if output:
+        rep["confusion"].to_csv(output)
+        click.echo(f"\n  ✓ → {output}")

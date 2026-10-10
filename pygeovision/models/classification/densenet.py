@@ -1,4 +1,12 @@
-"""densenet — classification architecture. Delegates to registry.get_model() for construction."""
-from pygeovision.models.registry import get_model, model_registry
+"""DenseNet scene classifiers (timm)."""
+from __future__ import annotations
 
-__all__ = ["get_model", "model_registry"]
+from typing import Any
+
+from pygeovision.models.classification._timm import build_timm_classifier
+
+
+def build_densenet(variant: str = "121", num_classes: int = 10, in_channels: int = 4,
+                   pretrained: bool = True, **kwargs: Any) -> Any:
+    """DenseNet-121/161/169/201 classifier."""
+    return build_timm_classifier(f"densenet{variant}", num_classes, in_channels, pretrained, **kwargs)

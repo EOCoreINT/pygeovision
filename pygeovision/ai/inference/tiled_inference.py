@@ -260,6 +260,8 @@ class TiledInference:
             "transform": transform,
             "compress": "lzw",
         }
+        from pygeovision.data._profile import writable_profile
+        out_profile = writable_profile(out_profile)
         with rasterio.open(output_path, "w", **out_profile) as dst:
             dst.write(pred[np.newaxis, ...])
 
@@ -381,6 +383,8 @@ class TiledInference:
             "driver": "GTiff", "dtype": "uint8", "width": width, "height": height,
             "count": 1, "crs": crs, "transform": transform, "compress": "lzw",
         }
+        from pygeovision.data._profile import writable_profile
+        out_profile = writable_profile(out_profile)
         with rasterio.open(output_path, "w", **out_profile) as dst:
             dst.write(pred[np.newaxis, ...])
 

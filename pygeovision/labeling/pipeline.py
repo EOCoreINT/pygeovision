@@ -184,6 +184,8 @@ class AutoLabelPipeline:
 
             Path(output).parent.mkdir(parents=True, exist_ok=True)
             ref_profile.update(dtype="uint8", count=1)
+            from pygeovision.data._profile import writable_profile
+            ref_profile = writable_profile(ref_profile)
             with rasterio.open(output, "w", **ref_profile) as dst:
                 dst.write(fused[np.newaxis])
             return output

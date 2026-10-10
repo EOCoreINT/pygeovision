@@ -95,11 +95,18 @@ def _pgf_available() -> bool:
         return False
 
 
-def _pgf2_available() -> bool:
-    """True when PyGeoFetch v2.0+ processing engine is available."""
+def _pgf2_available(client=None) -> bool:
+    """True when PyGeoFetch v2.0+ processing engine is available.
+
+    Pass an existing client to probe it; otherwise a throwaway one is built
+    (each construction logs "PyGeoFetch ready" and loads config and auth, so
+    callers that already hold a client should hand it in).
+    """
     try:
-        from pygeofetch import PyGeoFetch
-        c = PyGeoFetch()
+        c = client
+        if c is None:
+            from pygeofetch import PyGeoFetch
+            c = PyGeoFetch()
         return hasattr(c, "preprocess") and hasattr(c.preprocess, "atmos")
     except Exception:
         return False
@@ -293,7 +300,7 @@ class PyGeoFetchBridge:
         pgv_postprocessor=None,
     ):
         self._pgf     = _get_pgf_client()
-        self._pgf_v2  = _pgf2_available()
+        self._pgf_v2  = _pgf2_available(self._pgf)
         self._v       = validator
         self._pre     = pgv_preprocessor
         self._idx     = pgv_indices
@@ -873,6 +880,8 @@ class PyGeoFetchBridge:
         normed = normed.astype("float32")
         profile.update(dtype="float32", nodata=None)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(out_path, "w", **profile) as dst:
             dst.write(normed)
 
@@ -982,6 +991,8 @@ class PyGeoFetchBridge:
                 profile = src.profile.copy()
                 profile.update(crs=dst_crs, transform=transform,
                                width=width, height=height, compress="lzw")
+                from pygeovision.data._profile import writable_profile
+                profile = writable_profile(profile)
                 with rasterio.open(out, "w", **profile) as dst:
                     for i in range(1, src.count + 1):
                         reproject(source=rasterio.band(src, i),
@@ -1049,6 +1060,8 @@ class PyGeoFetchBridge:
                 profile = ref.profile.copy()
                 profile.update(height=mosaic.shape[1], width=mosaic.shape[2],
                                transform=transform, compress="lzw")
+            from pygeovision.data._profile import writable_profile
+            profile = writable_profile(profile)
             with rasterio.open(out, "w", **profile) as dst:
                 dst.write(mosaic)
             return out
@@ -1084,6 +1097,8 @@ class PyGeoFetchBridge:
             with rasterio.open(inputs[0]) as ref:
                 profile = ref.profile.copy()
                 profile.update(dtype="float32", compress="lzw")
+                for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                    profile.pop(_k, None)
             pathlib.Path(out).parent.mkdir(parents=True, exist_ok=True)
             with rasterio.open(out, "w", **profile) as dst:
                 dst.write(comp)

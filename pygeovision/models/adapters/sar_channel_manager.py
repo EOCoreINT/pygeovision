@@ -468,6 +468,8 @@ def coregister_sar_pair(
         ref_profile = ref_src.profile.copy()
 
     # Copy the reference through unchanged (it defines the target grid).
+    from pygeovision.data._profile import writable_profile
+    ref_profile = writable_profile(ref_profile)
     with rasterio.open(ref_out, "w", **ref_profile) as dst:
         dst.write(ref_data)
 
@@ -509,6 +511,8 @@ def coregister_sar_pair(
         except Exception as exc:
             logger.warning("coregister_sar_pair: sub-pixel refinement skipped (%s)", exc)
 
+    from pygeovision.data._profile import writable_profile
+    sec_profile = writable_profile(sec_profile)
     with rasterio.open(sec_out, "w", **sec_profile) as dst:
         dst.write(resampled.astype(sec_profile["dtype"]))
 

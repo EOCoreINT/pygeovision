@@ -1,0 +1,13 @@
+Delete from your repository (obsolete; they pinned the removed stub behaviour):
+tests/test_final_ten_honest_not_implemented.py
+tests/test_tier3_sweep_complete.py
+docs/pipelines/agriculture.md
+docs/pipelines/change-detection.md
+docs/pipelines/cli-reachable-pipelines.md
+docs/pipelines/cryosphere-and-climate.md
+docs/pipelines/environment.md
+docs/pipelines/forestry.md
+docs/pipelines/heritage-and-archaeology.md
+docs/pipelines/infrastructure.md
+docs/pipelines/urban.md
+docs/pipelines/water-and-disasters.md

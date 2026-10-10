@@ -1,48 +1,35 @@
-"""Vision Transformer for geospatial classification."""
+"""Vision Transformer scene classifiers (Hugging Face transformers)."""
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
+_HF_IDS = {
+    "b16": "google/vit-base-patch16-224",
+    "l16": "google/vit-large-patch16-224",
+}
 
-def build_vit(variant: str = "b16", num_classes: int = 10, in_channels: int = 4,
-               pretrained: bool = True, **kwargs) -> Any:
-    """Build Vision Transformer for satellite image classification.
 
-    Args:
-        variant: "b16" | "l16" | "h14"
-        num_classes: Output classes
-        in_channels: Input spectral bands (4 for Sentinel-2 BGRN)
-        pretrained: Load ImageNet-21k weights
+def build_vit(
+    variant: str = "b16",
+    num_classes: int = 10,
+    in_channels: int = 4,
+    pretrained: bool = True,
+    allow_random_init: bool = False,
+    img_size: int | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Build ViT-B/16 or ViT-L/16 as a classifier; ``model(x)`` returns ``(B, num_classes)`` logits.
 
-    Example::
-
-        model = build_vit("b16", num_classes=10, in_channels=4)
+    Bands other than three are handled by widening the patch embedding (extra bands are
+    not pretrained).  ``img_size`` changes the expected chip size; with pretrained
+    weights this re-initialises the position embedding (a warning is logged).
     """
-    HF_IDS = {
-        "b16": "google/vit-base-patch16-224",
-        "l16": "google/vit-large-patch16-224",
-        "h14": "google/vit-huge-patch14-224-in21k",
-    }
-    try:
-        from transformers import ViTConfig, ViTForImageClassification
-        config = ViTConfig.from_pretrained(HF_IDS.get(variant, HF_IDS["b16"]))
-        config.num_labels = num_classes
-        config.num_channels = in_channels
-        if pretrained:
-            model = ViTForImageClassification.from_pretrained(
-                HF_IDS.get(variant, HF_IDS["b16"]),
-                config=config, ignore_mismatched_sizes=True,
-            )
-        else:
-            model = ViTForImageClassification(config)
-        return model
-    except ImportError:
-        # Fallback: timm
-        try:
-            import timm
-            return timm.create_model(
-                f"vit_{variant}", pretrained=pretrained,
-                num_classes=num_classes, in_chans=in_channels, **kwargs,
-            )
-        except ImportError:
-            raise ImportError("pip install transformers timm")
+    from pygeovision.models._hf import build_hf_model
+
+    if variant not in _HF_IDS:
+        raise ValueError(f"variant must be one of {sorted(_HF_IDS)}, got {variant!r}")
+    spec = SimpleNamespace(name=f"vit-{variant}", family="vit", task="classification",
+                           hf_id=_HF_IDS[variant])
+    return build_hf_model(spec, num_classes, in_channels, pretrained,
+                          allow_random_init=allow_random_init, img_size=img_size, **kwargs)

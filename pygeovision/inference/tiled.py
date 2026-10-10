@@ -97,6 +97,8 @@ class TiledInference:
         self.tta = tta
         self.half_precision = half_precision
         self.tolerate_chip_failures = tolerate_chip_failures
+        if not 0 <= overlap < chip_size:
+            raise ValueError(f"overlap must be in [0, chip_size); got overlap={overlap}, chip_size={chip_size}")
         self._device = device or self._auto_device()
         self._model_loaded = False
         self._chip_failures = 0
@@ -233,6 +235,100 @@ class TiledInference:
             import numpy as np
             return np.zeros((self.num_classes, self.chip_size, self.chip_size), dtype=np.float32)
 
+    def _blend(self, image: Any) -> tuple[Any, int]:
+        """Run every chip of ``image`` (bands, H, W) and blend the activations.
+
+        Returns ``(activations, n_chips)`` with activations ``(num_classes, H, W)`` float64,
+        normalised by the accumulated blend weights.
+        """
+        import numpy as np
+
+        _, H, W = image.shape
+        accum = np.zeros((self.num_classes, H, W), dtype=np.float64)
+        counts = np.zeros((H, W), dtype=np.float64)
+        stride = self.chip_size - self.overlap
+        n_chips = 0
+        tile_batch: list[tuple] = []
+
+        def _flush_batch(batch):
+            for (r, c, rh, cw, chip_data) in batch:
+                pred = self._predict_chip(chip_data)
+                weight = self._get_blend_window(rh, cw)
+                actual_h, actual_w = min(pred.shape[-2], rh), min(pred.shape[-1], cw)
+                accum[:, r:r+actual_h, c:c+actual_w] += pred[:, :actual_h, :actual_w] * weight[:actual_h, :actual_w]
+                counts[r:r+actual_h, c:c+actual_w] += weight[:actual_h, :actual_w]
+
+        for row in range(0, H, stride):
+            for col in range(0, W, stride):
+                r2 = min(row + self.chip_size, H)
+                c2 = min(col + self.chip_size, W)
+                actual_h, actual_w = r2 - row, c2 - col
+
+                chip_data = image[:, row:r2, col:c2]
+                # Pad chip to chip_size if needed
+                if chip_data.shape[1] < self.chip_size or chip_data.shape[2] < self.chip_size:
+                    padded = np.zeros((image.shape[0], self.chip_size, self.chip_size), dtype=np.float32)
+                    padded[:, :chip_data.shape[1], :chip_data.shape[2]] = chip_data
+                    chip_data = padded
+
+                tile_batch.append((row, col, actual_h, actual_w, chip_data))
+                n_chips += 1
+
+                if len(tile_batch) >= self.batch_tiles:
+                    _flush_batch(tile_batch)
+                    tile_batch = []
+
+        if tile_batch:
+            _flush_batch(tile_batch)
+
+        safe_counts = np.maximum(counts, 1e-10)
+        accum /= safe_counts[np.newaxis]
+        return accum, n_chips
+
+    def _preflight(self, n_bands: int) -> str | None:
+        """None if the model accepts ``n_bands`` input channels, else the error text."""
+        import torch
+
+        try:
+            with torch.no_grad():
+                self.model(torch.zeros(1, n_bands, 32, 32).to(self._device))
+            return None
+        except Exception as exc:
+            return str(exc)
+
+    def predict_array(self, image: Any, nan_value: float | None = 0.0) -> Any:
+        """Tiled inference on an in-memory array; returns the blended class activations.
+
+        Unlike :meth:`infer` this does **no** per-band percentile stretch, so a feature
+        stack that was normalised for training (indices, texture, SAR in dB, ...) reaches the
+        model exactly as it was trained. Chips are blended with the configured window, so
+        there are no seams.
+
+        Args:
+            image: ``(bands, H, W)`` array.
+            nan_value: replacement for NaN / inf pixels (cloud-masked data). Training code
+                usually does the same ``nan_to_num``; pass ``None`` to leave them as they are.
+
+        Returns:
+            ``(num_classes, H, W)`` float32: softmax (or sigmoid) probabilities, per the
+            ``activation`` given at construction. For a model with one output channel and
+            ``activation="sigmoid"`` this is ``(1, H, W)``.
+        """
+        import numpy as np
+
+        image = np.asarray(image)
+        if image.ndim != 3:
+            raise ValueError(f"predict_array expects (bands, H, W); got shape {image.shape}")
+        image = image.astype(np.float32, copy=True)
+        if nan_value is not None:
+            np.nan_to_num(image, copy=False, nan=nan_value, posinf=nan_value, neginf=nan_value)
+        self._prepare_model()
+        problem = self._preflight(image.shape[0])
+        if problem is not None and not self.tolerate_chip_failures:
+            raise ValueError(f"Model does not accept {image.shape[0]} input band(s): {problem}")
+        accum, _ = self._blend(image)
+        return accum.astype(np.float32)
+
     def infer(
         self,
         image_path: str | Path,
@@ -289,16 +385,13 @@ class TiledInference:
         # pre-flight check: a tiny dummy forward pass with the actual
         # selected band count, so a mismatch surfaces here with a
         # clear message rather than deep inside the tile loop.
-        try:
-            with torch.no_grad():
-                dummy = torch.zeros(1, len(bands), 32, 32)
-                self.model(dummy.to(self._device))
-        except Exception as exc:
+        problem = self._preflight(len(bands))
+        if problem is not None:
             if not self.tolerate_chip_failures:
                 return {
                     "success": False,
                     "error": f"Model does not accept {len(bands)} input band(s) (selected from "
-                             f"{n_bands} real band(s) in {image_path}): {exc}. Pass band_selection= "
+                             f"{n_bands} real band(s) in {image_path}): {problem}. Pass band_selection= "
                              f"explicitly if this file has more bands than the model expects.",
                 }
             logger.warning(
@@ -306,7 +399,7 @@ class TiledInference:
                 "(selected from %d real band(s) in %s): %s. tolerate_chip_failures=True "
                 "was explicitly set, so proceeding anyway -- every chip will likely "
                 "fail and be zero-filled per that setting's real, existing behavior.",
-                len(bands), n_bands, image_path, exc,
+                len(bands), n_bands, image_path, problem,
             )
 
         if normalise:
@@ -314,50 +407,8 @@ class TiledInference:
                 p2, p98 = np.percentile(image[b], (2, 98))
                 image[b] = (image[b] - p2) / (p98 - p2 + 1e-8)
 
-        # Build accumulation buffers
-        accum  = np.zeros((self.num_classes, H, W), dtype=np.float64)
-        counts = np.zeros((H, W), dtype=np.float64)
-        stride = self.chip_size - self.overlap
-
-        tile_batch: list[tuple] = []
-
-        def _flush_batch(batch):
-            for (r, c, rh, cw, chip_data) in batch:
-                pred = self._predict_chip(chip_data)
-                weight = self._get_blend_window(rh, cw)
-                actual_h, actual_w = min(pred.shape[-2], rh), min(pred.shape[-1], cw)
-                # Accumulate weighted predictions
-                accum[:, r:r+actual_h, c:c+actual_w] += pred[:, :actual_h, :actual_w] * weight[:actual_h, :actual_w]
-                counts[r:r+actual_h, c:c+actual_w]   += weight[:actual_h, :actual_w]
-
-        for row in range(0, H, stride):
-            for col in range(0, W, stride):
-                r2 = min(row + self.chip_size, H)
-                c2 = min(col + self.chip_size, W)
-                actual_h, actual_w = r2 - row, c2 - col
-
-                chip_data = image[:, row:r2, col:c2]
-                # Pad chip to chip_size if needed
-                if chip_data.shape[1] < self.chip_size or chip_data.shape[2] < self.chip_size:
-                    padded = np.zeros((image.shape[0], self.chip_size, self.chip_size), dtype=np.float32)
-                    padded[:, :chip_data.shape[1], :chip_data.shape[2]] = chip_data
-                    chip_data = padded
-
-                tile_batch.append((row, col, actual_h, actual_w, chip_data))
-                n_chips_total += 1
-
-                if len(tile_batch) >= self.batch_tiles:
-                    _flush_batch(tile_batch)
-                    n_chips_ok += len(tile_batch)
-                    tile_batch = []
-
-        if tile_batch:
-            _flush_batch(tile_batch)
-            n_chips_ok += len(tile_batch)
-
-        # Normalise accumulated predictions
-        safe_counts = np.maximum(counts, 1e-10)
-        accum /= safe_counts[np.newaxis]
+        accum, n_chips_total = self._blend(image)
+        n_chips_ok = n_chips_total
 
         # Build output
         if return_probabilities:
@@ -370,6 +421,11 @@ class TiledInference:
             out_profile = profile.copy()
             out_profile.update(count=1, dtype="uint8", compress="lzw")
 
+        for _k in ("blockxsize", "blockysize", "tiled"):      # illegal without TILED=YES
+            out_profile.pop(_k, None)
+        _nd = out_profile.get("nodata")
+        if _nd is not None and not (float(_nd).is_integer() and 0 <= _nd <= 255):
+            out_profile["nodata"] = None                       # the source's nodata does not fit uint8
         with rasterio.open(str(output_path), "w", **out_profile) as dst:
             dst.write(out_data)
             dst.update_tags(

@@ -316,6 +316,8 @@ def prepare_sar_for_ai(
         with rasterio.open(working_path) as ref:
             profile = ref.profile.copy()
         profile.update(count=6, dtype="float32")
+        from pygeovision.data._profile import writable_profile
+        profile = writable_profile(profile)
         with rasterio.open(tmp_path, "w", **profile) as dst:
             dst.write(six_ch)
         _, validation = validator.validate_for_ai(

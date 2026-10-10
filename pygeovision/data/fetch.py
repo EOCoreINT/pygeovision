@@ -75,6 +75,7 @@ _PYGEOFETCH_CLI_CHECKED: bool = False              # Whether we've already check
 # within its 1-hour TTL. This makes cache-format bugfixes self-healing —
 # no one ever needs to manually clear ~/.pygeovision/search_cache/.
 _CACHE_SCHEMA_VERSION = 2
+_DEFAULT_CACHE_TTL_SECONDS = 3600
 
 
 
@@ -473,6 +474,7 @@ class SatelliteFetcher:
         self.config_path = config_path
         self.cache_dir = cache_dir or Path.home() / ".pygeovision" / "search_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._cache_ttl: int = _DEFAULT_CACHE_TTL_SECONDS
         self._credentials: dict[str, dict[str, str]] = {}
 
         # Bypass module-level cache: do a fresh import check so that test injection
@@ -638,8 +640,30 @@ class SatelliteFetcher:
         return [item["provider"] for item in self._engine.auth.list()]
 
     def test_provider(self, provider: str) -> bool:
-        """Test if provider credentials are valid."""
-        return self._engine.auth.test(provider)
+        """``True`` iff ``provider`` is usable: open-access providers must answer an HTTP GET on their
+        endpoint; the others must authenticate with the stored credentials.
+
+        No stored credentials, a rejected login or an unreachable service return ``False`` (reason logged).
+        """
+        meta = {}
+        try:
+            meta = self.list_providers().get(provider, {})
+        except Exception:  # noqa: BLE001
+            pass
+        if meta.get("open") and not meta.get("auth") and meta.get("endpoint"):
+            # open-access provider: there is nothing to authenticate, so the check is "does it answer"
+            try:
+                import requests
+                return requests.get(meta["endpoint"], timeout=15).status_code < 400
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("%s: %s unreachable: %s", provider, meta["endpoint"], exc)
+                return False
+        try:
+            session = self._engine.auth.authenticate(provider, force_refresh=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s: authentication failed: %s", provider, exc)
+            return False
+        return bool(getattr(session, "is_valid", True))
 
     def remove_credentials(self, provider: str) -> None:
         """Remove credentials for a provider."""
@@ -693,10 +717,16 @@ class SatelliteFetcher:
             List of SearchResult objects
         """
         active_providers = self._resolve_providers(providers, satellite, collections)
+        if not providers:
+            # Default provider list only: a provider the caller named explicitly is always kept.
+            active_providers = self._drop_unusable_default_providers(active_providers, collections)
 
         # Check cache
         if use_cache:
-            cache_key = self._cache_key(bbox, date_range, active_providers, cloud_cover_max, collections)
+            cache_key = self._cache_key(
+                bbox, date_range, active_providers, cloud_cover_max, collections,
+                max_results, sort_by, sort_order,
+            )
             cached = self._load_cache(cache_key)
             if cached is not None:
                 logger.debug("Returning %d cached results", len(cached))
@@ -2018,6 +2048,8 @@ class SatelliteFetcher:
                 tmp_path = out_path.with_suffix(".tmp.tif")
                 try:
                     with rasterio.open(str(current)) as src_f:
+                        from pygeovision.data._profile import writable_profile
+                        out_meta = writable_profile(out_meta)
                         with rasterio.open(str(tmp_path), "w", **out_meta) as dst_f:
                             for band_i in range(1, src_count + 1):
                                 reproject(
@@ -2030,10 +2062,18 @@ class SatelliteFetcher:
                                     resampling   =Resampling.bilinear,
                                 )
                     shutil.move(str(tmp_path), str(out_path))
+                    # Report the pixel size in the target CRS's own units. The
+                    # old "%.1f m/px" printed "0.0 m/px, origin=(-2, 52)" for
+                    # every EPSG:4326 output, where the size is in degrees.
+                    if target_crs_obj is not None and getattr(target_crs_obj, "is_geographic", False):
+                        _size_txt = f"{abs(out_transform.a):.6f} deg/px"
+                        _origin_txt = f"({out_transform.c:.4f}, {out_transform.f:.4f})"
+                    else:
+                        _size_txt = f"{abs(out_transform.a):.1f} m/px"
+                        _origin_txt = f"({out_transform.c:.0f}, {out_transform.f:.0f})"
                     logger.info(
-                        "reproject: %s → %s (%.1f m/px, origin=(%.0f, %.0f))",
-                        current.name, out_path.name,
-                        abs(out_transform.a), out_transform.c, out_transform.f,
+                        "reproject: %s → %s (%s, origin=%s)",
+                        current.name, out_path.name, _size_txt, _origin_txt,
                     )
                     current = out_path
                     self._warn_if_bands_or_dtype_changed(
@@ -2090,7 +2130,12 @@ class SatelliteFetcher:
     # ------------------------------------------------------------------
 
     def run_pipeline(self, pipeline_yaml: str | Path, step: str | None = None) -> dict[str, Any]:
-        """Run a pygeofetch YAML pipeline."""
+        """Run a pygeofetch YAML pipeline (search / filter / download / process / export steps).
+
+        ``step`` restricts the run to the step(s) of that type (e.g. ``"search"``). Returns the
+        runner's summary: ``success``, ``duration_seconds``, ``steps`` (each ``status`` ok|error).
+        Every run is appended to :meth:`pipeline_history`.
+        """
         if self._use_cli():
             args = ["pipeline", "run", str(pipeline_yaml)]
             if step:
@@ -2101,30 +2146,113 @@ class SatelliteFetcher:
                 "output":  proc.stdout,
                 "error":   proc.stderr if proc.returncode != 0 else "",
             }
-        if hasattr(self._engine, "run_pipeline"):
-            return self._engine.run_pipeline(pipeline_yaml, step=step)
-        # Fallback: use the PyGeoVision pipeline orchestrator
-        from pygeovision.pipelines import Pipeline
-        p = Pipeline.from_yaml(str(pipeline_yaml))
-        result = p.run()
-        return {"success": result.success, "steps": result.steps_completed}
+        from pygeofetch.core.scheduler import PipelineScheduler
+        sched = PipelineScheduler(engine=self._engine)
+        pipeline = sched.load_pipeline(pipeline_yaml)
+        if step:
+            kept = [s for s in pipeline.steps if s.step_type == step]
+            if not kept:
+                raise ValueError(f"pipeline {pipeline.name!r} has no step {step!r} "
+                                 f"(steps: {[s.step_type for s in pipeline.steps]})")
+            pipeline.steps = kept
+        summary = sched.run_once(pipeline.name)
+        errors = [f"{s['step']}: {s.get('error')}" for s in summary["steps"] if s["status"] != "ok"]
+        if errors:
+            summary["error"] = "; ".join(errors)
+        self._log_pipeline_run(pipeline.name, pipeline_yaml, summary)
+        return summary
 
     def validate_pipeline(self, pipeline_yaml: str | Path) -> bool:
-        """Validate a pipeline YAML file."""
-        return self._engine.validate_pipeline(pipeline_yaml)
+        """``True`` iff the YAML parses into a pygeofetch pipeline (name + well-formed steps).
+
+        Only the structure is checked -- step options are validated when the step runs. The reason
+        for ``False`` is logged.
+        """
+        import yaml
+        from pygeofetch.core.scheduler import Pipeline
+        try:
+            with open(pipeline_yaml) as fh:
+                data = yaml.safe_load(fh)
+            if not isinstance(data, dict):
+                raise ValueError("top level must be a mapping with 'name' and 'steps'")
+            p = Pipeline.from_dict(data)
+            if not p.steps:
+                raise ValueError("pipeline has no steps")
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Invalid pipeline %s: %s", pipeline_yaml, exc)
+            return False
+        return True
+
+    @staticmethod
+    def _pipeline_store() -> Path:
+        """pygeofetch's own schedule registry, shared with ``pygeofetch pipeline schedule``."""
+        from pygeofetch.config.settings import get_config_dir
+        return get_config_dir() / "scheduled_pipelines.json"
 
     def schedule_pipeline(self, pipeline_yaml: str | Path,
                           name: str | None = None, cron: str | None = None) -> bool:
-        """Schedule a pipeline for periodic execution."""
-        return self._engine.schedule_pipeline(pipeline_yaml, name=name, cron=cron)
+        """Register a pipeline (and optional cron expression) in pygeofetch's schedule registry.
+
+        This records *what* should run *when*; something must still run the scheduler loop
+        (``pygeofetch pipeline`` / a cron job) for it to fire. Returns ``False`` for an invalid pipeline.
+        """
+        import json
+
+        import yaml
+        from pygeofetch.core.scheduler import Pipeline
+        try:
+            with open(pipeline_yaml) as fh:
+                data = yaml.safe_load(fh)
+            if name:
+                data["name"] = name
+            if cron:
+                data["schedule"] = cron
+            p = Pipeline.from_dict(data)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Cannot schedule %s: %s", pipeline_yaml, exc)
+            return False
+        store = self._pipeline_store()
+        existing = json.loads(store.read_text()) if store.exists() else {}
+        existing[p.name] = {"file": str(Path(pipeline_yaml).resolve()), "schedule": p.schedule, "name": p.name}
+        store.write_text(json.dumps(existing, indent=2))
+        return True
 
     def list_scheduled_pipelines(self) -> list[dict]:
-        """List scheduled pipelines."""
-        return self._engine.list_scheduled_pipelines()
+        """Pipelines in the schedule registry: ``[{"name", "schedule", "file"}, ...]``."""
+        import json
+        store = self._pipeline_store()
+        if not store.exists():
+            return []
+        return [{"name": k, "schedule": v.get("schedule"), "file": v.get("file")}
+                for k, v in json.loads(store.read_text()).items()]
+
+    @staticmethod
+    def _history_file() -> Path:
+        return Path.home() / ".pygeovision" / "pipeline_history.jsonl"
+
+    def _log_pipeline_run(self, name: str, pipeline_yaml: str | Path, summary: dict[str, Any]) -> None:
+        import json
+        try:
+            f = self._history_file()
+            f.parent.mkdir(parents=True, exist_ok=True)
+            with open(f, "a") as fh:
+                fh.write(json.dumps({
+                    "pipeline": name, "file": str(pipeline_yaml),
+                    "started_at": summary.get("started_at"),
+                    "duration_seconds": summary.get("duration_seconds"),
+                    "success": bool(summary.get("success")), "error": summary.get("error"),
+                }) + "\n")
+        except OSError as exc:      # a read-only home must not fail the run itself
+            logger.warning("could not record pipeline run: %s", exc)
 
     def pipeline_history(self, limit: int = 20) -> list[dict]:
-        """Get pipeline execution history."""
-        return self._engine.pipeline_history(limit=limit)
+        """The most recent pipeline runs made through :meth:`run_pipeline`, newest first."""
+        import json
+        f = self._history_file()
+        if not f.exists():
+            return []
+        rows = [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
+        return rows[::-1][:limit]
 
     # ------------------------------------------------------------------
     # Cache management
@@ -2167,14 +2295,52 @@ class SatelliteFetcher:
             logger.info("Local search cache cleared")
 
     def set_cache_ttl(self, seconds: int) -> None:
-        """Set cache TTL in seconds."""
-        # Implemented by pygeofetch internally
-        pass
+        """Set how long a cached search result stays valid, in seconds.
 
-    def prune_cache(self, max_size_gb: float = 10.0) -> None:
-        """Prune cache to stay under size limit."""
-        # Implemented by pygeofetch internally
-        pass
+        Applies to this fetcher's local search cache (``cache_dir``).  A cached
+        entry older than ``seconds`` is discarded on the next lookup and the
+        search is re-run.  ``0`` disables reuse of cached results entirely.
+
+        Raises:
+            ValueError: if ``seconds`` is negative or not a number.
+        """
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or seconds < 0:
+            raise ValueError(f"seconds must be a non-negative number, got {seconds!r}")
+        self._cache_ttl = seconds
+
+    def prune_cache(self, max_size_gb: float = 10.0) -> int:
+        """Delete the oldest local search-cache entries until the cache fits.
+
+        Args:
+            max_size_gb: Size limit in gigabytes (``0`` empties the cache).
+
+        Returns:
+            The number of cache files deleted.
+        """
+        if max_size_gb < 0:
+            raise ValueError(f"max_size_gb must be >= 0, got {max_size_gb!r}")
+        limit = int(max_size_gb * 1024 ** 3)
+        entries = []
+        for f in self.cache_dir.glob("*.json"):
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            entries.append((st.st_mtime, st.st_size, f))
+        total = sum(size for _, size, _ in entries)
+        removed = 0
+        for _, size, f in sorted(entries, key=lambda e: e[0]):  # oldest first
+            if total <= limit:
+                break
+            try:
+                f.unlink()
+            except OSError:
+                continue
+            total -= size
+            removed += 1
+        if removed:
+            logger.info("Pruned %d search-cache file(s); %.1f MB remain", removed, total / 1024 ** 2)
+        return removed
 
     # ------------------------------------------------------------------
     # Availability checks
@@ -2275,15 +2441,15 @@ class SatelliteFetcher:
         # credentials check
         try:
             creds = self.list_credentials()
-            report["credentials"] = {"providers_configured": len(creds), "list": creds}
+            report["credentials"] = {"ok": True, "providers_configured": len(creds), "list": creds}
         except Exception as exc:
-            report["credentials"] = {"error": str(exc)}
+            report["credentials"] = {"ok": False, "error": str(exc)}
 
         # cache
         try:
-            report["cache"] = self.cache_stats()
+            report["cache"] = {"ok": True, **self.cache_stats()}
         except Exception as exc:
-            report["cache"] = {"error": str(exc)}
+            report["cache"] = {"ok": False, "error": str(exc)}
 
         n_ok  = sum(1 for v in report.values() if isinstance(v, dict) and v.get("ok"))
         n_all = sum(1 for v in report.values() if isinstance(v, dict) and "ok" in v)
@@ -2661,6 +2827,40 @@ class SatelliteFetcher:
                 return resolved
         return DEFAULT_SEARCH_PROVIDERS
 
+    def _drop_unusable_default_providers(
+        self, active: list[str], collections: list[str] | None,
+    ) -> list[str]:
+        """Remove default-list providers that cannot answer this search.
+
+        Seen in a real run: every search sent ``sentinel_hub`` (no stored
+        credentials, fails with an auth error) and ``copernicus`` (its OData
+        API has no collection called ``SENTINEL-2-L2A``, so every request was
+        an HTTP 400) alongside the three STAC providers that do answer. Each
+        failure cost a request and printed a warning, and copernicus never
+        contributed a scene. They stay available when named in ``providers=``.
+        """
+        import re
+
+        stac_style = any(re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)+", c or "") for c in (collections or []))
+        try:
+            stored = set(self.list_credentials())
+        except Exception:  # noqa: BLE001
+            stored = set()
+        kept: list[str] = []
+        for p in active:
+            meta = PROVIDERS.get(p, {})
+            if p == "copernicus" and stac_style:
+                logger.info(
+                    "Skipping copernicus: its catalogue has no collection named %s "
+                    "(name it in providers=[...] to force it).", collections,
+                )
+                continue
+            if meta.get("auth") and not meta.get("open") and p not in stored:
+                logger.info("Skipping %s: no stored credentials (pygeofetch auth add %s).", p, p)
+                continue
+            kept.append(p)
+        return kept or active
+
     def _providers_to_satellites(self, providers: list[str]) -> list[str]:
         """Convert provider IDs to satellite name hints."""
         sat_map = {
@@ -2677,9 +2877,19 @@ class SatelliteFetcher:
             sats.extend(sat_map.get(p, []))
         return list(set(sats)) if sats else []
 
-    def _cache_key(self, bbox, date_range, providers, cloud_cover_max, collections) -> str:
-        """Generate cache key for search parameters."""
-        key_str = f"{bbox}|{date_range}|{sorted(providers)}|{cloud_cover_max}|{sorted(collections or [])}"
+    def _cache_key(self, bbox, date_range, providers, cloud_cover_max, collections,
+                   max_results=None, sort_by=None, sort_order=None) -> str:
+        """Generate cache key for search parameters.
+
+        ``max_results`` and the sort order are part of the key: a search
+        capped at 5 results used to be served back for a later search that
+        asked for 60 (the key ignored the cap), silently returning too few
+        scenes.
+        """
+        key_str = (
+            f"{bbox}|{date_range}|{sorted(providers)}|{cloud_cover_max}|"
+            f"{sorted(collections or [])}|{max_results}|{sort_by}|{sort_order}"
+        )
         return hashlib.md5(key_str.encode()).hexdigest()
 
     def _load_cache(self, key: str) -> list[SearchResult] | None:
@@ -2695,7 +2905,7 @@ class SatelliteFetcher:
         path = self.cache_dir / f"{key}.json"
         if not path.exists():
             return None
-        if time.time() - path.stat().st_mtime > 3600:
+        if time.time() - path.stat().st_mtime > getattr(self, "_cache_ttl", _DEFAULT_CACHE_TTL_SECONDS):
             path.unlink(missing_ok=True)
             return None
         try:
