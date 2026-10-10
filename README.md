@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![Python](https://img.shields.io/pypi/pyversions/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Providers](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://appiahkubis14.github.io/pygeofetch-docs/)
+[![Providers](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
 [![Pipelines](https://img.shields.io/badge/Pipelines-25-22c55e?style=flat-square)](#-end-to-end-pipelines)
 [![Models](https://img.shields.io/badge/Registered_architectures-77-a855f7?style=flat-square)](#-models-and-training)
 [![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://appiahkubis14.github.io/pygeovision-docs/)
@@ -38,7 +38,7 @@ pipeline, a modelling framework and a pile of custom code. PyGeoVision puts thos
 package, so there are fewer joins in the chain for things to quietly break.
 
 - **One search/download interface across 22 providers** (Sentinel, Landsat, Planet, Maxar, Copernicus,
-  USGS and more) through [PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/), with credentials
+  USGS and more) through [PyGeoFetch](https://pygeovision.readthedocs.io/en/latest/), with credentials
   stored once in the system keyring.
 - **Models that run inside the package** — segmentation, detection, change detection, classification and
   foundation-model embeddings — with no separate AI-platform account.
@@ -287,6 +287,6 @@ PyGeoVision is free and open-source software, released under the [MIT License](L
 
 ## Acknowledgements
 
-The satellite data layer is built on **[PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/)**,
+The satellite data layer is built on **[PyGeoFetch](https://pygeovision.readthedocs.io/en/latest/)**,
 a universal satellite data pipeline that handles search, download, authentication, caching and pipeline
 orchestration. The modelling, training, labeling and OBIA layers are implemented inside PyGeoVision itself.
