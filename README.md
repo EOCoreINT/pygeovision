@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/EOCoreINT/pygeovision/main/icon/pygeovision_logo.png" alt="PyGeoVision logo" width="320">
+<!-- <img src="https://raw.githubusercontent.com/EOCoreINT/pygeovision/main/icon/pygeovision_logo.png" alt="PyGeoVision logo" width="320"> -->
 
 # PyGeoVision
 
@@ -287,10 +287,6 @@ PyGeoVision is free and open-source software, released under the [MIT License](L
 
 ## Acknowledgements
 
-<<<<<<< HEAD
 The satellite data layer is built on **[PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/)**,
 a universal satellite data pipeline that handles search, download, authentication, caching and pipeline
 orchestration. The modelling, training, labeling and OBIA layers are implemented inside PyGeoVision itself.
-=======
-PyGeoVision's satellite data layer is built on **[PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/)**, a universal satellite data pipeline that handles search, download, authentication, caching, and pipeline orchestration. Every AI capability — segmentation, detection, classification, change detection, foundation models, training, and serving — is implemented natively inside PyGeoVision itself.
->>>>>>> 145c7db4f2bad11db6f270ce4793c7a9f592ab55
