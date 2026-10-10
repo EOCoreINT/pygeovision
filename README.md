@@ -12,7 +12,7 @@
 [![Providers](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
 [![Pipelines](https://img.shields.io/badge/Pipelines-25-22c55e?style=flat-square)](#-end-to-end-pipelines)
 [![Models](https://img.shields.io/badge/Registered_architectures-77-a855f7?style=flat-square)](#-models-and-training)
-[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://appiahkubis14.github.io/pygeovision-docs/)
+[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
 
 [Features](#-features) · [Install](#-installation) · [Quick start](#-quick-start) · [CLI](#-command-line) · [Pipelines](#-end-to-end-pipelines) · [OBIA](#-object-based-image-analysis-obia) · [Status](#-project-status) · [Docs](#-documentation)
 
