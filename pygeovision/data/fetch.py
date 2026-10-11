@@ -475,6 +475,8 @@ class SatelliteFetcher:
         self.cache_dir = cache_dir or Path.home() / ".pygeovision" / "search_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache_ttl: int = _DEFAULT_CACHE_TTL_SECONDS
+        #: Providers used when a search names none (None = the open-access defaults).
+        self.default_providers: list[str] | None = None
         self._credentials: dict[str, dict[str, str]] = {}
 
         # Bypass module-level cache: do a fresh import check so that test injection
@@ -2778,6 +2780,10 @@ class SatelliteFetcher:
         except Exception:
             return None
 
+    def _default_provider_list(self) -> list[str]:
+        """Providers searched when the caller names none: the configured list, else the open-access defaults."""
+        return list(getattr(self, "default_providers", None) or DEFAULT_SEARCH_PROVIDERS)
+
     def _resolve_providers(self, providers, satellite, collections):
         """Resolve providers from various inputs."""
         # Normalise common provider name aliases
@@ -2807,7 +2813,7 @@ class SatelliteFetcher:
             for key, provs in SATELLITE_SHORTCUTS.items():
                 if key in sl or sl in key:
                     return provs
-            return DEFAULT_SEARCH_PROVIDERS
+            return self._default_provider_list()
         if collections:
             resolved, seen = [], set()
             for col in collections:
@@ -2828,7 +2834,7 @@ class SatelliteFetcher:
                         resolved.append(p)
             if resolved:
                 return resolved
-        return DEFAULT_SEARCH_PROVIDERS
+        return self._default_provider_list()
 
     def _drop_unusable_default_providers(
         self, active: list[str], collections: list[str] | None,

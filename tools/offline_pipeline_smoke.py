@@ -109,6 +109,13 @@ def install_offline_patches(tmp: pathlib.Path):
     def fake_single(self, bbox, date, output_dir, **kw):
         n = len(kw.get("bands") or []) or 4
         arr = np.clip(rng.normal(0.25, 0.1, (n, 60, 60)), 0.02, 0.9).astype("float32")
+        if tuple(kw.get("bands") or ()) == ("thermal",):
+            # Landsat Collection 2 ST_B10 digital numbers: K = DN x 0.00341802 + 149. A 30 deg C scene with a warm
+            # block, so the example output shows plausible temperatures instead of the reflectance noise above.
+            yy, xx = np.mgrid[0:60, 0:60]
+            kelvin = 303.0 + 0.04 * xx - 0.02 * yy + rng.normal(0, 0.4, (60, 60))
+            kelvin[10:25, 30:50] += 7.0
+            arr = ((kelvin - 149.0) / 0.00341802).astype("float32")[None]
         return write_raster(tmp / f"{self.name}_{date}_{abs(hash(str(kw))) % 999}.tif", arr, bbox)
 
     def fake_pair(self, bbox, date_before, date_after, output_dir, **kw):

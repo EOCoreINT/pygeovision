@@ -373,40 +373,47 @@ class TestESAWorldCoverYearFilter:
         assert captured["json"]["datetime"] == "2020-01-01/2020-12-31"
 
 
-# ── Dynamic World — SAS signing regression test ──────────────────────────────────
-# Real bug: Planetary Computer assets live in private Blob Storage containers
-# and require SAS-token signing before download; this was skipped entirely.
+# ── Dynamic World / land-cover backend — asset signing regression test ───────────
+# Planetary Computer assets live in private Blob Storage containers and need SAS-token signing.
+# (The labeler used to download the whole tile as raw bytes; it now reads only the bbox window, so the
+# test checks that the URL handed to rasterio is the signed one.)
 
 class TestDynamicWorldSigning:
-    def test_pc_backend_signs_asset_url(self, monkeypatch):
+    def test_pc_backend_signs_asset_url(self, monkeypatch, tmp_path):
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_bounds
+
         from pygeovision.labeling.landcover import DynamicWorldLabeler
+
+        src = tmp_path / "tile.tif"
+        with rasterio.open(src, "w", driver="GTiff", height=50, width=50, count=1, dtype="uint8",
+                           crs="EPSG:4326", transform=from_bounds(-0.2, 51.4, -0.05, 51.6, 50, 50)) as d:
+            d.write(np.full((1, 50, 50), 7, "uint8"))
+
         lab = DynamicWorldLabeler(backend="planetary_computer")
 
         class _FakeSearchResponse:
             status_code = 200
             def json(self):
-                return {"features": [{"assets": {"data": {"href": "https://unsigned.example/asset.tif"}}}]}
-
-        class _FakeDownloadResponse:
-            status_code = 200
-            def iter_content(self, chunk_size):
-                return [b"fake-bytes"]
+                return {"features": [{"properties": {"start_datetime": "2023-01-01T00:00:00Z"},
+                                      "assets": {"data": {"href": str(src)}}}]}
 
         import requests as requests_mod
         monkeypatch.setattr(requests_mod, "post", lambda *a, **kw: _FakeSearchResponse())
 
-        captured = {}
-        def fake_get(url, stream=None, timeout=None):
-            captured["url"] = url
-            return _FakeDownloadResponse()
-        monkeypatch.setattr(requests_mod, "get", fake_get)
-
         pc_mod = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
-        monkeypatch.setattr(pc_mod, "sign", lambda url: url + "?SIGNED")
+        signed = []
+        monkeypatch.setattr(pc_mod, "sign", lambda url: signed.append(url) or url)
 
-        import tempfile, os
-        with tempfile.TemporaryDirectory() as tmp:
-            out = os.path.join(tmp, "dw.tif")
-            result = lab.label((-0.15, 51.47, -0.10, 51.52), output_path=out)
+        out = tmp_path / "dw.tif"
+        result = lab.label((-0.15, 51.47, -0.10, 51.52), output_path=out)
         assert result["success"] is True
-        assert captured["url"].endswith("?SIGNED")
+        assert signed == [str(src)]
+
+
+class TestLabelingOrchestratorIsHonest:
+    def test_label_raises_instead_of_claiming_completion(self):
+        from pygeovision.ai.labeling import LabelingOrchestrator
+        with pytest.raises(NotImplementedError, match="AutoLabelPipeline"):
+            LabelingOrchestrator(None).label("data", "osm")

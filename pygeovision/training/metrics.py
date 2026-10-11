@@ -14,9 +14,11 @@ class SegmentationMetrics:
         self.num_classes = num_classes
         self.ignore_index = ignore_index
         self._confusion: Any | None = None
+        self.n_failed_updates = 0
         self.reset()
 
     def reset(self) -> None:
+        self.n_failed_updates = 0
         try:
             import torch
             self._confusion = torch.zeros(self.num_classes, self.num_classes, dtype=torch.long)
@@ -27,8 +29,8 @@ class SegmentationMetrics:
         """Update confusion matrix with batch predictions and targets."""
         try:
             import torch
-            preds = preds.view(-1)
-            targets = targets.view(-1)
+            preds = preds.reshape(-1)
+            targets = targets.reshape(-1)
             mask = targets != self.ignore_index
             preds, targets = preds[mask], targets[mask]
             indices = self.num_classes * targets + preds
@@ -36,6 +38,7 @@ class SegmentationMetrics:
             self._confusion += counts.reshape(self.num_classes, self.num_classes)
         except Exception as exc:
             import logging
+            self.n_failed_updates += 1
             logging.getLogger(__name__).warning(
                 "SegmentationMetrics.update() failed — this batch's "
                 "predictions/targets were NOT counted, so mIoU/F1/accuracy "
@@ -64,9 +67,13 @@ class SegmentationMetrics:
                 per_class[f"f1_class_{i}"] = float(f1[i])
                 per_class[f"precision_class_{i}"] = float(precision[i])
                 per_class[f"recall_class_{i}"] = float(recall[i])
+            # Average over the classes that occur (in the reference or the prediction). A class
+            # that is absent from both would count as IoU 0 and pull the mean down for no reason.
+            present = (tp + fp + fn) > 0
+            n_present = int(present.sum())
             return {
-                "mean_iou":  float(iou.mean()),
-                "mean_f1":   float(f1.mean()),
+                "mean_iou":  float(iou[present].mean()) if n_present else 0.0,
+                "mean_f1":   float(f1[present].mean()) if n_present else 0.0,
                 "accuracy":  float(tp.sum() / (cm.sum() + 1e-10)),
                 **per_class,
             }
@@ -78,7 +85,7 @@ class SegmentationMetrics:
 
 
 class DetectionMetrics:
-    """Object detection metrics: mAP@50, mAP@50-95, precision, recall."""
+    """Object detection metrics: mAP@50, mAP@50-95 and mAP@75 (needs torchmetrics + pycocotools)."""
 
     def __init__(self, num_classes: int, iou_thresholds: list[float] | None = None) -> None:
         self.num_classes = num_classes

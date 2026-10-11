@@ -2,11 +2,12 @@
 ModelEvaluator — standardised cross-model evaluation (Phase 4.4).
 
 Provides:
-- Standardised evaluation over any dataset with IoU, F1, mAP, accuracy
-- Automatic train/val/test splits following EarthNets convention (60/20/20)
-- Cross-model comparison tables
-- Confusion matrix and PR-curve generation
-- Leaderboard JSON output
+- Standardised evaluation over any dataloader with IoU, F1, mAP, accuracy
+- Cross-model comparison tables (failed evaluations are marked, never scored as 0)
+- Normalised confusion-matrix plot
+- Results as JSON (``save_results``) and a persistent ``Leaderboard``
+
+It evaluates on the loader you give it; it does not create train/val/test splits.
 """
 from __future__ import annotations
 
@@ -18,6 +19,50 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _logits(outputs: Any) -> Any:
+    """The class-score tensor from a model output: a tensor, ``.logits``, ``["out"]``/``["logits"]`` or the first tuple item."""
+    if hasattr(outputs, "logits"):
+        return outputs.logits
+    if isinstance(outputs, dict):
+        for key in ("out", "logits", "pred"):
+            if key in outputs:
+                return outputs[key]
+        return next(iter(outputs.values()))
+    if isinstance(outputs, (list, tuple)):
+        return outputs[0]
+    return outputs
+
+
+def _sync(dev: Any) -> None:
+    """Wait for queued GPU work so wall-clock timings measure the model, not just the kernel launch."""
+    try:
+        import torch
+        if getattr(dev, "type", str(dev)).startswith("cuda"):
+            torch.cuda.synchronize(dev)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _unpack(batch: Any, dev: Any) -> tuple[Any, Any]:
+    """``(images, targets)`` on ``dev`` from a ``(images, targets)`` pair or a dict with image/mask keys."""
+    if isinstance(batch, (list, tuple)):
+        return batch[0].to(dev), batch[1].to(dev)
+    images = batch.get("image", batch.get("images"))
+    targets = batch.get("mask", batch.get("label"))
+    if images is None or targets is None:
+        raise KeyError(f"batch dict needs 'image'/'images' and 'mask'/'label' keys; got {sorted(batch)}")
+    return images.to(dev), targets.to(dev)
+
+
+def _predict_classes(model: Any, images: Any, targets: Any) -> Any:
+    """Argmax class map from the model, enlarged to the target size when the model outputs a coarser map."""
+    import torch.nn.functional as F
+    logits = _logits(model(images))
+    if logits.ndim == 4 and targets.ndim == 3 and logits.shape[-2:] != targets.shape[-2:]:
+        logits = F.interpolate(logits, size=targets.shape[-2:], mode="bilinear", align_corners=False)
+    return logits.argmax(dim=1)
 
 
 @dataclass
@@ -42,6 +87,13 @@ class BenchmarkResult:
     # Config
     hyperparams: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
+    # Non-empty when the evaluation did not complete or the metrics could not be computed.
+    # All metric fields are then meaningless (0.0).
+    error: str = ""
+
+    @property
+    def failed(self) -> bool:
+        return bool(self.error)
 
     @property
     def primary_metric(self) -> float:
@@ -67,6 +119,7 @@ class BenchmarkResult:
             "inference_ms_per_image": round(self.inference_ms_per_image, 2),
             "n_samples": self.n_samples,
             "primary_metric": round(self.primary_metric, 4),
+            "error": self.error,
         }
 
 
@@ -135,8 +188,10 @@ class ModelEvaluator:
                             for t in targets_list
                         ]
 
+                        _sync(dev)
                         t_inf = time.time()
                         outputs = model(images_list)
+                        _sync(dev)
                         total_latency += (time.time() - t_inf) * 1000
                         total_images += len(images_list)
 
@@ -151,26 +206,34 @@ class ModelEvaluator:
                         metrics_det.update(preds_cpu, targets_cpu)
                         continue
 
-                    if isinstance(batch, (list, tuple)):
-                        images, targets = batch[0].to(dev), batch[1].to(dev)
-                    else:
-                        images = batch.get("image", batch.get("images")).to(dev)
-                        targets = batch.get("mask", batch.get("label")).to(dev)
+                    images, targets = _unpack(batch, dev)
 
+                    _sync(dev)
                     t_inf = time.time()
                     outputs = model(images)
+                    _sync(dev)
                     total_latency += (time.time() - t_inf) * 1000
                     total_images += images.shape[0]
 
                     if metrics_seg is not None:
-                        preds = outputs.argmax(dim=1)
-                        metrics_seg.update(preds, targets)
+                        logits = _logits(outputs)
+                        if logits.ndim == 4 and targets.ndim == 3 and logits.shape[-2:] != targets.shape[-2:]:
+                            import torch.nn.functional as F
+                            logits = F.interpolate(logits, size=targets.shape[-2:], mode="bilinear",
+                                                   align_corners=False)
+                        metrics_seg.update(logits.argmax(dim=1), targets)
 
             result.duration_seconds = time.time() - t_start
             result.n_samples = total_images
             result.inference_ms_per_image = total_latency / max(total_images, 1)
 
+            if total_images == 0:
+                result.error = "the loader produced no batches"
             if metrics_seg is not None:
+                if metrics_seg.n_failed_updates:
+                    result.error = (f"{metrics_seg.n_failed_updates} batch(es) could not be scored "
+                                    "(prediction/target shape mismatch or class index >= num_classes); "
+                                    "metrics would be incomplete")
                 computed = metrics_seg.compute()
                 result.mean_iou = computed.get("mean_iou", 0.0)
                 result.mean_f1 = computed.get("mean_f1", 0.0)
@@ -183,12 +246,15 @@ class ModelEvaluator:
                 result.mAP50 = computed.get("mAP50", 0.0)
                 result.mAP50_95 = computed.get("mAP50_95", 0.0)
                 if "error" in computed or "note" in computed:
-                    result.notes = computed.get("error") or computed.get("note", "")
-        except ImportError:
+                    result.error = computed.get("error") or computed.get("note", "")
+                    result.notes = result.error
+        except ImportError as exc:
             logger.warning("torch required for evaluation")
+            result.error = f"missing dependency: {exc}"
         except Exception as exc:
             logger.error("Evaluation failed: %s", exc)
-            result.notes = str(exc)
+            result.error = f"{type(exc).__name__}: {exc}"
+            result.notes = result.error
         return result
 
     def compare(
@@ -208,7 +274,7 @@ class ModelEvaluator:
             results.append(r)
             logger.info("  %s: mIoU=%.4f  F1=%.4f  acc=%.4f  %.1fms/img",
                         name, r.mean_iou, r.mean_f1, r.accuracy, r.inference_ms_per_image)
-        results.sort(key=lambda x: x.primary_metric, reverse=True)
+        results.sort(key=lambda x: (not x.failed, x.primary_metric), reverse=True)
         return results
 
     def print_leaderboard(self, results: list[BenchmarkResult]) -> None:
@@ -217,6 +283,8 @@ class ModelEvaluator:
             print("No results.")
             return
         task = results[0].task
+        failed = [r for r in results if r.failed]
+        results = [r for r in results if not r.failed]
         print(f"\n{'═'*90}")
         print(f"  Leaderboard: {results[0].dataset_name} | Task: {task}")
         print(f"{'═'*90}")
@@ -235,6 +303,8 @@ class ModelEvaluator:
             print(f"  {'─'*65}")
             for i, r in enumerate(results, 1):
                 print(f"  {i:<3} {r.model_name:<30} {r.accuracy:>10.4f} {r.mean_f1:>8.4f} {r.inference_ms_per_image:>8.1f}")
+        for r in failed:
+            print(f"  FAILED  {r.model_name:<30} {r.error}")
         print(f"{'═'*90}\n")
 
     def save_results(self, results: list[BenchmarkResult], path: str | Path) -> None:
@@ -260,13 +330,8 @@ class ModelEvaluator:
             metrics = SegmentationMetrics(self.num_classes)
             with torch.no_grad():
                 for batch in loader:
-                    if isinstance(batch, (list, tuple)):
-                        images, targets = batch[0].to(dev), batch[1].to(dev)
-                    else:
-                        images = batch.get("image").to(dev)
-                        targets = batch.get("mask").to(dev)
-                    outputs = model(images)
-                    metrics.update(outputs.argmax(dim=1), targets)
+                    images, targets = _unpack(batch, dev)
+                    metrics.update(_predict_classes(model, images, targets), targets)
             cm = metrics.confusion_matrix().numpy()
             # Normalise
             cm_norm = cm.astype(float) / (cm.sum(axis=1, keepdims=True) + 1e-10)

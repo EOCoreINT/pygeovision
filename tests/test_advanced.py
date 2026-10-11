@@ -44,7 +44,7 @@ class TestFewShotLearner:
         learner._class_names = ["forest", "water", "urban"]
         # Mock _extract_features
         with patch.object(learner, "_extract_features",
-                           return_value=np.array([[1.0, 0.1, 0.0]])):
+                           return_value=([np.array([1.0, 0.1, 0.0])], [None])):
             results = learner.predict(["img.tif"])
         assert len(results) == 1
         assert results[0]["class"] == "forest"  # closest to [1, 0, 0]
@@ -57,7 +57,7 @@ class TestFewShotLearner:
         learner = FewShotLearner()
         learner._prototypes = {"a": np.ones(4), "b": np.zeros(4)}
         learner._class_names = ["a", "b"]
-        with patch.object(learner, "_extract_features", return_value=np.array([[1., 1., 1., 1.]])):
+        with patch.object(learner, "_extract_features", return_value=([np.array([1., 1., 1., 1.])], [None])):
             results = learner.predict(["x.tif"])
         probs = list(results[0]["probabilities"].values())
         assert abs(sum(probs) - 1.0) < 1e-5
@@ -71,7 +71,8 @@ class TestMultiTaskLearner:
         from pygeovision.advanced.multitask import MultiTaskLearner
         return MultiTaskLearner(backbone="resnet50",
                                  tasks=["segmentation", "classification"],
-                                 n_classes={"segmentation": 2, "classification": 4})
+                                 n_classes={"segmentation": 2, "classification": 4},
+                                 pretrained=False)
 
     def test_init(self, learner):
         assert learner.backbone == "resnet50"
@@ -151,7 +152,7 @@ class TestCLIPGeo:
         from pygeovision.advanced.vlm.clip_geo import CLIPGeo
         clip = CLIPGeo(model="openclip-b32")
         assert clip.model_name == "openclip-b32"
-        assert "clip" in clip.model_id.lower()
+        assert clip.model_name in clip.HF_MODELS
 
     def test_hf_models_registry(self):
         from pygeovision.advanced.vlm.clip_geo import CLIPGeo
@@ -188,8 +189,8 @@ class TestGeoTimeSeries:
     def test_invalid_index(self):
         from pygeovision.advanced.timeseries import GeoTimeSeries
         ts = GeoTimeSeries()
-        result = ts.compute_index_series([], index="invalid_xyz")
-        assert "error" in result
+        with pytest.raises(ValueError, match="unknown index"):
+            ts.compute_index_series([], index="invalid_xyz")
 
     def test_empty_image_list(self):
         from pygeovision.advanced.timeseries import GeoTimeSeries
@@ -202,8 +203,8 @@ class TestGeoTimeSeries:
         from pygeovision.advanced.timeseries import GeoTimeSeries
         ts = GeoTimeSeries()
         series = {"mean": [], "dates": []}
-        anomalies = ts.detect_anomalies(series)
-        assert anomalies == []
+        with pytest.raises(ValueError, match="at least 5"):
+            ts.detect_anomalies(series)
 
     def test_detect_anomalies_zscore(self):
 
@@ -243,11 +244,13 @@ class TestPointCloudProcessor:
     def test_read_missing_file(self):
         from pygeovision.advanced.pointcloud import PointCloudProcessor
         proc = PointCloudProcessor()
-        result = proc.read("nonexistent.las")
-        assert "error" in result or "n_points" in result  # laspy not installed → error
+        pytest.importorskip("laspy")
+        with pytest.raises(FileNotFoundError):
+            proc.read("nonexistent.las")
 
     def test_chm_missing_file(self, tmp_path):
         from pygeovision.advanced.pointcloud import PointCloudProcessor
         proc = PointCloudProcessor()
-        result = proc.canopy_height_model("missing.las", str(tmp_path / "chm.tif"))
-        assert "error" in result  # should fail gracefully
+        pytest.importorskip("laspy")
+        with pytest.raises(FileNotFoundError):
+            proc.canopy_height_model("missing.las", str(tmp_path / "chm.tif"))

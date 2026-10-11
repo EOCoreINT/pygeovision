@@ -732,18 +732,20 @@ class SamGeoLabeler:
                 "duration_seconds": round(time.time() - t0, 1),
             }
 
-        vector_path = None
+        vector_path, vector_error = None, None
         if output_vector:
             try:
                 sam.tiff_to_vector(str(output_path), output_vector)
                 vector_path = output_vector
             except Exception as exc:
+                vector_error = f"{type(exc).__name__}: {exc}"
                 logger.warning("samgeo vector export failed: %s", exc)
 
         return {
             "success": True,
             "output_path": str(output_path),
             "output_vector": vector_path,
+            "vector_error": vector_error,
             "model_type": self.model_type,
             "duration_seconds": round(time.time() - t0, 1),
         }

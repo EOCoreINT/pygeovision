@@ -8,6 +8,11 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+def _utcnow() -> str:
+    from datetime import timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+
+
 class AlertManager:
     """Manage and route drift + performance alerts."""
 
@@ -21,7 +26,7 @@ class AlertManager:
 
     def trigger(self, severity: str, message: str, data: dict | None = None) -> None:
         entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _utcnow(),
             "severity": severity,
             "message": message,
             "data": data or {},
@@ -31,6 +36,9 @@ class AlertManager:
             handler = self._handlers.get(channel)
             if handler:
                 handler(entry)
+            else:
+                logger.warning("[Alert] channel %r has no handler (register_handler); alert not delivered there: %s",
+                               channel, message)
 
     def _log_alert(self, entry: dict) -> None:
         level = {"info": logger.info, "warning": logger.warning, "critical": logger.critical}

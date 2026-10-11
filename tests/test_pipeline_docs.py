@@ -12,8 +12,7 @@ from pygeovision.ai.pipelines import list_pipelines
 from pygeovision.ai.pipelines.removed import REMOVED_PIPELINES
 
 ROOT = Path(__file__).resolve().parent.parent
-GENERATED = ["docs/pipelines/ready.md", "docs/pipelines/needs-weights.md",
-             "docs/pipelines/removed.md", "docs/reference/pipeline-catalog.md"]
+GENERATED = ["docs/pipelines/removed.md"]
 
 pytestmark = pytest.mark.skipif(not (ROOT / "docs").exists(), reason="docs not in this checkout")
 
@@ -25,10 +24,11 @@ def test_generated_pages_are_current(tmp_path):
         assert (ROOT / p).read_text() == before[p], f"{p} is stale: run python tools/generate_pipeline_docs.py"
 
 
-def test_every_pipeline_has_a_section():
-    text = (ROOT / "docs/pipelines/ready.md").read_text() + (ROOT / "docs/pipelines/needs-weights.md").read_text()
+def test_every_pipeline_has_a_page():
     for name in list_pipelines():
-        assert f"## `{name}`" in text
+        page = ROOT / "docs" / "pipelines" / "catalog" / f"{name}.md"
+        assert page.exists(), f"no page for {name}: run python tools/generate_pipeline_pages.py"
+        assert page.read_text().startswith("<!-- generated"), page
 
 
 def test_readme_names_only_real_pipelines():

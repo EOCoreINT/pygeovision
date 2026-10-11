@@ -156,9 +156,11 @@ class DataValidator:
 
         # Pixel size check
         a = abs(t.a)
-        if a < 0.5 or a > 10_000:
+        # 0.5 m .. 10 km; a lon/lat raster measures pixels in degrees (1 degree ~ 111.32 km)
+        lo_px, hi_px = (0.5 / 111_320.0, 10_000 / 111_320.0) if crs.is_geographic else (0.5, 10_000.0)
+        if a < lo_px or a > hi_px:
             report["errors"].append(
-                f"Pixel size {a:.4f} is not physically plausible. "
+                f"Pixel size {a:.6f} is not physically plausible. "
                 f"Run fix_georeference() to recover GCP-based transform."
             )
             return None, report
@@ -215,7 +217,7 @@ class DataValidator:
             "shape":        (C, H, W),
             "dtype":        "float32",
             "crs":          str(crs),
-            "pixel_size_m": float(a),
+            "pixel_size_m": float(a * 111_320.0) if crs.is_geographic else float(a),
             "value_range":  (actual_min, actual_max),
             "model_type":   model_type,
         })
@@ -287,7 +289,7 @@ def prepare_sar_for_ai(
             "crs":       str(src.crs),
             "transform": src.transform,
             "shape":     (src.count, src.height, src.width),
-            "pixel_m":   abs(src.transform.a),
+            "pixel_m":   abs(src.transform.a) * (111_320.0 if src.crs and src.crs.is_geographic else 1.0),
         }
 
     if data.shape[0] < 2:
@@ -401,24 +403,21 @@ class EOPipeline:
         pipeline = EOPipeline(provider="planetary_computer")
         pipeline.authenticate("copernicus", username="...", password="...")
 
-        # Option A: fluent chain
-        result = (
+        # Fluent chain: search / select / download / preprocess return the pipeline itself
+        ai_input = (
             pipeline
             .search(bbox, date_range, satellite="Sentinel-1")
             .select(n=1)
-            .download(output_dir="./data/", bands=["vv","vh"])
-            .despeckle()
-            .calibrate_db()
-            .clip(bbox)
-            .normalise("minmax")
-            .prepare_for_ai(mapping="physics_guided")
+            .download(output_dir="./data/", bands=["vv", "vh"])
+            .preprocess(**pygeofetch_preprocess_kwargs)   # optional, runs the pygeofetch chain
+            .prepare_sar(mapping="physics_guided")        # terminal: returns a dict
         )
-        arr = result.six_channel   # (6, H, W) float32, ready for model
+        arr = ai_input["six_channel"]   # (6, H, W) float32, ready for the model
+        if not ai_input["ready"]:
+            print(ai_input["validation"]["errors"])
 
-        # Option B: step-by-step (same result)
-        scenes    = pipeline.search(bbox, date_range, satellite="Sentinel-1")
-        downloads = pipeline.download(scenes[:1], "./data/", bands=["vv","vh"])
-        ai_input  = pipeline.prepare_sar(downloads[0].path)
+    ``prepare_sar()`` and ``prepare_optical()`` are terminal operations that return dicts; ``scenes``,
+    ``downloads`` and ``current_path`` expose the intermediate state.
     """
 
     def __init__(self, provider: str = "planetary_computer"):

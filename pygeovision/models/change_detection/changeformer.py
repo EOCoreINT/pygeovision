@@ -8,7 +8,13 @@ logger = logging.getLogger(__name__)
 
 
 class ChangeFormer:
-    """ChangeFormer — transformer-based bi-temporal change detection.
+    """Compact siamese change-detection network with a cross-attention block.
+
+    This follows the *idea* of ChangeFormer (shared encoder for the two dates, attention between
+    them, a decoder to a change map) but it is a small network of about 0.8 M parameters, **not**
+    the published ChangeFormer with a MiT transformer backbone. It has no pretrained weights; it
+    is trained from scratch on your own labelled image pairs. ``backbone`` is accepted only as
+    the label ``"mit-b0"`` for compatibility with older code and has no effect on the network.
 
     Processes two co-registered GeoTIFFs (before/after) and outputs
     a binary or multi-class change mask.
@@ -21,6 +27,11 @@ class ChangeFormer:
 
     def __init__(self, num_classes: int = 2, in_channels: int = 4,
                  backbone: str = "mit-b0", device: str | None = None) -> None:
+        if backbone != "mit-b0":
+            raise ValueError(
+                f"backbone={backbone!r}: this network has a single fixed architecture. "
+                f"Only the label 'mit-b0' is accepted; the published ChangeFormer backbones are "
+                f"not implemented.")
         self.num_classes = num_classes
         self.in_channels = in_channels
         self.backbone = backbone
@@ -78,9 +89,10 @@ class ChangeFormer:
 
             def forward(self, x1, x2=None):
                 if x2 is None:
-                    # Assume x1 is stacked: (B, 2*C, H, W)
+                    # One stacked input (B, 2*C, H, W): the first C channels are the "before" image
+                    # and the last C the "after" image, the same order as forward(before, after).
                     C = x1.shape[1] // 2
-                    x2, x1 = x1[:, :C], x1[:, C:]
+                    x1, x2 = x1[:, :C], x1[:, C:]
                 diff = self.encoder(x1, x2)
                 return self.decoder(diff)
 

@@ -102,11 +102,34 @@ class PipelineYAMLParser:
                     f"{sorted(VALID_ACTIONS)} (other behaviour needs a Python Step with a function)")
             step_names.add(step["name"])
 
+        if len(step_names) != len(steps):
+            seen: set[str] = set()
+            dup = next(s["name"] for s in steps if s["name"] in seen or seen.add(s["name"]))
+            raise ValueError(f"Step names must be unique; '{dup}' appears twice")
+
         # Check dependency references
         for step in steps:
             for dep in step.get("depends_on", []):
                 if dep not in step_names:
                     raise ValueError(f"Step '{step['name']}' depends on unknown step '{dep}'")
+
+        # A cycle (a -> b -> a) has no valid order; without this check the steps would run in an arbitrary one
+        graph = {s["name"]: list(s.get("depends_on", [])) for s in steps}
+        state: dict[str, int] = {}
+
+        def visit(name: str, trail: list[str]) -> None:
+            if state.get(name) == 2:
+                return
+            if state.get(name) == 1:
+                cycle = " -> ".join([*trail[trail.index(name):], name])
+                raise ValueError(f"Steps depend on each other in a circle: {cycle}")
+            state[name] = 1
+            for dep in graph[name]:
+                visit(dep, [*trail, name])
+            state[name] = 2
+
+        for name in graph:
+            visit(name, [])
 
     @staticmethod
     def apply_overrides(config: dict, overrides: list[str]) -> dict:

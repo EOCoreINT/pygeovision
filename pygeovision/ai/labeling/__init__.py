@@ -29,39 +29,22 @@ except ImportError:
 
 
 class LabelingOrchestrator:
-    """
-    Orchestrates multiple labeling strategies and fuses results.
+    """Placeholder that never worked: it ran nothing and returned ``status: "completed"``.
 
-    Parameters
-    ----------
-    data_pipeline : SatelliteFetcher
-        SatelliteFetcher instance (passed to labelers that need additional data).
-    config : PyGeoVisionConfig, optional
-        PyGeoVision configuration.
+    It now raises instead of reporting success. To combine label sources use
+    :class:`pygeovision.labeling.pipeline.AutoLabelPipeline` (bbox in, fused raster out), or call the
+    labelers' ``label_tiles`` yourself and merge the rasters.
     """
 
     def __init__(self, data_pipeline: object, config: object = None) -> None:
         self._pygeofetch = data_pipeline
         self._config = config
 
-    def label(
-        self,
-        data_source: object,
-        strategy: object,
-        output_dir: object = None,
-        confidence_threshold: float = 0.5,
-        fuse_sources: bool = True,
-        **kwargs: object,
-    ) -> dict:
-        """Run labeling with the given strategy and return results."""
-        import logging  # noqa: PLC0415
-        logger = logging.getLogger(__name__)
-        logger.info("Running labeling with strategy: %s", strategy)
-        return {
-            "strategy": strategy,
-            "output_dir": str(output_dir),
-            "status": "completed",
-        }
+    def label(self, *args: object, **kwargs: object) -> dict:
+        raise NotImplementedError(
+            "LabelingOrchestrator.label() was a stub that returned status='completed' without labelling "
+            "anything. Use pygeovision.labeling.pipeline.AutoLabelPipeline, or a labeler's label_tiles()."
+        )
 
 
 __all__ = [

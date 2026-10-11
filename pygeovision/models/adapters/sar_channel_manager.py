@@ -102,8 +102,10 @@ def sar_to_hls_6ch(
 
     Both arrays must be:
     - Shape: (1, H, W) or (H, W) — single spatial image
-    - Values: normalised linear [0, 1] (output of normalise_sar_for_ai())
-              OR dB values will be auto-detected if values are negative
+    - Values: normalised to [0, 1] (output of normalise_sar_for_ai()). Raw dB
+              values are **not** detected or converted: several mappings compute
+              ``1 - band``, which is meaningless for negative dB numbers. Only the
+              ``sentinel_6ch_db`` mapping is meant for dB input.
 
     Available mappings
     ------------------

@@ -143,10 +143,22 @@ class GeoSegDataset:
             try:
                 with rio.open(str(img_path)) as src:
                     img  = src.read().astype("float32")   # (C, H, W)
+                    img_grid = (src.crs, src.transform)
                 with rio.open(str(lbl_path)) as src:
                     lbl  = src.read(1).astype("int64")    # (H, W)
+                    lbl_grid = (src.crs, src.transform)
             except Exception as exc:
                 logger.warning("Could not read %s: %s", img_path.name, exc)
+                continue
+
+            # Chips are cut by pixel position, so a label on a different grid would
+            # pair every image chip with the wrong piece of the label.
+            if lbl.shape != img.shape[1:] or img_grid[0] != lbl_grid[0] or \
+                    not img_grid[1].almost_equals(lbl_grid[1]):
+                logger.warning(
+                    "Skipping %s: image (%s px, %s) and label (%s px, %s) are not on the same grid. "
+                    "Resample the label onto the image grid first.",
+                    img_path.name, img.shape[1:], img_grid[0], lbl.shape, lbl_grid[0])
                 continue
 
             C, H, W = img.shape

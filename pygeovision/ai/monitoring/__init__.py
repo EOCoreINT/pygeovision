@@ -26,6 +26,11 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def _utcnow() -> str:
+    from datetime import timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+
+
 @dataclass
 class DriftReport:
     """Result of a drift detection check.
@@ -83,9 +88,12 @@ class DriftDetector:
             features: Feature array of shape (N, D).
         """
         self._reference = np.array(features, dtype=np.float32)
+        if self._reference.ndim == 0 or self._reference.shape[0] == 0:
+            self._reference = None
+            raise ValueError("reference features are empty")
         logger.info(
             "DriftDetector: reference set (%d samples, %d features).",
-            features.shape[0], features.shape[1] if features.ndim > 1 else 1,
+            self._reference.shape[0], self._reference.shape[1] if self._reference.ndim > 1 else 1,
         )
 
     def check(self, features: np.ndarray) -> DriftReport:
@@ -101,6 +109,14 @@ class DriftDetector:
             raise RuntimeError("Call fit_reference() before check().")
 
         features = np.array(features, dtype=np.float32)
+        if features.ndim == 0 or features.shape[0] == 0:
+            raise ValueError("production features are empty")
+        ref_dims = self._reference.shape[1] if self._reference.ndim > 1 else 1
+        new_dims = features.shape[1] if features.ndim > 1 else 1
+        if ref_dims != new_dims:
+            raise ValueError(f"production features have {new_dims} columns but the reference has {ref_dims}")
+        if self.method not in ("ks", "mmd"):
+            raise ValueError(f"unknown method {self.method!r}: use 'ks' or 'mmd'")
 
         if self.method == "ks":
             score, per_feature = self._ks_drift(features)
@@ -108,7 +124,7 @@ class DriftDetector:
             score, per_feature = self._mmd_drift(features)
 
         report = DriftReport(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=_utcnow(),
             drift_score=float(score),
             is_drifted=score > self.threshold,
             feature_drift=per_feature,
@@ -220,7 +236,7 @@ class PerformanceTracker:
             model_name: Model identifier for multi-model tracking.
         """
         entry = {
-            "timestamp": timestamp or datetime.utcnow().isoformat(),
+            "timestamp": timestamp or _utcnow(),
             "model": model_name or "default",
             **metrics,
         }
@@ -275,8 +291,15 @@ class PerformanceTracker:
         if self.storage_path.exists():
             try:
                 return json.loads(self.storage_path.read_text())
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                # Do not start empty and overwrite the file: keep the unreadable one aside.
+                backup = self.storage_path.with_suffix(".corrupt.json")
+                try:
+                    self.storage_path.rename(backup)
+                except OSError:
+                    backup = None
+                logger.warning("performance history %s is unreadable (%s); starting empty%s",
+                               self.storage_path, exc, f", old file kept as {backup}" if backup else "")
         return []
 
     def _save_history(self) -> None:

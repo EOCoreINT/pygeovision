@@ -168,11 +168,16 @@ class TverskyLoss:
         beta: float = 0.7,
         smooth: float = 1.0,
         ignore_index: int = 255,
+        classes: Sequence[int] | None = None,
     ) -> None:
+        """``classes`` restricts the loss to those class indices (as in :class:`DiceLoss`):
+        with a rare foreground class, ``classes=[1]`` keeps the easy background from
+        diluting the loss."""
         self.alpha = alpha
         self.beta = beta
         self.smooth = smooth
         self.ignore_index = ignore_index
+        self.classes = list(classes) if classes is not None else None
 
     def __call__(self, predictions: Any, targets: Any) -> Any:
         torch = _check_torch()
@@ -190,6 +195,10 @@ class TverskyLoss:
         fp = (p * (1 - t)).sum(dim=(0,2,3))
         fn = ((1 - p) * t).sum(dim=(0,2,3))
         tversky = (tp + self.smooth) / (tp + self.alpha*fp + self.beta*fn + self.smooth)
+        if self.classes is not None:
+            if max(self.classes) >= C or min(self.classes) < 0:
+                raise ValueError(f"TverskyLoss classes={self.classes} out of range for {C} classes")
+            tversky = tversky[self.classes]
         return (1 - tversky).mean()
 
 
@@ -256,6 +265,8 @@ class BoundaryAwareLoss:
         kernel_size: int = 3,
         ignore_index: int = 255,
     ) -> None:
+        if base_loss not in ("combo", "dice"):
+            raise ValueError(f"BoundaryAwareLoss base_loss must be 'combo' or 'dice', got {base_loss!r}")
         self.boundary_weight = boundary_weight
         self.base_loss_name = base_loss
         self.kernel_size = kernel_size
@@ -392,6 +403,9 @@ class GeospatialMixedLoss:
         loss = loss_fn(predictions, targets)
     """
 
+    #: names accepted as keys of ``weights``
+    COMPONENTS = frozenset({"combo", "boundary", "ohem", "dice", "focal", "tversky"})
+
     def __init__(
         self,
         weights: dict | None = None,
@@ -399,6 +413,10 @@ class GeospatialMixedLoss:
         ignore_index: int = 255,
     ) -> None:
         self.weights = weights or {"combo": 0.5, "boundary": 0.3, "ohem": 0.2}
+        unknown = sorted(set(self.weights) - self.COMPONENTS)
+        if unknown:
+            raise ValueError(f"GeospatialMixedLoss: unknown component(s) {unknown}; "
+                             f"choose from {sorted(self.COMPONENTS)}")
         self._combo    = ComboLoss(ignore_index=ignore_index)
         self._boundary = BoundaryAwareLoss(ignore_index=ignore_index)
         self._ohem     = OhemCrossEntropy(ignore_index=ignore_index)
@@ -419,8 +437,6 @@ class GeospatialMixedLoss:
                 l = FocalLoss()(predictions, targets)
             elif name == "tversky":
                 l = TverskyLoss()(predictions, targets)
-            else:
-                continue
             total = l * weight if total is None else total + l * weight
         return total if total is not None else predictions.sum() * 0
 

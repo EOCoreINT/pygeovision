@@ -10,6 +10,11 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _utcnow() -> str:
+    from datetime import timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+
+
 class ModelPerformanceTracker:
     """Track model performance over time with automatic alerting."""
 
@@ -26,7 +31,7 @@ class ModelPerformanceTracker:
                 n_samples: int = 0, notes: str = "") -> None:
         entry = {
             "model": self.model_name,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _utcnow(),
             "split": split,
             "n_samples": n_samples,
             "notes": notes,

@@ -182,3 +182,9 @@ class ExperimentTracker:
     @property
     def history(self) -> dict[str, list]:
         return self._history
+
+    @property
+    def active_backends(self) -> list[str]:
+        """The backends that actually started (a missing package or failed login leaves a backend out)."""
+        return [name for name, handle in (("mlflow", self._mlflow_run), ("wandb", self._wandb_run),
+                                          ("tensorboard", self._tb_writer)) if handle]

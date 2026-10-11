@@ -7,7 +7,7 @@ Supports:
   • Gradient accumulation + checkpointing
   • Hyperparameter optimization (Optuna, Ray Tune)
   • Experiment tracking (MLflow, W&B, TensorBoard)
-  • Early stopping, LR scheduling, EMA
+  • Early stopping and LR scheduling
   • ONNX / TorchScript export after training
 """
 from __future__ import annotations
@@ -46,7 +46,12 @@ class _AugmentedSegmentationDataset:
     def __init__(self, dataset: Any, mode: str = "medium") -> None:
         from pygeovision.ai.data.augmentations import GeoAugmentationPipeline
         self._dataset = dataset
-        self._pipeline = GeoAugmentationPipeline.for_task("segmentation", mode=mode)
+        # The band count decides which radiometric transforms are valid
+        # (hue/saturation and CLAHE exist only for 1- and 3-channel images).
+        image, _ = dataset[0]
+        n_channels = image.shape[0] if getattr(image, "ndim", 0) == 3 else None
+        self._pipeline = GeoAugmentationPipeline.for_task(
+            "segmentation", mode=mode, n_channels=n_channels)
 
     def __len__(self) -> int:
         return len(self._dataset)
@@ -84,6 +89,9 @@ class TrainingConfig:
     pin_memory: bool = True
     prefetch_factor: int = 2
     persistent_workers: bool = True
+    #: NOT used by GeoTrainer, which takes explicit train and validation sets.
+    #: Split the data yourself (see ``make_geo_loaders(split=...)``); a warning
+    #: is logged if you change this value.
     train_val_split: float = 0.8
 
     # ── Model ─────────────────────────────────────────────────────────
@@ -101,7 +109,7 @@ class TrainingConfig:
     backbone_lr_scale: float = 1.0
 
     # ── Optimisation ──────────────────────────────────────────────────
-    optimizer: str = "adamw"          # adamw | sgd | lion | lars
+    optimizer: str = "adamw"          # adamw | adam | sgd | lion (needs lion-pytorch)
     learning_rate: float = 1e-4
     weight_decay: float = 1e-4
     momentum: float = 0.9
@@ -110,7 +118,7 @@ class TrainingConfig:
     grad_accumulation_steps: int = 1
 
     # ── Scheduler ─────────────────────────────────────────────────────
-    scheduler: str = "cosine"         # cosine | linear | step | plateau | onecycle
+    scheduler: str = "cosine"         # cosine | cosine_warmup | warmup_cosine | linear | step | plateau | onecycle | none
     warmup_epochs: int = 5
     warmup_lr_scale: float = 0.1
     min_lr: float = 1e-6
@@ -144,7 +152,13 @@ class TrainingConfig:
     resume: bool = False
 
     # ── Augmentation ──────────────────────────────────────────────────
-    augment: bool = True
+    augment: bool = True              # segmentation only; needs albumentations
+    #: Strength of the training augmentation: light | medium | heavy |
+    #: geometric_only | radiometric_only. Values are assumed to lie in [0, 1].
+    augment_mode: str = "medium"
+    #: Accepted for backward compatibility, NOT used: the augmentation
+    #: probabilities are fixed per ``augment_mode``. A warning is logged if
+    #: you change any of them.
     flip_prob: float = 0.5
     rotate_limit: int = 30
     scale_limit: float = 0.1
@@ -169,9 +183,14 @@ class TrainingConfig:
     @classmethod
     def from_yaml(cls, path: str | Path) -> TrainingConfig:
         import yaml
+        import dataclasses
         with open(path) as f:
-            d = yaml.safe_load(f)
-        return cls(**{k: v for k, v in d.items() if hasattr(cls, k)})
+            d = yaml.safe_load(f) or {}
+        known = {f.name for f in dataclasses.fields(cls)}
+        unknown = sorted(set(d) - known)
+        if unknown:
+            logger.warning("Ignoring unknown TrainingConfig keys in %s: %s", path, unknown)
+        return cls(**{k: v for k, v in d.items() if k in known})
 
     def save(self, path: str | Path) -> None:
         import yaml
@@ -433,31 +452,48 @@ class GeoTrainer:
         return None
 
     def _setup_tracker(self) -> None:
-        tracker = self.cfg.tracker.lower()
-        if tracker in ("mlflow", "all"):
-            try:
-                import mlflow
-                mlflow.set_tracking_uri(self.cfg.mlflow_uri)
-                mlflow.set_experiment(self.cfg.experiment_name)
-                self._tracker_obj = mlflow
-                logger.info("MLflow tracker: %s", self.cfg.mlflow_uri)
-            except ImportError:
-                logger.warning("mlflow not installed (pip install mlflow)")
-        if tracker in ("wandb", "all"):
-            try:
-                import wandb
-                wandb.init(project=self.cfg.wandb_project, name=self.cfg.run_name or None,
-                           config=self.cfg.to_dict())
-                logger.info("W&B tracker: project=%s", self.cfg.wandb_project)
-            except ImportError:
-                logger.warning("wandb not installed (pip install wandb)")
+        """Start the experiment trackers named by ``cfg.tracker`` (mlflow, wandb, tensorboard, all, none).
+
+        Several can be combined with commas, e.g. ``"mlflow,tensorboard"``. A missing library logs a
+        warning and that backend is skipped; training itself is never stopped by tracking.
+        """
+        tracker = (self.cfg.tracker or "none").lower().replace(" ", "")
+        if tracker in ("", "none"):
+            return
+        known = ("mlflow", "wandb", "tensorboard")
+        backends = list(known) if tracker == "all" else [t for t in tracker.split(",") if t]
+        unknown = [t for t in backends if t not in known]
+        if unknown:
+            logger.warning("Unknown tracker(s) %s ignored; choose from %s, 'all' or 'none'.", unknown, known)
+        backends = [t for t in backends if t in known]
+        if not backends:
+            return
+        try:
+            from pygeovision.training.experiment import ExperimentTracker
+            self._tracker_obj = ExperimentTracker(
+                self.cfg.experiment_name, run_name=self.cfg.run_name, backends=backends,
+                mlflow_uri=self.cfg.mlflow_uri, wandb_project=self.cfg.wandb_project,
+                tb_log_dir=str(self.output_dir / "tb_logs"),
+            ).start_run(self.cfg.to_dict())
+            active = getattr(self._tracker_obj, "active_backends", backends)
+            if active:
+                logger.info("Experiment tracking: %s", ", ".join(active))
+            else:
+                logger.warning("Experiment tracking requested (%s) but no backend could start; "
+                               "continuing without it.", ", ".join(backends))
+                self._tracker_obj = None
+        except Exception as exc:  # tracking must never stop training
+            logger.warning("Experiment tracking could not start (%s); continuing without it.", exc)
+            self._tracker_obj = None
 
     def _log_metrics(self, metrics: dict[str, float], step: int) -> None:
         if self._tracker_obj is not None:
+            numeric = {k: float(v) for k, v in metrics.items()
+                       if isinstance(v, (int, float)) and not isinstance(v, bool)}
             try:
-                self._tracker_obj.log_metrics(metrics, step=step)
+                self._tracker_obj.log(numeric, step=step)
             except Exception as exc:
-                logger.warning("Experiment tracker log_metrics() failed at step %d: %s", step, exc)
+                logger.warning("Experiment tracker log() failed at step %d: %s", step, exc)
 
     def _setup_distributed(self) -> Any:
         """Set up DDP or FSDP if multiple GPUs available."""
@@ -482,6 +518,9 @@ class GeoTrainer:
             elif strategy == "fsdp":
                 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
                 return FSDP(self.model)
+            else:
+                logger.warning("strategy=%r is not implemented (use 'auto', 'ddp' or 'fsdp'); "
+                               "training on a single device.", strategy)
         except Exception as exc:
             logger.warning("Distributed setup failed (%s); using single-device.", exc)
         return self.model
@@ -516,6 +555,16 @@ class GeoTrainer:
             logger.error("torch not installed: %s", exc)
             return {"error": str(exc)}
 
+        if metric_fn is not None:
+            logger.warning(
+                "fit(metric_fn=...) is not used: validation always reports val_loss, val_iou, "
+                "val_f1, val_accuracy and the per-class values (val_map50 for detection). "
+                "To track your own score, evaluate best.pth after training.")
+        if self.cfg.train_val_split != TrainingConfig().train_val_split:
+            logger.warning(
+                "TrainingConfig.train_val_split=%s has no effect: GeoTrainer trains on the "
+                "train set and validates on the val set you pass to fit().",
+                self.cfg.train_val_split)
         self._setup_tracker()
         device = self._get_device()
         model = self._setup_distributed()
@@ -554,7 +603,17 @@ class GeoTrainer:
         # Build DataLoaders if datasets provided
         if train_dataset is not None and self.cfg.augment:
             if self.cfg.task == "segmentation":
-                train_dataset = _AugmentedSegmentationDataset(train_dataset)
+                _defaults = TrainingConfig()
+                _ignored = [n for n in ("flip_prob", "rotate_limit", "scale_limit",
+                                        "brightness_limit", "contrast_limit")
+                            if getattr(self.cfg, n) != getattr(_defaults, n)]
+                if _ignored:
+                    logger.warning(
+                        "TrainingConfig fields %s have no effect: augmentation "
+                        "strength is chosen with augment_mode (%r).",
+                        _ignored, self.cfg.augment_mode)
+                train_dataset = _AugmentedSegmentationDataset(
+                    train_dataset, mode=self.cfg.augment_mode)
             else:
                 logger.warning(
                     "cfg.augment=True has no effect for task=%r -- the real "
@@ -724,7 +783,8 @@ class GeoTrainer:
         # mode (returning a real loss dict summed below) -- calling a
         # separate loss_fn on their output would be wrong/meaningless.
         if loss_fn is None and self.cfg.task != "detection":
-            loss_fn = torch.nn.CrossEntropyLoss()
+            # 255 is the package-wide nodata value in label rasters; it is never a class.
+            loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
 
         # Mixed precision
         autocast_ctx = self._build_precision_context()
@@ -744,6 +804,14 @@ class GeoTrainer:
                     f"unfreeze_backbone_epoch / backbone_lr_scale / optimizer / scheduler?). "
                     f"Use the original settings to resume, or resume=False to start fresh."
                 ) from exc
+            saved_max = resume_state.get("max_epochs")
+            if saved_max is not None and saved_max != self.cfg.max_epochs:
+                logger.warning(
+                    "Resuming with max_epochs=%d but the saved run used %d: the learning-rate schedule "
+                    "restored from last.pth was laid out for %d epochs, so the rate will not follow a "
+                    "fresh %d-epoch curve. To train longer, start a new run with "
+                    "checkpoint_path=<best.pth> instead.",
+                    self.cfg.max_epochs, saved_max, saved_max, self.cfg.max_epochs)
             es_state = resume_state.get("early_stopping", {})
             early_stopping.best = es_state.get("best")
             early_stopping.counter = int(es_state.get("counter", 0))
@@ -967,6 +1035,13 @@ class GeoTrainer:
                     val_metrics["val_map50_95"] = det_computed.get("mAP50_95", 0.0)
                     if "note" in det_computed:
                         val_metrics["_map_note"] = det_computed["note"]
+                # A metric name that validation does not produce would read as 0.0 forever and
+                # end the run after `patience` epochs for no visible reason: fail loudly instead.
+                for _what, _name in (("early_stopping_metric", es_metric), ("checkpoint_metric", ckpt_metric)):
+                    if _name not in val_metrics:
+                        raise ValueError(
+                            f"{_what}={_name!r} is not produced by validation. Available: "
+                            f"{sorted(k for k, v in val_metrics.items() if isinstance(v, (int, float)))}")
                 history["val_loss"].append(val_metrics["val_loss"])
                 history["val_iou"].append(val_metrics["val_iou"])
                 history.setdefault("lr", []).append(float(val_metrics["lr"]))
@@ -984,11 +1059,12 @@ class GeoTrainer:
 
                 # Log
                 self._log_metrics(val_metrics, step=epoch)
+                _shown = "val_map50" if self.cfg.task == "detection" else "val_iou"
                 logger.info(
-                    "Epoch %d/%d | loss=%.4f | val_loss=%.4f | val_iou=%.4f | lr=%.2e",
+                    "Epoch %d/%d | loss=%.4f | val_loss=%.4f | %s=%.4f | lr=%.2e",
                     epoch, self.cfg.max_epochs,
                     avg_train_loss, val_metrics["val_loss"],
-                    val_metrics["val_iou"], optimizer.param_groups[0]["lr"],
+                    _shown, val_metrics.get(_shown, 0.0), optimizer.param_groups[0]["lr"],
                 )
 
                 # Early stopping bookkeeping (the break happens after this epoch's state is saved)
@@ -1022,6 +1098,7 @@ class GeoTrainer:
                                        "should_stop": early_stopping.should_stop},
                     "checkpoints": ckpt_mgr.state(),
                     "metrics": val_metrics,
+                    "max_epochs": self.cfg.max_epochs,
                 })
 
             if val_loader is not None and early_stopping.should_stop:
@@ -1030,6 +1107,12 @@ class GeoTrainer:
                 break
 
         duration = time.time() - t_start
+
+        if self._tracker_obj is not None:
+            try:
+                self._tracker_obj.end_run()
+            except Exception as exc:
+                logger.warning("Experiment tracker end_run() failed: %s", exc)
 
         # Export if requested
         if self.cfg.export_onnx:
@@ -1061,7 +1144,7 @@ class GeoTrainer:
             result["best_val_map50"] = early_stopping.best
         logger.info("Training complete: %.1f min | best=%s=%.4f",
                     duration / 60,
-                    self.cfg.early_stopping_metric,
+                    es_metric,
                     early_stopping.best or 0.0)
         return result
 
@@ -1069,10 +1152,12 @@ class GeoTrainer:
         try:
             import torch
             out_path = self.output_dir / "model.onnx"
+            from pygeovision._onnx import export_onnx
+            model = _unwrap(model)
             model.eval()
             dummy = torch.randn(1, self.cfg.in_channels, 512, 512).to(device)
-            torch.onnx.export(
-                model, dummy, str(out_path),
+            export_onnx(
+                model, dummy, out_path,
                 opset_version=self.cfg.onnx_opset,
                 input_names=["input"], output_names=["output"],
                 dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},

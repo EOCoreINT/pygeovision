@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING, Any
 
 from pygeovision.ai.data.augmentations import GeoAugmentationPipeline
 from pygeovision.ai.data.dataset import GeoDataset, TileMetadata
-from pygeovision.ai.data.preprocessing import GeoPreprocessor
 from pygeovision.ai.data.tiling import TilingConfig, TilingEngine
 from pygeovision.core.exceptions import DatasetError
 
@@ -118,7 +117,8 @@ class GeoDataLoader:
         min_valid_fraction : float
             Minimum valid pixel fraction per tile.
         preprocessing_steps : list of str, optional
-            Preprocessing steps to apply (see :class:`~pygeovision.ai.data.preprocessing.GeoPreprocessor`).
+            Accepted for compatibility but **not applied** by ``prepare()`` (a warning is logged); apply
+            ``pygeovision.ai.data.preprocessing.GeoPreprocessor`` to the arrays yourself.
         seed : int
             Random seed for reproducible splits.
         **kwargs
@@ -201,9 +201,13 @@ class GeoDataLoader:
             **kwargs,
         )
 
-        # Step 4: Compute preprocessing statistics
+        # Step 4: preprocessing is not applied here -- say so instead of building and discarding an object
         if preprocessing_steps:
-            GeoPreprocessor(steps=preprocessing_steps)
+            logger.warning(
+                "preprocessing_steps=%s is not applied by prepare(); the tiles are written as read from the "
+                "source. Apply GeoPreprocessor(steps=...) to the arrays in your training loop.",
+                preprocessing_steps,
+            )
 
         # Step 5: Create spatially aware train/val/test splits
         split_map = self._spatial_split(
@@ -221,7 +225,8 @@ class GeoDataLoader:
         # Step 6: Build augmentation pipeline for training
         augmentation_pipeline = None
         if augment:
-            augmentation_pipeline = GeoAugmentationPipeline.medium(task=task)
+            n_ch = len(all_tiles[0].bands) if all_tiles[0].bands else None
+            augmentation_pipeline = GeoAugmentationPipeline.medium(task=task, n_channels=n_ch)
 
         # Step 7: Infer class names from labeling strategy
         class_names = self._infer_class_names(task, label_strategy)
@@ -332,6 +337,9 @@ class GeoDataLoader:
         **kwargs: Any,
     ) -> None:
         """Generate labels for all tiles using the configured strategy."""
+        n_labelled = 0
+        n_attempted = 0
+        first_error: str | None = None
         for strat in strategy:
             labeler = self._get_labeler(strat)
             if labeler is None:
@@ -344,8 +352,9 @@ class GeoDataLoader:
                 continue
 
             logger.info("Generating labels with strategy: %s", strat)
+            n_attempted += 1
             try:
-                labeler.label_tiles(
+                results = labeler.label_tiles(
                     tiles=tiles,
                     output_dir=label_dir,
                     task=task,
@@ -353,6 +362,25 @@ class GeoDataLoader:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error("Labeling with '%s' failed: %s", strat, exc)
+                first_error = first_error or f"{strat}: {type(exc).__name__}: {exc}"
+                continue
+            ok = [r for r in results if getattr(r, "success", False)]
+            skipped = [r for r in results if getattr(r, "skipped", False)]
+            bad = [r for r in results if not getattr(r, "success", False) and not getattr(r, "skipped", False)]
+            n_labelled += len(ok)
+            logger.info("Labeler '%s': %d labelled, %d skipped, %d failed (of %d tiles)",
+                        strat, len(ok), len(skipped), len(bad), len(tiles))
+            if bad:
+                first_error = first_error or f"{strat}: {bad[0].error}"
+                logger.warning("Labeler '%s': %d tile(s) failed; first: %s", strat, len(bad), bad[0].error)
+            elif skipped and not ok:
+                first_error = first_error or f"{strat}: {skipped[0].error}"
+
+        if n_attempted and n_labelled == 0:
+            raise DatasetError(
+                f"No tile received a label from {strategy}. First problem: {first_error}. A dataset without "
+                "labels cannot be trained on -- check the area has data in the label source, or the network."
+            )
 
     def _get_labeler(self, strategy: str) -> Any:
         """Instantiate a labeler for the given strategy."""
@@ -440,6 +468,22 @@ class GeoDataLoader:
         n_test = max(1, int(n * test_split)) if test_split > 0 else 0
         n_val = max(1, int(n * val_split)) if val_split > 0 else 0
 
+        if n - n_test - n_val < 1:
+            # Too few scenes to give each split a whole scene (one scene would otherwise be 100% "test"
+            # and leave nothing to train on). Cut every scene into contiguous bands of tiles instead.
+            logger.warning(
+                "Only %d source file(s): splitting each into contiguous bands of tiles (train | val | test) "
+                "instead of by file. Tiles on either side of a band edge share up to `overlap` pixels; "
+                "use more scenes for a fully independent validation set.", n)
+            split_map = {}
+            for group in source_groups.values():
+                split_map.update(GeoDataLoader._band_split(group, val_split, test_split))
+            counts = {}
+            for v in split_map.values():
+                counts[v] = counts.get(v, 0) + 1
+            logger.info("Split: %s", counts)
+            return split_map
+
         test_sources = set(sources[:n_test])
         val_sources = set(sources[n_test : n_test + n_val])
         # Remaining are train
@@ -460,6 +504,33 @@ class GeoDataLoader:
             counts[v] = counts.get(v, 0) + 1
         logger.info("Split: %s", counts)
         return split_map
+
+    @staticmethod
+    def _band_split(tiles: list[TileMetadata], val_split: float, test_split: float) -> dict[str, str]:
+        """Split the tiles of ONE scene into train | val | test bands (rows of tiles, else columns)."""
+        for axis in ("row_off", "col_off"):
+            keys = sorted({getattr(t, axis) for t in tiles})
+            if len(keys) >= 3:
+                break
+        else:
+            logger.warning("Scene has fewer than 3 distinct tile rows and columns: all %d tile(s) go to "
+                           "'train' (no validation/test split is possible).", len(tiles))
+            return {t.tile_id: "train" for t in tiles}
+        n = len(keys)
+        n_test = max(1, round(n * test_split)) if test_split > 0 else 0
+        n_val = max(1, round(n * val_split)) if val_split > 0 else 0
+        while n - n_test - n_val < 1:                 # always leave at least one band for training
+            if n_val >= n_test and n_val > 0:
+                n_val -= 1
+            elif n_test > 0:
+                n_test -= 1
+        train_keys = set(keys[: n - n_val - n_test])
+        val_keys = set(keys[n - n_val - n_test: n - n_test])
+        out = {}
+        for t in tiles:
+            k = getattr(t, axis)
+            out[t.tile_id] = "train" if k in train_keys else "val" if k in val_keys else "test"
+        return out
 
     @staticmethod
     def _resolve_output_dir(

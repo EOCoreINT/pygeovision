@@ -129,9 +129,12 @@ class TiledInference:
             window = GaussianBlend.window(self.chip_size, self.sigma_ratio)
             return window[:h, :w]
         elif self.blend_mode == "linear":
-            y_ramp = np.minimum(np.arange(h), np.arange(h)[::-1]) / (h // 2)
-            x_ramp = np.minimum(np.arange(w), np.arange(w)[::-1]) / (w // 2)
-            return np.outer(y_ramp.clip(0, 1), x_ramp.clip(0, 1))
+            # Weights must stay above zero everywhere: a pixel covered by a single chip at the
+            # scene border would otherwise get weight 0 and silently turn into class 0.
+            def _ramp(n: int) -> Any:
+                return ((np.minimum(np.arange(n), np.arange(n)[::-1]) + 1) / (n / 2 + 0.5)).clip(0, 1)
+
+            return np.outer(_ramp(h), _ramp(w))
         else:  # constant
             return np.ones((h, w))
 
@@ -286,12 +289,17 @@ class TiledInference:
         return accum, n_chips
 
     def _preflight(self, n_bands: int) -> str | None:
-        """None if the model accepts ``n_bands`` input channels, else the error text."""
+        """None if the model accepts ``n_bands`` channels at ``chip_size``, else the error text.
+
+        The probe uses the real chip size (edge chips are zero-padded to it), so a model that
+        only accepts one size, such as an ONNX export with fixed spatial dimensions, is
+        judged on the size it will actually be given.
+        """
         import torch
 
         try:
             with torch.no_grad():
-                self.model(torch.zeros(1, n_bands, 32, 32).to(self._device))
+                self.model(torch.zeros(1, n_bands, self.chip_size, self.chip_size).to(self._device))
             return None
         except Exception as exc:
             return str(exc)
@@ -325,7 +333,8 @@ class TiledInference:
         self._prepare_model()
         problem = self._preflight(image.shape[0])
         if problem is not None and not self.tolerate_chip_failures:
-            raise ValueError(f"Model does not accept {image.shape[0]} input band(s): {problem}")
+            raise ValueError(f"Model does not accept {image.shape[0]} input band(s) at "
+                             f"chip_size={self.chip_size}: {problem}")
         accum, _ = self._blend(image)
         return accum.astype(np.float32)
 
@@ -345,11 +354,17 @@ class TiledInference:
             output_path: Output prediction GeoTIFF
             return_probabilities: If True, output all class probability maps
             band_selection: Band indices to use (default: all)
-            normalise: Normalise each band to [0, 1]
-            nodata_value: Value to treat as nodata/ignore
+            normalise: Stretch every band to its own 2nd-98th percentile range (computed
+                over the valid pixels of this scene; values are not clipped). Set False when
+                the model was trained on values used as stored.
+            nodata_value: Value that marks pixels without data. Defaults to the nodata value
+                declared in the file. A pixel is "no data" if it is NaN/Inf in any band, or
+                equals the nodata value in every band.
 
         Returns:
-            Dict with output_path, inference stats, timing
+            Dict with output_path, inference stats, timing. In the written label raster, no-data
+            pixels are 255 and the raster declares ``nodata=255`` (probability rasters get zeros
+            there); ``valid_fraction`` reports the share of pixels that were predicted.
         """
         try:
             import numpy as np
@@ -390,9 +405,11 @@ class TiledInference:
             if not self.tolerate_chip_failures:
                 return {
                     "success": False,
-                    "error": f"Model does not accept {len(bands)} input band(s) (selected from "
-                             f"{n_bands} real band(s) in {image_path}): {problem}. Pass band_selection= "
-                             f"explicitly if this file has more bands than the model expects.",
+                    "error": f"Model does not accept {len(bands)} input band(s) at chip_size="
+                             f"{self.chip_size} (selected from {n_bands} real band(s) in {image_path}): "
+                             f"{problem}. Pass band_selection= explicitly if this file has more bands "
+                             f"than the model expects; if the message is about dimensions, the model "
+                             f"may only accept one chip size (an ONNX export with a fixed size).",
                 }
             logger.warning(
                 "Pre-flight check found the model does not accept %d input band(s) "
@@ -402,10 +419,21 @@ class TiledInference:
                 len(bands), n_bands, image_path, problem,
             )
 
+        # Pixels without data must neither be predicted nor distort the stretch (one NaN makes
+        # np.percentile return NaN for the whole band, which would blank the whole map).
+        nd = nodata_value if nodata_value is not None else profile.get("nodata")
+        valid = np.isfinite(image).all(axis=0)
+        if nd is not None and np.isfinite(nd):
+            valid &= ~(image == nd).all(axis=0)
+
         if normalise:
             for b in range(image.shape[0]):
-                p2, p98 = np.percentile(image[b], (2, 98))
+                values = image[b][valid]
+                if values.size == 0:
+                    continue
+                p2, p98 = np.percentile(values, (2, 98))
                 image[b] = (image[b] - p2) / (p98 - p2 + 1e-8)
+        image[:, ~valid] = 0.0
 
         accum, n_chips_total = self._blend(image)
         n_chips_ok = n_chips_total
@@ -413,10 +441,12 @@ class TiledInference:
         # Build output
         if return_probabilities:
             out_data = (accum * 255).clip(0, 255).astype(np.uint8)
+            out_data[:, ~valid] = 0
             out_profile = profile.copy()
             out_profile.update(count=self.num_classes, dtype="uint8", compress="lzw")
         else:
             label = np.argmax(accum, axis=0).astype(np.uint8)
+            label[~valid] = 255
             out_data = label[np.newaxis]
             out_profile = profile.copy()
             out_profile.update(count=1, dtype="uint8", compress="lzw")
@@ -426,6 +456,8 @@ class TiledInference:
         _nd = out_profile.get("nodata")
         if _nd is not None and not (float(_nd).is_integer() and 0 <= _nd <= 255):
             out_profile["nodata"] = None                       # the source's nodata does not fit uint8
+        if not return_probabilities and not valid.all():
+            out_profile["nodata"] = 255
         with rasterio.open(str(output_path), "w", **out_profile) as dst:
             dst.write(out_data)
             dst.update_tags(
@@ -444,6 +476,7 @@ class TiledInference:
             "output_path": str(output_path),
             "n_chips": n_chips_ok,
             "image_size": (H, W),
+            "valid_fraction": round(float(valid.mean()), 4),
             "duration_seconds": round(duration, 1),
             "chips_per_second": round(n_chips_ok / max(duration, 0.001), 1),
             "blend_mode": self.blend_mode,

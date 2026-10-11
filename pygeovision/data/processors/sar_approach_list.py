@@ -92,18 +92,19 @@ if result.repaired:
             "VH cross-polarisation at the subswath boundaries). Removing the noise "
             "floor improves the signal-to-clutter ratio and prevents speckle filters "
             "from treating noise peaks as real scatter. "
-            "PyGeoVision calls pyroSAR's apply_thermal_noise_removal() when available, "
-            "or falls back to a simplified version when SNAP is not installed."
+            "PyGeoVision does NOT run this step. It is done by ESA SNAP / pyroSAR outside "
+            "PyGeoVision, or already applied in a pre-processed product such as the "
+            "Planetary Computer 'sentinel-1-rtc' collection."
         ),
         "inputs": ["sar_path"],
         "outputs": ["noise_removed_path"],
-        "notes": "Requires pyroSAR + ESA SNAP installation for full accuracy",
+        "notes": "External step (ESA SNAP / pyroSAR); not performed by PyGeoVision",
     },
     {
         "id": "S3",
         "phase": "pre_processing",
         "name": "Radiometric calibration → sigma-naught (linear)",
-        "location": "pygeovision.data.processors.sar.SARPreprocessor._apply_calibration_if_needed",
+        "location": "external (ESA SNAP / pyroSAR, or a pre-calibrated product); not performed by PyGeoVision",
         "when": "After thermal noise removal",
         "rationale": (
             "Converts raw Digital Numbers (DN) from the Sentinel-1 measurement to "
@@ -119,7 +120,7 @@ if result.repaired:
         "id": "S4",
         "phase": "pre_processing",
         "name": "Terrain correction / RTC geocoding",
-        "location": "pyroSAR / SNAP (Range-Doppler Terrain Correction)",
+        "location": "external (ESA SNAP / pyroSAR, or a terrain-corrected product); not performed by PyGeoVision",
         "when": "After radiometric calibration",
         "rationale": (
             "Sentinel-1 GRD is in radar geometry (slant range) with geometric "

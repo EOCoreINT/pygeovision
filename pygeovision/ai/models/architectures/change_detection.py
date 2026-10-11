@@ -48,7 +48,11 @@ def build_siamese_unet(in_channels: int = 3, num_classes: int = 2, encoder: str 
 
 
 def build_changeformer(in_channels: int = 3, num_classes: int = 2, **kwargs: Any) -> Any:
-    """Build a ChangeFormer transformer change detection model."""
+    """Build a change-detection model from two randomly initialised SegFormer networks.
+
+    One network sees each date; their per-class outputs are concatenated and fused by a 1x1
+    convolution. This is *not* the published ChangeFormer and has no pretrained weights.
+    """
     try:
         import torch.nn as nn
         from transformers import SegformerConfig, SegformerForSemanticSegmentation

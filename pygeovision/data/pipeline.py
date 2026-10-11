@@ -42,9 +42,10 @@ class DataPipeline:
         ...     cloud_cover="0-10",
         ... )
         >>> pipeline.filter("data.cloud_cover < 5")
-        >>> pipeline.download(parallel=4, output="./raw/", verify_checksum=True)
-        >>> pipeline.export(format="cloud_optimized_geotiff", destination="s3://bucket/")
-        >>> pipeline.schedule("0 6 * * 1")  # Every Monday 6am UTC
+        >>> pipeline.download(parallel=4, output="./raw/", verify_checksum=True,
+        ...                   post_process=["reproject:EPSG:4326", "cog"])
+        >>> pipeline.export(destination="s3://bucket/")
+        >>> pipeline.set_schedule("0 6 * * 1")  # Every Monday 6am UTC (registers nothing by itself)
         >>> pipeline.run()
     """
 
@@ -78,15 +79,13 @@ class DataPipeline:
         Args:
             providers: pygeofetch provider IDs.
             bbox: Bounding box as 'minx,miny,maxx,maxy' string or tuple.
-            date_range: Date range string ('last_7_days', 'last_30_days',
-                        'this_month') or (start, end) tuple.
+            date_range: ``'last_7_days'``, ``'last_30_days'``, ``'last_year'`` or a ``(start, end)`` tuple of
+                        ``YYYY-MM-DD`` strings. Other words are not understood by the runner.
             cloud_cover: Cloud cover range as 'MIN-MAX' (e.g. '0-15').
             max_results: Maximum scenes to find.
-            satellites: Satellite names filter.
-            collections: STAC collection IDs.
-            processing_level: e.g. 'L2A', 'L1C'.
-            sort_by: 'cloud_cover', 'datetime', 'score'.
-            cql2: CQL2 filter expression.
+            satellites, collections, processing_level, sort_by, cql2: written to the YAML for forward
+                compatibility, but the current pygeofetch runner's search step only uses ``providers``,
+                ``bbox``, the dates, ``cloud_cover`` and ``max_results``. Use ``filter()`` to narrow results.
 
         Returns:
             Self (for chaining).
@@ -156,7 +155,8 @@ class DataPipeline:
             verify_checksum: SHA256 verify each file.
             resume: Auto-resume interrupted downloads.
             retry: Max retry attempts.
-            post_process: Processing chain (e.g. ['unzip', 'reproject:EPSG:4326', 'cog']).
+            post_process: Processing actions, added as a separate ``process`` step right after the download
+                (e.g. ``['reproject:EPSG:4326', 'cog']``).
             bandwidth_limit: Throttle (e.g. '10MB', '500KB').
             on_failure: 'skip', 'abort', or 'retry'.
 
@@ -171,11 +171,12 @@ class DataPipeline:
             "retry": retry,
             "on_failure": on_failure,
         }
-        if post_process:
-            config["post_process"] = ",".join(post_process)
         if bandwidth_limit:
             config["bandwidth_limit"] = bandwidth_limit
         self.steps.append(PipelineStep("download", config))
+        if post_process:
+            # The runner's download step does not read ``post_process``; processing is its own step.
+            self.steps.append(PipelineStep("process", {"actions": list(post_process)}))
         return self
 
     def export(
@@ -187,9 +188,10 @@ class DataPipeline:
         """Add an export step to the pipeline.
 
         Args:
-            format: 'cloud_optimized_geotiff', 'geotiff', 'netcdf', 'zarr'.
-            destination: Local path or S3/GCS URI.
-            compress: Apply LZW compression.
+            format: A label recorded in the run summary. The runner **copies the files as they are**; it does
+                not convert formats (add ``post_process=['cog']`` to ``download()`` for that).
+            destination: Local directory, ``s3://bucket/prefix/`` or ``gs://bucket/prefix/``.
+            compress: Written to the YAML but not read by the current runner.
 
         Returns:
             Self (for chaining).
@@ -208,7 +210,11 @@ class DataPipeline:
         output: str = "./predictions/",
         num_classes: int = 2,
     ) -> DataPipeline:
-        """Add a native AI processing step to the pipeline.
+        """Add an AI step *description* to the pipeline.
+
+        The pygeofetch runner cannot execute it: ``validate()`` returns ``False`` and ``run()`` raises
+        ``ValueError`` for a pipeline that contains an ``ai`` step. Run the data steps, then run the model on the
+        downloaded files with ``pygeovision infer`` or a pipeline.
 
         Args:
             model: Model name or HuggingFace Hub ID.
@@ -219,6 +225,8 @@ class DataPipeline:
         Returns:
             Self (for chaining).
         """
+        # NB: pygeofetch's runner has no "ai" step, so run() refuses pipelines that contain one. Run the model
+        # on the downloaded files afterwards (``pygeovision infer`` or a pipeline).
         self.steps.append(PipelineStep("ai", {
             "model": model,
             "task": task,
@@ -277,6 +285,9 @@ class DataPipeline:
         if not self.steps:
             logger.warning("Pipeline '%s' has no steps.", self.name)
             return False
+        if any(st.type == "ai" for st in self.steps):
+            logger.error("Pipeline '%s' contains an 'ai' step, which the pygeofetch runner cannot execute.", self.name)
+            return False
 
         if fetcher and fetcher._has_pygeofetch():
             with __import__("tempfile").NamedTemporaryFile(
@@ -300,21 +311,36 @@ class DataPipeline:
 
         Args:
             fetcher: SatelliteFetcher instance. If None, creates one.
-            output_dir: Override output directory.
+            output_dir: Replaces the ``output`` of every download step.
             step: Run only this specific step name.
 
         Returns:
             Dict with execution summary.
         """
+        if any(st.type == "ai" for st in self.steps):
+            raise ValueError(
+                f"Pipeline '{self.name}' contains an 'ai' step, which the pygeofetch runner cannot execute. "
+                "Remove it and run the model on the downloaded files with `pygeovision infer`."
+            )
         if fetcher is None:
             from pygeovision.data.fetch import SatelliteFetcher
             fetcher = SatelliteFetcher()
+
+        doc = self.to_yaml()
+        if output_dir is not None:
+            import copy
+            clone = copy.copy(self)
+            clone.steps = [
+                PipelineStep(st.type, {**st.config, "output": str(output_dir)}) if st.type == "download" else st
+                for st in self.steps
+            ]
+            doc = clone.to_yaml()
 
         # Save to temp YAML and delegate to pygeofetch
         with __import__("tempfile").NamedTemporaryFile(
             suffix=".yaml", delete=False, mode="w"
         ) as f:
-            f.write(self.to_yaml())
+            f.write(doc)
             tmp = Path(f.name)
 
         try:

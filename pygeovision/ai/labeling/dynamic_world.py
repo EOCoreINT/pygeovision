@@ -121,6 +121,12 @@ class DynamicWorldLabeler(BaseLabeler):
             raise ValueError(
                 f"composite_method must be 'mode' or 'probability', got {composite_method!r}"
             )
+        if composite_method == "probability" or probability_bands:
+            raise NotImplementedError(
+                "composite_method='probability' and probability_bands=True are not implemented: they used to be "
+                "accepted and silently produced the per-pixel most-frequent class (mode) instead. Use "
+                "composite_method='mode'."
+            )
 
         self.config = DynamicWorldConfig(
             start_date=start_date,
@@ -194,22 +200,13 @@ class DynamicWorldLabeler(BaseLabeler):
             dw_paths = self._fetch_dynamic_world_scenes(bbox_wgs84)
 
             if not dw_paths:
-                logger.warning(
-                    "No Dynamic World scenes found for %s in %s to %s",
-                    bbox_wgs84, self.config.start_date, self.config.end_date
-                )
-                mask = np.zeros((height, width), dtype=np.uint8)
-                self._write_mask_geotiff(
-                    mask, output_path,
-                    {"driver": "GTiff", "dtype": "uint8", "width": width,
-                     "height": height, "count": 1, "crs": crs,
-                     "transform": transform, "compress": "lzw"}
-                )
-                logger.warning("No Dynamic World scenes found for bbox %s", bbox_wgs84)
-                return LabelingResult(
-                    tile_id=str(tile_path), label_path=output_path,
-                    source="dynamic_world",
-                )
+                # Writing an all-zero mask here would label the whole tile "water" (class 0) and look like
+                # a success. Report the failure instead and write nothing.
+                msg = (f"No Dynamic World scenes found for bbox {bbox_wgs84} between {self.config.start_date} and "
+                       f"{self.config.end_date}. Dynamic World is served through Google Earth Engine "
+                       "(pip install earthengine-api and authenticate); no label was written.")
+                logger.warning(msg)
+                return LabelingResult(tile_id=str(tile_path), label_path=None, source="dynamic_world", error=msg)
 
             # Create composite and reproject to tile CRS/extent
             mask = self._create_composite(
@@ -230,11 +227,12 @@ class DynamicWorldLabeler(BaseLabeler):
                 "count": bands,
                 "crs": crs,
                 "transform": transform,
+                "nodata": 255,
                 "compress": "lzw",
             }
             self._write_mask_geotiff(mask, output_path, meta)
 
-            stats = self._compute_class_distribution(mask, DW_CLASSES)
+            stats = self._compute_class_distribution(mask, DW_CLASSES, nodata_value=255)
 
             logger.info(
                 "DynamicWorld labeling complete: start=%s end=%s method=%s num_scenes=%d bbox_wgs84=%s",
@@ -453,10 +451,11 @@ class DynamicWorldLabeler(BaseLabeler):
         import rasterio
         from rasterio.warp import Resampling, reproject
 
+        nodata = 255
         layers: list[np.ndarray] = []
         for path in scene_paths:
             try:
-                layer = np.zeros((dst_height, dst_width), dtype=np.uint8)
+                layer = np.full((dst_height, dst_width), nodata, dtype=np.uint8)   # uncovered pixels are no-data, not "water"
                 with rasterio.open(path) as src:
                     reproject(
                         source=rasterio.band(src, 1),
@@ -465,6 +464,7 @@ class DynamicWorldLabeler(BaseLabeler):
                         src_crs=src.crs,
                         dst_transform=dst_transform,
                         dst_crs=dst_crs,
+                        dst_nodata=nodata,
                         resampling=Resampling.nearest,
                     )
                 layers.append(layer)
@@ -472,17 +472,13 @@ class DynamicWorldLabeler(BaseLabeler):
                 logger.warning("Failed to reproject DW scene %s: %s", path, exc)
 
         if not layers:
-            return np.zeros((dst_height, dst_width), dtype=np.uint8)
+            raise LabelingError("none of the Dynamic World scenes could be reprojected onto the tile")
 
         stack = np.stack(layers, axis=0)  # (N, H, W)
-
-        if method == "mode" or len(layers) == 1:
-            # Pixel-wise mode
-            from scipy.stats import mode as scipy_mode  # type: ignore
-            result = scipy_mode(stack, axis=0).mode.squeeze(0).astype(np.uint8)
-        else:
-            result = stack[0]
-
+        # Per-pixel most frequent class among the scenes that cover the pixel (ties -> lower class number).
+        counts = np.stack([(stack == c).sum(axis=0) for c in DW_CLASSES])          # (9, H, W)
+        result = counts.argmax(axis=0).astype(np.uint8)
+        result[counts.sum(axis=0) == 0] = nodata
         return result
 
     @property

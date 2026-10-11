@@ -26,6 +26,12 @@ class Leaderboard:
                 self._entries = json.load(f)
 
     def add(self, result: BenchmarkResult) -> None:
+        """Store a result, replacing an earlier one for the same model + dataset + split.
+
+        A failed evaluation is refused (``ValueError``): its zeros are not scores.
+        """
+        if result.failed:
+            raise ValueError(f"not adding failed evaluation of {result.model_name!r}: {result.error}")
         entry = result.to_dict()
         # Remove existing entry for same model+dataset+split
         self._entries = [e for e in self._entries

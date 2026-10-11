@@ -2,7 +2,7 @@
 pygeovision.data.indices
 ========================
 
-22 spectral and spatial indices, each validated before and after
+21 spectral and spatial indices, each validated before and after
 computation.  All indices work on both numpy arrays and GeoTIFF paths.
 
 Supported indices
@@ -74,14 +74,16 @@ def _save_index(arr: np.ndarray, ref_path: str, output_path: str, nodata: float 
     profile.update(count=1, dtype="float32", nodata=nodata, compress="lzw")
     for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
         profile.pop(_k, None)
+    out = np.where(np.isfinite(arr), arr, nodata).astype(np.float32)   # no data stays no data, never 0
     with r.open(output_path, "w", **profile) as dst:
-        dst.write(arr.astype(np.float32)[np.newaxis])
+        dst.write(out[np.newaxis])
     return output_path
 
 
 def _validate_arr(arr: np.ndarray, name: str) -> np.ndarray:
-    """Replace NaN/Inf with 0 and clip to [-1, 1] for normalised indices."""
-    arr = np.where(np.isfinite(arr), arr, 0.0).astype(np.float32)
+    """Make an index result finite-or-NaN: Inf becomes NaN. NaN is kept so that "no data" survives to the output
+    (a file gets its nodata value there; an array result has it replaced by 0 in :meth:`SpectralIndices._out`)."""
+    arr = np.where(np.isfinite(arr), arr, np.nan).astype(np.float32)
     return arr
 
 
@@ -139,6 +141,8 @@ def _delegate_or_native(
                 band_arr = src.read(band_idx)
                 band_profile = profile.copy()
                 band_profile.update(count=1, dtype=band_arr.dtype)
+                for _k in ("blockxsize", "blockysize", "tiled"):      # illegal without TILED=YES
+                    band_profile.pop(_k, None)
                 band_path = str(pathlib.Path(tmp_dir) / f"{param_name}.tif")
                 with r.open(band_path, "w", **band_profile) as dst:
                     dst.write(band_arr, 1)
@@ -338,7 +342,9 @@ class SpectralIndices:
         NDRE = (NIR − RedEdge) / (NIR + RedEdge)
 
         Sensitive to chlorophyll in dense canopies where NDVI saturates.
-        Requires Sentinel-2 Band 5 (705 nm).
+        Needs a **red-edge** band (Sentinel-2 B05, 705 nm). ``red_edge_band`` is the 1-based position of that
+        band in *your* file; the default (5) is right only for a stack ordered B02, B03, B04, B08, B05, ... .
+        In the common six-band stack B02, B03, B04, B08, B11, B12, band 5 is SWIR, not red edge.
         """
         re, nir, ref = self._get_two_bands(source, red_edge_band, nir_band)
         result = (nir - re) / (nir + re + _EPS)
@@ -669,7 +675,7 @@ class SpectralIndices:
                 _save_index(plane, source, out_path)
                 results[comp_name] = out_path
             else:
-                results[comp_name] = plane
+                results[comp_name] = np.nan_to_num(plane, nan=0.0)
         return results
 
     def pca(
@@ -709,7 +715,7 @@ class SpectralIndices:
                 _save_index(pc, source, out)
                 results[f"PC{i}"] = out
             return results
-        return pcs
+        return np.nan_to_num(pcs, nan=0.0)
 
     # ------------------------------------------------------------------
     # Batch / convenience
@@ -729,7 +735,8 @@ class SpectralIndices:
             indices: List of index names. Default: all supported indices.
             output_dir: If set, saves each index as a GeoTIFF.
             band_map: Override default band indices, e.g.
-                ``{"red": 3, "nir": 4, "swir1": 5, "swir2": 6}``.
+                ``{"red": 3, "nir": 4, "swir1": 5, "swir2": 6}``. Add ``"red_edge"`` to compute NDRE: the
+                default six-band stack has no red-edge band, so NDRE is skipped (with a warning) without it.
 
         Returns:
             Dict mapping index name → array or path.
@@ -785,6 +792,10 @@ class SpectralIndices:
 
         results = {}
         for name in targets:
+            if name == "ndre" and "red_edge" not in bm:
+                logger.warning("Skipping ndre: the default six-band stack (B02,B03,B04,B08,B11,B12) has no red-edge "
+                               "band. Pass band_map={'red_edge': <1-based band>} to compute it.")
+                continue
             if name in _MAP:
                 try:
                     results[name] = _MAP[name]()
@@ -839,4 +850,4 @@ class SpectralIndices:
             _save_index(arr, ref_path, output_path)
             logger.info("Saved %s → %s", name.upper(), output_path)
             return output_path
-        return arr
+        return np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)

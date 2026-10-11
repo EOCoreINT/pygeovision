@@ -280,7 +280,7 @@ def test_tiled_inference_stitches_a_registry_segformer_at_full_resolution():
 
 
 # -------------------------------------------------------------- registry integrity
-REFUSED = {"rf-detr-b", "rf-detr-l", "dinov3_segmentor", "changestar-r18",
+REFUSED = {"rf-detr-b", "rf-detr-l", "dinov3_segmentor", "changestar-r18", "changeformer-mit-b4",
            "satlas-pretrain", "chatearthnet", "lisat-7b"}
 # Wrappers around libraries/weights fetched at construction time, and the Hub-only configs.
 NOT_OFFLINE = {"grounding-dino", "mask2former-swin-t", "mask2former-swin-b", "dofa-base",

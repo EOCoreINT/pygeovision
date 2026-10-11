@@ -82,6 +82,13 @@ class ONNXRuntimeInference:
         self._input_name  = self._session.get_inputs()[0].name
         self._input_shape = self._session.get_inputs()[0].shape
         self._output_name = self._session.get_outputs()[0].name
+        wanted = {"cuda": "CUDAExecutionProvider", "tensorrt": "TensorrtExecutionProvider",
+                  "coreml": "CoreMLExecutionProvider"}.get(self.device)
+        if wanted and wanted not in self._session.get_providers():
+            logger.warning(
+                "device=%r was requested but %s is not available in this onnxruntime build "
+                "(active: %s); running on the CPU. Install onnxruntime-gpu (CUDA/TensorRT) on a "
+                "machine with the matching drivers.", self.device, wanted, self._session.get_providers())
         logger.info("ONNXRuntime loaded: %s | providers=%s",
                     Path(self.onnx_path).name,
                     [p if isinstance(p, str) else p[0] for p in self._session.get_providers()])
@@ -113,7 +120,7 @@ class ONNXRuntimeInference:
         output_path: str | Path = "./output/onnx_pred.tif",
         chip_size: int = 512,
         overlap: int = 64,
-        num_classes: int = 2,
+        num_classes: int | None = None,
         blend_mode: str = "gaussian",
         normalise: bool = True,
     ) -> dict[str, Any]:
@@ -121,10 +128,47 @@ class ONNXRuntimeInference:
 
         Wraps TiledInference with an ONNX-backed forward pass — handles
         arbitrarily large GeoTIFFs with Gaussian tile blending.
+
+        ``num_classes`` defaults to the model's output channel count (2 when the
+        model does not declare one). A model exported with fixed spatial
+        dimensions can only take chips of exactly that size, so ``chip_size`` is
+        replaced by it (with a warning) and ``overlap`` is reduced to fit; export
+        with ``dynamic_spatial=True`` to allow any chip size.
         """
+        import numpy as np
+        self._load()
+        hw = self._input_shape[2:4]
+        if len(hw) == 2 and all(isinstance(d, int) and d > 0 for d in hw):
+            if hw[0] != hw[1]:
+                return {"success": False,
+                        "error": f"the model accepts only {hw[0]}x{hw[1]} (non-square) inputs; tiled "
+                                 f"inference needs square chips. Re-export with dynamic_spatial=True."}
+            if hw[0] != chip_size:
+                new_overlap = min(overlap, hw[0] // 4)
+                logger.warning("the model was exported for %dx%d inputs: using chip_size=%d, overlap=%d "
+                               "(instead of %d, %d). Export with dynamic_spatial=True for other sizes.",
+                               hw[0], hw[1], hw[0], new_overlap, chip_size, overlap)
+                chip_size, overlap = hw[0], new_overlap
+
+        # One test chip tells us how many classes the model really outputs.
+        in_ch = self._input_shape[1] if len(self._input_shape) > 1 else None
+        out_classes = None
+        if isinstance(in_ch, int) and in_ch > 0:
+            try:
+                probe = self.infer(np.zeros((1, in_ch, chip_size, chip_size), dtype=np.float32))
+            except Exception as exc:  # noqa: BLE001
+                return {"success": False,
+                        "error": f"the model failed on a {chip_size}x{chip_size} test chip with {in_ch} "
+                                 f"bands: {exc}"}
+            out_classes = int(probe.shape[1]) if probe.ndim == 4 else None
+        if num_classes is None:
+            num_classes = out_classes or 2
+        elif out_classes is not None and out_classes != num_classes:
+            return {"success": False,
+                    "error": f"num_classes={num_classes} but the model outputs {out_classes} channels; "
+                             f"pass num_classes={out_classes} (or leave it out)"}
         try:
-            import numpy as np
-            import rasterio
+            import rasterio  # noqa: F401
             import torch
             import torch.nn as nn
         except ImportError as exc:
@@ -157,9 +201,13 @@ class ONNXRuntimeInference:
             n_runs: Number of inference runs
 
         Returns:
-            Dict with mean_ms, p95_ms, fps, provider
+            Dict with ``mean_ms``, ``median_ms``, ``p95_ms``, ``fps`` (from the mean),
+            ``n_runs``, ``input_shape``, ``device`` and the active ``providers``.
+            Five untimed warm-up runs come first; the median is the steadier figure.
         """
         import numpy as np
+        if n_runs < 1:
+            raise ValueError("n_runs must be at least 1")
         self._load()
 
         if input_shape is None:
@@ -186,7 +234,7 @@ class ONNXRuntimeInference:
         return {
             "mean_ms":   round(statistics.mean(times), 2),
             "median_ms": round(statistics.median(times), 2),
-            "p95_ms":    round(sorted(times)[int(n_runs * 0.95)], 2),
+            "p95_ms":    round(sorted(times)[min(n_runs - 1, int(n_runs * 0.95))], 2),
             "fps":       round(1000 / statistics.mean(times), 1),
             "n_runs":    n_runs,
             "input_shape": shape,
@@ -216,6 +264,7 @@ class ONNXRuntimeInference:
         opset: int = 17,
         simplify: bool = True,
         dynamic_batch: bool = True,
+        dynamic_spatial: bool = False,
         # alias accepted by tests
         opset_version: int = 0,
     ) -> ONNXRuntimeInference:
@@ -228,6 +277,9 @@ class ONNXRuntimeInference:
             opset: ONNX opset version (17 recommended)
             simplify: Run onnxsim to optimise the graph
             dynamic_batch: Allow dynamic batch dimension
+            dynamic_spatial: Also allow any height and width at run time. Off by default
+                because some architectures (fixed reshapes, resizes to a constant size)
+                export wrongly with it; check parity on a second size before relying on it.
 
         Returns:
             Ready-to-use ONNXRuntimeInference instance
@@ -244,8 +296,17 @@ class ONNXRuntimeInference:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         model.eval()
-        dummy = torch.randn(*input_shape)
-        dynamic_axes = {"input": {0: "batch"}, "output": {0: "batch"}} if dynamic_batch else None
+        try:
+            device = next(model.parameters()).device
+        except StopIteration:
+            device = torch.device("cpu")
+        dummy = torch.randn(*input_shape, device=device)
+        axes: dict[int, str] = {}
+        if dynamic_batch:
+            axes[0] = "batch"
+        if dynamic_spatial:
+            axes.update({2: "height", 3: "width"})
+        dynamic_axes = {"input": dict(axes), "output": dict(axes)} if axes else None
 
         # Use the legacy torch.onnx.export API (compatible with torch<2.6 and >=2.6)
         # torch>=2.6 moved to a new exporter that requires onnxscript; the legacy

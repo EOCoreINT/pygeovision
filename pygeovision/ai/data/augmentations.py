@@ -133,14 +133,29 @@ class ResolutionDegradation(ImageOnlyTransform):
     def apply(self, img: np.ndarray, scale: float = 0.75, **params: Any) -> np.ndarray:
         try:
             import cv2  # noqa: PLC0415
-
-            h, w = img.shape[:2]
-            small_h, small_w = max(1, int(h * scale)), max(1, int(w * scale))
-            small = cv2.resize(img, (small_w, small_h), interpolation=cv2.INTER_AREA)
-            degraded = cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
-            return degraded
         except ImportError:
             return img  # Skip if cv2 unavailable
+
+        h, w = img.shape[:2]
+        small_h, small_w = max(1, int(h * scale)), max(1, int(w * scale))
+
+        def _degrade(block: np.ndarray) -> np.ndarray:
+            small = cv2.resize(block, (small_w, small_h), interpolation=cv2.INTER_AREA)
+            return cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+
+        if img.ndim == 2:
+            return _degrade(img)
+        if img.shape[2] <= 4:
+            out = _degrade(img)
+            # cv2 drops a trailing singleton channel axis; put it back.
+            return out if out.ndim == 3 else out[:, :, None]
+        # OpenCV resizes at most 4 channels at a time; multispectral stacks
+        # are processed in blocks of 4 bands.
+        blocks = []
+        for start in range(0, img.shape[2], 4):
+            block = _degrade(np.ascontiguousarray(img[:, :, start:start + 4]))
+            blocks.append(block if block.ndim == 3 else block[:, :, None])
+        return np.concatenate(blocks, axis=2)
 
     def get_params(self) -> dict[str, float]:
         return {"scale": random.uniform(*self.scale_range)}
@@ -220,6 +235,11 @@ class GeoAugmentationPipeline:
         Apply spatial transforms to masks as well. Defaults to True.
     seed : int, optional
         Random seed for reproducibility.
+    n_channels : int, optional
+        Number of bands of the images this pipeline will receive. Hue/saturation
+        and CLAHE are defined for 1- or 3-channel images only, so they are left
+        out when ``n_channels`` is anything else (4-band, 6-band, ... stacks).
+        ``None`` keeps the original behaviour (assumes RGB-like input).
 
     Examples
     --------
@@ -237,6 +257,7 @@ class GeoAugmentationPipeline:
         task: str = "segmentation",
         preserve_masks: bool = True,
         seed: int | None = None,
+        n_channels: int | None = None,
     ) -> None:
         _require_albumentations()
 
@@ -247,6 +268,7 @@ class GeoAugmentationPipeline:
         self.task = task
         self.preserve_masks = preserve_masks
         self.seed = seed
+        self.n_channels = n_channels
 
         self._pipeline = self._build_pipeline(mode, custom_transforms)
 
@@ -302,7 +324,7 @@ class GeoAugmentationPipeline:
         transforms = []
         transforms.extend(self._geometric_transforms(mode))
         if mode not in ("geometric_only",):
-            transforms.extend(self._radiometric_transforms(mode))
+            transforms.extend(self._radiometric_transforms(mode, self.n_channels))
             transforms.extend(self._atmospheric_transforms(mode))
             transforms.extend(self._sensor_transforms(mode))
 
@@ -335,26 +357,34 @@ class GeoAugmentationPipeline:
         return base
 
     @staticmethod
-    def _radiometric_transforms(mode: str) -> list[Any]:
-        """Radiometric augmentations (brightness, contrast, etc.)."""
+    def _radiometric_transforms(mode: str, n_channels: int | None = None) -> list[Any]:
+        """Radiometric augmentations (brightness, contrast, etc.).
+
+        Hue/saturation and CLAHE only exist for 1- and 3-channel images, so
+        they are omitted for other band counts.
+        """
         p_scale = {"light": 0.2, "medium": 0.4, "heavy": 0.6, "radiometric_only": 0.5}.get(
             mode, 0.3
         )
-        return [
+        transforms: list[Any] = [
             A.RandomBrightnessContrast(
                 brightness_limit=0.15 if mode == "light" else 0.3,
                 contrast_limit=0.15 if mode == "light" else 0.3,
                 p=p_scale,
             ),
-            A.HueSaturationValue(
-                hue_shift_limit=10,
-                sat_shift_limit=20,
-                val_shift_limit=20,
-                p=p_scale * 0.5,
-            ),
-            A.CLAHE(clip_limit=2.0, tile_grid_size=(8, 8), p=p_scale * 0.3),
-            A.RandomGamma(gamma_limit=(80, 120), p=p_scale * 0.3),
         ]
+        if n_channels is None or n_channels in (1, 3):
+            transforms += [
+                A.HueSaturationValue(
+                    hue_shift_limit=10,
+                    sat_shift_limit=20,
+                    val_shift_limit=20,
+                    p=p_scale * 0.5,
+                ),
+                A.CLAHE(clip_limit=2.0, tile_grid_size=(8, 8), p=p_scale * 0.3),
+            ]
+        transforms.append(A.RandomGamma(gamma_limit=(80, 120), p=p_scale * 0.3))
+        return transforms
 
     @staticmethod
     def _atmospheric_transforms(mode: str) -> list[Any]:
@@ -387,7 +417,9 @@ class GeoAugmentationPipeline:
     # ------------------------------------------------------------------
 
     @classmethod
-    def for_task(cls, task: str, mode: str = "medium") -> GeoAugmentationPipeline:
+    def for_task(
+        cls, task: str, mode: str = "medium", n_channels: int | None = None
+    ) -> GeoAugmentationPipeline:
         """
         Build a task-specific augmentation pipeline.
 
@@ -398,25 +430,27 @@ class GeoAugmentationPipeline:
             ``"change_detection"``.
         mode : str
             Intensity mode.
+        n_channels : int, optional
+            Band count of the images (see the class docstring).
 
         Returns
         -------
         GeoAugmentationPipeline
         """
         logger.debug("Building augmentation pipeline: task=%s, mode=%s", task, mode)
-        return cls(mode=mode, task=task)
+        return cls(mode=mode, task=task, n_channels=n_channels)
 
     @classmethod
-    def light(cls, task: str = "segmentation") -> GeoAugmentationPipeline:
-        """Light augmentation (minimal distortion)."""
-        return cls(mode="light", task=task)
+    def light(cls, task: str = "segmentation", n_channels: int | None = None) -> GeoAugmentationPipeline:
+        """Light augmentation (minimal distortion). Pass ``n_channels`` for imagery that is not 1 or 3 bands (colour jitter is skipped then)."""
+        return cls(mode="light", task=task, n_channels=n_channels)
 
     @classmethod
-    def medium(cls, task: str = "segmentation") -> GeoAugmentationPipeline:
-        """Medium augmentation (recommended default)."""
-        return cls(mode="medium", task=task)
+    def medium(cls, task: str = "segmentation", n_channels: int | None = None) -> GeoAugmentationPipeline:
+        """Medium augmentation (recommended default). Pass ``n_channels`` for imagery that is not 1 or 3 bands (colour jitter is skipped then)."""
+        return cls(mode="medium", task=task, n_channels=n_channels)
 
     @classmethod
-    def heavy(cls, task: str = "segmentation") -> GeoAugmentationPipeline:
-        """Heavy augmentation (maximum diversity)."""
-        return cls(mode="heavy", task=task)
+    def heavy(cls, task: str = "segmentation", n_channels: int | None = None) -> GeoAugmentationPipeline:
+        """Heavy augmentation (maximum diversity). Pass ``n_channels`` for imagery that is not 1 or 3 bands (colour jitter is skipped then)."""
+        return cls(mode="heavy", task=task, n_channels=n_channels)

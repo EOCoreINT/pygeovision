@@ -36,6 +36,73 @@ from pygeovision.core.exceptions import LabelingError
 
 logger = logging.getLogger(__name__)
 
+def decode_ls_rle(rle: list[int]) -> np.ndarray:
+    """Decode a Label Studio brush ``rle`` (a list of byte values) to a flat ``uint8`` array.
+
+    This follows the published algorithm of ``label_studio_converter.brush.decode_rle``: a bit stream
+    holding the output length (32 bits), the word size (5 bits), four run-length field sizes (4 bits each),
+    then runs that are either repeated (``1`` + length + one word) or literal (``0`` + length + words). The
+    result is a flat RGBA image, ``height * width * 4`` values; the painted pixels have a non-zero alpha.
+    """
+    data = bytes(int(v) & 0xFF for v in rle)
+    bits = "".join(f"{b:08b}" for b in data)
+    pos = 0
+
+    def read(n: int) -> int:
+        nonlocal pos
+        if pos + n > len(bits):
+            raise ValueError("Label Studio RLE ended unexpectedly")
+        v = int(bits[pos:pos + n], 2)
+        pos += n
+        return v
+
+    num = read(32)
+    word_size = read(5) + 1
+    sizes = [read(4) + 1 for _ in range(4)]
+    out = np.zeros(num, dtype=np.uint8)
+    i = 0
+    while i < num:
+        repeated = read(1)
+        j = i + 1 + read(sizes[read(2)])
+        if j > num:
+            raise ValueError("Label Studio RLE run overruns its declared length")
+        if repeated:
+            out[i:j] = read(word_size)
+            i = j
+        else:
+            while i < j:
+                out[i] = read(word_size)
+                i += 1
+    return out
+
+
+def encode_ls_rle(flat: np.ndarray) -> list[int]:
+    """Inverse of :func:`decode_ls_rle` (used by the tests and for building fixtures)."""
+    flat = np.asarray(flat, dtype=np.uint8).ravel()
+    num = flat.size
+    word_size = 8
+    # one run-length field size is enough: wide enough for the longest run
+    runs: list[tuple[int, int, int]] = []     # (repeated, length, value)
+    i = 0
+    while i < num:
+        j = i
+        while j + 1 < num and flat[j + 1] == flat[i]:
+            j += 1
+        n_run = j - i + 1
+        while n_run > 0:                      # the run-length field is at most 16 bits wide
+            take = min(n_run, 1 << 16)
+            runs.append((1, take, int(flat[i])))
+            n_run -= take
+        i = j + 1
+    longest = max((r[1] for r in runs), default=1)
+    field = max(1, (longest - 1).bit_length())
+    bits = f"{num:032b}{word_size - 1:05b}" + "".join(f"{field - 1:04b}" for _ in range(4))
+    for _rep, length, value in runs:
+        bits += "1" + "00" + f"{length - 1:0{field}b}" + f"{value:0{word_size}b}"
+    bits += "0" * (-len(bits) % 8)
+    return [int(bits[k:k + 8], 2) for k in range(0, len(bits), 8)]
+
+
 # Label Studio annotation types
 _TASK_TYPES = ("segmentation", "bbox_detection", "polygon", "classification")
 
@@ -180,6 +247,7 @@ class LabelStudioLabeler(BaseLabeler):
         )
         self.config.tile_export_dir.mkdir(parents=True, exist_ok=True)
         self._session: Any | None = None
+        self._tasks_cache: list[dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -480,32 +548,53 @@ class LabelStudioLabeler(BaseLabeler):
             logger.warning("Failed to upload task for %s: %s", img_path.name, exc)
         return None
 
+    _PAGE = 500
+
+    def _all_tasks(self) -> list[dict[str, Any]]:
+        """Every task of the project (paginated), cached until the next ``label_tiles`` call."""
+        if self._tasks_cache is not None:
+            return self._tasks_cache
+        tasks: list[dict[str, Any]] = []
+        last_first = None
+        page = 1
+        while True:
+            chunk = self._api_get(f"projects/{self.config.project_id}/tasks?page={page}&page_size={self._PAGE}")
+            chunk = chunk.get("tasks", chunk) if isinstance(chunk, dict) else chunk
+            if not chunk:
+                break
+            first = chunk[0].get("id")
+            if first is not None and first == last_first:      # server ignored ``page``: stop, don't loop
+                break
+            last_first = first
+            tasks.extend(chunk)
+            if len(chunk) < self._PAGE:
+                break
+            page += 1
+        self._tasks_cache = tasks
+        return tasks
+
+    def label_tiles(self, *args: Any, **kwargs: Any) -> list[LabelingResult]:
+        self._tasks_cache = None           # annotators may have finished more tasks since the last call
+        return super().label_tiles(*args, **kwargs)
+
     def _find_task_for_tile(self, tile_path: Path) -> dict[str, Any] | None:
-        """Find the Label Studio task associated with a tile path.
+        """Find the Label Studio task for a tile: by the stored ``tile_path``, else by *exact* file stem.
 
-        Args:
-            tile_path: Path to the GeoTIFF tile.
-
-        Returns:
-            Task dict, or None if not found.
+        (Matching ``tile_path.stem in image_url`` used to give tile ``t_1`` the annotations of ``t_10``.)
         """
         try:
-            tasks = self._api_get(
-                f"projects/{self.config.project_id}/tasks?page_size=1000"
-            )
-            task_list = tasks.get("tasks", tasks) if isinstance(tasks, dict) else tasks
-            for task in task_list:
+            for task in self._all_tasks():
                 meta = task.get("meta", {})
                 if isinstance(meta, str):
                     try:
                         meta = json.loads(meta)
                     except json.JSONDecodeError:
                         meta = {}
-                if str(tile_path) in str(meta.get("tile_path", "")):
+                if str(meta.get("tile_path", "")) == str(tile_path):
                     return task
-                # Also match by filename
-                task_file = task.get("data", {}).get("image", "")
-                if tile_path.stem in task_file:
+            for task in self._all_tasks():
+                task_file = str(task.get("data", {}).get("image", ""))
+                if Path(task_file.split("?")[0]).stem == tile_path.stem:
                     return task
         except Exception as exc:
             logger.warning("Failed to find task for %s: %s", tile_path, exc)
@@ -539,55 +628,63 @@ class LabelStudioLabeler(BaseLabeler):
         for result in results:
             r_type = result.get("type", "")
             value = result.get("value", {})
+            orig = (result.get("original_height"), result.get("original_width"))
 
-            try:
-                if r_type == "brushlabels":
-                    mask = self._parse_brush_label(mask, value, class_map)
-                elif r_type in ("rectanglelabels", "rectangle"):
-                    mask = self._parse_bbox_label(mask, value, class_map, height, width)
-                elif r_type in ("polygonlabels", "polygon"):
-                    mask = self._parse_polygon_label(mask, value, class_map, height, width)
-                elif r_type == "choices":
-                    # Classification: fill entire tile with class ID
-                    choices = value.get("choices", [])
-                    if choices:
-                        class_id = class_map.get(choices[0], 1)
-                        mask[:] = class_id
-            except Exception as exc:
-                logger.warning("Failed to parse annotation result: %s", exc)
+            # A result that cannot be parsed raises: a half-empty mask must never be written as a
+            # successful label (the old code logged a warning and wrote whatever was left).
+            if r_type == "brushlabels":
+                mask = self._parse_brush_label(mask, value, class_map, orig)
+            elif r_type in ("rectanglelabels", "rectangle"):
+                mask = self._parse_bbox_label(mask, value, class_map, height, width)
+            elif r_type in ("polygonlabels", "polygon"):
+                mask = self._parse_polygon_label(mask, value, class_map, height, width)
+            elif r_type == "choices":
+                # Classification: fill entire tile with class ID
+                choices = value.get("choices", [])
+                if choices:
+                    mask[:] = self._class_id(choices[0], class_map)
+            else:
+                raise LabelingError(f"unsupported Label Studio result type {r_type!r}")
 
         return mask
+
+    @staticmethod
+    def _class_id(label: str, class_map: dict[str, int]) -> int:
+        if label not in class_map:
+            raise LabelingError(
+                f"annotation uses label {label!r} which is not in class_names={list(class_map)}; "
+                "class_names must list the project's labels in raster-value order, background first")
+        return class_map[label]
 
     def _parse_brush_label(
         self,
         mask: np.ndarray,
         value: dict[str, Any],
         class_map: dict[str, int],
+        original_size: tuple[int | None, int | None] = (None, None),
     ) -> np.ndarray:
-        """Parse a brush (segmentation) annotation."""
-        import base64
-        import zlib
-
+        """Parse a brush (segmentation) annotation: Label Studio's bit-packed RLE of an RGBA image."""
         from PIL import Image
 
         labels = value.get("brushlabels", [])
-        class_id = class_map.get(labels[0], 1) if labels else 1
-
+        if not labels:
+            raise LabelingError("brush annotation has no label")
+        class_id = self._class_id(labels[0], class_map)
         rle = value.get("rle")
-        if rle:
-            # RLE-encoded mask
-            decoded = base64.b64decode(rle)
-            decompressed = zlib.decompress(decoded)
-            brush_mask = np.frombuffer(decompressed, dtype=np.uint8)
-            h = value.get("height", mask.shape[0])
-            w = value.get("width", mask.shape[1])
-            brush_mask = brush_mask.reshape(h, w)
-            # Resize to tile dimensions if needed
-            if brush_mask.shape != mask.shape:
-                img = Image.fromarray(brush_mask)
-                img = img.resize((mask.shape[1], mask.shape[0]), Image.NEAREST)
-                brush_mask = np.array(img)
-            mask[brush_mask > 0] = class_id
+        if not rle:
+            raise LabelingError("brush annotation has no 'rle' data (is it a non-RLE export format?)")
+        oh, ow = original_size
+        if not oh or not ow:
+            raise LabelingError("brush annotation lacks original_width/original_height")
+
+        flat = decode_ls_rle(rle)
+        if flat.size != oh * ow * 4:
+            raise LabelingError(f"Label Studio RLE decodes to {flat.size} values, expected {oh * ow * 4} "
+                                f"for a {ow}x{oh} image")
+        brush = flat.reshape(oh, ow, 4)[:, :, 3]
+        if brush.shape != mask.shape:
+            brush = np.array(Image.fromarray(brush).resize((mask.shape[1], mask.shape[0]), Image.NEAREST))
+        mask[brush > 0] = class_id
         return mask
 
     def _parse_bbox_label(
@@ -600,7 +697,7 @@ class LabelStudioLabeler(BaseLabeler):
     ) -> np.ndarray:
         """Parse a bounding box annotation."""
         labels = value.get("rectanglelabels", [])
-        class_id = class_map.get(labels[0], 1) if labels else 1
+        class_id = self._class_id(labels[0], class_map) if labels else 1
 
         # LS uses percentage coordinates
         x = int(value.get("x", 0) / 100 * width)
@@ -629,7 +726,7 @@ class LabelStudioLabeler(BaseLabeler):
             return mask
 
         labels = value.get("polygonlabels", [])
-        class_id = class_map.get(labels[0], 1) if labels else 1
+        class_id = self._class_id(labels[0], class_map) if labels else 1
 
         points = value.get("points", [])
         if len(points) < 3:

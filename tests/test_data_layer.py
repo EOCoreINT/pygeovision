@@ -571,7 +571,10 @@ class TestDataPipeline:
         )
         assert p.steps[0].type == "download"
         assert p.steps[0].config["parallel"] == 4
-        assert "unzip" in p.steps[0].config["post_process"]
+        # the runner has no download-level post_process: it becomes its own step
+        assert "post_process" not in p.steps[0].config
+        assert p.steps[1].type == "process"
+        assert p.steps[1].config["actions"] == ["unzip", "reproject:EPSG:4326", "cog"]
 
     def test_export_step(self):
         p = DataPipeline("test")
@@ -584,6 +587,23 @@ class TestDataPipeline:
         p.ai_process(model="unet_resnet50", task="segmentation", num_classes=5)
         assert p.steps[0].type == "ai"
         assert p.steps[0].config["num_classes"] == 5
+        # the pygeofetch runner cannot execute it, so it must refuse rather than fail half way
+        assert not p.validate()
+        with pytest.raises(ValueError, match="ai"):
+            p.run(fetcher=object())
+
+    def test_output_dir_overrides_download_output(self):
+        captured = {}
+
+        class F:
+            def run_pipeline(self, path, step=None):
+                import yaml
+                captured["doc"] = yaml.safe_load(open(path))
+                return {"success": True}
+
+        DataPipeline("x").search().download(output="./raw/").run(fetcher=F(), output_dir="/tmp/out")
+        dl = [s for s in captured["doc"]["steps"] if "download" in s][0]["download"]
+        assert dl["output"] == "/tmp/out"
 
     def test_chaining(self):
         p = (

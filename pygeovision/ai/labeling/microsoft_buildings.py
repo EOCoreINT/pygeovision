@@ -115,6 +115,8 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
                 bounds=bounds_wgs84,
                 height=tile.height,
                 width=tile.width,
+                transform=list(tile.transform) if len(tile.transform) == 6 else None,
+                crs=tile.crs,
             )
         except Exception as exc:
             return LabelingResult(
@@ -168,24 +170,40 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
         bounds: tuple[float, float, float, float],
         height: int,
         width: int,
+        transform: list[float] | None = None,
+        crs: Any = None,
     ) -> np.ndarray:
-        """Rasterize building footprints to binary mask."""
+        """Rasterize building footprints (lon/lat) to a binary mask.
+
+        With the tile's own ``transform`` and ``crs`` the footprints are reprojected and burned on the
+        tile's exact pixel grid. Without them the mask is laid on a lon/lat grid over ``bounds``, which
+        is only right for tiles that are themselves in EPSG:4326.
+        """
         try:
+            from affine import Affine  # noqa: PLC0415
+            from rasterio.crs import CRS  # noqa: PLC0415
             from rasterio.features import rasterize  # noqa: PLC0415
             from rasterio.transform import from_bounds  # noqa: PLC0415
+            from rasterio.warp import transform_geom  # noqa: PLC0415
         except ImportError as exc:
             raise BuildingFootprintError(
                 "rasterio is required. Install with: pip install rasterio"
             ) from exc
 
-        min_lon, min_lat, max_lon, max_lat = bounds
-        transform = from_bounds(min_lon, min_lat, max_lon, max_lat, width, height)
+        if transform is not None and crs is not None:
+            tf = Affine(*transform)
+            target = CRS.from_user_input(crs)
+            if target != CRS.from_epsg(4326):
+                geometries = [transform_geom("EPSG:4326", target, g) for g in geometries]
+        else:
+            min_lon, min_lat, max_lon, max_lat = bounds
+            tf = from_bounds(min_lon, min_lat, max_lon, max_lat, width, height)
         shapes = [(geom, 1) for geom in geometries]
 
         return rasterize(
             shapes,
             out_shape=(height, width),
-            transform=transform,
+            transform=tf,
             fill=0,
             dtype=np.uint8,
         )

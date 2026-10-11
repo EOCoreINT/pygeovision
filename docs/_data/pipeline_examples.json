@@ -1,0 +1,3172 @@
+{
+ "active_fire": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel active_fire --bbox -0.15 51.47 -0.10 51.52 -o ./out/active_fire --date 2024-02",
+  "console": "Running pipeline 'active_fire'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/active_fire\n\n\u2713 pipeline complete\n  Output: ./out/active_fire/fire_days.tif\n  Stats:\n    start: 2024-02-01\n    end: 2024-02-29\n    days_with_data: 2\n    min_confidence: nominal\n    detections_pixel_days: 4\n    pixels_with_fire: 2\n    pixels_with_fire_share: 0.0571\n    max_days_with_fire_in_a_pixel: 2\n    max_frp_mw: 25.0000\n    mean_observed_days: 2.0000\n    resolution_m: 926.6254\n    product_note: MODIS MOD14A1 daily thermal-anomaly product (1 km). A flagged pixel means at least one fire was burning inside that kilometre at the satellite overpass; the burning area is far smaller than the pixel, so the counts are of detections, not hectares burned. Cloud hides fires, and small or cool fires are missed. Pixels are resampled to a UTM grid with nearest neighbour, so counts can differ from the raw MODIS tile by a small fraction.\n\n  Deliverables: ./out/active_fire/deliverables\n    PDF report    active_fire_report.pdf\n    Excel report  active_fire_report.xlsx\n    Word report   active_fire_report.docx\n    Map           maps/active_fire_map.png\n    Map           maps/active_fire_map_observed.png\n    Map           maps/active_fire_map_frp.png\n    Vectors gpkg  active_fire.gpkg\n    Vectors geojson active_fire_aoi.geojson, active_fire_fire_detections.geojson",
+  "files": [
+   "deliverables/active_fire_report.docx",
+   "deliverables/active_fire_report.pdf",
+   "deliverables/active_fire_report.xlsx",
+   "deliverables/maps/active_fire_chart_per_day_detections.png",
+   "deliverables/maps/active_fire_histogram.png",
+   "deliverables/maps/active_fire_map.png",
+   "deliverables/maps/active_fire_map_frp.png",
+   "deliverables/maps/active_fire_map_observed.png",
+   "deliverables/vectors/active_fire.gpkg",
+   "deliverables/vectors/geojson/active_fire_aoi.geojson",
+   "deliverables/vectors/geojson/active_fire_fire_detections.geojson",
+   "fire_days.tif",
+   "fire_detections.gpkg",
+   "max_frp_mw.tif",
+   "observed_days.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "file": "fire_days.tif",
+    "key": "fire_days",
+    "kind": "continuous",
+    "summary": {
+     "max": 2.0,
+     "mean": 0.11765,
+     "median": 0.0,
+     "min": 0.0,
+     "valid_fraction": 0.97143
+    },
+    "title": "Days with a fire detection"
+   },
+   {
+    "file": "observed_days.tif",
+    "key": "observed",
+    "kind": "continuous",
+    "summary": {
+     "max": 2.0,
+     "mean": 1.94286,
+     "median": 2.0,
+     "min": 0.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Days observed clear"
+   },
+   {
+    "file": "max_frp_mw.tif",
+    "key": "frp",
+    "kind": "continuous",
+    "summary": {
+     "max": 25.0,
+     "mean": 12.5,
+     "median": 12.5,
+     "min": 0.0,
+     "valid_fraction": 0.05714
+    },
+    "title": "Maximum fire radiative power (MW)"
+   }
+  ],
+  "period": "2024-02-01 to 2024-02-29",
+  "stats": {
+   "days_with_data": 2,
+   "detections_pixel_days": 4,
+   "end": "2024-02-29",
+   "max_days_with_fire_in_a_pixel": 2,
+   "max_frp_mw": 25.0,
+   "mean_observed_days": 2.0,
+   "min_confidence": "nominal",
+   "per_day_detections": {
+    "2024-02-01": 2,
+    "2024-02-02": 2
+   },
+   "pixels_with_fire": 2,
+   "pixels_with_fire_share": 0.05714,
+   "product_note": "MODIS MOD14A1 daily thermal-anomaly product (1 km). A flagged pixel means at least one fire was burning inside that kilometre at the satellite overpass; the burning area is far smaller than the pixel, so the counts are of detections, not hectares burned. Cloud hides fires, and small or cool fires are missed. Pixels are resampled to a UTM grid with nearest neighbour, so counts can differ from the raw MODIS tile by a small fraction.",
+   "resolution_m": 926.62543,
+   "start": "2024-02-01"
+  },
+  "title": "Active Fire Detections (MODIS MOD14A1)"
+ },
+ "archaeological_site": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel archaeological_site --bbox -0.15 51.47 -0.10 51.52 -o ./out/archaeological_site",
+  "console": "Running pipeline 'archaeological_site'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/archaeological_site\n\n\u2713 pipeline complete\n  Output: ./out/archaeological_site/local_relief_model.tif\n  Stats:\n    smoothing_radius_px: 15\n    dem_type: srtm1arc\n    dem_cell_size_m: [43.40507089159847, 69.53608640059937]\n    lrm_std_m: 17.0167\n    lrm_min_m: -36.1623\n    lrm_max_m: 36.1019\n    hillshade_path: ./out/archaeological_site/multidirectional_hillshade.tif\n    note: Visualisation layers for expert review; no site verdict is produced.\n\n  Deliverables: ./out/archaeological_site/deliverables\n    PDF report    archaeological_site_report.pdf\n    Excel report  archaeological_site_report.xlsx\n    Word report   archaeological_site_report.docx\n    Map           maps/archaeological_site_map.png\n    Map           maps/archaeological_site_map_hillshade.png\n    Vectors gpkg  archaeological_site.gpkg\n    Vectors geojson archaeological_site_aoi.geojson, archaeological_site_relief_anomalies.geojson",
+  "files": [
+   "deliverables/archaeological_site_report.docx",
+   "deliverables/archaeological_site_report.pdf",
+   "deliverables/archaeological_site_report.xlsx",
+   "deliverables/maps/archaeological_site_chart.png",
+   "deliverables/maps/archaeological_site_histogram.png",
+   "deliverables/maps/archaeological_site_map.png",
+   "deliverables/maps/archaeological_site_map_hillshade.png",
+   "deliverables/vectors/archaeological_site.gpkg",
+   "deliverables/vectors/geojson/archaeological_site_aoi.geojson",
+   "deliverables/vectors/geojson/archaeological_site_relief_anomalies.geojson",
+   "local_relief_model.tif",
+   "multidirectional_hillshade.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 338.05294,
+      "name": "Hollow (< -1 sd)",
+      "pixels": 1120,
+      "share": 0.17501,
+      "value": 0
+     },
+     {
+      "area_ha": 1231.73763,
+      "name": "Level (within 1 sd)",
+      "pixels": 4081,
+      "share": 0.63766,
+      "value": 1
+     },
+     {
+      "area_ha": 361.86941,
+      "name": "Rise (> +1 sd)",
+      "pixels": 1199,
+      "share": 0.18734,
+      "value": 2
+     }
+    ],
+    "file": "local_relief_model.tif",
+    "key": "lrm",
+    "kind": "continuous",
+    "summary": {
+     "max": 36.10187,
+     "mean": 0.03042,
+     "median": -0.42724,
+     "min": -36.16231,
+     "valid_fraction": 1.0
+    },
+    "title": "Local Relief Model (m)"
+   },
+   {
+    "file": "multidirectional_hillshade.tif",
+    "key": "hillshade",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.7071,
+     "mean": 0.70454,
+     "median": 0.7049,
+     "min": 0.70073,
+     "valid_fraction": 1.0
+    },
+    "title": "Multi-directional hillshade"
+   }
+  ],
+  "period": "",
+  "stats": {
+   "dem_cell_size_m": [
+    43.40507,
+    69.53609
+   ],
+   "dem_type": "srtm1arc",
+   "lrm_max_m": 36.10187,
+   "lrm_min_m": -36.16231,
+   "lrm_std_m": 17.01666,
+   "note": "Visualisation layers for expert review; no site verdict is produced.",
+   "smoothing_radius_px": 15
+  },
+  "title": "Archaeological Relief Visualisation"
+ },
+ "biodiversity_hotspot": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel biodiversity_hotspot --bbox -0.15 51.47 -0.10 51.52 -o ./out/biodiversity_hotspot",
+  "console": "Running pipeline 'biodiversity_hotspot'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/biodiversity_hotspot\n\n\u2713 pipeline complete\n  Output: ./out/biodiversity_hotspot/shannon_diversity.tif\n  Stats:\n    window_px: 21\n    mean_local_shannon: 0.0320\n    max_local_shannon: 1.0472\n    hotspot_threshold: 0.0000\n    hotspot_fraction: 0.0600\n    region_shannon_index: 0.1825\n    region_evenness: 0.1661\n    n_habitat_classes: 3\n    note: Habitat-heterogeneity proxy from the static WorldCover 2021 map; not a species count.\n\n  Deliverables: ./out/biodiversity_hotspot/deliverables\n    PDF report    biodiversity_hotspot_report.pdf\n    Excel report  biodiversity_hotspot_report.xlsx\n    Word report   biodiversity_hotspot_report.docx\n    Map           maps/biodiversity_hotspot_map.png\n    Map           maps/biodiversity_hotspot_map_hotspot.png\n    Map           maps/biodiversity_hotspot_map_land_cover.png\n    Vectors gpkg  biodiversity_hotspot.gpkg\n    Vectors geojson biodiversity_hotspot_aoi.geojson, biodiversity_hotspot_diversity_hotspots.geojson, biodiversity_hotspot_land_cover.geojson",
+  "files": [
+   "deliverables/biodiversity_hotspot_report.docx",
+   "deliverables/biodiversity_hotspot_report.pdf",
+   "deliverables/biodiversity_hotspot_report.xlsx",
+   "deliverables/maps/biodiversity_hotspot_chart.png",
+   "deliverables/maps/biodiversity_hotspot_histogram.png",
+   "deliverables/maps/biodiversity_hotspot_map.png",
+   "deliverables/maps/biodiversity_hotspot_map_hotspot.png",
+   "deliverables/maps/biodiversity_hotspot_map_land_cover.png",
+   "deliverables/vectors/biodiversity_hotspot.gpkg",
+   "deliverables/vectors/geojson/biodiversity_hotspot_aoi.geojson",
+   "deliverables/vectors/geojson/biodiversity_hotspot_diversity_hotspots.geojson",
+   "deliverables/vectors/geojson/biodiversity_hotspot_land_cover.geojson",
+   "hotspot_mask.tif",
+   "land_cover/grid_template.tif",
+   "land_cover/land_cover.tif",
+   "run_summary.json",
+   "shannon_diversity.tif"
+  ],
+  "layers": [
+   {
+    "file": "shannon_diversity.tif",
+    "key": "shannon",
+    "kind": "continuous",
+    "summary": {
+     "max": 1.04716,
+     "mean": 0.032,
+     "median": 0.0,
+     "min": 0.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Local Shannon diversity (H')"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 1815.79745,
+      "name": "Other",
+      "pixels": 180381,
+      "share": 0.94002,
+      "value": 0
+     },
+     {
+      "area_ha": 115.86253,
+      "name": "Hotspot",
+      "pixels": 11510,
+      "share": 0.05998,
+      "value": 1
+     }
+    ],
+    "file": "hotspot_mask.tif",
+    "key": "hotspot",
+    "kind": "classes",
+    "title": "Diversity hotspots"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 1.00615,
+      "name": "Tree cover",
+      "pixels": 100,
+      "share": 0.00052,
+      "value": 10
+     },
+     {
+      "area_ha": 1847.15268,
+      "name": "Grassland",
+      "pixels": 183496,
+      "share": 0.95625,
+      "value": 30
+     },
+     {
+      "area_ha": 83.50115,
+      "name": "Permanent water",
+      "pixels": 8295,
+      "share": 0.04323,
+      "value": 80
+     }
+    ],
+    "file": "land_cover.tif",
+    "key": "land_cover",
+    "kind": "classes",
+    "title": "ESA WorldCover 2021"
+   }
+  ],
+  "period": "WorldCover 2021",
+  "stats": {
+   "class_breakdown": {
+    "grassland": 0.95625,
+    "permanent_water": 0.04323,
+    "tree_cover": 0.00052
+   },
+   "hotspot_fraction": 0.05998,
+   "hotspot_threshold": 0.0,
+   "max_local_shannon": 1.04716,
+   "mean_local_shannon": 0.032,
+   "n_habitat_classes": 3,
+   "note": "Habitat-heterogeneity proxy from the static WorldCover 2021 map; not a species count.",
+   "region_evenness": 0.16613,
+   "region_shannon_index": 0.18251,
+   "window_px": 21
+  },
+  "title": "Habitat Diversity Hotspots (Shannon index)"
+ },
+ "building_footprints": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel building_footprints --bbox -0.15 51.47 -0.10 51.52 -o ./out/building_footprints --param source=microsoft",
+  "console": "Running pipeline 'building_footprints'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/building_footprints\n\n\u2713 pipeline complete\n  Output: ./out/building_footprints/building_density.tif\n  Stats:\n    source: microsoft\n    source_note: Microsoft Global ML Building Footprints: machine-learning detections on Bing/Maxar/Vexcel imagery of various dates (about 1% false positives reported by the project); building heights where available.\n    building_count: 12\n    building_area_ha: 0.3710\n    building_coverage: 0.0002\n    buildings_per_km2: 0.6211\n    mean_building_area_m2: 309.1908\n    median_building_area_m2: 309.1950\n    aoi_area_km2: 19.3200\n    cell_m: 100.0000\n    max_cell_coverage: 0.0309\n    footprints_file: ./out/building_footprints/building_footprints.gpkg\n\n  Deliverables: ./out/building_footprints/deliverables\n    PDF report    building_footprints_report.pdf\n    Excel report  building_footprints_report.xlsx\n    Word report   building_footprints_report.docx\n    Map           maps/building_footprints_map.png\n    Map           maps/building_footprints_map_count.png\n    Vectors gpkg  building_footprints.gpkg\n    Vectors geojson building_footprints_aoi.geojson, building_footprints_buildings.geojson",
+  "files": [
+   "building_count.tif",
+   "building_density.tif",
+   "building_footprints.gpkg",
+   "deliverables/building_footprints_report.docx",
+   "deliverables/building_footprints_report.pdf",
+   "deliverables/building_footprints_report.xlsx",
+   "deliverables/maps/building_footprints_histogram.png",
+   "deliverables/maps/building_footprints_map.png",
+   "deliverables/maps/building_footprints_map_count.png",
+   "deliverables/vectors/building_footprints.gpkg",
+   "deliverables/vectors/geojson/building_footprints_aoi.geojson",
+   "deliverables/vectors/geojson/building_footprints_buildings.geojson",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "file": "building_density.tif",
+    "key": "density",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.03092,
+     "mean": 0.00019,
+     "median": 0.0,
+     "min": 0.0,
+     "valid_fraction": 0.87523
+    },
+    "title": "Share of each cell covered by buildings"
+   },
+   {
+    "file": "building_count.tif",
+    "key": "count",
+    "kind": "continuous",
+    "summary": {
+     "max": 1.0,
+     "mean": 0.00622,
+     "median": 0.0,
+     "min": 0.0,
+     "valid_fraction": 0.87523
+    },
+    "title": "Buildings per cell"
+   }
+  ],
+  "period": "n/a (published dataset)",
+  "stats": {
+   "aoi_area_km2": 19.32004,
+   "building_area_ha": 0.37103,
+   "building_count": 12,
+   "building_coverage": 0.00019,
+   "buildings_per_km2": 0.62112,
+   "cell_m": 100.0,
+   "footprints_file": "building_footprints.gpkg",
+   "max_cell_coverage": 0.03092,
+   "mean_building_area_m2": 309.19083,
+   "median_building_area_m2": 309.195,
+   "source": "microsoft",
+   "source_note": "Microsoft Global ML Building Footprints: machine-learning detections on Bing/Maxar/Vexcel imagery of various dates (about 1% false positives reported by the project); building heights where available."
+  },
+  "title": "Building Footprints"
+ },
+ "change_detection": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel change_detection --bbox -0.15 51.47 -0.10 51.52 -o ./out/change_detection --date-before 2022-06 --date-after 2024-06",
+  "console": "Running pipeline 'change_detection'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/change_detection\n\n\u2713 pipeline complete\n  Output: ./out/change_detection/change_mask.tif\n  Stats:\n    change_fraction: 0.4514\n    changed_area_ha: 871.9298\n    threshold: 0.0962\n    otsu_threshold: 0.0962\n    min_magnitude: 0.0500\n    valid_fraction: 1.0000\n\n  Deliverables: ./out/change_detection/deliverables\n    PDF report    change_detection_report.pdf\n    Excel report  change_detection_report.xlsx\n    Word report   change_detection_report.docx\n    Map           maps/change_detection_map.png\n    Map           maps/change_detection_map_magnitude.png\n    Vectors gpkg  change_detection.gpkg\n    Vectors geojson change_detection_aoi.geojson, change_detection_changed_areas.geojson",
+  "files": [
+   "change_magnitude.tif",
+   "change_mask.tif",
+   "deliverables/change_detection_report.docx",
+   "deliverables/change_detection_report.pdf",
+   "deliverables/change_detection_report.xlsx",
+   "deliverables/maps/change_detection_chart.png",
+   "deliverables/maps/change_detection_histogram.png",
+   "deliverables/maps/change_detection_map.png",
+   "deliverables/maps/change_detection_map_magnitude.png",
+   "deliverables/vectors/change_detection.gpkg",
+   "deliverables/vectors/geojson/change_detection_aoi.geojson",
+   "deliverables/vectors/geojson/change_detection_changed_areas.geojson",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1059.7267,
+      "name": "Unchanged",
+      "pixels": 1975,
+      "share": 0.54861,
+      "value": 0
+     },
+     {
+      "area_ha": 871.93328,
+      "name": "Changed",
+      "pixels": 1625,
+      "share": 0.45139,
+      "value": 1
+     }
+    ],
+    "file": "change_mask.tif",
+    "key": "change",
+    "kind": "classes",
+    "title": "Change mask"
+   },
+   {
+    "file": "change_magnitude.tif",
+    "key": "magnitude",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.23774,
+     "mean": 0.09373,
+     "median": 0.09198,
+     "min": 0.00472,
+     "valid_fraction": 1.0
+    },
+    "title": "Change magnitude"
+   }
+  ],
+  "period": "2022-06 to 2024-06",
+  "stats": {
+   "change_fraction": 0.45139,
+   "changed_area_ha": 871.92981,
+   "min_magnitude": 0.05,
+   "otsu_threshold": 0.0962,
+   "threshold": 0.0962,
+   "valid_fraction": 1.0
+  },
+  "title": "Change Detection (change vector analysis)"
+ },
+ "coastal_monitoring": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel coastal_monitoring --bbox -0.15 51.47 -0.10 51.52 -o ./out/coastal_monitoring --date-before 2020-01 --date-after 2024-01",
+  "console": "Running pipeline 'coastal_monitoring'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/coastal_monitoring\n\n\u2713 pipeline complete\n  Output: ./out/coastal_monitoring/shoreline_change.tif\n  Stats:\n    land_to_water_ha: 127.7042\n    water_to_land_ha: 149.1671\n    net_water_change_ha: -21.4629\n    valid_fraction: 1.0000\n    mndwi_threshold: 0.0000\n\n  Deliverables: ./out/coastal_monitoring/deliverables\n    PDF report    coastal_monitoring_report.pdf\n    Excel report  coastal_monitoring_report.xlsx\n    Word report   coastal_monitoring_report.docx\n    Map           maps/coastal_monitoring_map.png\n    Vectors gpkg  coastal_monitoring.gpkg\n    Vectors geojson coastal_monitoring_aoi.geojson, coastal_monitoring_shoreline_change.geojson",
+  "files": [
+   "deliverables/coastal_monitoring_report.docx",
+   "deliverables/coastal_monitoring_report.pdf",
+   "deliverables/coastal_monitoring_report.xlsx",
+   "deliverables/maps/coastal_monitoring_chart.png",
+   "deliverables/maps/coastal_monitoring_map.png",
+   "deliverables/vectors/coastal_monitoring.gpkg",
+   "deliverables/vectors/geojson/coastal_monitoring_aoi.geojson",
+   "deliverables/vectors/geojson/coastal_monitoring_shoreline_change.geojson",
+   "run_summary.json",
+   "shoreline_change.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 837.5826,
+      "name": "Land (both dates)",
+      "pixels": 1561,
+      "share": 0.43361,
+      "value": 0
+     },
+     {
+      "area_ha": 817.20777,
+      "name": "Water (both dates)",
+      "pixels": 1523,
+      "share": 0.42306,
+      "value": 1
+     },
+     {
+      "area_ha": 127.70381,
+      "name": "Land to water",
+      "pixels": 238,
+      "share": 0.06611,
+      "value": 2
+     },
+     {
+      "area_ha": 149.1658,
+      "name": "Water to land",
+      "pixels": 278,
+      "share": 0.07722,
+      "value": 3
+     }
+    ],
+    "file": "shoreline_change.tif",
+    "key": "shore",
+    "kind": "classes",
+    "title": "Shoreline change"
+   }
+  ],
+  "period": "2020-01 to 2024-01",
+  "stats": {
+   "land_to_water_ha": 127.70418,
+   "mndwi_threshold": 0.0,
+   "net_water_change_ha": -21.46289,
+   "valid_fraction": 1.0,
+   "water_to_land_ha": 149.16707
+  },
+  "title": "Coastal Change (shoreline retreat and advance)"
+ },
+ "crop_health": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel crop_health --bbox -0.15 51.47 -0.10 51.52 -o ./out/crop_health --date-before 2024-05 --date-after 2024-08",
+  "console": "Running pipeline 'crop_health'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/crop_health\n\n\u2713 pipeline complete\n  Output: ./out/crop_health/crop_health_anomaly.tif\n  Stats:\n    anomaly_threshold: 0.1500\n    pct_flagged: 0.1675\n    mean_ndvi_before: 0.0005\n    mean_ndvi_after: -0.0005\n    valid_fraction: 1.0000\n\n  Deliverables: ./out/crop_health/deliverables\n    PDF report    crop_health_report.pdf\n    Excel report  crop_health_report.xlsx\n    Word report   crop_health_report.docx\n    Map           maps/crop_health_map.png\n    Map           maps/crop_health_map_ndvi_change.png\n    Vectors gpkg  crop_health.gpkg\n    Vectors geojson crop_health_aoi.geojson, crop_health_ndvi_drop.geojson",
+  "files": [
+   "crop_health_anomaly.tif",
+   "deliverables/crop_health_report.docx",
+   "deliverables/crop_health_report.pdf",
+   "deliverables/crop_health_report.xlsx",
+   "deliverables/maps/crop_health_chart.png",
+   "deliverables/maps/crop_health_histogram.png",
+   "deliverables/maps/crop_health_map.png",
+   "deliverables/maps/crop_health_map_ndvi_change.png",
+   "deliverables/vectors/crop_health.gpkg",
+   "deliverables/vectors/geojson/crop_health_aoi.geojson",
+   "deliverables/vectors/geojson/crop_health_ndvi_drop.geojson",
+   "ndvi_change.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1608.11136,
+      "name": "Not flagged",
+      "pixels": 2997,
+      "share": 0.8325,
+      "value": 0
+     },
+     {
+      "area_ha": 323.54862,
+      "name": "NDVI dropped",
+      "pixels": 603,
+      "share": 0.1675,
+      "value": 1
+     }
+    ],
+    "file": "crop_health_anomaly.tif",
+    "key": "anomaly",
+    "kind": "classes",
+    "title": "NDVI drop anomaly"
+   },
+   {
+    "file": "ndvi_change.tif",
+    "key": "ndvi_change",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.93954,
+     "mean": -0.00095,
+     "median": 0.00216,
+     "min": -1.33517,
+     "valid_fraction": 1.0
+    },
+    "title": "NDVI change (after - before)"
+   }
+  ],
+  "period": "2024-05 to 2024-08",
+  "stats": {
+   "anomaly_threshold": 0.15,
+   "mean_ndvi_after": -0.00048,
+   "mean_ndvi_before": 0.00047,
+   "pct_flagged": 0.1675,
+   "valid_fraction": 1.0
+  },
+  "title": "Crop Health Anomaly (NDVI drop)"
+ },
+ "crop_monitoring": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel crop_monitoring --bbox -0.15 51.47 -0.10 51.52 -o ./out/crop_monitoring --date 2023-06 --param num_classes=3 --checkpoint path/to/your_trained.pth",
+  "console": "Running pipeline 'crop_monitoring'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/crop_monitoring\n\n\u2713 pipeline complete\n  Output: ./out/crop_monitoring/crop_map.tif\n\n  Deliverables: ./out/crop_monitoring/deliverables\n    PDF report    crop_monitoring_report.pdf\n    Excel report  crop_monitoring_report.xlsx\n    Word report   crop_monitoring_report.docx\n    Map           maps/crop_monitoring_map.png\n    Vectors gpkg  crop_monitoring.gpkg\n    Vectors geojson crop_monitoring_aoi.geojson, crop_monitoring_crop_fields.geojson",
+  "files": [
+   "crop_map.tif",
+   "deliverables/crop_monitoring_report.docx",
+   "deliverables/crop_monitoring_report.pdf",
+   "deliverables/crop_monitoring_report.xlsx",
+   "deliverables/maps/crop_monitoring_chart.png",
+   "deliverables/maps/crop_monitoring_map.png",
+   "deliverables/vectors/crop_monitoring.gpkg",
+   "deliverables/vectors/geojson/crop_monitoring_aoi.geojson",
+   "deliverables/vectors/geojson/crop_monitoring_crop_fields.geojson",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 48.8522,
+      "name": "Background",
+      "pixels": 91,
+      "share": 0.02529,
+      "value": 0
+     },
+     {
+      "area_ha": 140.07406,
+      "name": "Class 1",
+      "pixels": 261,
+      "share": 0.07251,
+      "value": 1
+     },
+     {
+      "area_ha": 1742.73372,
+      "name": "Class 2",
+      "pixels": 3248,
+      "share": 0.90219,
+      "value": 2
+     }
+    ],
+    "file": "crop_map.tif",
+    "key": "crops",
+    "kind": "classes",
+    "title": "Crop map"
+   }
+  ],
+  "period": "2023-06",
+  "stats": {},
+  "title": "Crop-Type Map (trained network)"
+ },
+ "deforestation": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel deforestation --bbox -0.15 51.47 -0.10 51.52 -o ./out/deforestation --date-before 2024-05 --date-after 2024-08 --checkpoint path/to/your_trained.pth",
+  "console": "Running pipeline 'deforestation'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/deforestation\n\n\u2713 pipeline complete\n  Output: ./out/deforestation/deforestation_map.tif\n  Stats:\n    changed_fraction: 1.0000\n\n  Deliverables: ./out/deforestation/deliverables\n    PDF report    deforestation_report.pdf\n    Excel report  deforestation_report.xlsx\n    Word report   deforestation_report.docx\n    Map           maps/deforestation_map.png\n    Vectors gpkg  deforestation.gpkg\n    Vectors geojson deforestation_aoi.geojson, deforestation_forest_change.geojson",
+  "files": [
+   "deforestation_map.tif",
+   "deliverables/deforestation_report.docx",
+   "deliverables/deforestation_report.pdf",
+   "deliverables/deforestation_report.xlsx",
+   "deliverables/maps/deforestation_chart.png",
+   "deliverables/maps/deforestation_map.png",
+   "deliverables/vectors/deforestation.gpkg",
+   "deliverables/vectors/geojson/deforestation_aoi.geojson",
+   "deliverables/vectors/geojson/deforestation_forest_change.geojson",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1931.65998,
+      "name": "Class 1",
+      "pixels": 3600,
+      "share": 1.0,
+      "value": 1
+     }
+    ],
+    "file": "deforestation_map.tif",
+    "key": "change",
+    "kind": "classes",
+    "title": "Forest-change classes"
+   }
+  ],
+  "period": "2024-05 to 2024-08",
+  "stats": {
+   "changed_fraction": 1.0
+  },
+  "title": "Deforestation / Forest Loss (trained network)"
+ },
+ "disaster_assessment": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel disaster_assessment --bbox -0.15 51.47 -0.10 51.52 -o ./out/disaster_assessment --date-before 2024-05 --date-after 2024-08 --param disaster_type=flood --checkpoint path/to/your_trained.pth",
+  "console": "Running pipeline 'disaster_assessment'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/disaster_assessment\n\n\u2713 pipeline complete\n  Output: ./out/disaster_assessment/damage_assessment.tif\n  Stats:\n    changed_fraction: 1.0000\n\n  Deliverables: ./out/disaster_assessment/deliverables\n    PDF report    disaster_assessment_report.pdf\n    Excel report  disaster_assessment_report.xlsx\n    Word report   disaster_assessment_report.docx\n    Map           maps/disaster_assessment_map.png\n    Vectors gpkg  disaster_assessment.gpkg\n    Vectors geojson disaster_assessment_aoi.geojson, disaster_assessment_damage.geojson",
+  "files": [
+   "damage_assessment.tif",
+   "deliverables/disaster_assessment_report.docx",
+   "deliverables/disaster_assessment_report.pdf",
+   "deliverables/disaster_assessment_report.xlsx",
+   "deliverables/maps/disaster_assessment_chart.png",
+   "deliverables/maps/disaster_assessment_map.png",
+   "deliverables/vectors/disaster_assessment.gpkg",
+   "deliverables/vectors/geojson/disaster_assessment_aoi.geojson",
+   "deliverables/vectors/geojson/disaster_assessment_damage.geojson",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1931.65998,
+      "name": "Class 1",
+      "pixels": 3600,
+      "share": 1.0,
+      "value": 1
+     }
+    ],
+    "file": "damage_assessment.tif",
+    "key": "change",
+    "kind": "classes",
+    "title": "Damage classes"
+   }
+  ],
+  "period": "2024-05 to 2024-08",
+  "stats": {
+   "changed_fraction": 1.0
+  },
+  "title": "Disaster Damage Assessment (trained network)"
+ },
+ "drainage_analysis": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel drainage_analysis --bbox -0.15 51.47 -0.10 51.52 -o ./out/drainage_analysis --param resolution_m=60",
+  "console": "Running pipeline 'drainage_analysis'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/drainage_analysis\n\n\u2713 pipeline complete\n  Output: ./out/drainage_analysis/stream_order.tif\n  Stats:\n    stream_threshold_km2: 1.0000\n    stream_length_km: 7.8426\n    drainage_density_km_per_km2: 0.3602\n    max_strahler_order: 2\n    stream_cells: 113\n    largest_contributing_area_km2: 15.8976\n    mean_hand_m: 19.7134\n    hand_defined_fraction: 0.9775\n    cells_filled: 1680\n    max_fill_depth_m: 33.5961\n    valid_fraction: 1.0000\n    resolution_m: 60.0000\n    dem_source: copernicus\n    dem_host: local file\n    area_km2: 21.7728\n    product_note: Copernicus GLO-30 digital surface model (ESA/Airbus, 30 m): heights include vegetation and buildings, and its vertical accuracy is a few metres, so small features and gentle slopes are uncertain.\n    pct_area_hand_le_5m: 0.3532\n    pct_area_hand_le_10m: 0.4229\n    pct_area_hand_le_15m: 0.4970\n\n  Deliverables: ./out/drainage_analysis/deliverables\n    PDF report    drainage_analysis_report.pdf\n    Excel report  drainage_analysis_report.xlsx\n    Word report   drainage_analysis_report.docx\n    Map           maps/drainage_analysis_map.png\n    Map           maps/drainage_analysis_map_streams.png\n    Map           maps/drainage_analysis_map_flow.png\n    Vectors gpkg  drainage_analysis.gpkg\n    Vectors geojson drainage_analysis_aoi.geojson, drainage_analysis_streams.geojson",
+  "files": [
+   "deliverables/drainage_analysis_report.docx",
+   "deliverables/drainage_analysis_report.pdf",
+   "deliverables/drainage_analysis_report.xlsx",
+   "deliverables/maps/drainage_analysis_chart.png",
+   "deliverables/maps/drainage_analysis_histogram.png",
+   "deliverables/maps/drainage_analysis_map.png",
+   "deliverables/maps/drainage_analysis_map_flow.png",
+   "deliverables/maps/drainage_analysis_map_streams.png",
+   "deliverables/vectors/drainage_analysis.gpkg",
+   "deliverables/vectors/geojson/drainage_analysis_aoi.geojson",
+   "deliverables/vectors/geojson/drainage_analysis_streams.geojson",
+   "flow_accumulation_km2.tif",
+   "hand_m.tif",
+   "run_summary.json",
+   "stream_network.gpkg",
+   "stream_order.tif"
+  ],
+  "layers": [
+   {
+    "file": "hand_m.tif",
+    "key": "hand",
+    "kind": "continuous",
+    "summary": {
+     "max": 80.75904,
+     "mean": 19.71343,
+     "median": 14.3725,
+     "min": 0.0,
+     "valid_fraction": 0.97751
+    },
+    "title": "Height above nearest drainage (m)"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 2136.6,
+      "name": "No stream",
+      "pixels": 5935,
+      "share": 0.98132,
+      "value": 0
+     },
+     {
+      "area_ha": 20.88,
+      "name": "Order 1",
+      "pixels": 58,
+      "share": 0.00959,
+      "value": 1
+     },
+     {
+      "area_ha": 19.8,
+      "name": "Order 2",
+      "pixels": 55,
+      "share": 0.00909,
+      "value": 2
+     }
+    ],
+    "file": "stream_order.tif",
+    "key": "streams",
+    "kind": "classes",
+    "title": "Stream network by Strahler order"
+   },
+   {
+    "file": "flow_accumulation_km2.tif",
+    "key": "flow",
+    "kind": "continuous",
+    "summary": {
+     "max": 15.8976,
+     "mean": 0.15142,
+     "median": 0.0288,
+     "min": 0.0036,
+     "valid_fraction": 1.0
+    },
+    "title": "Contributing area (km\u00b2)"
+   }
+  ],
+  "period": "n/a (elevation model)",
+  "stats": {
+   "area_km2": 21.7728,
+   "cells_filled": 1680,
+   "dem_host": "local file",
+   "dem_source": "copernicus",
+   "drainage_density_km_per_km2": 0.3602,
+   "hand_defined_fraction": 0.97751,
+   "largest_contributing_area_km2": 15.8976,
+   "max_fill_depth_m": 33.59605,
+   "max_strahler_order": 2,
+   "mean_hand_m": 19.71343,
+   "pct_area_hand_le_10m": 0.42295,
+   "pct_area_hand_le_15m": 0.49702,
+   "pct_area_hand_le_5m": 0.35317,
+   "product_note": "Copernicus GLO-30 digital surface model (ESA/Airbus, 30 m): heights include vegetation and buildings, and its vertical accuracy is a few metres, so small features and gentle slopes are uncertain.",
+   "resolution_m": 60.0,
+   "stream_cells": 113,
+   "stream_length_km": 7.84264,
+   "stream_threshold_km2": 1.0,
+   "valid_fraction": 1.0
+  },
+  "title": "Drainage Analysis (flow accumulation, streams, HAND)"
+ },
+ "evapotranspiration": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel evapotranspiration --bbox -0.15 51.47 -0.10 51.52 -o ./out/evapotranspiration --date 2022",
+  "console": "Running pipeline 'evapotranspiration'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/evapotranspiration\n\n\u2713 pipeline complete\n  Output: ./out/evapotranspiration/et_mm_per_year.tif\n  Stats:\n    year: 2022\n    mean_et_mm: 1200.4001\n    mean_pet_mm: 1900.4000\n    mean_et_pet_ratio: 0.6317\n    min_et_mm: 1200.0000\n    max_et_mm: 1200.8000\n    total_et_volume_million_m3: 30.1481\n    valid_fraction: 1.0000\n    resolution_m: 463.3127\n    product_note: MODIS MOD16A3GF (Running et al. 2019) 500 m annual evapotranspiration and potential evapotranspiration, modelled with a Penman-Monteith approach from MODIS vegetation data and reanalysis weather. It is a model product (typical error of tens of percent against flux towers), land only: water, urban and barren pixels carry fill codes and are nodata here. 1 kg/m2 of water equals 1 mm.\n\n  Deliverables: ./out/evapotranspiration/deliverables\n    PDF report    evapotranspiration_report.pdf\n    Excel report  evapotranspiration_report.xlsx\n    Word report   evapotranspiration_report.docx\n    Map           maps/evapotranspiration_map.png\n    Map           maps/evapotranspiration_map_pet.png\n    Map           maps/evapotranspiration_map_ratio.png\n    Vectors gpkg  evapotranspiration.gpkg\n    Vectors geojson evapotranspiration_aoi.geojson",
+  "files": [
+   "deliverables/evapotranspiration_report.docx",
+   "deliverables/evapotranspiration_report.pdf",
+   "deliverables/evapotranspiration_report.xlsx",
+   "deliverables/maps/evapotranspiration_histogram.png",
+   "deliverables/maps/evapotranspiration_map.png",
+   "deliverables/maps/evapotranspiration_map_pet.png",
+   "deliverables/maps/evapotranspiration_map_ratio.png",
+   "deliverables/vectors/evapotranspiration.gpkg",
+   "deliverables/vectors/geojson/evapotranspiration_aoi.geojson",
+   "et_mm_per_year.tif",
+   "et_pet_ratio.tif",
+   "pet_mm_per_year.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "file": "et_mm_per_year.tif",
+    "key": "et",
+    "kind": "continuous",
+    "summary": {
+     "max": 1200.80005,
+     "mean": 1200.40002,
+     "median": 1200.40002,
+     "min": 1200.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Evapotranspiration (mm per year)"
+   },
+   {
+    "file": "pet_mm_per_year.tif",
+    "key": "pet",
+    "kind": "continuous",
+    "summary": {
+     "max": 1900.80005,
+     "mean": 1900.40002,
+     "median": 1900.40002,
+     "min": 1900.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Potential evapotranspiration (mm per year)"
+   },
+   {
+    "file": "et_pet_ratio.tif",
+    "key": "ratio",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.63173,
+     "mean": 0.63166,
+     "median": 0.63166,
+     "min": 0.63158,
+     "valid_fraction": 1.0
+    },
+    "title": "ET / PET"
+   }
+  ],
+  "period": "2022",
+  "stats": {
+   "max_et_mm": 1200.80005,
+   "mean_et_mm": 1200.40015,
+   "mean_et_pet_ratio": 0.63166,
+   "mean_pet_mm": 1900.40002,
+   "min_et_mm": 1200.0,
+   "product_note": "MODIS MOD16A3GF (Running et al. 2019) 500 m annual evapotranspiration and potential evapotranspiration, modelled with a Penman-Monteith approach from MODIS vegetation data and reanalysis weather. It is a model product (typical error of tens of percent against flux towers), land only: water, urban and barren pixels carry fill codes and are nodata here. 1 kg/m2 of water equals 1 mm.",
+   "resolution_m": 463.31272,
+   "total_et_volume_million_m3": 30.14813,
+   "valid_fraction": 1.0,
+   "year": 2022
+  },
+  "title": "Annual Evapotranspiration (MODIS MOD16A3GF)"
+ },
+ "flood_mapping": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel flood_mapping --bbox -0.15 51.47 -0.10 51.52 -o ./out/flood_mapping --date-before 2024-05 --date-after 2024-08",
+  "console": "Running pipeline 'flood_mapping'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/flood_mapping\n\n\u2713 pipeline complete\n  Output: ./out/flood_mapping/flood_extent.tif\n  Stats:\n    flooded_area_ha: 150.2402\n    permanent_water_area_ha: 823.6383\n    flooded_fraction: 0.0778\n    valid_fraction: 1.0000\n    mndwi_threshold: 0.0000\n\n  Deliverables: ./out/flood_mapping/deliverables\n    PDF report    flood_mapping_report.pdf\n    Excel report  flood_mapping_report.xlsx\n    Word report   flood_mapping_report.docx\n    Map           maps/flood_mapping_map.png\n    Vectors gpkg  flood_mapping.gpkg\n    Vectors geojson flood_mapping_aoi.geojson, flood_mapping_flood_extent.geojson",
+  "files": [
+   "deliverables/flood_mapping_report.docx",
+   "deliverables/flood_mapping_report.pdf",
+   "deliverables/flood_mapping_report.xlsx",
+   "deliverables/maps/flood_mapping_chart.png",
+   "deliverables/maps/flood_mapping_map.png",
+   "deliverables/vectors/flood_mapping.gpkg",
+   "deliverables/vectors/geojson/flood_mapping_aoi.geojson",
+   "deliverables/vectors/geojson/flood_mapping_flood_extent.geojson",
+   "flood_extent.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 957.78774,
+      "name": "Dry",
+      "pixels": 1785,
+      "share": 0.49584,
+      "value": 0
+     },
+     {
+      "area_ha": 150.24346,
+      "name": "Flooded",
+      "pixels": 280,
+      "share": 0.07778,
+      "value": 1
+     },
+     {
+      "area_ha": 823.62878,
+      "name": "Permanent water",
+      "pixels": 1535,
+      "share": 0.42638,
+      "value": 2
+     }
+    ],
+    "file": "flood_extent.tif",
+    "key": "flood",
+    "kind": "classes",
+    "title": "Flood extent"
+   }
+  ],
+  "period": "2024-05 to 2024-08",
+  "stats": {
+   "flooded_area_ha": 150.24021,
+   "flooded_fraction": 0.07778,
+   "mndwi_threshold": 0.0,
+   "permanent_water_area_ha": 823.63831,
+   "valid_fraction": 1.0
+  },
+  "title": "Flood Extent Mapping (optical, MNDWI)"
+ },
+ "forest_change": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel forest_change --bbox -0.15 51.47 -0.10 51.52 -o ./out/forest_change --date-before 2015 --date-after 2020",
+  "console": "Running pipeline 'forest_change'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/forest_change\n\n\u2713 pipeline complete\n  Output: ./out/forest_change/forest_change.tif\n  Stats:\n    year_before: 2015\n    year_after: 2020\n    forest_area_ha_before: 690.0000\n    forest_area_ha_after: 603.7500\n    forest_loss_ha: 86.2500\n    forest_gain_ha: 0.0000\n    net_change_ha: -86.2500\n    forest_share_before: 0.3434\n    forest_share_after: 0.3005\n    loss_ha_per_year: 17.2500\n    loss_share_of_initial_forest: 0.1250\n    include_open_forest: False\n    valid_fraction: 0.9422\n    resolution_m: 25.0000\n    resolution_coarsened: False\n    product_note: JAXA global PALSAR/PALSAR-2 forest/non-forest map (25 m, L-band radar, yearly 2015-2020; in this product 'forest' is natural forest with at least 90% canopy cover unless include_open_forest is set). Each year is mapped separately, so gains and losses include mapping disagreement; plantations count as forest.\n\n  Deliverables: ./out/forest_change/deliverables\n    PDF report    forest_change_report.pdf\n    Excel report  forest_change_report.xlsx\n    Word report   forest_change_report.docx\n    Map           maps/forest_change_map.png\n    Vectors gpkg  forest_change.gpkg\n    Vectors geojson forest_change_aoi.geojson, forest_change_forest_change.geojson",
+  "files": [
+   "deliverables/forest_change_report.docx",
+   "deliverables/forest_change_report.pdf",
+   "deliverables/forest_change_report.xlsx",
+   "deliverables/maps/forest_change_chart.png",
+   "deliverables/maps/forest_change_map.png",
+   "deliverables/vectors/forest_change.gpkg",
+   "deliverables/vectors/geojson/forest_change_aoi.geojson",
+   "deliverables/vectors/geojson/forest_change_forest_change.geojson",
+   "forest_change.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1319.3125,
+      "name": "Non-forest",
+      "pixels": 21109,
+      "share": 0.6566,
+      "value": 0
+     },
+     {
+      "area_ha": 603.75,
+      "name": "Forest in both years",
+      "pixels": 9660,
+      "share": 0.30048,
+      "value": 1
+     },
+     {
+      "area_ha": 86.25,
+      "name": "Forest loss",
+      "pixels": 1380,
+      "share": 0.04293,
+      "value": 2
+     }
+    ],
+    "file": "forest_change.tif",
+    "key": "forest",
+    "kind": "classes",
+    "title": "Forest change"
+   }
+  ],
+  "period": "2015 to 2020",
+  "stats": {
+   "forest_area_ha_after": 603.75,
+   "forest_area_ha_before": 690.0,
+   "forest_gain_ha": 0.0,
+   "forest_loss_ha": 86.25,
+   "forest_share_after": 0.30048,
+   "forest_share_before": 0.3434,
+   "include_open_forest": false,
+   "loss_ha_per_year": 17.25,
+   "loss_share_of_initial_forest": 0.125,
+   "net_change_ha": -86.25,
+   "product_note": "JAXA global PALSAR/PALSAR-2 forest/non-forest map (25 m, L-band radar, yearly 2015-2020; in this product 'forest' is natural forest with at least 90% canopy cover unless include_open_forest is set). Each year is mapped separately, so gains and losses include mapping disagreement; plantations count as forest.",
+   "resolution_coarsened": false,
+   "resolution_m": 25.0,
+   "valid_fraction": 0.94221,
+   "year_after": 2020,
+   "year_before": 2015
+  },
+  "title": "Forest Change (JAXA PALSAR forest / non-forest)"
+ },
+ "glacier_monitoring": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel glacier_monitoring --bbox -0.15 51.47 -0.10 51.52 -o ./out/glacier_monitoring --date-before 2024-05 --date-after 2024-08",
+  "console": "Running pipeline 'glacier_monitoring'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/glacier_monitoring\n\n\u2713 pipeline complete\n  Output: ./out/glacier_monitoring/glacier_extent_after.tif\n  Stats:\n    area_ha_before: 172.2397\n    area_ha_after: 231.2626\n    area_change_ha: 59.0229\n    area_change_pct: 34.2679\n    valid_fraction: 1.0000\n    ndsi_threshold: 0.4000\n\n  Deliverables: ./out/glacier_monitoring/deliverables\n    PDF report    glacier_monitoring_report.pdf\n    Excel report  glacier_monitoring_report.xlsx\n    Word report   glacier_monitoring_report.docx\n    Map           maps/glacier_monitoring_map.png\n    Vectors gpkg  glacier_monitoring.gpkg\n    Vectors geojson glacier_monitoring_aoi.geojson, glacier_monitoring_glacier_extent_after.geojson",
+  "files": [
+   "deliverables/glacier_monitoring_report.docx",
+   "deliverables/glacier_monitoring_report.pdf",
+   "deliverables/glacier_monitoring_report.xlsx",
+   "deliverables/maps/glacier_monitoring_chart.png",
+   "deliverables/maps/glacier_monitoring_map.png",
+   "deliverables/vectors/geojson/glacier_monitoring_aoi.geojson",
+   "deliverables/vectors/geojson/glacier_monitoring_glacier_extent_after.geojson",
+   "deliverables/vectors/glacier_monitoring.gpkg",
+   "glacier_extent_after.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1700.39838,
+      "name": "No snow/ice",
+      "pixels": 3169,
+      "share": 0.88028,
+      "value": 0
+     },
+     {
+      "area_ha": 231.2616,
+      "name": "Snow / ice",
+      "pixels": 431,
+      "share": 0.11972,
+      "value": 1
+     }
+    ],
+    "file": "glacier_extent_after.tif",
+    "key": "ice",
+    "kind": "classes",
+    "title": "Snow / ice extent (later date)"
+   }
+  ],
+  "period": "2024-05 to 2024-08",
+  "stats": {
+   "area_change_ha": 59.02294,
+   "area_change_pct": 34.26791,
+   "area_ha_after": 231.26261,
+   "area_ha_before": 172.23967,
+   "ndsi_threshold": 0.4,
+   "valid_fraction": 1.0
+  },
+  "title": "Glacier / Snow-Ice Extent Change (NDSI)"
+ },
+ "land_cover": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel land_cover --bbox -0.15 51.47 -0.10 51.52 -o ./out/land_cover --date 2023-06",
+  "console": "Running pipeline 'land_cover'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/land_cover\n\n\u2713 pipeline complete\n  Output: ./out/land_cover/land_cover.tif\n\n  Deliverables: ./out/land_cover/deliverables\n    PDF report    land_cover_report.pdf\n    Excel report  land_cover_report.xlsx\n    Word report   land_cover_report.docx\n    Map           maps/land_cover_map.png\n    Vectors gpkg  land_cover.gpkg\n    Vectors geojson land_cover_aoi.geojson, land_cover_land_cover.geojson",
+  "files": [
+   "deliverables/land_cover_report.docx",
+   "deliverables/land_cover_report.pdf",
+   "deliverables/land_cover_report.xlsx",
+   "deliverables/maps/land_cover_chart.png",
+   "deliverables/maps/land_cover_map.png",
+   "deliverables/vectors/geojson/land_cover_aoi.geojson",
+   "deliverables/vectors/geojson/land_cover_land_cover.geojson",
+   "deliverables/vectors/land_cover.gpkg",
+   "grid_template.tif",
+   "land_cover.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1.00615,
+      "name": "Tree cover",
+      "pixels": 100,
+      "share": 0.00052,
+      "value": 10
+     },
+     {
+      "area_ha": 1847.15268,
+      "name": "Grassland",
+      "pixels": 183496,
+      "share": 0.95625,
+      "value": 30
+     },
+     {
+      "area_ha": 83.50115,
+      "name": "Permanent water",
+      "pixels": 8295,
+      "share": 0.04323,
+      "value": 80
+     }
+    ],
+    "file": "land_cover.tif",
+    "key": "land_cover",
+    "kind": "classes",
+    "title": "Land cover"
+   }
+  ],
+  "period": "WorldCover 2021",
+  "stats": {},
+  "title": "Land Cover"
+ },
+ "land_surface_temperature": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel land_surface_temperature --bbox -0.15 51.47 -0.10 51.52 -o ./out/land_surface_temperature --date 2024-07",
+  "console": "Running pipeline 'land_surface_temperature'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/land_surface_temperature\n\n\u2713 pipeline complete\n  Output: ./out/land_surface_temperature/lst_celsius.tif\n  Stats:\n    mean_temp_celsius: 31.0146\n    max_temp_celsius: 39.8369\n    min_temp_celsius: 27.9992\n    pct_above_threshold: 0.0839\n    threshold_c: 2.0000\n    valid_fraction: 1.0000\n    mask_path: ./out/land_surface_temperature/above_threshold_mask.tif\n\n  Deliverables: ./out/land_surface_temperature/deliverables\n    PDF report    land_surface_temperature_report.pdf\n    Excel report  land_surface_temperature_report.xlsx\n    Word report   land_surface_temperature_report.docx\n    Map           maps/land_surface_temperature_map.png\n    Map           maps/land_surface_temperature_map_hot.png\n    Vectors gpkg  land_surface_temperature.gpkg\n    Vectors geojson land_surface_temperature_aoi.geojson, land_surface_temperature_temperature_zones.geojson, land_surface_temperature_above_threshold.geojson",
+  "files": [
+   "above_threshold_mask.tif",
+   "deliverables/land_surface_temperature_report.docx",
+   "deliverables/land_surface_temperature_report.pdf",
+   "deliverables/land_surface_temperature_report.xlsx",
+   "deliverables/maps/land_surface_temperature_chart.png",
+   "deliverables/maps/land_surface_temperature_histogram.png",
+   "deliverables/maps/land_surface_temperature_map.png",
+   "deliverables/maps/land_surface_temperature_map_hot.png",
+   "deliverables/vectors/geojson/land_surface_temperature_above_threshold.geojson",
+   "deliverables/vectors/geojson/land_surface_temperature_aoi.geojson",
+   "deliverables/vectors/geojson/land_surface_temperature_temperature_zones.geojson",
+   "deliverables/vectors/land_surface_temperature.gpkg",
+   "lst_celsius.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1118.31079,
+      "name": "below 30.7 \u00b0C",
+      "pixels": 2084,
+      "share": 0.57894,
+      "value": 0
+     },
+     {
+      "area_ha": 645.44122,
+      "name": "30.7 to 32.6 \u00b0C",
+      "pixels": 1203,
+      "share": 0.33414,
+      "value": 1
+     },
+     {
+      "area_ha": 6.9727,
+      "name": "32.6 to 34.5 \u00b0C",
+      "pixels": 13,
+      "share": 0.00361,
+      "value": 2
+     },
+     {
+      "area_ha": 0.53645,
+      "name": "34.5 to 36.5 \u00b0C",
+      "pixels": 1,
+      "share": 0.00028,
+      "value": 3
+     },
+     {
+      "area_ha": 160.39881,
+      "name": "above 36.5 \u00b0C",
+      "pixels": 299,
+      "share": 0.08304,
+      "value": 4
+     }
+    ],
+    "file": "lst_celsius.tif",
+    "key": "lst",
+    "kind": "continuous",
+    "summary": {
+     "max": 39.83694,
+     "mean": 31.01458,
+     "median": 30.44861,
+     "min": 27.99921,
+     "valid_fraction": 1.0
+    },
+    "title": "Land surface temperature"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 1769.65207,
+      "name": "Below threshold",
+      "pixels": 3298,
+      "share": 0.91613,
+      "value": 0
+     },
+     {
+      "area_ha": 162.00791,
+      "name": "Above threshold",
+      "pixels": 302,
+      "share": 0.08387,
+      "value": 1
+     }
+    ],
+    "file": "above_threshold_mask.tif",
+    "key": "hot",
+    "kind": "classes",
+    "title": "Above scene mean + threshold"
+   }
+  ],
+  "period": "2024-07",
+  "stats": {
+   "max_temp_celsius": 39.83694,
+   "mean_temp_celsius": 31.01458,
+   "min_temp_celsius": 27.99921,
+   "pct_above_threshold": 0.08389,
+   "threshold_c": 2.0,
+   "valid_fraction": 1.0
+  },
+  "title": "Land Surface Temperature (Landsat)"
+ },
+ "landcover_change": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel landcover_change --bbox -0.15 51.47 -0.10 51.52 -o ./out/landcover_change --date-before 2018 --date-after 2023",
+  "console": "Running pipeline 'landcover_change'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/landcover_change\n\n\u2713 pipeline complete\n  Output: ./out/landcover_change/change_mask.tif\n  Stats:\n    year_before: 2018\n    year_after: 2023\n    resolution_m: 10.0000\n    resolution_coarsened: False\n    changed_area_ha: 96.3200\n    change_fraction: 0.0457\n    valid_fraction: 1.0000\n    transitions: [{'from': 'Trees', 'to': 'Built area', 'area_ha': 96.32}]\n    min_change_ha: 0.0000\n    pixels_removed_by_min_change: 0\n    changed_in_patches_of_3px_or_less: 0.0000\n    product_note: Impact Observatory / Esri 10 m Annual Land Use Land Cover (v02, Sentinel-2 based, CC BY 4.0). Each year is classified independently, so a year-to-year difference contains classifier disagreement as well as real change; single-pixel flips are expected.\n\n  Deliverables: ./out/landcover_change/deliverables\n    PDF report    landcover_change_report.pdf\n    Excel report  landcover_change_report.xlsx\n    Word report   landcover_change_report.docx\n    Map           maps/landcover_change_map.png\n    Map           maps/landcover_change_map_landcover_before.png\n    Map           maps/landcover_change_map_landcover_after.png\n    Vectors gpkg  landcover_change.gpkg\n    Vectors geojson landcover_change_aoi.geojson, landcover_change_landcover_change.geojson",
+  "files": [
+   "change_mask.tif",
+   "deliverables/landcover_change_report.docx",
+   "deliverables/landcover_change_report.pdf",
+   "deliverables/landcover_change_report.xlsx",
+   "deliverables/maps/landcover_change_chart_transitions_area_ha.png",
+   "deliverables/maps/landcover_change_map.png",
+   "deliverables/maps/landcover_change_map_landcover_after.png",
+   "deliverables/maps/landcover_change_map_landcover_before.png",
+   "deliverables/vectors/geojson/landcover_change_aoi.geojson",
+   "deliverables/vectors/geojson/landcover_change_landcover_change.geojson",
+   "deliverables/vectors/landcover_change.gpkg",
+   "landcover_2018.tif",
+   "landcover_2023.tif",
+   "run_summary.json",
+   "transition.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 2010.67,
+      "name": "Unchanged",
+      "pixels": 201067,
+      "share": 0.95429,
+      "value": 0
+     },
+     {
+      "area_ha": 96.32,
+      "name": "Changed class",
+      "pixels": 9632,
+      "share": 0.04571,
+      "value": 1
+     }
+    ],
+    "file": "change_mask.tif",
+    "key": "change",
+    "kind": "classes",
+    "title": "Land-cover change"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 107.01,
+      "name": "Water",
+      "pixels": 10701,
+      "share": 0.05079,
+      "value": 1
+     },
+     {
+      "area_ha": 1012.46,
+      "name": "Trees",
+      "pixels": 101246,
+      "share": 0.48052,
+      "value": 2
+     },
+     {
+      "area_ha": 841.32,
+      "name": "Crops",
+      "pixels": 84132,
+      "share": 0.3993,
+      "value": 5
+     },
+     {
+      "area_ha": 146.2,
+      "name": "Built area",
+      "pixels": 14620,
+      "share": 0.06939,
+      "value": 7
+     }
+    ],
+    "file": "landcover_2018.tif",
+    "key": "landcover_before",
+    "kind": "classes",
+    "title": "Land cover 2018"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 107.01,
+      "name": "Water",
+      "pixels": 10701,
+      "share": 0.05079,
+      "value": 1
+     },
+     {
+      "area_ha": 916.14,
+      "name": "Trees",
+      "pixels": 91614,
+      "share": 0.43481,
+      "value": 2
+     },
+     {
+      "area_ha": 841.32,
+      "name": "Crops",
+      "pixels": 84132,
+      "share": 0.3993,
+      "value": 5
+     },
+     {
+      "area_ha": 242.52,
+      "name": "Built area",
+      "pixels": 24252,
+      "share": 0.1151,
+      "value": 7
+     }
+    ],
+    "file": "landcover_2023.tif",
+    "key": "landcover_after",
+    "kind": "classes",
+    "title": "Land cover 2023"
+   }
+  ],
+  "period": "2018 to 2023",
+  "stats": {
+   "area_ha_after": {
+    "Built area": 242.52,
+    "Crops": 841.32,
+    "Trees": 916.14,
+    "Water": 107.01
+   },
+   "area_ha_before": {
+    "Built area": 146.2,
+    "Crops": 841.32,
+    "Trees": 1012.46,
+    "Water": 107.01
+   },
+   "change_fraction": 0.04571,
+   "changed_area_ha": 96.32,
+   "changed_in_patches_of_3px_or_less": 0.0,
+   "min_change_ha": 0.0,
+   "pixels_removed_by_min_change": 0,
+   "product_note": "Impact Observatory / Esri 10 m Annual Land Use Land Cover (v02, Sentinel-2 based, CC BY 4.0). Each year is classified independently, so a year-to-year difference contains classifier disagreement as well as real change; single-pixel flips are expected.",
+   "resolution_coarsened": false,
+   "resolution_m": 10.0,
+   "transitions": [
+    {
+     "area_ha": 96.32,
+     "from": "Trees",
+     "to": "Built area"
+    }
+   ],
+   "valid_fraction": 1.0,
+   "year_after": 2023,
+   "year_before": 2018
+  },
+  "title": "Land-Cover Change (annual 10 m land cover)"
+ },
+ "landslide_detection": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel landslide_detection --bbox -0.15 51.47 -0.10 51.52 -o ./out/landslide_detection --date-before 2024-05 --date-after 2024-08 --checkpoint path/to/your_trained.pth",
+  "console": "Running pipeline 'landslide_detection'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/landslide_detection\n\n\u2713 pipeline complete\n  Output: ./out/landslide_detection/landslide_map.tif\n  Stats:\n    changed_fraction: 1.0000\n\n  Deliverables: ./out/landslide_detection/deliverables\n    PDF report    landslide_detection_report.pdf\n    Excel report  landslide_detection_report.xlsx\n    Word report   landslide_detection_report.docx\n    Map           maps/landslide_detection_map.png\n    Vectors gpkg  landslide_detection.gpkg\n    Vectors geojson landslide_detection_aoi.geojson, landslide_detection_landslides.geojson",
+  "files": [
+   "deliverables/landslide_detection_report.docx",
+   "deliverables/landslide_detection_report.pdf",
+   "deliverables/landslide_detection_report.xlsx",
+   "deliverables/maps/landslide_detection_chart.png",
+   "deliverables/maps/landslide_detection_map.png",
+   "deliverables/vectors/geojson/landslide_detection_aoi.geojson",
+   "deliverables/vectors/geojson/landslide_detection_landslides.geojson",
+   "deliverables/vectors/landslide_detection.gpkg",
+   "landslide_map.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1931.65998,
+      "name": "Class 1",
+      "pixels": 3600,
+      "share": 1.0,
+      "value": 1
+     }
+    ],
+    "file": "landslide_map.tif",
+    "key": "change",
+    "kind": "classes",
+    "title": "Landslide classes"
+   }
+  ],
+  "period": "2024-05 to 2024-08",
+  "stats": {
+   "changed_fraction": 1.0
+  },
+  "title": "Landslide Detection (trained network)"
+ },
+ "multisensor_flood_mapping": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel multisensor_flood_mapping --bbox -0.15 51.47 -0.10 51.52 -o ./out/multisensor_flood_mapping --date-before 2024-05-01/2024-05-31 --date-after 2024-06-10/2024-06-20",
+  "console": "Running pipeline 'multisensor_flood_mapping'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/multisensor_flood_mapping\n\n\u2713 pipeline complete\n  Output: ./out/multisensor_flood_mapping/flood_extent.tif\n  Stats:\n    flooded_area_ha: 62.9200\n    flooded_confirmed_ha: 62.9200\n    flooded_radar_only_ha: 0.0000\n    flooded_optical_only_ha: 0.0000\n    flooded_disputed_ha: 0.0000\n    flooded_upper_ha: 62.9200\n    permanent_water_area_ha: 310.8000\n    land_area_ha: 1805.6000\n    flooded_fraction: 0.0348\n    valid_fraction: 1.0000\n    excluded_by_hand_ha: 62.4800\n    removed_small_patch_ha: 0.0000\n    optical_coverage: 1.0000\n    sensors_used: ['sentinel-1', 'sentinel-2', 'copernicus-dem']\n    hand_applied: True\n    max_hand_m: 15.0000\n    polarization: vv\n    water_db: -13.2500\n    water_db_source: calibrated on Sentinel-2 MNDWI water of the reference window (F1 1.00)\n    change_db: 3.0000\n    radiometric_offset_db: 0.0000\n    otsu_db: -23.9000\n    mndwi_threshold: 0.0000\n    radar_optical_f1_reference: 1.0000\n    radar_optical_iou_reference: 1.0000\n    min_patch_ha: 0.1000\n    orbit_state: descending\n    relative_orbit: 1\n    scenes_reference: 1\n    scenes_flood: 1\n    reference_dates: ['2024-05-01']\n    flood_dates: ['2024-06-10']\n    optical_scenes_reference: 1\n    optical_scenes_flood: 1\n    optical_flood_dates: ['2024-06-10']\n    data_notes: \n    resolution_m: 20.0000\n    resolution_coarsened: False\n    product_note: Sentinel-1 C-band radar (ESA/Copernicus), radiometrically terrain-corrected gamma-naught at 10 m (Catalyst, via the Microsoft Planetary Computer). Calm open water is dark in radar; wind-roughened water, wet soil, smooth tarmac and radar shadow can be dark too, and floodwater among buildings or under dense vegetation is bright (double bounce) and is therefore not detected. Sentinel-2 L2A surface reflectance (ESA/Copernicus) via the Microsoft Planetary Computer, MNDWI of Xu (2006); cloud, shadow and cirrus pixels are masked with the product's Scene Classification Layer, so they are unknown, never dry.\n\n  Deliverables: ./out/multisensor_flood_mapping/deliverables\n    PDF report    multisensor_flood_mapping_report.pdf\n    Excel report  multisensor_flood_mapping_report.xlsx\n    Word report   multisensor_flood_mapping_report.docx\n    Map           maps/multisensor_flood_mapping_map.png\n    Map           maps/multisensor_flood_mapping_map_change.png\n    Map           maps/multisensor_flood_mapping_map_mndwi.png\n    Map           maps/multisensor_flood_mapping_map_hand.png\n    Vectors gpkg  multisensor_flood_mapping.gpkg\n    Vectors geojson multisensor_flood_mapping_aoi.geojson, multisensor_flood_mapping_flood_extent.geojson",
+  "files": [
+   "change_db.tif",
+   "deliverables/maps/multisensor_flood_mapping_chart.png",
+   "deliverables/maps/multisensor_flood_mapping_histogram.png",
+   "deliverables/maps/multisensor_flood_mapping_map.png",
+   "deliverables/maps/multisensor_flood_mapping_map_change.png",
+   "deliverables/maps/multisensor_flood_mapping_map_hand.png",
+   "deliverables/maps/multisensor_flood_mapping_map_mndwi.png",
+   "deliverables/multisensor_flood_mapping_report.docx",
+   "deliverables/multisensor_flood_mapping_report.pdf",
+   "deliverables/multisensor_flood_mapping_report.xlsx",
+   "deliverables/vectors/geojson/multisensor_flood_mapping_aoi.geojson",
+   "deliverables/vectors/geojson/multisensor_flood_mapping_flood_extent.geojson",
+   "deliverables/vectors/multisensor_flood_mapping.gpkg",
+   "flood_extent.tif",
+   "hand_m.tif",
+   "mndwi_after.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1742.68,
+      "name": "Not flooded",
+      "pixels": 43567,
+      "share": 0.82342,
+      "value": 0
+     },
+     {
+      "area_ha": 62.92,
+      "name": "Flooded: radar + optical",
+      "pixels": 1573,
+      "share": 0.02973,
+      "value": 1
+     },
+     {
+      "area_ha": 310.8,
+      "name": "Water in reference window",
+      "pixels": 7770,
+      "share": 0.14685,
+      "value": 5
+     }
+    ],
+    "file": "flood_extent.tif",
+    "key": "flood",
+    "kind": "classes",
+    "title": "Flood extent by sensor agreement"
+   },
+   {
+    "file": "change_db.tif",
+    "key": "change",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.0,
+     "mean": -0.7955,
+     "median": 0.0,
+     "min": -13.9794,
+     "valid_fraction": 1.0
+    },
+    "title": "Radar backscatter change, flood minus reference (dB)"
+   },
+   {
+    "file": "mndwi_after.tif",
+    "key": "mndwi",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.6,
+     "mean": -0.07481,
+     "median": -0.25,
+     "min": -0.25,
+     "valid_fraction": 1.0
+    },
+    "title": "Optical MNDWI in the flood window"
+   },
+   {
+    "file": "hand_m.tif",
+    "key": "hand",
+    "kind": "continuous",
+    "summary": {
+     "max": 114.26801,
+     "mean": 21.80525,
+     "median": 14.4877,
+     "min": 0.0,
+     "valid_fraction": 0.90811
+    },
+    "title": "Height above nearest drainage (m)"
+   }
+  ],
+  "period": "2024-05-01 to 2024-06-10",
+  "stats": {
+   "change_db": 3.0,
+   "data_notes": "",
+   "excluded_by_hand_ha": 62.48,
+   "flood_dates": [
+    "2024-06-10"
+   ],
+   "flooded_area_ha": 62.92,
+   "flooded_confirmed_ha": 62.92,
+   "flooded_disputed_ha": 0.0,
+   "flooded_fraction": 0.03485,
+   "flooded_optical_only_ha": 0.0,
+   "flooded_radar_only_ha": 0.0,
+   "flooded_upper_ha": 62.92,
+   "hand_applied": true,
+   "land_area_ha": 1805.6,
+   "max_hand_m": 15.0,
+   "min_patch_ha": 0.1,
+   "mndwi_threshold": 0.0,
+   "optical_coverage": 1.0,
+   "optical_flood_dates": [
+    "2024-06-10"
+   ],
+   "optical_scenes_flood": 1,
+   "optical_scenes_reference": 1,
+   "orbit_state": "descending",
+   "otsu_db": -23.9,
+   "permanent_water_area_ha": 310.8,
+   "polarization": "vv",
+   "product_note": "Sentinel-1 C-band radar (ESA/Copernicus), radiometrically terrain-corrected gamma-naught at 10 m (Catalyst, via the Microsoft Planetary Computer). Calm open water is dark in radar; wind-roughened water, wet soil, smooth tarmac and radar shadow can be dark too, and floodwater among buildings or under dense vegetation is bright (double bounce) and is therefore not detected. Sentinel-2 L2A surface reflectance (ESA/Copernicus) via the Microsoft Planetary Computer, MNDWI of Xu (2006); cloud, shadow and cirrus pixels are masked with the product's Scene Classification Layer, so they are unknown, never dry.",
+   "radar_optical_f1_reference": 1.0,
+   "radar_optical_iou_reference": 1.0,
+   "radiometric_offset_db": 0.0,
+   "reference_dates": [
+    "2024-05-01"
+   ],
+   "relative_orbit": 1,
+   "removed_small_patch_ha": 0.0,
+   "resolution_coarsened": false,
+   "resolution_m": 20.0,
+   "scenes_flood": 1,
+   "scenes_reference": 1,
+   "sensors_used": [
+    "sentinel-1",
+    "sentinel-2",
+    "copernicus-dem"
+   ],
+   "valid_fraction": 1.0,
+   "water_db": -13.25,
+   "water_db_source": "calibrated on Sentinel-2 MNDWI water of the reference window (F1 1.00)"
+  },
+  "title": "Flood Extent Mapping (radar + optical + terrain)"
+ },
+ "road_extraction": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel road_extraction --bbox -0.15 51.47 -0.10 51.52 -o ./out/road_extraction --date 2024-06 --checkpoint path/to/your_trained.pth",
+  "console": "Running pipeline 'road_extraction'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/road_extraction\n\n\u2713 pipeline complete\n  Output: ./out/road_extraction/road_mask.tif\n  Stats:\n    road_coverage: 0.1492\n\n  Deliverables: ./out/road_extraction/deliverables\n    PDF report    road_extraction_report.pdf\n    Excel report  road_extraction_report.xlsx\n    Word report   road_extraction_report.docx\n    Map           maps/road_extraction_map.png\n    Vectors gpkg  road_extraction.gpkg\n    Vectors geojson road_extraction_aoi.geojson, road_extraction_roads.geojson",
+  "files": [
+   "deliverables/maps/road_extraction_chart.png",
+   "deliverables/maps/road_extraction_map.png",
+   "deliverables/road_extraction_report.docx",
+   "deliverables/road_extraction_report.pdf",
+   "deliverables/road_extraction_report.xlsx",
+   "deliverables/vectors/geojson/road_extraction_aoi.geojson",
+   "deliverables/vectors/geojson/road_extraction_roads.geojson",
+   "deliverables/vectors/road_extraction.gpkg",
+   "road_mask.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1643.59939,
+      "name": "Background",
+      "pixels": 3063,
+      "share": 0.85087,
+      "value": 0
+     },
+     {
+      "area_ha": 288.06059,
+      "name": "Road",
+      "pixels": 537,
+      "share": 0.14913,
+      "value": 1
+     }
+    ],
+    "file": "road_mask.tif",
+    "key": "mask",
+    "kind": "classes",
+    "title": "Road mask"
+   }
+  ],
+  "period": "2024-06",
+  "stats": {
+   "road_coverage": 0.14917
+  },
+  "title": "Road Extraction (trained network)"
+ },
+ "road_network": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel road_network --bbox -0.15 51.47 -0.10 51.52 -o ./out/road_network",
+  "console": "Running pipeline 'road_network'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/road_network\n\n\u2713 pipeline complete\n  Output: ./out/road_network/road_density.tif\n  Stats:\n    total_length_km: 9.0361\n    road_density_km_per_km2: 0.4677\n    segments: 2\n    unnamed_share_of_length: 0.6157\n    aoi_area_km2: 19.3200\n    cell_m: 500.0000\n    excluded_tags: ['proposed', 'construction', 'razed', 'abandoned', 'planned', 'platform']\n    product_note: OpenStreetMap highway ways (volunteered data); completeness of minor roads and tracks varies by place.\n    network_file: ./out/road_network/road_network.gpkg\n\n  Deliverables: ./out/road_network/deliverables\n    PDF report    road_network_report.pdf\n    Excel report  road_network_report.xlsx\n    Word report   road_network_report.docx\n    Map           maps/road_network_map.png\n    Vectors gpkg  road_network.gpkg\n    Vectors geojson road_network_aoi.geojson, road_network_roads.geojson",
+  "files": [
+   "deliverables/maps/road_network_chart_km_by_highway.png",
+   "deliverables/maps/road_network_histogram.png",
+   "deliverables/maps/road_network_map.png",
+   "deliverables/road_network_report.docx",
+   "deliverables/road_network_report.pdf",
+   "deliverables/road_network_report.xlsx",
+   "deliverables/vectors/geojson/road_network_aoi.geojson",
+   "deliverables/vectors/geojson/road_network_roads.geojson",
+   "deliverables/vectors/road_network.gpkg",
+   "road_density.tif",
+   "road_network.gpkg",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "file": "road_density.tif",
+    "key": "density",
+    "kind": "continuous",
+    "summary": {
+     "max": 3.97133,
+     "mean": 0.46604,
+     "median": 0.0,
+     "min": 0.0,
+     "valid_fraction": 0.72115
+    },
+    "title": "Road density (km per km\u00b2)"
+   }
+  ],
+  "period": "n/a (published dataset)",
+  "stats": {
+   "aoi_area_km2": 19.32004,
+   "cell_m": 500.0,
+   "excluded_tags": [
+    "proposed",
+    "construction",
+    "razed",
+    "abandoned",
+    "planned",
+    "platform"
+   ],
+   "km_by_group": {
+    "local roads": 5.563,
+    "major roads": 3.473
+   },
+   "km_by_highway": {
+    "primary": 3.473,
+    "residential": 5.563
+   },
+   "network_file": "road_network.gpkg",
+   "product_note": "OpenStreetMap highway ways (volunteered data); completeness of minor roads and tracks varies by place.",
+   "road_density_km_per_km2": 0.46771,
+   "segments": 2,
+   "total_length_km": 9.0361,
+   "unnamed_share_of_length": 0.61569
+  },
+  "title": "Road Network (OpenStreetMap)"
+ },
+ "sar_flood_mapping": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel sar_flood_mapping --bbox -0.15 51.47 -0.10 51.52 -o ./out/sar_flood_mapping --date-before 2024-05-01/2024-05-31 --date-after 2024-06-10/2024-06-20",
+  "console": "Running pipeline 'sar_flood_mapping'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/sar_flood_mapping\n\n\u2713 pipeline complete\n  Output: ./out/sar_flood_mapping/flood_extent.tif\n  Stats:\n    flooded_area_ha: 116.6000\n    permanent_water_area_ha: 303.4000\n    flooded_fraction: 0.0551\n    valid_fraction: 1.0000\n    polarization: vv\n    water_db: -15.0000\n    water_db_source: conventional default\n    change_db: 3.0000\n    otsu_db: -23.9000\n    otsu_separability: 0.9933\n    min_patch_ha: 0.1000\n    removed_small_patch_ha: 0.0000\n    orbit_state: descending\n    relative_orbit: 1\n    scenes_reference: 1\n    scenes_flood: 1\n    reference_dates: ['2024-05-01']\n    flood_dates: ['2024-06-10']\n    aoi_coverage_reference: 1.0000\n    aoi_coverage_flood: 1.0000\n    speckle_filter: True\n    resolution_m: 20.0000\n    resolution_coarsened: False\n    product_note: Sentinel-1 C-band radar (ESA/Copernicus), radiometrically terrain-corrected gamma-naught at 10 m (Catalyst, via the Microsoft Planetary Computer). Calm open water is dark in radar; wind-roughened water, wet soil, smooth tarmac and radar shadow can be dark too, and floodwater among buildings or under dense vegetation is bright (double bounce) and is therefore not detected.\n\n  Deliverables: ./out/sar_flood_mapping/deliverables\n    PDF report    sar_flood_mapping_report.pdf\n    Excel report  sar_flood_mapping_report.xlsx\n    Word report   sar_flood_mapping_report.docx\n    Map           maps/sar_flood_mapping_map.png\n    Map           maps/sar_flood_mapping_map_change.png\n    Vectors gpkg  sar_flood_mapping.gpkg\n    Vectors geojson sar_flood_mapping_aoi.geojson, sar_flood_mapping_flood_extent.geojson",
+  "files": [
+   "after_db.tif",
+   "before_db.tif",
+   "change_db.tif",
+   "deliverables/maps/sar_flood_mapping_chart.png",
+   "deliverables/maps/sar_flood_mapping_histogram.png",
+   "deliverables/maps/sar_flood_mapping_map.png",
+   "deliverables/maps/sar_flood_mapping_map_change.png",
+   "deliverables/sar_flood_mapping_report.docx",
+   "deliverables/sar_flood_mapping_report.pdf",
+   "deliverables/sar_flood_mapping_report.xlsx",
+   "deliverables/vectors/geojson/sar_flood_mapping_aoi.geojson",
+   "deliverables/vectors/geojson/sar_flood_mapping_flood_extent.geojson",
+   "deliverables/vectors/sar_flood_mapping.gpkg",
+   "flood_extent.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1696.4,
+      "name": "Dry",
+      "pixels": 42410,
+      "share": 0.80155,
+      "value": 0
+     },
+     {
+      "area_ha": 116.6,
+      "name": "Flooded",
+      "pixels": 2915,
+      "share": 0.05509,
+      "value": 1
+     },
+     {
+      "area_ha": 303.4,
+      "name": "Permanent water",
+      "pixels": 7585,
+      "share": 0.14336,
+      "value": 2
+     }
+    ],
+    "file": "flood_extent.tif",
+    "key": "flood",
+    "kind": "classes",
+    "title": "Flood extent"
+   },
+   {
+    "file": "change_db.tif",
+    "key": "change",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.0,
+     "mean": -0.7955,
+     "median": 0.0,
+     "min": -13.9794,
+     "valid_fraction": 1.0
+    },
+    "title": "Backscatter change, flood minus reference (dB)"
+   }
+  ],
+  "period": "2024-05-01 to 2024-06-10",
+  "stats": {
+   "aoi_coverage_flood": 1.0,
+   "aoi_coverage_reference": 1.0,
+   "change_db": 3.0,
+   "flood_dates": [
+    "2024-06-10"
+   ],
+   "flooded_area_ha": 116.6,
+   "flooded_fraction": 0.05509,
+   "min_patch_ha": 0.1,
+   "orbit_state": "descending",
+   "otsu_db": -23.9,
+   "otsu_separability": 0.9933,
+   "permanent_water_area_ha": 303.4,
+   "polarization": "vv",
+   "product_note": "Sentinel-1 C-band radar (ESA/Copernicus), radiometrically terrain-corrected gamma-naught at 10 m (Catalyst, via the Microsoft Planetary Computer). Calm open water is dark in radar; wind-roughened water, wet soil, smooth tarmac and radar shadow can be dark too, and floodwater among buildings or under dense vegetation is bright (double bounce) and is therefore not detected.",
+   "reference_dates": [
+    "2024-05-01"
+   ],
+   "relative_orbit": 1,
+   "removed_small_patch_ha": 0.0,
+   "resolution_coarsened": false,
+   "resolution_m": 20.0,
+   "scenes_flood": 1,
+   "scenes_reference": 1,
+   "speckle_filter": true,
+   "valid_fraction": 1.0,
+   "water_db": -15.0,
+   "water_db_source": "conventional default"
+  },
+  "title": "Flood Extent Mapping (Sentinel-1 radar)"
+ },
+ "snow_cover": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel snow_cover --bbox -0.15 51.47 -0.10 51.52 -o ./out/snow_cover --date 2024-01",
+  "console": "Running pipeline 'snow_cover'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/snow_cover\n\n\u2713 pipeline complete\n  Output: ./out/snow_cover/snow_extent.tif\n  Stats:\n    snow_area_ha: 184.5808\n    snow_cover_fraction: 0.0956\n    valid_fraction: 1.0000\n    ndsi_threshold: 0.4000\n\n  Deliverables: ./out/snow_cover/deliverables\n    PDF report    snow_cover_report.pdf\n    Excel report  snow_cover_report.xlsx\n    Word report   snow_cover_report.docx\n    Map           maps/snow_cover_map.png\n    Vectors gpkg  snow_cover.gpkg\n    Vectors geojson snow_cover_aoi.geojson, snow_cover_snow_extent.geojson",
+  "files": [
+   "deliverables/maps/snow_cover_chart.png",
+   "deliverables/maps/snow_cover_map.png",
+   "deliverables/snow_cover_report.docx",
+   "deliverables/snow_cover_report.pdf",
+   "deliverables/snow_cover_report.xlsx",
+   "deliverables/vectors/geojson/snow_cover_aoi.geojson",
+   "deliverables/vectors/geojson/snow_cover_snow_extent.geojson",
+   "deliverables/vectors/snow_cover.gpkg",
+   "run_summary.json",
+   "snow_extent.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1747.07975,
+      "name": "No snow/ice",
+      "pixels": 3256,
+      "share": 0.90444,
+      "value": 0
+     },
+     {
+      "area_ha": 184.58023,
+      "name": "Snow / ice",
+      "pixels": 344,
+      "share": 0.09556,
+      "value": 1
+     }
+    ],
+    "file": "snow_extent.tif",
+    "key": "snow",
+    "kind": "classes",
+    "title": "Snow / ice extent"
+   }
+  ],
+  "period": "2024-01",
+  "stats": {
+   "ndsi_threshold": 0.4,
+   "snow_area_ha": 184.58083,
+   "snow_cover_fraction": 0.09556,
+   "valid_fraction": 1.0
+  },
+  "title": "Snow and Ice Cover (NDSI)"
+ },
+ "solar_detection": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel solar_detection --bbox -0.15 51.47 -0.10 51.52 -o ./out/solar_detection --date 2024-06 --checkpoint path/to/your_trained.pth",
+  "console": "Running pipeline 'solar_detection'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/solar_detection\n\n\u2713 pipeline complete\n  Output: ./out/solar_detection/solar_mask.tif\n  Stats:\n    panel_coverage: 0.1800\n\n  Deliverables: ./out/solar_detection/deliverables\n    PDF report    solar_detection_report.pdf\n    Excel report  solar_detection_report.xlsx\n    Word report   solar_detection_report.docx\n    Map           maps/solar_detection_map.png\n    Vectors gpkg  solar_detection.gpkg\n    Vectors geojson solar_detection_aoi.geojson, solar_detection_solar_panels.geojson",
+  "files": [
+   "deliverables/maps/solar_detection_chart.png",
+   "deliverables/maps/solar_detection_map.png",
+   "deliverables/solar_detection_report.docx",
+   "deliverables/solar_detection_report.pdf",
+   "deliverables/solar_detection_report.xlsx",
+   "deliverables/vectors/geojson/solar_detection_aoi.geojson",
+   "deliverables/vectors/geojson/solar_detection_solar_panels.geojson",
+   "deliverables/vectors/solar_detection.gpkg",
+   "run_summary.json",
+   "solar_mask.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1583.98567,
+      "name": "Background",
+      "pixels": 2952,
+      "share": 0.82001,
+      "value": 0
+     },
+     {
+      "area_ha": 347.67431,
+      "name": "Solar panel",
+      "pixels": 648,
+      "share": 0.17999,
+      "value": 1
+     }
+    ],
+    "file": "solar_mask.tif",
+    "key": "mask",
+    "kind": "classes",
+    "title": "Solar panel mask"
+   }
+  ],
+  "period": "2024-06",
+  "stats": {
+   "panel_coverage": 0.18
+  },
+  "title": "Solar Panel Detection (trained network)"
+ },
+ "solar_potential": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel solar_potential --bbox -0.15 51.47 -0.10 51.52 -o ./out/solar_potential --date 2024-06-21 --param hour=12",
+  "console": "Running pipeline 'solar_potential'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/solar_potential\n\n\u2713 pipeline complete\n  Output: ./out/solar_potential/solar_potential.tif\n  Stats:\n    date: 2024-06-21\n    hour: 12\n    dem_type: srtm1arc\n    sun_zenith_deg: 28.0394\n    sun_azimuth_deg: 179.9999\n    mean_relative_irradiance: 0.8812\n    pct_self_shaded: 0.0000\n    note: Single-instant relative factor; no terrain shadowing, no atmosphere.\n\n  Deliverables: ./out/solar_potential/deliverables\n    PDF report    solar_potential_report.pdf\n    Excel report  solar_potential_report.xlsx\n    Word report   solar_potential_report.docx\n    Map           maps/solar_potential_map.png\n    Vectors gpkg  solar_potential.gpkg\n    Vectors geojson solar_potential_aoi.geojson, solar_potential_irradiance_classes.geojson",
+  "files": [
+   "deliverables/maps/solar_potential_chart.png",
+   "deliverables/maps/solar_potential_histogram.png",
+   "deliverables/maps/solar_potential_map.png",
+   "deliverables/solar_potential_report.docx",
+   "deliverables/solar_potential_report.pdf",
+   "deliverables/solar_potential_report.xlsx",
+   "deliverables/vectors/geojson/solar_potential_aoi.geojson",
+   "deliverables/vectors/geojson/solar_potential_irradiance_classes.geojson",
+   "deliverables/vectors/solar_potential.gpkg",
+   "run_summary.json",
+   "solar_potential.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 0.0,
+      "name": "Very low (< 0.25)",
+      "pixels": 0,
+      "share": 0.0,
+      "value": 0
+     },
+     {
+      "area_ha": 0.0,
+      "name": "Low (0.25-0.5)",
+      "pixels": 0,
+      "share": 0.0,
+      "value": 1
+     },
+     {
+      "area_ha": 0.0,
+      "name": "Moderate (0.5-0.75)",
+      "pixels": 0,
+      "share": 0.0,
+      "value": 2
+     },
+     {
+      "area_ha": 1931.65998,
+      "name": "High (>= 0.75)",
+      "pixels": 6400,
+      "share": 1.0,
+      "value": 3
+     }
+    ],
+    "file": "solar_potential.tif",
+    "key": "solar",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.90978,
+     "mean": 0.88123,
+     "median": 0.88438,
+     "min": 0.84605,
+     "valid_fraction": 1.0
+    },
+    "title": "Relative clear-sky irradiance (0-1)"
+   }
+  ],
+  "period": "2024-06-21",
+  "stats": {
+   "date": "2024-06-21",
+   "dem_type": "srtm1arc",
+   "hour": 12,
+   "mean_relative_irradiance": 0.88123,
+   "note": "Single-instant relative factor; no terrain shadowing, no atmosphere.",
+   "pct_self_shaded": 0.0,
+   "sun_azimuth_deg": 179.99985,
+   "sun_zenith_deg": 28.03943
+  },
+  "title": "Solar Potential (terrain illumination)"
+ },
+ "surface_water_dynamics": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel surface_water_dynamics --bbox -0.15 51.47 -0.10 51.52 -o ./out/surface_water_dynamics",
+  "console": "Running pipeline 'surface_water_dynamics'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/surface_water_dynamics\n\n\u2713 pipeline complete\n  Output: ./out/surface_water_dynamics/water_transitions.tif\n  Stats:\n    permanent_now_ha: 424.0800\n    seasonal_now_ha: 212.0400\n    lost_ha: 68.4000\n    ephemeral_ha: 0.0000\n    ever_water_ha: 704.5200\n    ever_water_share: 0.3305\n    valid_fraction: 1.0000\n    resolution_m: 30.0000\n    resolution_coarsened: False\n    product_note: JRC Global Surface Water v1.3 (Pekel et al. 2016): water detected in every usable Landsat 5/7/8 scene from March 1984 to December 2020, 30 m. The history ends in 2020 and says nothing about later water; for a present-day map use water_bodies, and for an event use flood_mapping.\n\n  Deliverables: ./out/surface_water_dynamics/deliverables\n    PDF report    surface_water_dynamics_report.pdf\n    Excel report  surface_water_dynamics_report.xlsx\n    Word report   surface_water_dynamics_report.docx\n    Map           maps/surface_water_dynamics_map.png\n    Map           maps/surface_water_dynamics_map_occurrence.png\n    Map           maps/surface_water_dynamics_map_seasonality.png\n    Vectors gpkg  surface_water_dynamics.gpkg\n    Vectors geojson surface_water_dynamics_aoi.geojson, surface_water_dynamics_water_transitions.geojson",
+  "files": [
+   "deliverables/maps/surface_water_dynamics_chart.png",
+   "deliverables/maps/surface_water_dynamics_histogram.png",
+   "deliverables/maps/surface_water_dynamics_map.png",
+   "deliverables/maps/surface_water_dynamics_map_occurrence.png",
+   "deliverables/maps/surface_water_dynamics_map_seasonality.png",
+   "deliverables/surface_water_dynamics_report.docx",
+   "deliverables/surface_water_dynamics_report.pdf",
+   "deliverables/surface_water_dynamics_report.xlsx",
+   "deliverables/vectors/geojson/surface_water_dynamics_aoi.geojson",
+   "deliverables/vectors/geojson/surface_water_dynamics_water_transitions.geojson",
+   "deliverables/vectors/surface_water_dynamics.gpkg",
+   "run_summary.json",
+   "water_occurrence.tif",
+   "water_seasonality.tif",
+   "water_transitions.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1427.04,
+      "name": "Never water",
+      "pixels": 15856,
+      "share": 0.66948,
+      "value": 0
+     },
+     {
+      "area_ha": 424.08,
+      "name": "Permanent",
+      "pixels": 4712,
+      "share": 0.19895,
+      "value": 1
+     },
+     {
+      "area_ha": 68.4,
+      "name": "Lost permanent",
+      "pixels": 760,
+      "share": 0.03209,
+      "value": 3
+     },
+     {
+      "area_ha": 212.04,
+      "name": "Seasonal",
+      "pixels": 2356,
+      "share": 0.09948,
+      "value": 4
+     }
+    ],
+    "file": "water_transitions.tif",
+    "key": "transitions",
+    "kind": "classes",
+    "title": "Water transitions 1984-2020"
+   },
+   {
+    "file": "water_occurrence.tif",
+    "key": "occurrence",
+    "kind": "continuous",
+    "summary": {
+     "max": 80.0,
+     "mean": 23.87435,
+     "median": 0.0,
+     "min": 0.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Water occurrence (% of observations)"
+   },
+   {
+    "file": "water_seasonality.tif",
+    "key": "seasonality",
+    "kind": "continuous",
+    "summary": {
+     "max": 12.0,
+     "mean": 3.58115,
+     "median": 0.0,
+     "min": 0.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Months with water in 2020"
+   }
+  ],
+  "period": "",
+  "stats": {
+   "area_ha_by_class": {
+    "Lost permanent": 68.4,
+    "Permanent": 424.08,
+    "Seasonal": 212.04
+   },
+   "ephemeral_ha": 0.0,
+   "ever_water_ha": 704.52,
+   "ever_water_share": 0.33052,
+   "lost_ha": 68.4,
+   "permanent_now_ha": 424.08,
+   "product_note": "JRC Global Surface Water v1.3 (Pekel et al. 2016): water detected in every usable Landsat 5/7/8 scene from March 1984 to December 2020, 30 m. The history ends in 2020 and says nothing about later water; for a present-day map use water_bodies, and for an event use flood_mapping.",
+   "resolution_coarsened": false,
+   "resolution_m": 30.0,
+   "seasonal_now_ha": 212.04,
+   "valid_fraction": 1.0
+  },
+  "title": "Surface Water History 1984-2020 (JRC Global Surface Water)"
+ },
+ "terrain_analysis": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel terrain_analysis --bbox -0.15 51.47 -0.10 51.52 -o ./out/terrain_analysis",
+  "console": "Running pipeline 'terrain_analysis'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/terrain_analysis\n\n\u2713 pipeline complete\n  Output: ./out/terrain_analysis/slope_deg.tif\n  Stats:\n    min_elevation_m: 51.5952\n    max_elevation_m: 237.2991\n    mean_elevation_m: 130.4996\n    relief_m: 185.7039\n    mean_slope_deg: 5.3813\n    median_slope_deg: 5.5981\n    p95_slope_deg: 7.9311\n    max_slope_deg: 8.7410\n    mean_tri_m: 6.9483\n    valid_fraction: 1.0000\n    resolution_m: 30.0000\n    dem_source: copernicus\n    dem_host: local file\n    sun_azimuth_deg: 315.0000\n    sun_elevation_deg: 45.0000\n    product_note: Copernicus GLO-30 digital surface model (ESA/Airbus, 30 m): heights include vegetation and buildings, and its vertical accuracy is a few metres, so small features and gentle slopes are uncertain.\n    pct_area_slope_gt_5deg: 0.6157\n    pct_area_slope_gt_15deg: 0.0000\n    pct_area_slope_gt_30deg: 0.0000\n\n  Deliverables: ./out/terrain_analysis/deliverables\n    PDF report    terrain_analysis_report.pdf\n    Excel report  terrain_analysis_report.xlsx\n    Word report   terrain_analysis_report.docx\n    Map           maps/terrain_analysis_map.png\n    Map           maps/terrain_analysis_map_elevation.png\n    Map           maps/terrain_analysis_map_hillshade.png\n    Map           maps/terrain_analysis_map_aspect.png\n    Map           maps/terrain_analysis_map_tri.png\n    Vectors gpkg  terrain_analysis.gpkg\n    Vectors geojson terrain_analysis_aoi.geojson",
+  "files": [
+   "aspect_deg.tif",
+   "deliverables/maps/terrain_analysis_histogram.png",
+   "deliverables/maps/terrain_analysis_map.png",
+   "deliverables/maps/terrain_analysis_map_aspect.png",
+   "deliverables/maps/terrain_analysis_map_elevation.png",
+   "deliverables/maps/terrain_analysis_map_hillshade.png",
+   "deliverables/maps/terrain_analysis_map_tri.png",
+   "deliverables/terrain_analysis_report.docx",
+   "deliverables/terrain_analysis_report.pdf",
+   "deliverables/terrain_analysis_report.xlsx",
+   "deliverables/vectors/geojson/terrain_analysis_aoi.geojson",
+   "deliverables/vectors/terrain_analysis.gpkg",
+   "elevation.tif",
+   "hillshade.tif",
+   "run_summary.json",
+   "slope_deg.tif",
+   "tri_m.tif"
+  ],
+  "layers": [
+   {
+    "file": "slope_deg.tif",
+    "key": "slope",
+    "kind": "continuous",
+    "summary": {
+     "max": 8.74097,
+     "mean": 5.38126,
+     "median": 5.5981,
+     "min": 0.14681,
+     "valid_fraction": 1.0
+    },
+    "title": "Slope (degrees)"
+   },
+   {
+    "file": "elevation.tif",
+    "key": "elevation",
+    "kind": "continuous",
+    "summary": {
+     "max": 237.29906,
+     "mean": 130.49955,
+     "median": 129.38049,
+     "min": 51.5952,
+     "valid_fraction": 1.0
+    },
+    "title": "Elevation (m)"
+   },
+   {
+    "file": "hillshade.tif",
+    "key": "hillshade",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.79788,
+     "mean": 0.70885,
+     "median": 0.70766,
+     "min": 0.61349,
+     "valid_fraction": 1.0
+    },
+    "title": "Hillshade"
+   },
+   {
+    "file": "aspect_deg.tif",
+    "key": "aspect",
+    "kind": "continuous",
+    "summary": {
+     "max": 359.97717,
+     "mean": 198.96007,
+     "median": 218.46423,
+     "min": 2.35916,
+     "valid_fraction": 1.0
+    },
+    "title": "Aspect (bearing of the downhill direction)"
+   },
+   {
+    "file": "tri_m.tif",
+    "key": "tri",
+    "kind": "continuous",
+    "summary": {
+     "max": 11.29852,
+     "mean": 6.9483,
+     "median": 7.21408,
+     "min": 0.41581,
+     "valid_fraction": 1.0
+    },
+    "title": "Terrain ruggedness index (m)"
+   }
+  ],
+  "period": "n/a (elevation model)",
+  "stats": {
+   "dem_host": "local file",
+   "dem_source": "copernicus",
+   "max_elevation_m": 237.29906,
+   "max_slope_deg": 8.74097,
+   "mean_elevation_m": 130.49955,
+   "mean_slope_deg": 5.38126,
+   "mean_tri_m": 6.9483,
+   "median_slope_deg": 5.5981,
+   "min_elevation_m": 51.5952,
+   "p95_slope_deg": 7.93112,
+   "pct_area_slope_gt_15deg": 0.0,
+   "pct_area_slope_gt_30deg": 0.0,
+   "pct_area_slope_gt_5deg": 0.61573,
+   "product_note": "Copernicus GLO-30 digital surface model (ESA/Airbus, 30 m): heights include vegetation and buildings, and its vertical accuracy is a few metres, so small features and gentle slopes are uncertain.",
+   "relief_m": 185.70385,
+   "resolution_m": 30.0,
+   "sun_azimuth_deg": 315.0,
+   "sun_elevation_deg": 45.0,
+   "valid_fraction": 1.0
+  },
+  "title": "Terrain Analysis (Copernicus DEM)"
+ },
+ "urban_expansion": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel urban_expansion --bbox -0.15 51.47 -0.10 51.52 -o ./out/urban_expansion --date-before 2018 --date-after 2023",
+  "console": "Running pipeline 'urban_expansion'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/urban_expansion\n\n\u2713 pipeline complete\n  Output: ./out/urban_expansion/built_area_change.tif\n  Stats:\n    year_before: 2018\n    year_after: 2023\n    built_area_ha_before: 146.2000\n    built_area_ha_after: 242.5200\n    gain_ha: 96.3200\n    loss_ha: 0.0000\n    net_change_ha: 96.3200\n    built_share_before: 0.0694\n    built_share_after: 0.1151\n    annual_growth_rate: 0.1065\n    valid_fraction: 1.0000\n    resolution_m: 10.0000\n    resolution_coarsened: False\n    product_note: Impact Observatory / Esri 10 m Annual Land Use Land Cover (v02, Sentinel-2 based, CC BY 4.0). Each year is classified independently, so a year-to-year difference contains classifier disagreement as well as real change; single-pixel flips are expected.\n\n  Deliverables: ./out/urban_expansion/deliverables\n    PDF report    urban_expansion_report.pdf\n    Excel report  urban_expansion_report.xlsx\n    Word report   urban_expansion_report.docx\n    Map           maps/urban_expansion_map.png\n    Vectors gpkg  urban_expansion.gpkg\n    Vectors geojson urban_expansion_aoi.geojson, urban_expansion_built_change.geojson",
+  "files": [
+   "built_area_change.tif",
+   "deliverables/maps/urban_expansion_chart.png",
+   "deliverables/maps/urban_expansion_map.png",
+   "deliverables/urban_expansion_report.docx",
+   "deliverables/urban_expansion_report.pdf",
+   "deliverables/urban_expansion_report.xlsx",
+   "deliverables/vectors/geojson/urban_expansion_aoi.geojson",
+   "deliverables/vectors/geojson/urban_expansion_built_change.geojson",
+   "deliverables/vectors/urban_expansion.gpkg",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1864.47,
+      "name": "Not built",
+      "pixels": 186447,
+      "share": 0.8849,
+      "value": 0
+     },
+     {
+      "area_ha": 146.2,
+      "name": "Built in both years",
+      "pixels": 14620,
+      "share": 0.06939,
+      "value": 1
+     },
+     {
+      "area_ha": 96.32,
+      "name": "New built area",
+      "pixels": 9632,
+      "share": 0.04571,
+      "value": 2
+     }
+    ],
+    "file": "built_area_change.tif",
+    "key": "built",
+    "kind": "classes",
+    "title": "Built-up area change"
+   }
+  ],
+  "period": "2018 to 2023",
+  "stats": {
+   "annual_growth_rate": 0.10652,
+   "built_area_ha_after": 242.52,
+   "built_area_ha_before": 146.2,
+   "built_share_after": 0.1151,
+   "built_share_before": 0.06939,
+   "gain_ha": 96.32,
+   "loss_ha": 0.0,
+   "net_change_ha": 96.32,
+   "product_note": "Impact Observatory / Esri 10 m Annual Land Use Land Cover (v02, Sentinel-2 based, CC BY 4.0). Each year is classified independently, so a year-to-year difference contains classifier disagreement as well as real change; single-pixel flips are expected.",
+   "resolution_coarsened": false,
+   "resolution_m": 10.0,
+   "valid_fraction": 1.0,
+   "year_after": 2023,
+   "year_before": 2018
+  },
+  "title": "Urban Expansion (annual 10 m land cover)"
+ },
+ "urban_growth": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel urban_growth --bbox -0.15 51.47 -0.10 51.52 -o ./out/urban_growth --date-before 2024-05 --date-after 2024-08 --checkpoint path/to/your_trained.pth",
+  "console": "Running pipeline 'urban_growth'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/urban_growth\n\n\u2713 pipeline complete\n  Output: ./out/urban_growth/urban_growth.tif\n  Stats:\n    changed_fraction: 1.0000\n\n  Deliverables: ./out/urban_growth/deliverables\n    PDF report    urban_growth_report.pdf\n    Excel report  urban_growth_report.xlsx\n    Word report   urban_growth_report.docx\n    Map           maps/urban_growth_map.png\n    Vectors gpkg  urban_growth.gpkg\n    Vectors geojson urban_growth_aoi.geojson, urban_growth_urban_growth.geojson",
+  "files": [
+   "deliverables/maps/urban_growth_chart.png",
+   "deliverables/maps/urban_growth_map.png",
+   "deliverables/urban_growth_report.docx",
+   "deliverables/urban_growth_report.pdf",
+   "deliverables/urban_growth_report.xlsx",
+   "deliverables/vectors/geojson/urban_growth_aoi.geojson",
+   "deliverables/vectors/geojson/urban_growth_urban_growth.geojson",
+   "deliverables/vectors/urban_growth.gpkg",
+   "run_summary.json",
+   "urban_growth.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1931.65998,
+      "name": "Class 1",
+      "pixels": 3600,
+      "share": 1.0,
+      "value": 1
+     }
+    ],
+    "file": "urban_growth.tif",
+    "key": "change",
+    "kind": "classes",
+    "title": "Urban-change classes"
+   }
+  ],
+  "period": "2024-05 to 2024-08",
+  "stats": {
+   "changed_fraction": 1.0
+  },
+  "title": "Urban Growth (trained network)"
+ },
+ "urban_heat_island": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel urban_heat_island --bbox -0.15 51.47 -0.10 51.52 -o ./out/urban_heat_island --date 2024-07",
+  "console": "Running pipeline 'urban_heat_island'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/urban_heat_island\n\n\u2713 pipeline complete\n  Output: ./out/urban_heat_island/lst_celsius.tif\n  Stats:\n    mean_temp_celsius: 31.0182\n    max_temp_celsius: 39.4190\n    min_temp_celsius: 27.8639\n    pct_heat_island: 0.0833\n    threshold_c: 2.0000\n    valid_fraction: 1.0000\n    mask_path: ./out/urban_heat_island/heat_island_mask.tif\n\n  Deliverables: ./out/urban_heat_island/deliverables\n    PDF report    urban_heat_island_report.pdf\n    Excel report  urban_heat_island_report.xlsx\n    Word report   urban_heat_island_report.docx\n    Map           maps/urban_heat_island_map.png\n    Map           maps/urban_heat_island_map_hot.png\n    Vectors gpkg  urban_heat_island.gpkg\n    Vectors geojson urban_heat_island_aoi.geojson, urban_heat_island_temperature_zones.geojson, urban_heat_island_heat_island.geojson",
+  "files": [
+   "deliverables/maps/urban_heat_island_chart.png",
+   "deliverables/maps/urban_heat_island_histogram.png",
+   "deliverables/maps/urban_heat_island_map.png",
+   "deliverables/maps/urban_heat_island_map_hot.png",
+   "deliverables/urban_heat_island_report.docx",
+   "deliverables/urban_heat_island_report.pdf",
+   "deliverables/urban_heat_island_report.xlsx",
+   "deliverables/vectors/geojson/urban_heat_island_aoi.geojson",
+   "deliverables/vectors/geojson/urban_heat_island_heat_island.geojson",
+   "deliverables/vectors/geojson/urban_heat_island_temperature_zones.geojson",
+   "deliverables/vectors/urban_heat_island.gpkg",
+   "heat_island_mask.tif",
+   "lst_celsius.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1105.96814,
+      "name": "below 30.7 \u00b0C",
+      "pixels": 2061,
+      "share": 0.57255,
+      "value": 0
+     },
+     {
+      "area_ha": 660.46583,
+      "name": "30.7 to 32.6 \u00b0C",
+      "pixels": 1231,
+      "share": 0.34192,
+      "value": 1
+     },
+     {
+      "area_ha": 4.29074,
+      "name": "32.6 to 34.5 \u00b0C",
+      "pixels": 8,
+      "share": 0.00222,
+      "value": 2
+     },
+     {
+      "area_ha": 0.0,
+      "name": "34.5 to 36.4 \u00b0C",
+      "pixels": 0,
+      "share": 0.0,
+      "value": 3
+     },
+     {
+      "area_ha": 160.93527,
+      "name": "above 36.4 \u00b0C",
+      "pixels": 300,
+      "share": 0.08331,
+      "value": 4
+     }
+    ],
+    "file": "lst_celsius.tif",
+    "key": "lst",
+    "kind": "continuous",
+    "summary": {
+     "max": 39.41901,
+     "mean": 31.01822,
+     "median": 30.47032,
+     "min": 27.86386,
+     "valid_fraction": 1.0
+    },
+    "title": "Land surface temperature"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 1770.72471,
+      "name": "Not hot",
+      "pixels": 3300,
+      "share": 0.91669,
+      "value": 0
+     },
+     {
+      "area_ha": 160.93527,
+      "name": "Hot",
+      "pixels": 300,
+      "share": 0.08331,
+      "value": 1
+     }
+    ],
+    "file": "heat_island_mask.tif",
+    "key": "hot",
+    "kind": "classes",
+    "title": "Hot areas (scene mean + threshold)"
+   }
+  ],
+  "period": "2024-07",
+  "stats": {
+   "max_temp_celsius": 39.41901,
+   "mean_temp_celsius": 31.01822,
+   "min_temp_celsius": 27.86386,
+   "pct_heat_island": 0.08333,
+   "threshold_c": 2.0,
+   "valid_fraction": 1.0
+  },
+  "title": "Urban Heat Island (Landsat land surface temperature)"
+ },
+ "vegetation_anomaly": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel vegetation_anomaly --bbox -0.15 51.47 -0.10 51.52 -o ./out/vegetation_anomaly --date 2024-06",
+  "console": "Running pipeline 'vegetation_anomaly'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/vegetation_anomaly\n\n\u2713 pipeline complete\n  Output: ./out/vegetation_anomaly/anomaly_class.tif\n  Stats:\n    mean_ndvi_target: -0.0025\n    mean_ndvi_baseline: -0.0013\n    mean_anomaly: -0.0013\n    mean_vci: 49.8770\n    pct_below_normal: 0.2083\n    pct_above_normal: 0.2086\n    area_ha_much_below_normal: 145.9476\n    baseline_years_used: [2019, 2020, 2021, 2022, 2023]\n    baseline_years_missing: []\n    min_baseline_observations: 5\n    valid_fraction: 1.0000\n\n  Deliverables: ./out/vegetation_anomaly/deliverables\n    PDF report    vegetation_anomaly_report.pdf\n    Excel report  vegetation_anomaly_report.xlsx\n    Word report   vegetation_anomaly_report.docx\n    Map           maps/vegetation_anomaly_map.png\n    Map           maps/vegetation_anomaly_map_class.png\n    Map           maps/vegetation_anomaly_map_anomaly.png\n    Map           maps/vegetation_anomaly_map_vci.png\n    Vectors gpkg  vegetation_anomaly.gpkg\n    Vectors geojson vegetation_anomaly_aoi.geojson",
+  "files": [
+   "anomaly_class.tif",
+   "deliverables/maps/vegetation_anomaly_chart.png",
+   "deliverables/maps/vegetation_anomaly_histogram.png",
+   "deliverables/maps/vegetation_anomaly_map.png",
+   "deliverables/maps/vegetation_anomaly_map_anomaly.png",
+   "deliverables/maps/vegetation_anomaly_map_class.png",
+   "deliverables/maps/vegetation_anomaly_map_vci.png",
+   "deliverables/vectors/geojson/vegetation_anomaly_aoi.geojson",
+   "deliverables/vectors/vegetation_anomaly.gpkg",
+   "deliverables/vegetation_anomaly_report.docx",
+   "deliverables/vegetation_anomaly_report.pdf",
+   "deliverables/vegetation_anomaly_report.xlsx",
+   "ndvi_anomaly.tif",
+   "ndvi_zscore.tif",
+   "run_summary.json",
+   "vci.tif"
+  ],
+  "layers": [
+   {
+    "file": "ndvi_zscore.tif",
+    "key": "z",
+    "kind": "continuous",
+    "summary": {
+     "max": 16.16731,
+     "mean": 0.03142,
+     "median": 0.00369,
+     "min": -9.3093,
+     "valid_fraction": 1.0
+    },
+    "title": "NDVI z-score against the baseline"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 145.94561,
+      "name": "Much below normal (z <= -2)",
+      "pixels": 272,
+      "share": 0.07555,
+      "value": 0
+     },
+     {
+      "area_ha": 256.48609,
+      "name": "Below normal (-2 < z <= -1)",
+      "pixels": 478,
+      "share": 0.13278,
+      "value": 1
+     },
+     {
+      "area_ha": 1126.25841,
+      "name": "Near normal (|z| < 1)",
+      "pixels": 2099,
+      "share": 0.58305,
+      "value": 2
+     },
+     {
+      "area_ha": 252.72632,
+      "name": "Above normal (1 <= z < 2)",
+      "pixels": 471,
+      "share": 0.13083,
+      "value": 3
+     },
+     {
+      "area_ha": 150.24355,
+      "name": "Much above normal (z >= 2)",
+      "pixels": 280,
+      "share": 0.07778,
+      "value": 4
+     }
+    ],
+    "file": "anomaly_class.tif",
+    "key": "class",
+    "kind": "classes",
+    "title": "Anomaly class"
+   },
+   {
+    "file": "ndvi_anomaly.tif",
+    "key": "anomaly",
+    "kind": "continuous",
+    "summary": {
+     "max": 1.1673,
+     "mean": -0.00126,
+     "median": 0.00102,
+     "min": -1.15258,
+     "valid_fraction": 1.0
+    },
+    "title": "NDVI anomaly (NDVI minus baseline mean)"
+   },
+   {
+    "file": "vci.tif",
+    "key": "vci",
+    "kind": "continuous",
+    "summary": {
+     "max": 100.00001,
+     "mean": 49.87696,
+     "median": 50.40607,
+     "min": 0.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Vegetation Condition Index"
+   }
+  ],
+  "period": "2024-06",
+  "stats": {
+   "area_ha_much_below_normal": 145.94764,
+   "baseline_years_missing": [],
+   "baseline_years_used": [
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "class_shares": {
+    "Above normal (1 <= z < 2)": 0.13083,
+    "Below normal (-2 < z <= -1)": 0.13278,
+    "Much above normal (z >= 2)": 0.07778,
+    "Much below normal (z <= -2)": 0.07556,
+    "Near normal (|z| < 1)": 0.58306
+   },
+   "mean_anomaly": -0.00126,
+   "mean_ndvi_baseline": -0.00126,
+   "mean_ndvi_target": -0.00252,
+   "mean_vci": 49.87696,
+   "min_baseline_observations": 5,
+   "pct_above_normal": 0.20861,
+   "pct_below_normal": 0.20833,
+   "valid_fraction": 1.0
+  },
+  "title": "Vegetation Anomaly (NDVI against the same month in earlier years)"
+ },
+ "vegetation_indices": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel vegetation_indices --bbox -0.15 51.47 -0.10 51.52 -o ./out/vegetation_indices --dates '2024-04,2024-06,2024-08'",
+  "console": "Running pipeline 'vegetation_indices'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/vegetation_indices\n\n\u2713 pipeline complete\n  Output: ./out/vegetation_indices\n  Stats:\n    n_dates_used: 3\n\n  Deliverables: ./out/vegetation_indices/deliverables\n    PDF report    vegetation_indices_report.pdf\n    Excel report  vegetation_indices_report.xlsx\n    Word report   vegetation_indices_report.docx\n    Map           maps/vegetation_indices_ndvi_by_date.png\n    Vectors gpkg  vegetation_indices.gpkg\n    Vectors geojson vegetation_indices_aoi.geojson, vegetation_indices_ndvi_classes_2024_04.geojson, vegetation_indices_ndvi_classes_2024_06.geojson, vegetation_indices_ndvi_classes_2024_08.geojson",
+  "files": [
+   "2024_04/indices.tif",
+   "2024_06/indices.tif",
+   "2024_08/indices.tif",
+   "deliverables/maps/vegetation_indices_chart.png",
+   "deliverables/maps/vegetation_indices_ndvi_by_date.png",
+   "deliverables/vectors/geojson/vegetation_indices_aoi.geojson",
+   "deliverables/vectors/geojson/vegetation_indices_ndvi_classes_2024_04.geojson",
+   "deliverables/vectors/geojson/vegetation_indices_ndvi_classes_2024_06.geojson",
+   "deliverables/vectors/geojson/vegetation_indices_ndvi_classes_2024_08.geojson",
+   "deliverables/vectors/vegetation_indices.gpkg",
+   "deliverables/vegetation_indices_report.docx",
+   "deliverables/vegetation_indices_report.pdf",
+   "deliverables/vegetation_indices_report.xlsx",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1226.61017,
+      "name": "Non-vegetated or water (< 0.1)",
+      "pixels": 2286,
+      "share": 0.635,
+      "value": 0
+     },
+     {
+      "area_ha": 378.81887,
+      "name": "Sparse (0.1-0.3)",
+      "pixels": 706,
+      "share": 0.19611,
+      "value": 1
+     },
+     {
+      "area_ha": 246.28474,
+      "name": "Moderate (0.3-0.6)",
+      "pixels": 459,
+      "share": 0.1275,
+      "value": 2
+     },
+     {
+      "area_ha": 79.9462,
+      "name": "Dense (>= 0.6)",
+      "pixels": 149,
+      "share": 0.04139,
+      "value": 3
+     }
+    ],
+    "file": "indices.tif",
+    "key": "ndvi_2024_04",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.91682,
+     "mean": 0.00538,
+     "median": 0.00147,
+     "min": -0.91417,
+     "valid_fraction": 1.0
+    },
+    "title": "NDVI 2024-04"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 1237.8727,
+      "name": "Non-vegetated or water (< 0.1)",
+      "pixels": 2307,
+      "share": 0.64083,
+      "value": 0
+     },
+     {
+      "area_ha": 405.64403,
+      "name": "Sparse (0.1-0.3)",
+      "pixels": 756,
+      "share": 0.21,
+      "value": 1
+     },
+     {
+      "area_ha": 219.99807,
+      "name": "Moderate (0.3-0.6)",
+      "pixels": 410,
+      "share": 0.11389,
+      "value": 2
+     },
+     {
+      "area_ha": 68.14518,
+      "name": "Dense (>= 0.6)",
+      "pixels": 127,
+      "share": 0.03528,
+      "value": 3
+     }
+    ],
+    "file": "indices.tif",
+    "key": "ndvi_2024_06",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.91441,
+     "mean": -0.00613,
+     "median": -0.00759,
+     "min": -0.92949,
+     "valid_fraction": 1.0
+    },
+    "title": "NDVI 2024-06"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 1249.14068,
+      "name": "Non-vegetated or water (< 0.1)",
+      "pixels": 2328,
+      "share": 0.64667,
+      "value": 0
+     },
+     {
+      "area_ha": 393.30941,
+      "name": "Sparse (0.1-0.3)",
+      "pixels": 733,
+      "share": 0.20361,
+      "value": 1
+     },
+     {
+      "area_ha": 230.18578,
+      "name": "Moderate (0.3-0.6)",
+      "pixels": 429,
+      "share": 0.11916,
+      "value": 2
+     },
+     {
+      "area_ha": 59.02411,
+      "name": "Dense (>= 0.6)",
+      "pixels": 110,
+      "share": 0.03056,
+      "value": 3
+     }
+    ],
+    "file": "indices.tif",
+    "key": "ndvi_2024_08",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.91845,
+     "mean": -0.00155,
+     "median": -0.00029,
+     "min": -0.90337,
+     "valid_fraction": 1.0
+    },
+    "title": "NDVI 2024-08"
+   }
+  ],
+  "period": "2024-04, 2024-06, 2024-08",
+  "stats": {
+   "n_dates_used": 3,
+   "per_date": {
+    "2024-04": {
+     "mean_evi": -0.0391,
+     "mean_ndvi": 0.00538,
+     "mean_ndwi": 0.00796,
+     "valid_fraction": 1.0
+    },
+    "2024-06": {
+     "mean_evi": -0.04641,
+     "mean_ndvi": -0.00613,
+     "mean_ndwi": 0.00826,
+     "valid_fraction": 1.0
+    },
+    "2024-08": {
+     "mean_evi": -0.04989,
+     "mean_ndvi": -0.00155,
+     "mean_ndwi": -6e-05,
+     "valid_fraction": 1.0
+    }
+   }
+  },
+  "title": "Vegetation Indices Time Series (NDVI, EVI, NDWI)"
+ },
+ "volcano_monitoring": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel volcano_monitoring --bbox -0.15 51.47 -0.10 51.52 -o ./out/volcano_monitoring --date 2024-07",
+  "console": "Running pipeline 'volcano_monitoring'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/volcano_monitoring\n\n\u2713 pipeline complete\n  Output: ./out/volcano_monitoring/lst_celsius.tif\n  Stats:\n    mean_temp_celsius: 31.0110\n    max_temp_celsius: 39.6686\n    min_temp_celsius: 27.6386\n    pct_thermal_anomaly: 0.0000\n    threshold_c: 20.0000\n    valid_fraction: 1.0000\n    mask_path: ./out/volcano_monitoring/thermal_anomaly_mask.tif\n\n  Deliverables: ./out/volcano_monitoring/deliverables\n    PDF report    volcano_monitoring_report.pdf\n    Excel report  volcano_monitoring_report.xlsx\n    Word report   volcano_monitoring_report.docx\n    Map           maps/volcano_monitoring_map.png\n    Map           maps/volcano_monitoring_map_hot.png\n    Vectors gpkg  volcano_monitoring.gpkg\n    Vectors geojson volcano_monitoring_aoi.geojson, volcano_monitoring_temperature_zones.geojson\n    ! vector layer 'thermal_anomaly' has no features (no pixels of the selected classes).",
+  "files": [
+   "deliverables/maps/volcano_monitoring_chart.png",
+   "deliverables/maps/volcano_monitoring_histogram.png",
+   "deliverables/maps/volcano_monitoring_map.png",
+   "deliverables/maps/volcano_monitoring_map_hot.png",
+   "deliverables/vectors/geojson/volcano_monitoring_aoi.geojson",
+   "deliverables/vectors/geojson/volcano_monitoring_temperature_zones.geojson",
+   "deliverables/vectors/volcano_monitoring.gpkg",
+   "deliverables/volcano_monitoring_report.docx",
+   "deliverables/volcano_monitoring_report.pdf",
+   "deliverables/volcano_monitoring_report.xlsx",
+   "lst_celsius.tif",
+   "run_summary.json",
+   "thermal_anomaly_mask.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1109.72126,
+      "name": "below 30.6 \u00b0C",
+      "pixels": 2068,
+      "share": 0.57449,
+      "value": 0
+     },
+     {
+      "area_ha": 656.17642,
+      "name": "30.6 to 32.6 \u00b0C",
+      "pixels": 1223,
+      "share": 0.3397,
+      "value": 1
+     },
+     {
+      "area_ha": 4.82704,
+      "name": "32.6 to 34.5 \u00b0C",
+      "pixels": 9,
+      "share": 0.0025,
+      "value": 2
+     },
+     {
+      "area_ha": 0.0,
+      "name": "34.5 to 36.5 \u00b0C",
+      "pixels": 0,
+      "share": 0.0,
+      "value": 3
+     },
+     {
+      "area_ha": 160.93527,
+      "name": "above 36.5 \u00b0C",
+      "pixels": 300,
+      "share": 0.08331,
+      "value": 4
+     }
+    ],
+    "file": "lst_celsius.tif",
+    "key": "lst",
+    "kind": "continuous",
+    "summary": {
+     "max": 39.66861,
+     "mean": 31.01099,
+     "median": 30.42947,
+     "min": 27.63864,
+     "valid_fraction": 1.0
+    },
+    "title": "Land surface temperature"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 1931.65998,
+      "name": "Normal",
+      "pixels": 3600,
+      "share": 1.0,
+      "value": 0
+     }
+    ],
+    "file": "thermal_anomaly_mask.tif",
+    "key": "hot",
+    "kind": "classes",
+    "title": "Thermal anomaly candidates"
+   }
+  ],
+  "period": "2024-07",
+  "stats": {
+   "max_temp_celsius": 39.66861,
+   "mean_temp_celsius": 31.01099,
+   "min_temp_celsius": 27.63864,
+   "pct_thermal_anomaly": 0.0,
+   "threshold_c": 20.0,
+   "valid_fraction": 1.0
+  },
+  "title": "Thermal Anomaly Screening (volcano monitoring)"
+ },
+ "water_bodies": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel water_bodies --bbox -0.15 51.47 -0.10 51.52 -o ./out/water_bodies --date 2024-06",
+  "console": "Running pipeline 'water_bodies'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/water_bodies\n\n\u2713 pipeline complete\n  Output: ./out/water_bodies/ndwi.tif\n  Stats:\n    water_coverage: 0.1531\n    valid_fraction: 1.0000\n    ndwi_threshold: 0.3000\n\n  Deliverables: ./out/water_bodies/deliverables\n    PDF report    water_bodies_report.pdf\n    Excel report  water_bodies_report.xlsx\n    Word report   water_bodies_report.docx\n    Map           maps/water_bodies_map.png\n    Map           maps/water_bodies_map_ndwi.png\n    Vectors gpkg  water_bodies.gpkg\n    Vectors geojson water_bodies_aoi.geojson, water_bodies_water_bodies.geojson",
+  "files": [
+   "deliverables/maps/water_bodies_chart.png",
+   "deliverables/maps/water_bodies_histogram.png",
+   "deliverables/maps/water_bodies_map.png",
+   "deliverables/maps/water_bodies_map_ndwi.png",
+   "deliverables/vectors/geojson/water_bodies_aoi.geojson",
+   "deliverables/vectors/geojson/water_bodies_water_bodies.geojson",
+   "deliverables/vectors/water_bodies.gpkg",
+   "deliverables/water_bodies_report.docx",
+   "deliverables/water_bodies_report.pdf",
+   "deliverables/water_bodies_report.xlsx",
+   "ndwi.tif",
+   "run_summary.json",
+   "water_mask.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1636.0018,
+      "name": "Not water",
+      "pixels": 3049,
+      "share": 0.84694,
+      "value": 0
+     },
+     {
+      "area_ha": 295.65818,
+      "name": "Water",
+      "pixels": 551,
+      "share": 0.15306,
+      "value": 1
+     }
+    ],
+    "file": "water_mask.tif",
+    "key": "water",
+    "kind": "classes",
+    "title": "Water mask"
+   },
+   {
+    "file": "ndwi.tif",
+    "key": "ndwi",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.92022,
+     "mean": -0.00138,
+     "median": -0.00256,
+     "min": -0.9241,
+     "valid_fraction": 1.0
+    },
+    "title": "NDWI"
+   }
+  ],
+  "period": "2024-06",
+  "stats": {
+   "ndwi_threshold": 0.3,
+   "valid_fraction": 1.0,
+   "water_coverage": 0.15306
+  },
+  "title": "Surface Water (NDWI)"
+ },
+ "water_extent_timeseries": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel water_extent_timeseries --bbox -0.15 51.47 -0.10 51.52 -o ./out/water_extent_timeseries --dates '2024-01,2024-03,2024-05'",
+  "console": "Running pipeline 'water_extent_timeseries'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/water_extent_timeseries\n\n\u2713 pipeline complete\n  Output: ./out/water_extent_timeseries/water_frequency.tif\n  Stats:\n    series: [{'date': '2024-01', 'usable': True, 'valid_fraction': 1.0, 'water_area_ha': 978.7076714534506, 'water_fraction_of_valid': 0.5066666666666667}, {'date': '2024-03', 'usable': True, 'valid_fraction': 1.0, 'water_area_ha': 973.878521758779, 'water_fraction_of_valid': 0.5041666666666667}, {'date': '2024-05', 'usable': True, 'valid_fraction': 1.0, 'water_area_ha': 964.2202223694358, 'water_fraction_of_valid': 0.49916666666666665}]\n    n_dates_requested: 3\n    n_dates_usable: 3\n    always_water_ha: 246.8232\n    ever_water_ha: 1673.5687\n    variable_water_ha: 1426.7454\n    min_water_area_ha: 964.2202\n    max_water_area_ha: 978.7077\n    mndwi_threshold: 0.0000\n    min_valid_fraction: 0.8000\n    valid_fraction: 1.0000\n    timeseries_file: ./out/water_extent_timeseries/water_timeseries.csv\n\n  Deliverables: ./out/water_extent_timeseries/deliverables\n    PDF report    water_extent_timeseries_report.pdf\n    Excel report  water_extent_timeseries_report.xlsx\n    Word report   water_extent_timeseries_report.docx\n    Map           maps/water_extent_timeseries_map.png\n    Map           maps/water_extent_timeseries_map_observations.png\n    Vectors gpkg  water_extent_timeseries.gpkg\n    Vectors geojson water_extent_timeseries_aoi.geojson",
+  "files": [
+   "2024_01/water_mask.tif",
+   "2024_03/water_mask.tif",
+   "2024_05/water_mask.tif",
+   "deliverables/maps/water_extent_timeseries_chart_series_water_area_ha.png",
+   "deliverables/maps/water_extent_timeseries_chart_series_water_fraction_of_valid.png",
+   "deliverables/maps/water_extent_timeseries_histogram.png",
+   "deliverables/maps/water_extent_timeseries_map.png",
+   "deliverables/maps/water_extent_timeseries_map_observations.png",
+   "deliverables/vectors/geojson/water_extent_timeseries_aoi.geojson",
+   "deliverables/vectors/water_extent_timeseries.gpkg",
+   "deliverables/water_extent_timeseries_report.docx",
+   "deliverables/water_extent_timeseries_report.pdf",
+   "deliverables/water_extent_timeseries_report.xlsx",
+   "run_summary.json",
+   "valid_observations.tif",
+   "water_frequency.tif",
+   "water_timeseries.csv"
+  ],
+  "layers": [
+   {
+    "file": "water_frequency.tif",
+    "key": "frequency",
+    "kind": "continuous",
+    "summary": {
+     "max": 1.0,
+     "mean": 0.50333,
+     "median": 0.66667,
+     "min": 0.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Water frequency (share of cloud-free observations)"
+   },
+   {
+    "file": "valid_observations.tif",
+    "key": "observations",
+    "kind": "continuous",
+    "summary": {
+     "max": 3.0,
+     "mean": 3.0,
+     "median": 3.0,
+     "min": 3.0,
+     "valid_fraction": 1.0
+    },
+    "title": "Cloud-free observations"
+   }
+  ],
+  "period": "2024-01 to 2024-05",
+  "stats": {
+   "always_water_ha": 246.82321,
+   "ever_water_ha": 1673.56866,
+   "max_water_area_ha": 978.70767,
+   "min_valid_fraction": 0.8,
+   "min_water_area_ha": 964.22022,
+   "mndwi_threshold": 0.0,
+   "n_dates_requested": 3,
+   "n_dates_usable": 3,
+   "series": [
+    {
+     "date": "2024-01",
+     "usable": true,
+     "valid_fraction": 1.0,
+     "water_area_ha": 978.70767,
+     "water_fraction_of_valid": 0.50667
+    },
+    {
+     "date": "2024-03",
+     "usable": true,
+     "valid_fraction": 1.0,
+     "water_area_ha": 973.87852,
+     "water_fraction_of_valid": 0.50417
+    },
+    {
+     "date": "2024-05",
+     "usable": true,
+     "valid_fraction": 1.0,
+     "water_area_ha": 964.22022,
+     "water_fraction_of_valid": 0.49917
+    }
+   ],
+   "timeseries_file": "water_timeseries.csv",
+   "valid_fraction": 1.0,
+   "variable_water_ha": 1426.74545
+  },
+  "title": "Water Extent Through Time (MNDWI)"
+ },
+ "water_quality": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel water_quality --bbox -0.15 51.47 -0.10 51.52 -o ./out/water_quality --date 2024-06",
+  "console": "Running pipeline 'water_quality'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/water_quality\n\n\u2713 pipeline complete\n  Output: ./out/water_quality/water_quality.tif\n  Stats:\n    pct_water: 0.4933\n    mean_ndci_in_water: -0.0140\n    mean_red_reflectance_in_water: 0.2561\n    valid_fraction: 1.0000\n    note: Relative indicators; calibrate against water samples for concentrations.\n\n  Deliverables: ./out/water_quality/deliverables\n    PDF report    water_quality_report.pdf\n    Excel report  water_quality_report.xlsx\n    Word report   water_quality_report.docx\n    Map           maps/water_quality_map.png\n    Map           maps/water_quality_map_turbidity.png\n    Vectors gpkg  water_quality.gpkg\n    Vectors geojson water_quality_aoi.geojson, water_quality_ndci_zones.geojson",
+  "files": [
+   "deliverables/maps/water_quality_chart.png",
+   "deliverables/maps/water_quality_histogram.png",
+   "deliverables/maps/water_quality_map.png",
+   "deliverables/maps/water_quality_map_turbidity.png",
+   "deliverables/vectors/geojson/water_quality_aoi.geojson",
+   "deliverables/vectors/geojson/water_quality_ndci_zones.geojson",
+   "deliverables/vectors/water_quality.gpkg",
+   "deliverables/water_quality_report.docx",
+   "deliverables/water_quality_report.pdf",
+   "deliverables/water_quality_report.xlsx",
+   "run_summary.json",
+   "water_quality.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 317.65374,
+      "name": "Lower third of NDCI",
+      "pixels": 592,
+      "share": 0.33334,
+      "value": 0
+     },
+     {
+      "area_ha": 317.64477,
+      "name": "Middle third of NDCI",
+      "pixels": 592,
+      "share": 0.33333,
+      "value": 1
+     },
+     {
+      "area_ha": 317.65166,
+      "name": "Upper third of NDCI",
+      "pixels": 592,
+      "share": 0.33334,
+      "value": 2
+     }
+    ],
+    "file": "water_quality.tif",
+    "key": "ndci",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.90962,
+     "mean": -0.01402,
+     "median": -0.01587,
+     "min": -0.90746,
+     "valid_fraction": 0.49333
+    },
+    "title": "NDCI inside water (relative chlorophyll)"
+   },
+   {
+    "file": "water_quality.tif",
+    "key": "turbidity",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.61879,
+     "mean": 0.2561,
+     "median": 0.2564,
+     "min": 0.02,
+     "valid_fraction": 0.49333
+    },
+    "title": "Red reflectance inside water (relative turbidity)"
+   }
+  ],
+  "period": "2024-06",
+  "stats": {
+   "mean_ndci_in_water": -0.01402,
+   "mean_red_reflectance_in_water": 0.2561,
+   "note": "Relative indicators; calibrate against water samples for concentrations.",
+   "pct_water": 0.49333,
+   "valid_fraction": 1.0
+  },
+  "title": "Water Quality Indicators (NDCI and red reflectance)"
+ },
+ "wetland_mapping": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel wetland_mapping --bbox -0.15 51.47 -0.10 51.52 -o ./out/wetland_mapping --date 2024-06",
+  "console": "Running pipeline 'wetland_mapping'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/wetland_mapping\n\n\u2713 pipeline complete\n  Output: ./out/wetland_mapping/wetland_classification.tif\n  Stats:\n    wet_vegetation_area_ha: 332.1382\n    open_water_area_ha: 640.6672\n    pct_wet_vegetation: 0.1719\n    pct_open_water: 0.3317\n    valid_fraction: 1.0000\n\n  Deliverables: ./out/wetland_mapping/deliverables\n    PDF report    wetland_mapping_report.pdf\n    Excel report  wetland_mapping_report.xlsx\n    Word report   wetland_mapping_report.docx\n    Map           maps/wetland_mapping_map.png\n    Vectors gpkg  wetland_mapping.gpkg\n    Vectors geojson wetland_mapping_aoi.geojson, wetland_mapping_wetland_classes.geojson",
+  "files": [
+   "deliverables/maps/wetland_mapping_chart.png",
+   "deliverables/maps/wetland_mapping_map.png",
+   "deliverables/vectors/geojson/wetland_mapping_aoi.geojson",
+   "deliverables/vectors/geojson/wetland_mapping_wetland_classes.geojson",
+   "deliverables/vectors/wetland_mapping.gpkg",
+   "deliverables/wetland_mapping_report.docx",
+   "deliverables/wetland_mapping_report.pdf",
+   "deliverables/wetland_mapping_report.xlsx",
+   "run_summary.json",
+   "wetland_classification.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 958.85204,
+      "name": "Other",
+      "pixels": 1787,
+      "share": 0.49639,
+      "value": 0
+     },
+     {
+      "area_ha": 640.6694,
+      "name": "Open water",
+      "pixels": 1194,
+      "share": 0.33167,
+      "value": 1
+     },
+     {
+      "area_ha": 332.13854,
+      "name": "Wet vegetation",
+      "pixels": 619,
+      "share": 0.17194,
+      "value": 2
+     }
+    ],
+    "file": "wetland_classification.tif",
+    "key": "wetland",
+    "kind": "classes",
+    "title": "Wetland classification"
+   }
+  ],
+  "period": "2024-06",
+  "stats": {
+   "open_water_area_ha": 640.66719,
+   "pct_open_water": 0.33167,
+   "pct_wet_vegetation": 0.17194,
+   "valid_fraction": 1.0,
+   "wet_vegetation_area_ha": 332.13818
+  },
+  "title": "Wetland Mapping (open water vs inundated vegetation)"
+ },
+ "wildfire_severity": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel wildfire_severity --bbox -0.15 51.47 -0.10 51.52 -o ./out/wildfire_severity --date-before 2024-05 --date-after 2024-08",
+  "console": "Running pipeline 'wildfire_severity'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/wildfire_severity\n\n\u2713 pipeline complete\n  Output: ./out/wildfire_severity/severity_class.tif\n  Stats:\n    mean_dnbr: 0.0035\n    pct_unburned: 0.7475\n    pct_low_severity: 0.1997\n    pct_moderate_severity: 0.0503\n    pct_high_severity: 0.0025\n    burned_area_ha: 487.7441\n    valid_fraction: 1.0000\n\n  Deliverables: ./out/wildfire_severity/deliverables\n    PDF report    wildfire_severity_report.pdf\n    Excel report  wildfire_severity_report.xlsx\n    Word report   wildfire_severity_report.docx\n    Map           maps/wildfire_severity_map.png\n    Map           maps/wildfire_severity_map_dnbr.png\n    Vectors gpkg  wildfire_severity.gpkg\n    Vectors geojson wildfire_severity_aoi.geojson, wildfire_severity_burn_severity.geojson",
+  "files": [
+   "deliverables/maps/wildfire_severity_chart.png",
+   "deliverables/maps/wildfire_severity_histogram.png",
+   "deliverables/maps/wildfire_severity_map.png",
+   "deliverables/maps/wildfire_severity_map_dnbr.png",
+   "deliverables/vectors/geojson/wildfire_severity_aoi.geojson",
+   "deliverables/vectors/geojson/wildfire_severity_burn_severity.geojson",
+   "deliverables/vectors/wildfire_severity.gpkg",
+   "deliverables/wildfire_severity_report.docx",
+   "deliverables/wildfire_severity_report.pdf",
+   "deliverables/wildfire_severity_report.xlsx",
+   "dnbr.tif",
+   "run_summary.json",
+   "severity_class.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 1443.91399,
+      "name": "Unburned",
+      "pixels": 2691,
+      "share": 0.7475,
+      "value": 0
+     },
+     {
+      "area_ha": 385.79526,
+      "name": "Low",
+      "pixels": 719,
+      "share": 0.19972,
+      "value": 1
+     },
+     {
+      "area_ha": 97.12228,
+      "name": "Moderate",
+      "pixels": 181,
+      "share": 0.05028,
+      "value": 2
+     },
+     {
+      "area_ha": 4.82845,
+      "name": "High",
+      "pixels": 9,
+      "share": 0.0025,
+      "value": 3
+     }
+    ],
+    "file": "severity_class.tif",
+    "key": "severity",
+    "kind": "classes",
+    "title": "Burn severity"
+   },
+   {
+    "file": "dnbr.tif",
+    "key": "dnbr",
+    "kind": "continuous",
+    "summary": {
+     "max": 1.13573,
+     "mean": 0.00349,
+     "median": -0.00161,
+     "min": -0.93053,
+     "valid_fraction": 1.0
+    },
+    "title": "dNBR"
+   }
+  ],
+  "period": "2024-05 to 2024-08",
+  "stats": {
+   "burned_area_ha": 487.74412,
+   "mean_dnbr": 0.00349,
+   "pct_high_severity": 0.0025,
+   "pct_low_severity": 0.19972,
+   "pct_moderate_severity": 0.05028,
+   "pct_unburned": 0.7475,
+   "valid_fraction": 1.0
+  },
+  "title": "Wildfire Burn Severity (dNBR)"
+ },
+ "wind_farm_siting": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel wind_farm_siting --bbox -0.15 51.47 -0.10 51.52 -o ./out/wind_farm_siting",
+  "console": "Running pipeline 'wind_farm_siting'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/wind_farm_siting\n\n\u2713 pipeline complete\n  Output: ./out/wind_farm_siting/wind_suitability.tif\n  Stats:\n    max_slope_deg: 15.0000\n    dem_type: srtm1arc\n    landcover_exclusion_applied: True\n    pct_area_suitable_by_slope: 1.0000\n    pct_area_suitable_overall: 0.8125\n    suitable_area_ha: 1569.4738\n    note: Screening only: no wind speed, direction or energy yield is estimated.\n\n  Deliverables: ./out/wind_farm_siting/deliverables\n    PDF report    wind_farm_siting_report.pdf\n    Excel report  wind_farm_siting_report.xlsx\n    Word report   wind_farm_siting_report.docx\n    Map           maps/wind_farm_siting_map.png\n    Vectors gpkg  wind_farm_siting.gpkg\n    Vectors geojson wind_farm_siting_aoi.geojson, wind_farm_siting_suitable_ground.geojson",
+  "files": [
+   "deliverables/maps/wind_farm_siting_chart.png",
+   "deliverables/maps/wind_farm_siting_histogram.png",
+   "deliverables/maps/wind_farm_siting_map.png",
+   "deliverables/vectors/geojson/wind_farm_siting_aoi.geojson",
+   "deliverables/vectors/geojson/wind_farm_siting_suitable_ground.geojson",
+   "deliverables/vectors/wind_farm_siting.gpkg",
+   "deliverables/wind_farm_siting_report.docx",
+   "deliverables/wind_farm_siting_report.pdf",
+   "deliverables/wind_farm_siting_report.xlsx",
+   "landcover_for_exclusion.tif",
+   "run_summary.json",
+   "wind_suitability.tif"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 523.36841,
+      "name": "Lower exposure third",
+      "pixels": 1734,
+      "share": 0.33347,
+      "value": 0
+     },
+     {
+      "area_ha": 523.06306,
+      "name": "Middle exposure third",
+      "pixels": 1733,
+      "share": 0.33327,
+      "value": 1
+     },
+     {
+      "area_ha": 523.04227,
+      "name": "Upper exposure third",
+      "pixels": 1733,
+      "share": 0.33326,
+      "value": 2
+     }
+    ],
+    "file": "wind_suitability.tif",
+    "key": "wind",
+    "kind": "continuous",
+    "summary": {
+     "max": 64.63535,
+     "mean": -2.51032,
+     "median": -2.4802,
+     "min": -69.72089,
+     "valid_fraction": 0.8125
+    },
+    "title": "Terrain exposure on allowed ground (m)"
+   }
+  ],
+  "period": "",
+  "stats": {
+   "dem_type": "srtm1arc",
+   "landcover_exclusion_applied": true,
+   "max_slope_deg": 15.0,
+   "note": "Screening only: no wind speed, direction or energy yield is estimated.",
+   "pct_area_suitable_by_slope": 1.0,
+   "pct_area_suitable_overall": 0.8125,
+   "suitable_area_ha": 1569.47376
+  },
+  "title": "Wind-Farm Siting Screen"
+ }
+}

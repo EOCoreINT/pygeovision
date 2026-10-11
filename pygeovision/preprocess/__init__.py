@@ -2,7 +2,7 @@
 pygeovision.preprocess
 ======================
 
-Complete satellite imagery preprocessing with 100+ operations.
+Satellite imagery preprocessing: stack, clip, mosaic, cloud-mask, normalise, resample (12 public methods).
 Every method validates its output before returning.
 
 Quick-start::

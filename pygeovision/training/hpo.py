@@ -15,9 +15,14 @@ class OptunaHPO:
 
     Example::
 
+        def objective(params):
+            cfg = TrainingConfig(max_epochs=10, **params)            # a fresh model and trainer per trial
+            model = get_model("unet-r50", num_classes=2, in_channels=4, pretrained=False)
+            return GeoTrainer(model, cfg).fit(train_ds, val_ds)["best_val_iou"]
+
         hpo = OptunaHPO(n_trials=50, direction="maximize")
         best = hpo.run(
-            objective_fn=lambda cfg: trainer.fit(train_ds, val_ds, config=cfg)["best_val_iou"],
+            objective_fn=objective,
             search_space={
                 "learning_rate": ("float_log", 1e-5, 1e-2),
                 "batch_size":    ("categorical", [8, 16, 32]),
@@ -73,9 +78,8 @@ class OptunaHPO:
         try:
             import optuna
             optuna.logging.set_verbosity(optuna.logging.WARNING)
-        except ImportError:
-            logger.error("Optuna not installed: pip install optuna")
-            return {}
+        except ImportError as exc:
+            raise ImportError("OptunaHPO needs optuna: pip install optuna") from exc
 
         pruner = self._make_pruner()
         self._study = optuna.create_study(
@@ -101,7 +105,8 @@ class OptunaHPO:
                 elif kind == "categorical":
                     params[name] = trial.suggest_categorical(name, list(spec[1]))
                 else:
-                    params[name] = spec[1]
+                    raise ValueError(f"search_space[{name!r}]: unknown kind {kind!r}; use float, float_log, "
+                                     f"int, int_log or categorical")
             return objective_fn(params)
 
         self._study.optimize(
@@ -171,16 +176,30 @@ class ModelOptimizer:
         opset: int = 17,
         dynamic_batch: bool = True,
         simplify: bool = True,
+        dynamic_spatial: bool = False,
     ) -> str:
-        """Export model to ONNX format."""
+        """Export model to ONNX format.
+
+        The file accepts exactly ``input_size`` x ``input_size`` pixels (and any batch size when
+        ``dynamic_batch``) unless ``dynamic_spatial=True``, which also leaves height and width free.
+        Check the result against the PyTorch model on a second size before relying on it.
+        """
         try:
             import torch
             self.model.eval()
-            dummy = torch.randn(1, self.in_channels, input_size, input_size)
-            dynamic_axes: dict[str, Any] = {}
+            from pygeovision._onnx import export_onnx as _export_onnx
+            try:
+                device = next(self.model.parameters()).device
+            except StopIteration:
+                device = torch.device("cpu")
+            dummy = torch.randn(1, self.in_channels, input_size, input_size, device=device)
+            axes: dict[int, str] = {}
             if dynamic_batch:
-                dynamic_axes = {"input": {0: "batch"}, "output": {0: "batch"}}
-            torch.onnx.export(
+                axes[0] = "batch"
+            if dynamic_spatial:
+                axes.update({2: "height", 3: "width"})
+            dynamic_axes: dict[str, Any] = {"input": dict(axes), "output": dict(axes)} if axes else {}
+            _export_onnx(
                 self.model, dummy, output_path,
                 opset_version=opset,
                 input_names=["input"],
@@ -232,58 +251,93 @@ class ModelOptimizer:
         output_path: str = "model_int8.pth",
         backend: str = "fbgemm",   # fbgemm (x86) | qnnpack (ARM/mobile)
     ) -> Any:
-        """Apply post-training static INT8 quantisation."""
+        """Apply post-training static INT8 quantisation (CPU inference).
+
+        The model is wrapped between a ``QuantStub`` and a ``DeQuantStub`` (PyTorch's
+        static quantisation needs them), calibrated on ``calibration_loader`` (batches of
+        ``(images, ...)`` or ``{"image": ...}`` from your *training-like* data), then
+        converted. Layers are not fused, so accuracy and speed-up are lower than with a
+        hand-fused model, and architectures with operations PyTorch cannot quantise
+        (many U-Nets: upsampling, concatenation) raise ``RuntimeError``. The returned
+        module takes float32 input and runs on the CPU; ``output_path`` stores its
+        ``state_dict``. Always compare its accuracy with the float model on validation data.
+        """
         try:
             import torch
+            import torch.nn as nn
             import torch.quantization as tq
-            torch.backends.quantized.engine = backend
-            self.model.eval()
-            # Fuse layers where possible
-            try:
-                self.model = tq.fuse_modules(
-                    self.model,
-                    [["conv", "bn", "relu"]],
-                    inplace=True,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Module fusion for quantization failed (%s) — proceeding "
-                    "with unfused quantization, which typically gives worse "
-                    "accuracy/less speedup than fused quantization.", exc,
-                )
-            qconfig = tq.get_default_qconfig(backend)
-            self.model.qconfig = qconfig
-            tq.prepare(self.model, inplace=True)
-            # Calibrate
-            with torch.no_grad():
-                for batch in calibration_loader:
-                    if isinstance(batch, (list, tuple)):
-                        images = batch[0]
-                    elif isinstance(batch, dict):
-                        images = batch.get("image", batch.get("images"))
-                    else:
-                        break
-                    self.model(images)
-            tq.convert(self.model, inplace=True)
-            torch.save(self.model.state_dict(), output_path)
-            logger.info("INT8 quantised model → %s  (backend=%s)", output_path, backend)
-            return self.model
         except ImportError as exc:
             raise ImportError(f"torch required for quantisation: {exc}")
+
+        class _Quantized(nn.Module):
+            def __init__(self, inner: nn.Module) -> None:
+                super().__init__()
+                self.quant = tq.QuantStub()
+                self.model = inner
+                self.dequant = tq.DeQuantStub()
+
+            def forward(self, x: Any) -> Any:
+                return self.dequant(self.model(self.quant(x)))
+
+        torch.backends.quantized.engine = backend
+        wrapped = _Quantized(self.model.cpu().eval()).eval()
+        wrapped.qconfig = tq.get_default_qconfig(backend)
+        tq.prepare(wrapped, inplace=True)
+        n_calibrated = 0
+        with torch.no_grad():
+            for batch in calibration_loader:
+                if isinstance(batch, (list, tuple)):
+                    images = batch[0]
+                elif isinstance(batch, dict):
+                    images = batch.get("image", batch.get("images"))
+                else:
+                    images = batch
+                wrapped(images.float())
+                n_calibrated += 1
+        if n_calibrated == 0:
+            raise ValueError("calibration_loader produced no batches; the quantiser has nothing to calibrate on")
+        tq.convert(wrapped, inplace=True)
+        try:
+            with torch.no_grad():
+                wrapped(images.float())          # fails here, not later, if an operation cannot run in INT8
+        except Exception as exc:
+            raise RuntimeError(
+                f"INT8 quantisation produced a model that cannot run ({exc}). This architecture has "
+                f"operations PyTorch cannot quantise; export to ONNX and quantise there instead."
+            ) from exc
+        torch.save(wrapped.state_dict(), output_path)
+        logger.info("INT8 quantised model → %s  (backend=%s, %d calibration batches)",
+                    output_path, backend, n_calibrated)
+        self.model = wrapped
+        return wrapped
 
     def prune(
         self,
         amount: float = 0.3,
-        method: str = "l1",      # l1 | random | global
+        method: str = "l1",      # l1 | global
         structured: bool = False,
+        make_permanent: bool = True,
     ) -> Any:
-        """Apply magnitude-based weight pruning."""
+        """Zero the smallest-magnitude weights (``amount`` = fraction, 0-1).
+
+        ``method="l1"`` prunes each layer by the same fraction; ``"global"`` prunes the smallest
+        weights over the whole network. Zeroed weights do not make the file or the dense
+        computation smaller by themselves; they matter for sparse runtimes and as a
+        starting point for fine-tuning. With ``make_permanent=True`` (default) the pruning
+        mask is folded into the weights, so the model keeps ordinary ``state_dict`` keys and
+        loads into the original architecture; ``False`` keeps PyTorch's ``weight_orig`` /
+        ``weight_mask`` reparametrisation. Fine-tune afterwards to recover accuracy.
+        """
+        if method not in ("l1", "global"):
+            raise ValueError(f"prune method must be 'l1' or 'global', got {method!r}")
         try:
+            import torch.nn as nn
             import torch.nn.utils.prune as prune
+            # Convolution and linear layers only: zeroing batch-norm scales would switch whole channels off.
             modules = [
                 (m, "weight")
                 for m in self.model.modules()
-                if hasattr(m, "weight") and m.weight is not None
+                if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear))
             ]
             if not modules:
                 logger.warning("No prunable modules found")
@@ -300,6 +354,12 @@ class ModelOptimizer:
                         prune.ln_structured(module, name=name, amount=amount, n=2, dim=0)
                     else:
                         prune.l1_unstructured(module, name=name, amount=amount)
+            if make_permanent:
+                for module, name in modules:
+                    try:
+                        prune.remove(module, name)
+                    except ValueError:
+                        pass
             # Count sparsity
             n_zeros = sum(
                 (p == 0).sum().item()
@@ -326,8 +386,9 @@ class ModelOptimizer:
             import onnxruntime as ort
             sess_opts = ort.SessionOptions()
             sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            sess = ort.InferenceSession(onnx_path, sess_opts=sess_opts, providers=providers)
+            available = ort.get_available_providers()
+            providers = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in available]
+            sess = ort.InferenceSession(onnx_path, sess_options=sess_opts, providers=providers)
             inp_name = sess.get_inputs()[0].name
             if hasattr(input_array, "numpy"):
                 input_array = input_array.numpy()

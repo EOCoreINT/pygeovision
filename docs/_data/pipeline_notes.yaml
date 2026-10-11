@@ -1,0 +1,2161 @@
+# Hand-written guidance for every pipeline page. The generator joins this with what the code says.
+# Keys per pipeline: why, use_when, not_for, inputs, cli, python, params, dates, outputs, stats, interpret,
+# workflow, troubleshooting (symptom/fix pairs), see_also.
+
+active_fire:
+  why: |
+    Fire managers, insurers and air-quality analysts often need to know *where fire was seen and on how many days*, not
+    just whether a scar exists afterwards. This pipeline counts, for every 1 km pixel, the days in a period on which
+    MODIS detected an active fire, and also the days the pixel could be observed at all. The second layer matters:
+    a pixel with zero detections that was hidden by cloud on 25 of 30 days is not evidence of "no fire".
+  use_when:
+    - You want a map of fire activity over a month or a custom range, for example a fire season in a savanna region.
+    - You need to tell a quiet area from an unobserved one (`observed_days.tif` against `fire_days.tif`).
+    - You want a point layer of detections with fire radiative power (FRP) for further GIS work.
+  not_for:
+    - "Burned area or burn severity. Use [`wildfire_severity`](wildfire_severity.md) (dNBR from Sentinel-2) for the scar."
+    - "Small or cool fires. A 1 km pixel only registers a fire above the sensor's energy threshold."
+  inputs: |
+    Daily MOD14A1 granules (Terra MODIS, 1 km) from the Microsoft Planetary Computer. No account is needed.
+  cli: |
+    pygeovision channel active_fire \
+        --bbox 29.5 -14.5 31.5 -12.5 \
+        --date 2023-09 \
+        --param min_confidence=nominal \
+        --output ./zambia_fire_2023_09
+  params:
+    date: A month (`2024-02`). Alternative to `date_before`/`date_after`.
+    date_before: First day of an explicit range (`YYYY-MM-DD`).
+    date_after: Last day of an explicit range (`YYYY-MM-DD`).
+    min_confidence: "Weakest detection to count: `low` (fire mask value 7), `nominal` (8) or `high` (9). Raising it removes doubtful detections and also real small fires."
+  dates: |
+    Give `date="YYYY-MM"` for a calendar month, or `date_before` and `date_after` as explicit first and last days.
+    Fire seasons are short and sharp: a month usually shows the pattern, a whole year smooths it away. Daily MODIS
+    gives up to one Terra overpass a day, so ranges shorter than about ten days contain few observations.
+  stats:
+    n_detection_days: Number of pixel-days with a detection.
+  interpret: |
+    Read the two rasters together. `fire_days.tif` is the activity (days with a detection); `observed_days.tif` is the
+    evidence (days the pixel was seen clear). A pixel with 3 detection days out of 28 observed days burned briefly;
+    one with 0 detections out of 4 observed days tells you very little. FRP (`max_frp_mw.tif`) ranks intensity: use it
+    to separate large, hot fires from small agricultural burns.
+  workflow: |
+    Open `fire_detections.gpkg` in a GIS and join it with land cover ([`land_cover`](land_cover.md)) to separate
+    cropland burning from forest or savanna fires. Then map the burn scars with [`wildfire_severity`](wildfire_severity.md)
+    for the same period.
+  troubleshooting:
+    - symptom: No detections although you know there was fire
+      fix: Check `observed_days.tif`. If it is low, smoke or cloud hid the pixels. Lower `min_confidence` to `low`, or widen the period.
+    - symptom: Detections in an industrial area
+      fix: Gas flares, kilns and hot bare ground can trigger the algorithm. Compare with land cover.
+    - symptom: Fewer detections than a national fire service reports
+      fix: This uses Terra MOD14A1 at 1 km only. Aqua and 375 m VIIRS products detect more small fires and are not used here.
+  see_also: [wildfire_severity, volcano_monitoring, land_cover]
+
+archaeological_site:
+  why: |
+    Subtle earthworks, field systems and mounds are easier to see once the large-scale topography is subtracted. This
+    pipeline produces the two standard visual aids of archaeological prospection from a DEM: a Local Relief Model (the
+    terrain minus a smoothed trend) and a multi-directional hillshade. It does not find sites; it makes the
+    landscape easier for an expert to read.
+  use_when:
+    - You are doing desk-based survey of a landscape and want relief-enhanced layers to scan for linear or circular features.
+    - You have a high-resolution DEM or DTM and want a consistent, documented way to enhance it.
+  not_for:
+    - "Automatic detection of sites. There is no 'site found' output, by design."
+    - "Small mounds or walls from a 30 m DEM. Those need LiDAR-derived terrain models."
+  inputs: |
+    An **OpenTopography API key** (free account) because the DEM comes from OpenTopography (`dem_type`, default `srtm1arc`).
+    Store it with `pygeovision data auth add opentopography`. Larger boxes than your area of interest are recommended: the
+    Local Relief Model is unreliable within `smoothing_radius_px` of the border.
+  cli: |
+    pygeovision data auth add opentopography
+    pygeovision channel archaeological_site \
+        --bbox 36.60 30.20 36.75 30.35 \
+        --param smoothing_radius_px=15 \
+        --output ./relief_survey
+  params:
+    smoothing_radius_px: Radius (pixels) of the smoothing that defines the "regional trend" that is subtracted. It should be a few times larger than the features you look for.
+    dem_type: "OpenTopography dataset code: `srtm90`, `srtm1arc`, `cop30`, `cop90`, `nasadem`, `alos` or `gedtm30`."
+  stats:
+    resolution_m: Pixel size of the DEM used.
+  interpret: |
+    Positive values in the Local Relief Model are rises above the local trend (banks, mounds); negative values are
+    hollows (ditches, pits). The multi-directional hillshade avoids the bias of a single light direction, which hides
+    features parallel to it. Use both and compare with the imagery. The 'rise' and 'hollow' polygons in the vector
+    layer are just cells more than one standard deviation from the trend: a way to find where to look, not a list of sites.
+  workflow: |
+    Load `local_relief_model.tif` and `multidirectional_hillshade.tif` in QGIS, stretch the LRM to about ±1 m, and
+    digitise candidates by hand. Field-check or confirm with higher-resolution data before reporting anything.
+  troubleshooting:
+    - symptom: Error about an API key
+      fix: "Add the OpenTopography key: `pygeovision data auth add opentopography`."
+    - symptom: Edges look noisy
+      fix: The model is unreliable within `smoothing_radius_px` of the border; request a larger box and crop the result.
+    - symptom: Nothing visible at all
+      fix: A 30 m DEM resolves landscape-scale earthworks only. Use a LiDAR DTM.
+  see_also: [terrain_analysis, drainage_analysis]
+
+biodiversity_hotspot:
+  why: |
+    Habitat variety is a widely used proxy for biodiversity potential: places where many land-cover types sit close
+    together tend to support more species than uniform blocks. This pipeline measures that variety with the Shannon
+    index over a moving window of the ESA WorldCover map and flags the most diverse tenth of the area.
+  use_when:
+    - You need a quick, transparent screening layer for conservation planning or environmental assessment.
+    - You want to compare habitat heterogeneity across several areas using the same method.
+  not_for:
+    - "Species counts or biodiversity measurement. Habitat heterogeneity is an indirect proxy only."
+    - "Change over time. WorldCover 2021 is a static product, so the result describes 2021 whatever date you pass."
+  inputs: |
+    ESA WorldCover 2021 from the Planetary Computer; no account.
+  cli: |
+    pygeovision channel biodiversity_hotspot \
+        --bbox -2.45 5.60 -2.05 5.95 \
+        --param window_px=21 --param hotspot_percentile=90 \
+        --output ./diversity_ghana
+  params:
+    window_px: "Side of the moving window in 10 m pixels (default 21 = 210 m). Larger windows give smoother, coarser patterns."
+    hotspot_percentile: "Percentile of the diversity values above which a cell is a hotspot (default 90, the top decile)."
+  stats:
+    hotspot_percentile_value: The diversity value at the chosen percentile.
+  interpret: |
+    The Shannon index H' is 0 where one class fills the window and grows with the number of classes and how evenly
+    they share it. Hotspots are defined *relative to the area you chose* (the top decile), so a uniform landscape
+    still has hotspots. Always look at the values, not only the mask.
+  workflow: |
+    Overlay protected-area boundaries on `hotspot_mask.tif` to find diverse habitat outside existing protection, and check
+    candidates against local knowledge: a mosaic of farmland and settlement is also "diverse".
+  troubleshooting:
+    - symptom: '"WorldCover has no data for this bounding box"'
+      fix: The box is outside the product (open ocean or polar). Move the box onto land.
+    - symptom: Hotspots in a town
+      fix: Built-up, grass and trees mixed together score high. Mask built-up areas or interpret with land cover.
+  see_also: [land_cover, wetland_mapping]
+
+building_footprints:
+  why: |
+    Counting and measuring buildings is the basis of population, infrastructure and risk work. Most places already have
+    good published footprint datasets, so the honest first step is to *use them*, clipped and measured for your box, rather
+    than to run an untrained detector. This pipeline reads Microsoft, Google or OpenStreetMap footprints, gives you one
+    polygon per building (so each opens as a separate shape in a GIS), and summarises them as density and count grids.
+  use_when:
+    - You need building polygons, counts and the share of ground covered by buildings for a district or city.
+    - You want to compare the three public datasets over the same area (run it three times with `source=`).
+    - You have a trained building segmentation network and want to apply it to Sentinel-2 imagery (`checkpoint=`).
+  not_for:
+    - "Footprints with attributes such as height or use. The datasets give geometry (Google adds a confidence)."
+    - "Detecting individual houses in 10 m imagery. They are not resolvable at that size."
+  inputs: |
+    Published footprints need no account. `microsoft` and `google` are read from their open releases; `osm` queries the
+    public Overpass servers (see [Overpass reliability](../../data/footprints.md#overpass-reliability)). The network route
+    needs Sentinel-2 imagery and your trained `.pth`.
+  cli: |
+    pygeovision channel building_footprints \
+        --bbox -0.25 5.58 -0.15 5.66 \
+        --param source=microsoft --param cell_m=100 \
+        --output ./accra_buildings
+  params:
+    date: Imagery month, used only with `checkpoint=`.
+    source: "`microsoft`, `google` or `osm`."
+    checkpoint: Your trained segmentation weights (`.pth`). When given, the network is run on Sentinel-2 imagery instead of reading a dataset.
+    cell_m: Side (metres) of the grid cells for the density and count rasters.
+    min_confidence: Google Open Buildings only. Detections below this confidence are dropped.
+    model: Architecture name of your checkpoint (default `unet_resnet50`).
+    cloud_cover_max: Maximum cloud cover (%) for the imagery of the network route.
+    bands: Bands fed to your network, in order.
+    num_classes: Classes of your network.
+    tile_size: Inference window in pixels.
+    overlap: Overlap between windows in pixels.
+  stats:
+    n_buildings: Number of building polygons in the box.
+    total_footprint_area_m2: Sum of building areas, measured in the local UTM zone.
+  interpret: |
+    Compare datasets before trusting any single count. They differ in date (a new estate may be missing, a demolished
+    block still present), completeness and error. Microsoft and Google footprints come from imagery models; OpenStreetMap
+    is volunteer-mapped and is excellent in some cities and nearly empty in others. `building_density.tif` is the share of
+    each cell covered by building area (a building belongs to the cell holding its centroid).
+  workflow: |
+    Open `building_footprints.gpkg` in QGIS: each building is a separate feature with `area_m2`. Join with a census layer
+    or run [`urban_expansion`](urban_expansion.md) for change. Clean extracted polygons with the
+    [postprocessing toolbox](../../data/postprocessing.md) if you used a network.
+  troubleshooting:
+    - symptom: Zero buildings from OSM
+      fix: The area may not be mapped, or Overpass was busy. Try `source=microsoft`, or retry later.
+    - symptom: Everything is one big polygon (network route)
+      fix: A segmentation mask merges touching buildings. Use a footprint dataset, or higher-resolution imagery with an instance model.
+    - symptom: "`stats['source_note']` mentions a date"
+      fix: That is the dataset's vintage. State it when you quote counts.
+  see_also: [urban_expansion, road_network, land_cover]
+
+change_detection:
+  why: |
+    "What changed between these two dates?" is the most general question in remote sensing. This pipeline answers it
+    in the simplest defensible way: change vector analysis (CVA). For each pixel it measures how far the spectrum moved
+    between the two dates, then marks pixels beyond an automatic (Otsu) threshold as changed. It needs no training data.
+  use_when:
+    - You need a first look at where a landscape changed (construction, clearing, flooding, burning) and have no labels.
+    - You want a defensible baseline before investing in a trained change network.
+  not_for:
+    - "Telling *what* changed. CVA says 'spectrally different', not 'deforested'. Interpret with the imagery or use a trained network."
+    - "Dates in different seasons. Seasonal vegetation, moisture and sun angle dominate the result."
+  inputs: |
+    Sentinel-2 surface reflectance for both dates, found and prepared automatically. `method="model"` additionally needs
+    your siamese checkpoint.
+  cli: |
+    pygeovision channel change_detection \
+        --bbox -0.35 5.55 -0.10 5.75 \
+        --date-before 2022-02 --date-after 2024-02 \
+        --param min_magnitude=0.05 \
+        --output ./accra_change
+  params:
+    date_before: Earlier date (`YYYY-MM`).
+    date_after: Later date (`YYYY-MM`).
+    method: "`cva` (default, no weights) or `model` (your siamese network)."
+    model: Architecture of your checkpoint when `method="model"`.
+    checkpoint: Your trained weights (required for `method="model"`).
+    cloud_cover_max: Maximum cloud cover (%) accepted per scene.
+    bands: Bands used. Default is all six reflectance bands.
+    num_classes: Classes of your network.
+    tile_size: Inference window (pixels) for the network route.
+    overlap: Window overlap (pixels).
+    min_magnitude: Floor on the change magnitude. The threshold is `max(Otsu, min_magnitude)`; the floor stops Otsu from splitting sensor noise on an unchanged scene.
+  dates: |
+    Use the **same season** in both years (for example February and February). A dry-season image against a wet-season
+    image will flag almost every vegetated pixel. Prefer months with low cloud cover; a cloudy date shrinks `valid_fraction`
+    and hides change under the mask.
+  stats:
+    threshold: The change-magnitude cut-off actually used (the larger of Otsu and `min_magnitude`).
+    pct_changed: Share of valid pixels flagged as changed.
+  interpret: |
+    A high `pct_changed` on a calm scene usually means mismatched seasons or illumination, not real change. Check
+    `change_magnitude.tif`: real change forms compact patches with high values; noise is scattered and low. Always
+    inspect the largest patches on imagery before reporting them.
+  workflow: |
+    Vectorise the mask (`pygeovision postprocess vectorise change_mask.tif --target-class 1 --min-area 2000`), then
+    classify each patch by eye or with [`landcover_change`](landcover_change.md) / [`urban_expansion`](urban_expansion.md)
+    to say what the change was.
+  troubleshooting:
+    - symptom: Almost everything is "changed"
+      fix: The dates are in different seasons or one scene is hazy. Use the same month in both years.
+    - symptom: Almost nothing is "changed" although you know of change
+      fix: Lower `min_magnitude`; check `valid_fraction` (cloud may cover the change).
+    - symptom: '"No usable imagery for one or both dates"'
+      fix: Widen the month, or choose months with less cloud.
+  see_also: [crop_health, flood_mapping, urban_expansion, deforestation]
+
+coastal_monitoring:
+  why: |
+    Coasts move: beaches erode, deltas build, low land floods. Comparing the land/water boundary at two dates shows
+    where the sea advanced and where land was gained. The pipeline classifies water with MNDWI on each date and reports
+    four classes: land on both dates, water on both, land to water, and water to land.
+  use_when:
+    - You are screening shoreline retreat or accretion over years.
+    - You need areas (hectares) of land lost to or gained from water between two dates.
+  not_for:
+    - "Precise shoreline position. The resolution is 10–30 m and the waterline moves with the tide."
+    - "Short-term storm impact unless both images were taken at the same tide."
+  inputs: |
+    Sentinel-2 or Landsat surface reflectance (green and SWIR1) for both dates, found automatically.
+  cli: |
+    pygeovision channel coastal_monitoring \
+        --bbox 0.50 5.70 1.00 5.95 \
+        --date-before 2018-01 --date-after 2024-01 \
+        --output ./volta_coast
+  params:
+    date_before: Earlier date (`YYYY-MM`).
+    date_after: Later date (`YYYY-MM`).
+    mndwi_threshold: MNDWI value above which a pixel is water (default 0).
+    cloud_cover_max: Maximum cloud cover (%) accepted per scene.
+  dates: |
+    Choose two dates at the **same tidal state** and in the same season. A 1 m tide difference moves the waterline by
+    tens of metres on a gentle beach and appears as "shoreline change". Check tide tables for the satellite overpass
+    time (about 10:30 local for Sentinel-2).
+  stats:
+    retreat_ha: Land that became water.
+    advance_ha: Water that became land.
+  interpret: |
+    Net change is `advance − retreat`, but the two are rarely equal in meaning: retreat on a sandy shore is erosion,
+    advance in a delta can be sediment or tide. Mark features that are clearly man-made (ports, reclamation). Changes
+    smaller than about two pixels are within the method's noise.
+  workflow: |
+    Vectorise classes 2 and 3 and overlay on imagery to separate erosion from tide or sensor effects. Repeat for several
+    year pairs to see a trend rather than a single difference.
+  troubleshooting:
+    - symptom: Long thin band of "change" along the whole coast
+      fix: Tide difference between the dates. Pick dates at the same tide.
+    - symptom: Turbid river water is classed as land
+      fix: Sediment-laden water has a lower MNDWI. Lower `mndwi_threshold` (for example −0.1) and check the result.
+    - symptom: Shadows of hills flagged as water
+      fix: Mask steep terrain with [`terrain_analysis`](terrain_analysis.md).
+  see_also: [water_bodies, flood_mapping, surface_water_dynamics, water_extent_timeseries]
+
+crop_health:
+  why: |
+    A sudden drop in greenness during the growing season is the earliest satellite sign of crop stress: drought, pests,
+    waterlogging, or loss. This pipeline compares NDVI on two dates and flags the pixels whose NDVI fell by more than a
+    threshold (default 0.15). It is cheap, transparent and needs no labels.
+  use_when:
+    - You monitor fields between two points of the same growth stage and want to know where vegetation declined.
+    - You want a pre-screening layer to direct field visits.
+  not_for:
+    - "Deciding that a crop is stressed. Harvest, mowing, grazing, phenology and clearing look identical."
+    - "Areas that are not vegetated or not crops; mask to your field boundaries first."
+  inputs: |
+    Sentinel-2 red and near-infrared surface reflectance for both dates; no account.
+  cli: |
+    pygeovision channel crop_health \
+        --bbox 0.20 6.70 0.45 6.95 \
+        --date-before 2024-06 --date-after 2024-08 \
+        --param anomaly_threshold=0.15 \
+        --output ./crop_stress
+  params:
+    date_before: Earlier date (`YYYY-MM`).
+    date_after: Later date (`YYYY-MM`).
+    anomaly_threshold: Minimum NDVI drop (before − after) that is flagged. Raise it to see only severe losses.
+  dates: |
+    Use two dates at the **same phenological stage in different seasons or years** if you compare years, or two dates
+    within one season (for example mid-June and mid-August) to see within-season decline. Do not compare a planted field
+    with a harvested one.
+  stats:
+    pct_flagged: Share of valid pixels flagged.
+    mean_ndvi_before: Mean NDVI on the earlier date.
+    mean_ndvi_after: Mean NDVI on the later date.
+    anomaly_threshold: The drop threshold used.
+  interpret: |
+    The flagged share is a screening number. Intersect the mask with your field boundaries
+    (`pygeovision postprocess zonal-stats ndvi_change.tif fields.geojson …`) and read per-field means: a field whose mean
+    NDVI fell by 0.2 is more informative than a count of flagged pixels. Verify a sample of flagged fields on the ground.
+  workflow: |
+    Run [`vegetation_anomaly`](vegetation_anomaly.md) afterwards to see whether the decline is unusual for the time
+    of year, which separates stress from normal seasonal decline.
+  troubleshooting:
+    - symptom: Large flagged area outside fields
+      fix: Forest, grass or wetland also changes with the season. Mask to crop fields.
+    - symptom: Flag pattern follows field edges
+      fix: Different management (harvest dates) between fields, not stress.
+    - symptom: Mean NDVI near zero on both dates
+      fix: Cloud or bare ground dominates; check `valid_fraction` and the scene dates.
+  see_also: [vegetation_anomaly, vegetation_indices, crop_monitoring]
+
+crop_monitoring:
+  why: |
+    Crop-type maps need a model trained on labelled fields from your region and season. PyGeoVision has no such
+    weights to ship, because an untrained network would produce random classes that look plausible. This pipeline runs
+    **your** trained segmentation network over Sentinel-2 imagery and writes a crop map, and refuses to start without your
+    checkpoint.
+  use_when:
+    - You have trained a crop-type segmentation model (for example with [training](../../training/index.md) on field labels) and want to map new areas.
+  not_for:
+    - "Getting a crop map without training. Use `land_cover` for a general cropland class."
+  inputs: |
+    Your `.pth` checkpoint (loaded strictly: architecture, class count and band count must match) and Sentinel-2 imagery.
+  cli: |
+    pygeovision channel crop_monitoring \
+        --bbox 0.20 6.70 0.45 6.95 \
+        --date 2023-06 \
+        --checkpoint runs/crops/best.pth \
+        --param crop_classes='["maize","cassava","rice"]' \
+        --class-names Background,Maize,Cassava,Rice \
+        --output ./crop_map
+  params:
+    date: Imagery month (`YYYY-MM`). Match the season of your training data.
+    crop_classes: List of the crop names you trained on. The network has `len(crop_classes) + 1` classes (class 0 is background).
+    model: Architecture of your checkpoint (default `segformer_b2`).
+    checkpoint: Your trained weights. **Required.**
+    bands: Bands fed to the network, in the order you trained on.
+    num_classes: Overrides `len(crop_classes) + 1`.
+    tile_size: Inference window in pixels.
+    overlap: Window overlap in pixels (blended with a Gaussian window).
+  dates: |
+    Use the same season and sensor as your training imagery; a crop model trained on June imagery is not valid in
+    November. The harvest-time image of a crop looks like bare ground.
+  stats:
+    class_areas_ha: Area per predicted class.
+  interpret: |
+    The report does not measure accuracy. Before quoting areas, validate against reference fields with
+    [`postprocess accuracy`](../../data/postprocessing.md) and report overall accuracy **and** per-class IoU. Pass
+    `--class-names` so maps and tables show crop names instead of numbers.
+  workflow: |
+    Vectorise and clean the map ([postprocessing](../../data/postprocessing.md)), then aggregate per field with zonal statistics.
+  troubleshooting:
+    - symptom: Refuses to run, mentions weights
+      fix: Pass `--checkpoint`. This check happens before any download.
+    - symptom: '`size mismatch` or `Missing key(s)` loading the checkpoint'
+      fix: Rebuild the model with the architecture, class count (`crop_classes`/`num_classes`) and bands you trained with.
+    - symptom: Salt-and-pepper map
+      fix: Sieve small patches (`postprocess sieve`) or use a larger `overlap`.
+  see_also: [land_cover, crop_health]
+
+deforestation:
+  why: |
+    Mapping forest loss precisely needs a change model trained on your forest type and sensor. This pipeline runs your
+    trained change network on a before/after Sentinel-2 pair and writes a class map. For a no-training alternative at
+    10–25 m, use [`forest_change`](forest_change.md) (JAXA PALSAR forest maps, 2015–2020) or
+    [`landcover_change`](landcover_change.md).
+  use_when:
+    - You have a trained change-detection network for forest loss and want to apply it to new dates.
+  not_for:
+    - "A quick forest-loss figure without training. Use `forest_change`."
+  inputs: |
+    Your checkpoint (strict load) and Sentinel-2 imagery for both dates.
+  cli: |
+    pygeovision channel deforestation \
+        --bbox -3.05 5.60 -2.75 5.90 \
+        --date-before 2020 --date-after 2024 \
+        --checkpoint runs/forest_change/best.pth \
+        --class-names "No change,Forest loss,Regrowth" \
+        --output ./forest_loss
+  params:
+    date_before: Earlier date. A year (`2020`) means July of that year; or `YYYY-MM`.
+    date_after: Later date, same forms.
+    model: Architecture of your checkpoint (default `changeformer`).
+    checkpoint: Your trained weights. **Required.**
+    bands: Bands fed to the network.
+    num_classes: Classes of your network (default 3).
+    tile_size: Inference window in pixels.
+    overlap: Window overlap in pixels.
+    baseline_year: Alias for the earlier year.
+    analysis_year: Alias for the later year.
+  dates: |
+    Same season in both years; July is the default month for a bare year. In the tropics choose the dry season to reduce cloud.
+  stats:
+    class_areas_ha: Area per predicted class.
+  interpret: |
+    Class 0 is "no change"; the other classes mean what your training labels meant. Validate against reference loss
+    polygons (for example from a national forest service) before quoting hectares.
+  troubleshooting:
+    - symptom: Refuses to run, mentions weights
+      fix: Pass `--checkpoint`.
+    - symptom: Loss mapped along cloud edges
+      fix: Use cloud-free dates; check `valid_fraction`.
+  see_also: [forest_change, landcover_change, change_detection]
+
+disaster_assessment:
+  why: |
+    After an earthquake, flood or storm, responders want damage classes per area. A network trained on labelled
+    before/after pairs (for example xBD-style damage labels) can do this. This pipeline runs your trained siamese
+    network on a pre- and post-event Sentinel-2 pair. It will not invent damage classes without your weights.
+  use_when:
+    - You have a trained damage-assessment network and imagery from before and after an event.
+  not_for:
+    - "Flood extent without a trained model. Use [`flood_mapping`](flood_mapping.md), [`sar_flood_mapping`](sar_flood_mapping.md) or [`multisensor_flood_mapping`](multisensor_flood_mapping.md)."
+    - "Building-level damage from 10 m imagery. Individual buildings are not resolved."
+  inputs: |
+    Your checkpoint (strict load) and Sentinel-2 imagery before and after the event.
+  cli: |
+    pygeovision channel disaster_assessment \
+        --bbox 36.1 36.9 36.4 37.2 \
+        --date-before 2023-01 --date-after 2023-02 \
+        --param disaster_type=earthquake \
+        --checkpoint runs/damage/best.pth \
+        --class-names "No damage,Minor,Major,Destroyed" \
+        --output ./damage
+  params:
+    date_before: Pre-event date (`YYYY-MM`).
+    date_after: Post-event date (`YYYY-MM`).
+    disaster_type: Label recorded in the report (`generic`, `flood`, `earthquake`...). Does not change the computation.
+    model: Architecture of your checkpoint (default `siamese_unet`).
+    checkpoint: Your trained weights. **Required.**
+    bands: Bands fed to the network.
+    num_classes: Number of damage classes you trained on (default 4).
+    tile_size: Inference window in pixels.
+    overlap: Window overlap in pixels.
+    pre_date: Alias for `date_before`.
+    post_date: Alias for `date_after`.
+  dates: |
+    Choose the clearest image immediately before and the first clear image after the event. Months are the finest resolution
+    of the search window; a wide gap lets unrelated change leak in.
+  stats:
+    class_areas_ha: Area per damage class.
+  interpret: |
+    Treat the output as a map of *where to look first*, not a damage census. Validate with field reports or higher-resolution
+    imagery before using areas in any official figure.
+  troubleshooting:
+    - symptom: Refuses to run, mentions weights
+      fix: Pass `--checkpoint`.
+    - symptom: Damage everywhere
+      fix: Mismatched seasons or cloud between the two images, or a network trained on a different sensor.
+  see_also: [change_detection, flood_mapping, multisensor_flood_mapping]
+
+drainage_analysis:
+  why: |
+    Almost every question about water on land starts with the same three things: where does water collect, which cells are
+    channels, and how high does the ground stand above the nearest channel? This pipeline answers them from a DEM alone.
+    It fills depressions, routes water downhill, counts the area draining through every cell, extracts a stream network
+    with Strahler order, and computes HAND (Height Above Nearest Drainage). HAND is the standard cheap screening layer for
+    river-flood susceptibility because it normalises the terrain by the drainage network instead of by sea level.
+  use_when:
+    - You need a stream network and catchment areas for a region without hydrological data.
+    - You want a first screen of which low-lying areas are within a few metres of a channel (flood susceptibility, siting, access planning).
+    - You want a clean, documented hydrologic input for [`multisensor_flood_mapping`](multisensor_flood_mapping.md), which uses the same HAND concept to remove radar false alarms on hills.
+  not_for:
+    - "A flood map. HAND knows nothing about rainfall, discharge, channel capacity, drainage works or defences. For observed flooding use [`flood_mapping`](flood_mapping.md), [`sar_flood_mapping`](sar_flood_mapping.md) or [`multisensor_flood_mapping`](multisensor_flood_mapping.md)."
+    - "Small-scale drainage design. Culverts, drains and embankments finer than the DEM resolution are not represented."
+    - "Catchments that extend beyond your box, near the box edge. Contributing area is truncated at the boundary."
+  inputs: |
+    The Copernicus 30 m DEM (`cop30`) from Microsoft Planetary Computer by default; no account is needed. Other sources
+    (for example `dem_source=opentopography`) need their own key ([Authentication](../../data/authentication.md)). Include the
+    whole catchment of interest in the box and some margin around it.
+  cli: |
+    pygeovision channel drainage_analysis \
+        --bbox -0.35 5.55 -0.10 5.75 \
+        --param stream_threshold_km2=2.0 \
+        --param hand_thresholds_m=5,10,15 \
+        --output ./accra_drainage
+  params:
+    dem_source: "DEM provider: `copernicus` (default, Planetary Computer `cop-dem-glo-30`), `copernicus_aws` (the public AWS copy of the same product) or `opentopography` (needs a key). If the Planetary Computer read fails, the AWS copy is used automatically and a warning says so; `dem_host` in the statistics tells you which host supplied the heights."
+    dem_type: "DEM product within the source, default `cop30`."
+    resolution_m: "Grid size in metres (default 30). Coarser is faster and smoother; finer than the DEM is just interpolation."
+    stream_threshold_km2: "Minimum contributing area (km²) for a cell to count as a stream. **Your choice of how much catchment makes a channel.** Default 1.0. A larger value gives fewer, larger rivers."
+    hand_thresholds_m: "Heights above drainage (metres) for which the share of area is reported. Default 5, 10, 15."
+    max_cells: "Safety limit on raster size (default 6 million cells). Larger boxes are refused with a message instead of exhausting memory; reduce the box or coarsen `resolution_m`."
+  dates: |
+    None. The DEM is static. Passing a date has no effect.
+  stats:
+    area_km2: Area of the grid analysed.
+    cells_filled: Number of cells raised by depression filling.
+    max_fill_depth_m: Deepest fill. Large values in flat areas usually mean DEM artefacts, not real sinks.
+    dem_source: Provider that supplied the DEM.
+    dem_host: Host the tiles were downloaded from.
+    resolution_m: Grid size used.
+    stream_threshold_km2: Contributing-area threshold used.
+    stream_cells: Number of cells classed as streams.
+    stream_length_km: Total length of the stream network.
+    drainage_density_km_per_km2: Stream length divided by area. Depends strongly on the threshold you chose.
+    max_strahler_order: Highest Strahler order in the network.
+    largest_contributing_area_km2: Largest drainage area found (usually at the outlet).
+    mean_hand_m: Mean HAND over cells that have a HAND value.
+    hand_defined_fraction: Share of cells that drain to a stream cell inside the box and so have a HAND value.
+    pct_area_hand_le_5m: Share of area within 5 m of drainage (one entry per threshold you set).
+    pct_area_hand_le_10m: Share of area within 10 m of drainage.
+    pct_area_hand_le_15m: Share of area within 15 m of drainage.
+  interpret: |
+    **`flow_accumulation_km2.tif`** is the area draining through each cell. Its maximum is the biggest catchment in the box;
+    values at the box edge are lower bounds. **`stream_order.tif`** numbers channels: order 1 are headwater streams, and
+    the order rises where two streams of equal order join. **`hand_m.tif`** is the height of each cell above the stream
+    cell it drains into: 0 on the channel, small values on floodplains, large on ridges.
+
+    Use `pct_area_hand_le_*` as a comparison between areas, not as a flooded fraction. Cells with HAND below a few metres
+    are *where river flooding is possible*, and most of them will not flood in a given event. Because HAND depends on the
+    stream threshold, always quote the threshold with the figure.
+  workflow: |
+    1. Run once with the default threshold and open `stream_network.gpkg` over a satellite basemap. If obvious rivers are
+       missing, lower `stream_threshold_km2`; if tiny gullies appear, raise it.
+    2. Re-run with the threshold that matches the channels you recognise on the ground.
+    3. Overlay `hand_m.tif` ≤ 5 m on [`building_footprints`](building_footprints.md) to see what is exposed in principle.
+    4. For actual events use the flood pipelines; they use HAND as one of their inputs.
+  troubleshooting:
+    - symptom: Refused with a message about `max_cells`
+      fix: The box is too large for the resolution. Reduce the box, raise `resolution_m` (for example 60), or raise `max_cells` if you have memory.
+    - symptom: Streams stop at the edge of the map or are missing near it
+      fix: Contributing area is truncated at the boundary. Use a box that includes the whole catchment and cut afterwards.
+    - symptom: Straight parallel streams across a plain
+      fix: Flat terrain with DEM noise. The routing is correct for the DEM it was given; increase `stream_threshold_km2` and treat the result as unreliable there.
+    - symptom: Streams run through a reservoir or flow across a road
+      fix: The DEM is a surface model; water bodies are flat and embankments are not cut. Edit the result in GIS or condition the DEM yourself.
+    - symptom: Many cells have no HAND value
+      fix: They drain out of the box before reaching a stream. Enlarge the box downstream or lower the threshold.
+  see_also: [terrain_analysis, multisensor_flood_mapping, flood_mapping, landslide_detection]
+
+evapotranspiration:
+  why: |
+    Evapotranspiration (ET) is the water returned from land to the atmosphere. It closes the water balance, explains why
+    irrigation demand rises in a dry year, and is the clearest measure of whether vegetation has enough water. This
+    pipeline reads the MODIS MOD16A3GF annual product and also reports potential ET (what could evaporate if water were
+    unlimited) and their ratio, which is a simple evaporative stress indicator.
+  use_when:
+    - You need annual ET and a volume of water lost over a catchment or a farm region.
+    - You want to compare a wet and a dry year at the same place (run twice with different years).
+    - You want an indicator of water stress that is independent of rainfall records.
+  not_for:
+    - "Field-scale irrigation scheduling. Pixels are 500 m."
+    - "Open water and urban surfaces. They have no estimate in this product."
+    - "Seasonal or daily ET. This is the annual product."
+  inputs: |
+    MOD16A3GF from the Microsoft Planetary Computer for the year you name. No account is needed. Available from 2001 on.
+  cli: |
+    pygeovision channel evapotranspiration \
+        --bbox -2.0 6.0 -1.0 7.0 \
+        --date 2022 \
+        --output ./ashanti_et_2022
+  params:
+    date: "The year (`2022`). **Required.** A month such as `2022-06` is read as its year."
+  dates: |
+    One calendar year, 2001 onward. For change between years, run the pipeline for each year and compare `mean_et_mm`
+    and `mean_et_pet_ratio`.
+  stats:
+    year: The year processed.
+    mean_et_mm: Mean ET depth over valid pixels (mm per year).
+    min_et_mm: Lowest ET value (mm per year).
+    max_et_mm: Highest ET value (mm per year).
+    mean_pet_mm: Mean potential ET (mm per year).
+    mean_et_pet_ratio: Mean of ET/PET. Close to 1 means water is not limiting.
+    total_et_volume_million_m3: ET integrated over the valid area, in million m³.
+    resolution_m: Grid size used (the 500 m product is resampled to UTM).
+  interpret: |
+    ET values of 400–800 mm per year are typical of temperate cropland, 1000–1500 mm of humid tropical forest, and
+    below 300 mm of drylands. Compare **ET/PET**: near 1 means plants transpire at the potential rate; 0.3 or lower
+    means water-limited land. The volume figure is mean depth times valid area; if `valid_fraction` is well below 1,
+    the volume describes the valid part only (open water, urban and barren pixels are excluded).
+  workflow: |
+    Run for the years you want to compare, then compute the difference of `et_pet_ratio.tif` in a GIS or with
+    [`postprocess`](../../data/postprocessing.md) tools. Pair with [`vegetation_anomaly`](vegetation_anomaly.md) to see whether
+    greenness fell in the same year.
+  troubleshooting:
+    - symptom: Almost all pixels are nodata
+      fix: The box is dominated by water, built-up land or desert, which the product masks out. Check `valid_fraction`.
+    - symptom: "No data for this year"
+      fix: MOD16A3GF is available from 2001 and the latest complete year is published months later. Use an earlier year.
+    - symptom: Blocky map
+      fix: The native resolution is 500 m. This is expected.
+  see_also: [vegetation_anomaly, vegetation_indices, land_surface_temperature, water_extent_timeseries]
+
+flood_mapping:
+  why: |
+    A single water mask cannot separate a flood from a river, a lake or a reservoir. This pipeline compares a flood-date
+    optical image with a dry reference and reports water that is *new*, separately from water that was already there. It is
+    the simplest flood-mapping pipeline: fast, transparent and easy to explain, with one threshold you can read. Its
+    limitation is the one every optical method has: it cannot see through cloud, and large floods often come with cloud.
+  use_when:
+    - A clear-sky Sentinel-2 image exists for the flood date (or near it) and a dry reference exists.
+    - You need a quick, explainable first estimate of flooded area.
+    - "You want to cross-check a radar map: agreement between this and [`sar_flood_mapping`](sar_flood_mapping.md) is strong evidence."
+  not_for:
+    - "Cloudy events. If the flood date is mostly cloud, the result describes only the clear part. Use [`sar_flood_mapping`](sar_flood_mapping.md) or [`multisensor_flood_mapping`](multisensor_flood_mapping.md)."
+    - "Flooding beneath vegetation or in dense urban areas, where optical water indices miss the water."
+    - "Flood depth or duration. This is extent only."
+  inputs: |
+    Sentinel-2 L2A (green and SWIR1 bands, plus the scene classification for cloud) from the open catalogues. No account is needed.
+  cli: |
+    pygeovision channel flood_mapping \
+        --bbox -0.70 5.20 -0.20 5.60 \
+        --date-before 2024-02 --date-after 2024-06 \
+        --param mndwi_threshold=0.0 \
+        --param cloud_cover_max=30 \
+        --output ./flood_2024
+  params:
+    date_before: "Dry reference (`YYYY-MM` or `YYYY-MM-DD`). Pick a dry season or a time before the event."
+    date_after: "The flood date or month (same forms)."
+    mndwi_threshold: "MNDWI cut-off above which a pixel is water. Default 0.0; raise to 0.1–0.2 to cut shadow and wet soil, lower to catch turbid water."
+    cloud_cover_max: "Scenes with more cloud than this percentage are not considered. Default 30."
+  dates: |
+    Use a month for the reference and a short window around the event for the flood date. Cloud-free dates in the wet season are rare: if the
+    pipeline reports "No usable imagery", widen the window or use a radar pipeline. Take the dry reference from the same
+    season of an ordinary year if you can, so crops and vegetation look similar.
+  stats:
+    flooded_area_ha: Area of newly flooded pixels (class 1) in hectares.
+    permanent_water_area_ha: Area that was water on both dates (class 2) in hectares.
+    flooded_fraction: Share of valid pixels that are newly flooded.
+    mndwi_threshold: Threshold used.
+  interpret: |
+    **Classes in `flood_extent.tif`:** 0 dry, 1 flooded, 2 permanent water, 255 no data (cloud on either date). Only class 1 is
+    flood. `flooded_fraction` is a share of *valid* pixels: if `valid_fraction` is 0.4, this describes 40% of your box.
+    A flood hidden by cloud is invisible, so the number is a lower bound. Shadow, burn scars, wet fields and dark roofs can
+    pass MNDWI > 0: inspect hills and cities before quoting totals.
+  workflow: |
+    1. Check `valid_fraction`. Below about 0.6, treat the result as partial and move to radar.
+    2. Open `flood_extent.tif` over a basemap; check hill shadows and city areas for false positives.
+    3. Confirm with [`sar_flood_mapping`](sar_flood_mapping.md) for the same dates, or run [`multisensor_flood_mapping`](multisensor_flood_mapping.md), which combines both automatically.
+    4. Use [`building_footprints`](building_footprints.md) and the flood vector to count exposed buildings.
+  troubleshooting:
+    - symptom: '"No usable imagery"'
+      fix: No cloud-free scene in the window. Widen the dates, raise `cloud_cover_max`, or use a radar pipeline.
+    - symptom: Most of the map is 255
+      fix: Cloud covered the flood date. The pipeline will not guess; use radar.
+    - symptom: Hills and shaded valleys flagged as flooded
+      fix: Terrain shadow. Raise `mndwi_threshold` to 0.1–0.2 or use the multi-sensor pipeline which removes cells high above drainage.
+    - symptom: Rivers appear as flood
+      fix: The dry reference was taken at a time of high flow. Choose a drier date.
+  see_also: [sar_flood_mapping, multisensor_flood_mapping, water_bodies, surface_water_dynamics, disaster_assessment]
+
+forest_change:
+  why: |
+    Deforestation and forest regrowth are mapped most reliably where optical cloud cover is constant, and the tropics have
+    plenty. The JAXA PALSAR forest/non-forest map is radar-based, so it sees through cloud, and it is published for every
+    year from 2015 to 2020. This pipeline compares two of those years, counts loss and gain, and reports them as hectares
+    and as a rate per year.
+  use_when:
+    - You need forest loss between 2015 and 2020 in a cloudy region.
+    - You want a defensible, citable product with documented class definitions.
+    - You want to compare the 90% and 10% canopy definitions (run with and without `include_open_forest`).
+  not_for:
+    - "Loss after 2020. The product ends there."
+    - "Cause of loss. Logging, fire, farming and natural dieback look alike."
+    - "Plantation versus natural forest. Radar sees both as forest."
+    - "Your own classes from your own imagery. For that train a change network and use [`deforestation`](deforestation.md)."
+  inputs: |
+    JAXA PALSAR forest/non-forest tiles via the Microsoft Planetary Computer. No account is needed.
+  cli: |
+    pygeovision channel forest_change \
+        --bbox -62.8 -9.4 -62.3 -8.9 \
+        --date-before 2016 --date-after 2020 \
+        --output ./rondonia_forest
+  params:
+    date_before: "Earlier year (2015–2020)."
+    date_after: "Later year (2015–2020)."
+    include_open_forest: "`True` also counts class 2 (canopy 10–90 %) as forest, the FAO definition. Default `False` (class 1 only, above 90 % canopy)."
+    resolution_m: "Output grid size in metres. Default is the native 25 m; the pipeline coarsens automatically for very large boxes and records that in `resolution_coarsened`."
+  dates: |
+    Years, 2015 to 2020. Order matters: `date_before` must be earlier. Loss per year is `forest_loss_ha` divided by the years between the two.
+  stats:
+    year_before: Earlier year.
+    year_after: Later year.
+    forest_area_ha_before: Forest area in the earlier year.
+    forest_area_ha_after: Forest area in the later year.
+    forest_share_before: Forest share of valid pixels, earlier year.
+    forest_share_after: Forest share of valid pixels, later year.
+    forest_loss_ha: Area that was forest and is now non-forest.
+    forest_gain_ha: Area that was non-forest and is now forest.
+    net_change_ha: Gain minus loss.
+    loss_ha_per_year: Loss divided by the number of years between the two maps.
+    loss_share_of_initial_forest: Loss as a share of the earlier forest area.
+    include_open_forest: Whether class 2 counted as forest.
+    resolution_m: Grid size used.
+    resolution_coarsened: "`True` if the grid was coarsened because the box was large."
+  interpret: |
+    **Classes in `forest_change.tif`:** 0 non-forest both years, 1 forest both years, 2 loss, 3 gain, 255 no data (water or
+    no data in either year). Because each year is mapped on its own, some loss and gain is classification disagreement,
+    especially in a ring of pixels around forest edges and in drought or flooded years. Large, compact patches are
+    reliable; scattered single pixels are mostly noise. Report net change alongside loss, and the definition you used.
+  workflow: |
+    Open `forest_change.tif`; filter small patches with `pygeovision postprocess sieve` or
+    [`vectorise --min-area`](../../data/postprocessing.md) before counting patches. Use [`wildfire_severity`](wildfire_severity.md)
+    to check whether a loss patch was burned, and [`land_cover`](land_cover.md) to see what the area is now.
+  troubleshooting:
+    - symptom: Year not available
+      fix: Only 2015–2020 exist. Choose years inside that range.
+    - symptom: Gain is as large as loss in a stable forest
+      fix: Classification disagreement between years. Use `include_open_forest=False` and sieve small patches.
+    - symptom: Large areas are 255
+      fix: Water (including seasonally flooded land) is masked in either year.
+    - symptom: Loss in a plantation region
+      fix: Harvest and replanting appear as loss and gain. The product cannot distinguish management from deforestation.
+  see_also: [deforestation, landcover_change, wildfire_severity, vegetation_anomaly]
+
+glacier_monitoring:
+  why: |
+    Glaciers and perennial snow fields respond to climate, and their extent is a basic climate indicator. This pipeline
+    compares snow and ice cover between two Sentinel-2 dates with NDSI. It evaluates only pixels that are clear on
+    **both** dates, because comparing a cloudy date with a clear one would look like retreat or advance where there is only
+    cloud.
+  use_when:
+    - You want a transparent measure of snow and ice extent change between two end-of-melt-season dates.
+    - You monitor a specific glacier or ice cap and need a repeatable figure.
+  not_for:
+    - "Glacier outlines or inventories. NDSI maps seasonal snow too and misses debris-covered ice."
+    - "Mass balance or thickness change. This is area only."
+    - "Dates in different seasons. Seasonal snow will dominate the signal."
+  inputs: |
+    Sentinel-2 L2A (green and SWIR1) from the open catalogues. No account is needed.
+  cli: |
+    pygeovision channel glacier_monitoring \
+        --bbox 7.8 46.4 8.3 46.7 \
+        --date-before 2018-09 --date-after 2024-09 \
+        --output ./aletsch_ice
+  params:
+    date_before: Earlier date (`YYYY-MM`). Use the end of the melt season (September in the northern hemisphere).
+    date_after: Later date, same season.
+  dates: |
+    Choose the same time of year, at the end of the melt season, and a clear image on each. Summer snow-free conditions
+    maximise the contrast between ice and bare ground.
+  stats:
+    area_ha_before: Snow/ice area on the earlier date.
+    area_ha_after: Snow/ice area on the later date.
+    area_change_ha: Later minus earlier area.
+    area_change_pct: Change as a percentage of the earlier area.
+    ndsi_threshold: NDSI cut-off used (0.4).
+  interpret: |
+    Negative change is retreat, positive is advance or more snow. Both areas are computed on the same pixels (clear on both
+    dates), so cloud cannot drive the result, but their sum is not the glacier area: the rest of the glacier is under cloud
+    or debris. `glacier_extent_after.tif` shows snow/ice on the later date; 255 is cloud on either date. For a figure to
+    publish, compare with a glacier inventory (RGI) and use the same dates every year.
+  troubleshooting:
+    - symptom: Large "advance" in a warm year
+      fix: Fresh snow on one date. Choose dates a few weeks later in the season, or inspect the true-colour image.
+    - symptom: Debris-covered tongue missing
+      fix: NDSI cannot see ice under rock. Digitise the outline manually or use a debris-aware method.
+    - symptom: "No usable imagery"
+      fix: Mountain cloud. Widen the window by a few weeks on each side.
+    - symptom: Shadowed slopes classed as ice
+      fix: Deep shadow lowers reflectance in both bands; check against the optical image on steep north faces.
+  see_also: [snow_cover, land_surface_temperature, terrain_analysis]
+
+land_cover:
+  why: |
+    "What is on the ground here, and how much of each?" is the question behind most planning, carbon and conservation
+    work. Land cover is not a model you should train for every project: a published, validated 10 m map exists. This
+    pipeline clips it to your box, gives per-class areas, and can alternatively use Dynamic World for a given month or your own
+    trained network. The default is deliberately a **reference map**, not a new classification, and the report says so.
+  use_when:
+    - You need class areas and a map for a region today, from a source you can cite.
+    - You need a baseline for another analysis (exposure, habitat, urban extent).
+    - You want a map for a particular month (`dynamic_world`).
+  not_for:
+    - "Change over time with WorldCover. Versions 2020 and 2021 use different algorithms and must not be compared. Use [`landcover_change`](landcover_change.md) for a consistent time series."
+    - "Classes the product does not have (crop type, tree species)."
+  inputs: |
+    - `worldcover` (default): ESA WorldCover 2021 from the Microsoft Planetary Computer, no account.
+    - `dynamic_world`: Google Dynamic World, which needs an Earth Engine account.
+    - Any other value of `source` is treated as a model name and needs `--checkpoint` (your weights).
+  cli: |
+    pygeovision channel land_cover \
+        --bbox -0.35 5.55 -0.10 5.75 \
+        --output ./accra_landcover \
+        --class-names "Tree,Shrub,Grass,Crop,Built,Bare,Snow,Water,Wetland,Mangrove,Moss"
+  params:
+    date: "Month for `dynamic_world` (`2023-06`). **Ignored for WorldCover**, which is a 2021 map; the result says so."
+    source: "`worldcover` (default), `dynamic_world`, or a model name for your own network."
+    num_classes: Number of classes for your own model (default 11).
+    bands: Bands fed to your own model.
+    tile_size: Inference window in pixels (own model).
+    overlap: Window overlap in pixels (own model).
+    checkpoint: Your trained weights. Required only for a model `source`.
+  dates: |
+    WorldCover is 2021 whatever you pass. Dynamic World uses the month in `date`. Own-model runs use `date` to choose imagery.
+  stats:
+    class_areas_ha: Area per class in hectares (shown in the report and `run_summary.json`).
+  interpret: |
+    **WorldCover classes:** 10 tree cover, 20 shrubland, 30 grassland, 40 cropland, 50 built-up, 60 bare/sparse, 70 snow and ice,
+    80 permanent water, 90 herbaceous wetland, 95 mangroves, 100 moss and lichen; 255 is no data. Overall accuracy of the product is
+    about 75%, with errors concentrated between grassland, shrub and crop, and in small features. Treat areas of confusable
+    classes as ranges. Class shares exclude no-data pixels.
+  workflow: |
+    Use `pygeovision postprocess class-stats land_cover.tif` for areas from your own edits, and
+    [`vectorise --target-class 50`](../../data/postprocessing.md) to get built-up polygons. Combine with
+    [`urban_expansion`](urban_expansion.md) or [`wetland_mapping`](wetland_mapping.md).
+  troubleshooting:
+    - symptom: The date has no effect
+      fix: Correct. WorldCover is a single 2021 product. Use Dynamic World or `landcover_change` for other times.
+    - symptom: Dynamic World fails
+      fix: It needs Earth Engine authentication. Use WorldCover or authenticate (see [Authentication](../../data/authentication.md)).
+    - symptom: '"needs your trained weights"'
+      fix: You set `source` to a model name. Pass `--checkpoint`, or return to `worldcover`.
+    - symptom: Class numbers instead of names in the report
+      fix: Pass `--class-names` (11 names for WorldCover).
+  see_also: [landcover_change, urban_expansion, wetland_mapping, water_bodies, forest_change]
+
+land_surface_temperature:
+  why: |
+    Surface temperature shows where the ground is hot: sealed city blocks, bare soil, dry crops. It is the thermal layer
+    behind heat-island work, irrigation monitoring and wildfire risk. This pipeline reads the Landsat Collection 2
+    Level-2 surface temperature band (already atmospherically corrected), converts it to degrees Celsius and optionally
+    marks pixels that exceed a threshold above the scene mean.
+  use_when:
+    - You need a calibrated surface temperature map at 30 m for a clear day.
+    - You want hot-spot polygons relative to the surrounding area.
+  not_for:
+    - "Air temperature, which is a different quantity and is lower at night and higher over water."
+    - "The daily cycle. Landsat passes once, around 10:00 local time."
+    - "Cities in a monthly average. For a seasonal composite use [`urban_heat_island`](urban_heat_island.md)."
+  inputs: |
+    Landsat 8 or 9 Collection 2 Level-2 (`lwir11` surface temperature, plus the QA band) from the Microsoft Planetary Computer. No account.
+  cli: |
+    pygeovision channel land_surface_temperature \
+        --bbox 16.25 48.15 16.50 48.30 \
+        --date 2024-07 \
+        --param threshold_c=5 \
+        --output ./vienna_lst
+  params:
+    date: "Month (`2024-07`). Default `2024-07`."
+    threshold_c: "Degrees above the scene mean that define 'hot'. Omit for no hot-spot layer."
+  dates: |
+    Choose a summer month with clear skies. Winter scenes have a small contrast. Results from different months are not
+    comparable without accounting for the season.
+  stats:
+    mean_temp_celsius: Mean temperature over valid pixels.
+    min_temp_celsius: Coolest valid pixel.
+    max_temp_celsius: Hottest valid pixel.
+    threshold_c: Threshold used for the hot-spot layer.
+    pct_above_threshold: Share of valid pixels more than the threshold above the scene mean.
+    valid_fraction: Share of the box that was assessable.
+  interpret: |
+    The surface is hotter than the air: on a hot afternoon, roofs and asphalt can be 20 °C above the air, and water and
+    shaded forest are cooler than it. A single overpass shows one moment of the day. Compare places on the same scene, not
+    scenes from different days. The `above_threshold_mask.tif` is relative to *this* scene's mean, so its percentage cannot be
+    compared with another scene.
+  troubleshooting:
+    - symptom: '"No usable imagery"'
+      fix: Landsat revisits every 8 days (two satellites) and cloud can remove the rest. Widen the month or choose another.
+    - symptom: Temperatures look 5–10 °C too low or too high
+      fix: Check that you read `lst_celsius.tif` and not a raw DN raster; the conversion `DN × 0.00341802 + 149.0` gives Kelvin.
+    - symptom: Water pixels look warm
+      fix: Residual cloud or mixed pixels at shores. Mask water using [`water_bodies`](water_bodies.md).
+  see_also: [urban_heat_island, vegetation_indices, evapotranspiration]
+
+landcover_change:
+  why: |
+    To measure change in land cover, both dates need to come from the same method. The Impact Observatory / Esri annual
+    10 m land-cover product provides a consistent map for each year from 2017 to 2023. This pipeline compares two of them,
+    outputs where the class differs, and ranks the largest from→to transitions (for example, trees → built area).
+  use_when:
+    - You need urban growth, agricultural expansion or loss of natural cover over several years, in a form you can cite.
+    - You want a from→to table, not just 'changed or not'.
+  not_for:
+    - "Validated change statistics. The product is a model output with class-dependent errors."
+    - "Years outside 2017–2023."
+    - "Short-lived states such as seasonal flooding. Those switch class without lasting change."
+  inputs: |
+    The io-lulc-annual-v02 collection on the Microsoft Planetary Computer. No account is needed.
+  cli: |
+    pygeovision channel landcover_change \
+        --bbox -0.35 5.55 -0.10 5.75 \
+        --date-before 2017 --date-after 2023 \
+        --param min_change_ha=0.5 \
+        --output ./accra_lc_change
+  params:
+    date_before: Earlier year (2017–2023).
+    date_after: Later year (2017–2023).
+    resolution_m: Grid size in metres. Default native 10 m; coarsened automatically for very large boxes.
+    min_change_ha: "Remove changed patches smaller than this area (hectares). Default 0 keeps every pixel. A value of 0.5–1 removes most classifier noise."
+  dates: |
+    Calendar years. Use the widest span you can: change between consecutive years is mostly noise, while a span of 4–6 years
+    reflects real change.
+  stats:
+    year_before: Earlier year.
+    year_after: Later year.
+    area_ha_before: Area per class in the earlier year.
+    area_ha_after: Area per class in the later year.
+    changed_area_ha: Total area whose class changed.
+    change_fraction: Share of valid pixels that changed.
+    changed_in_patches_of_3px_or_less: Changed area in tiny patches, a noise indicator.
+    min_change_ha: Patch-size filter used.
+    pixels_removed_by_min_change: Pixels removed by that filter.
+    transitions: The largest from→to class changes with their areas.
+    resolution_m: Grid size used.
+    resolution_coarsened: Whether the grid was coarsened.
+  interpret: |
+    `change_mask.tif`: 0 unchanged, 1 changed, 255 no data. `transition.tif` encodes each change as `1 + 8×from_index + to_index`
+    over the eight product classes; `stats['transitions']` decodes the largest. If `changed_in_patches_of_3px_or_less` is
+    a large share of `changed_area_ha`, your change is mostly noise: raise `min_change_ha`. A large compact patch
+    changing from trees to built area is a high-confidence event.
+  workflow: |
+    Run once without a filter and look at the tiny-patch figure; run again with `min_change_ha` set to remove noise.
+    Compare the transition list with the [`urban_expansion`](urban_expansion.md) pipeline or with [`forest_change`](forest_change.md) for forests.
+  troubleshooting:
+    - symptom: Year outside the range
+      fix: Use 2017–2023.
+    - symptom: Large change in a stable place
+      fix: Classifier disagreement. Use a longer span and a patch filter.
+    - symptom: Crop fields change every year
+      fix: Rotation and fallow change the class from year to year. Interpret agricultural change over several years, not two.
+  see_also: [land_cover, urban_expansion, urban_growth, forest_change, wetland_mapping]
+
+landslide_detection:
+  why: |
+    Landslide scars are bare, often elongated patches that appear between two dates, mostly after heavy rain or an
+    earthquake. Detecting them reliably requires a network trained on labelled scars from similar terrain and climate,
+    because optical change also arises from clouds, harvest and shadow. PyGeoVision does not ship such a model, because it
+    would be untrained and meaningless. This pipeline runs the siamese change network that **you** trained on a before/after pair.
+  use_when:
+    - You have trained a landslide or change network and need to apply it to a new event.
+    - You have a local inventory to train from and want a repeatable path from imagery to scars.
+  not_for:
+    - "Landslide susceptibility. That needs terrain, geology and rainfall; see [`drainage_analysis`](drainage_analysis.md) and [`terrain_analysis`](terrain_analysis.md) for slope and HAND layers to use as inputs."
+    - "Use without a checkpoint. The pipeline stops before downloading anything."
+  inputs: |
+    Your checkpoint (loaded strictly: architecture, band count and class count must match training) and Sentinel-2 images
+    before and after the event. See [Training](../../training/index.md) for how to train a change model.
+  cli: |
+    pygeovision channel landslide_detection \
+        --bbox 85.20 27.80 85.50 28.10 \
+        --date-before 2015-04 --date-after 2015-06 \
+        --checkpoint runs/landslide/best.pth \
+        --class-names "No change,Landslide" \
+        --output ./nepal_landslides
+  params:
+    date_before: Image date before the event (`YYYY-MM`).
+    date_after: Image date after the event.
+    model: Architecture of your checkpoint (default `siamese_unet`).
+    checkpoint: Your trained weights. **Required.**
+    bands: Bands fed to the network (default `red, green, blue`). Must match training.
+    num_classes: Classes of your network (default 2).
+    tile_size: Inference window in pixels.
+    overlap: Window overlap in pixels.
+  dates: |
+    Use the last clear image before and the first clear image after. Months are the resolution of the search; if both fall in the same
+    window the pipeline will report it.
+  stats:
+    changed_fraction: Share of valid pixels not classed as 0 (no change).
+  interpret: |
+    The report cannot know your classes, so it names them from `--class-names`. The accuracy of the map is the accuracy of *your* network on
+    *this* terrain; there is no uncertainty layer. Vectorise class 1 and inspect each polygon against the post-event image
+    before counting landslides. Also compare with slope: scars on flat ground are likely harvest or construction.
+  workflow: |
+    1. Run, then vectorise: `pygeovision postprocess vectorise landslide_map.tif --target-class 1 --min-area 900`.
+    2. Join with slope from [`terrain_analysis`](terrain_analysis.md) and drop polygons on slopes below about 10°.
+    3. Validate against a field inventory with [`postprocess accuracy`](../../data/postprocessing.md).
+  troubleshooting:
+    - symptom: Refuses to run, mentions weights
+      fix: Pass `--checkpoint`. Nothing is downloaded before this check.
+    - symptom: '`size mismatch` or `Missing key(s)`'
+      fix: The checkpoint was trained with another architecture, band count or class count. Set `model`, `bands` and `num_classes` to match.
+    - symptom: Everything is "changed"
+      fix: The two images are from different seasons or one has cloud. Choose similar, clear dates.
+    - symptom: Class numbers in the report
+      fix: Pass `--class-names`.
+  see_also: [drainage_analysis, terrain_analysis, change_detection, disaster_assessment]
+
+multisensor_flood_mapping:
+  why: |
+    Each sensor is wrong in its own way. Radar sees through cloud but misses floodwater between buildings and under
+    vegetation, and mistakes smooth tarmac and hill shadow for water. Optical imagery separates water well, but only
+    where the sky was clear, and the cloudiest days are often the flood days. Terrain tells you which "floods" are
+    physically impossible, because they sit high above any channel. This pipeline uses all three and, instead of blending
+    them into one score, **keeps what each sensor says** and classes every pixel by agreement: confirmed, radar only,
+    optical only or disputed. You see where to trust the map and where to check.
+  use_when:
+    - You map a flood in a region with cloud, such as the West African wet season, and a single sensor gave an implausible result.
+    - You need a figure with a lower bound (confirmed) and an upper bound (including disputed), not just one number.
+    - You want to know how much of the map rests on radar alone because optical imagery was cloud-covered.
+  not_for:
+    - "Urban flooding between buildings and flooding beneath dense vegetation. Both radar and optical under-map it. Use local reports or high-resolution imagery."
+    - "The peak of an event. Water that receded before the satellite passes is not seen, and a peak between passes is under-estimated."
+    - "Flood depth, duration or damage."
+  inputs: |
+    Sentinel-1 RTC (Catalyst, Planetary Computer), Sentinel-2 L2A and the Copernicus 30 m DEM, all open. No account is
+    needed. Two optional switches leave a source out: `use_optical=False`, `use_terrain=False`. The result then says which
+    data it was based on (`sensors_used`).
+  cli: |
+    pygeovision channel multisensor_flood_mapping \
+        --bbox -0.55 5.45 -0.15 5.75 \
+        --date-before 2024-01-05/2024-01-31 \
+        --date-after 2024-06-10/2024-06-25 \
+        --output ./accra_flood_2024
+  params:
+    date_before: "Dry reference window: a day, a month (`2024-01`) or a range (`2024-01-05/2024-01-31`). Long enough to contain at least one Sentinel-1 pass."
+    date_after: "Flood window, same forms. A single day usually contains no pass; give a range of one to two weeks."
+    polarization: "`vv` (default) or `vh`. VV is best for open water."
+    resolution_m: "Output grid in metres (default 20). Coarsened automatically for very large boxes (`resolution_coarsened`)."
+    water_db: "Radar water threshold in dB. `auto` (default) calibrates it on the optical water map of the reference window; a number or `otsu` overrides."
+    change_db: "How many dB darker than the reference a flooded pixel must be (default 3)."
+    mndwi_threshold: "Optical water cut-off (default 0)."
+    max_optical_cloud: "Scene-level cloud limit in per cent (default 95). Cloud is masked per pixel, so a cloudy scene still contributes its clear pixels."
+    max_optical_scenes: "Most optical scenes used per window (default 10)."
+    max_hand_m: "Flooding on ground more than this many metres above the nearest drainage is removed (default 15). `None` or 0 switches terrain filtering off."
+    stream_threshold_km2: "Contributing area that makes a channel for HAND (default 1)."
+    min_patch_ha: "Remove flooded patches smaller than this area (default 0.1 ha)."
+    speckle_filter: "Apply a 3×3 mean filter to each radar scene (default on)."
+    max_scenes: "Most radar scenes used per window (default 8)."
+    use_optical: "`False` leaves optical imagery out (radar + terrain only)."
+    use_terrain: "`False` leaves the HAND filter out."
+  dates: |
+    Give each window as a **range** so it contains acquisitions. Sentinel-1 passes every 6–12 days, so a window of
+    10–14 days normally contains one; if a window is empty, the error lists the nearest acquisitions. The reference should
+    be a dry period on the same orbit track. Optical scenes are searched in the same windows.
+  stats:
+    flooded_area_ha: "Classes 1 + 2 + 3 (reported by at least one sensor and contradicted by none). **The headline figure.**"
+    flooded_confirmed_ha: Class 1 only, flooded by radar and by a clear optical view. The conservative lower bound.
+    flooded_radar_only_ha: Class 2, radar flooded where optical had no clear view.
+    flooded_optical_only_ha: Class 3, optical flooded where radar did not flag.
+    flooded_disputed_ha: Class 4, radar says flooded and a clear optical view says dry. Check these.
+    flooded_upper_ha: "`flooded_area_ha` plus the disputed class. The upper bound."
+    flooded_fraction: Flooded share of the land area.
+    permanent_water_area_ha: Class 5, water that was already in the reference window.
+    land_area_ha: Area of the box that is not permanent water.
+    excluded_by_hand_ha: Flooding removed by the terrain (HAND) filter.
+    removed_small_patch_ha: Flooding removed by the minimum patch filter.
+    hand_applied: Whether the terrain filter was applied.
+    max_hand_m: HAND limit used.
+    water_db: Radar water threshold used, dB.
+    water_db_source: Where the threshold came from (calibrated on optical, Otsu, conventional).
+    otsu_db: Otsu estimate for comparison.
+    radiometric_offset_db: Brightness offset removed between the two radar windows.
+    radar_optical_f1_reference: Agreement between radar and optical water in the reference window (F1). A quality check; low values mean the sensors disagree about ordinary water.
+    radar_optical_iou_reference: The same, as IoU.
+    optical_coverage: Share of the flood-window pixels with a clear optical view.
+    optical_scenes_reference: Optical scenes used in the reference window.
+    optical_scenes_flood: Optical scenes used in the flood window.
+    optical_flood_dates: Dates of the optical scenes in the flood window.
+    scenes_reference: Radar scenes in the reference window.
+    scenes_flood: Radar scenes in the flood window.
+    reference_dates: Dates of the radar reference scenes.
+    flood_dates: Dates of the radar flood scenes.
+    orbit_state: Orbit direction used (ascending/descending).
+    relative_orbit: Relative orbit number of the track used.
+    sensors_used: The data actually available. If it lacks `sentinel-2` the result is radar-based only.
+    data_notes: Plain-language note on missing data, if any.
+    polarization: Polarisation used.
+    change_db: Change criterion used, dB.
+    mndwi_threshold: Optical threshold used.
+    min_patch_ha: Patch filter used.
+    resolution_m: Grid size used.
+    resolution_coarsened: Whether the grid was coarsened.
+  interpret: |
+    **Classes in `flood_extent.tif`:** 0 not flooded; 1 flooded, radar **and** optical; 2 flooded, radar only; 3 flooded,
+    optical only; 4 disputed (radar flooded, clear optical view says dry); 5 water in the reference window; 255 no data.
+
+    Trust 1 most. Class 2 is expected where optical was cloud-covered, so it is only radar's word. Class 4 areas are where
+    the sensors contradict each other (often wet soil, smooth surfaces or vegetation that radar reads as water): inspect them
+    before including them. Report `flooded_area_ha` with the range `flooded_confirmed_ha` to `flooded_upper_ha`. Read
+    `radar_optical_f1_reference` first: a value above about 0.7 says the two sensors agree about ordinary water, so the
+    flood result is internally consistent.
+  workflow: |
+    1. Read `sensors_used` and `data_notes`. If optical is missing, the map is radar and terrain only.
+    2. Open `flood_extent.tif` with the classes coloured differently; look at class 4 and at hills.
+    3. Compare `flooded_area_ha` with [`sar_flood_mapping`](sar_flood_mapping.md) and [`flood_mapping`](flood_mapping.md) for the same dates to see what each sensor adds.
+    4. Intersect the flood polygons with [`building_footprints`](building_footprints.md) for exposure.
+    5. Report the range, the dates of the passes and the limitation about urban flooding.
+  troubleshooting:
+    - symptom: '"No Sentinel-1 scene in the window"'
+      fix: The error lists the nearest acquisitions. Give a range (for example `2024-06-10/2024-06-25`) rather than a day.
+    - symptom: Result says radar only
+      fix: Optical imagery was cloud-covered throughout the flood window (`optical_coverage` is low). That is the situation this pipeline is built for; the figure has no optical confirmation.
+    - symptom: Large area in class 4
+      fix: Sensors disagree. Check the surfaces (wet fields, shadow). Quote the lower bound and note the upper.
+    - symptom: Flooding on hill slopes
+      fix: Check `hand_applied` and `max_hand_m`. Lower `max_hand_m` (for example 10) to remove more.
+    - symptom: Flooding along the real river missing
+      fix: Steep banks or a reference taken at high flow. Choose a drier reference and check `permanent_water_area_ha`.
+    - symptom: The map and the news disagree
+      fix: The passes may have missed the peak. Look at `flood_dates`; add a second window around the peak.
+  see_also: [sar_flood_mapping, flood_mapping, drainage_analysis, surface_water_dynamics, disaster_assessment]
+
+road_extraction:
+  why: |
+    Roads are one or two pixels wide at 10 m, and no public model is reliable across regions. Rather than ship a model
+    that would produce confident-looking nonsense, this pipeline runs a segmentation network that **you** trained on the same kind of
+    imagery. Use [`road_network`](road_network.md) to get OpenStreetMap lines for labels in the places where they exist.
+  use_when:
+    - You trained a road-segmentation network and want a repeatable way to apply it to new Sentinel-2 images.
+    - OpenStreetMap is incomplete where you work and you need a detection-based layer.
+  not_for:
+    - "A quick road inventory. Use [`road_network`](road_network.md), which needs no training."
+    - "Centrelines and connectivity. This is a mask; vectorising it needs thinning (see [postprocessing](../../data/postprocessing.md))."
+  inputs: |
+    Your checkpoint (strict load) and Sentinel-2 RGB (or the bands you trained on). See [Training](../../training/index.md).
+  cli: |
+    pygeovision channel road_extraction \
+        --bbox -1.70 6.60 -1.55 6.75 \
+        --date 2024-01 \
+        --checkpoint runs/roads/best.pth \
+        --class-names "Background,Road" \
+        --output ./kumasi_roads
+  params:
+    date: "Month of imagery (default `2024-06`)."
+    cloud_cover_max: "Scene cloud limit in per cent (default 10)."
+    model: Architecture of your checkpoint (default `unet_resnet50`).
+    checkpoint: Your trained weights. **Required.**
+    bands: Bands fed to the network (default `red, green, blue`). Must match training.
+    num_classes: Classes of your network (default 2).
+    tile_size: Inference window in pixels.
+    overlap: Window overlap in pixels. Larger overlap reduces tile seams.
+  dates: |
+    A single month with clear sky. Roads change slowly, so the date matters mostly for cloud and vegetation cover.
+  stats:
+    road_coverage: Share of valid pixels classed as road.
+  interpret: |
+    Class 1 is road. At 10 m expect broken lines, merged parallel roads and missed narrow tracks. `road_coverage` is a share of pixels,
+    not a length. There is no measure of accuracy: validate with [`postprocess accuracy`](../../data/postprocessing.md) against
+    reference lines rasterised from OpenStreetMap or survey data.
+  troubleshooting:
+    - symptom: Refuses to run, mentions weights
+      fix: Pass `--checkpoint`. Nothing is downloaded first.
+    - symptom: Fragmented roads
+      fix: Run with a larger `overlap`, then close gaps with [`postprocess regularise`](../../data/postprocessing.md) or in GIS.
+    - symptom: Rooftops and bare fields flagged
+      fix: Training data lacked those hard negatives; retrain with more samples of them.
+  see_also: [road_network, building_footprints, urban_growth]
+
+road_network:
+  why: |
+    "How much road is there, of which kind, and where is it dense?" is an infrastructure planning basic. OpenStreetMap holds
+    a detailed road map for most of the world, mapped by volunteers. This pipeline downloads it for your box, clips it, measures
+    lengths in a metric projection, and summarises length by road class and density as a raster and a GeoPackage of every road.
+    It is a map of what has been drawn, not a detection from imagery.
+  use_when:
+    - You need road length by class, density, or a GeoPackage of roads for an area.
+    - You want labels for training a road segmentation model.
+    - You want a connectivity or access proxy (distance to a road).
+  not_for:
+    - "Completeness claims. Minor roads and tracks in rural areas are often missing from OSM."
+    - "Road condition, width or surface. The `highway` tag is a mapping convention."
+    - "Comparing densities between places mapped with different effort."
+  inputs: |
+    OpenStreetMap data through the public Overpass API. No account is needed. The public servers are shared and may answer
+    `429` or `406`; the client rotates servers and backs off, but heavy use needs a private instance
+    ([Footprints](../../data/footprints.md#overpass-reliability)).
+  cli: |
+    pygeovision channel road_network \
+        --bbox -1.70 6.60 -1.55 6.75 \
+        --param cell_m=500 \
+        --output ./kumasi_roads_osm
+  params:
+    cell_m: "Cell size of the density raster in metres (default 500). Larger cells smooth the pattern."
+    exclude: "`highway` values left out. Default: proposed, construction, razed, abandoned, planned, platform."
+  dates: |
+    None. OSM is read as it is at the moment you run. Record the run date in your reports.
+  stats:
+    total_length_km: Total length of the roads kept.
+    road_density_km_per_km2: Total length divided by the area of the box.
+    km_by_highway: Length per OSM `highway` value (primary, residential, track...).
+    km_by_group: Length per summary group (major, local, tracks and paths...).
+    segments: Number of OSM ways kept.
+    unnamed_share_of_length: Share of length with no `name` tag; a rough completeness hint.
+    cell_m: Density cell size.
+    excluded_tags: "`highway` values excluded."
+    network_file: The GeoPackage with all roads.
+    aoi_area_km2: Area of the box.
+  interpret: |
+    Totals are lengths of ways, so a divided road mapped as two carriageways is counted twice. High values in one cell can be
+    a junction. Compare places only where mapping effort is similar; a very low density may be unmapped area, not unbuilt area.
+    A high `unnamed_share_of_length` suggests recent or partial mapping.
+  workflow: |
+    Open `road_network.gpkg` and style by `highway`. Rasterise it as labels, tile with [`ai-ready`](../../data/ai-ready.md) and train a
+    network; then apply it with [`road_extraction`](road_extraction.md).
+  troubleshooting:
+    - symptom: Error 429 or 406 from Overpass
+      fix: The public server is busy or refusing. Retry later or use a private Overpass instance.
+    - symptom: Few or no roads
+      fix: The area may be unmapped, or the box is in the wrong order (lon first).
+    - symptom: Length larger than expected
+      fix: Dual carriageways are counted per way. This follows OSM mapping and is documented in the report.
+  see_also: [road_extraction, building_footprints, urban_expansion]
+
+sar_flood_mapping:
+  why: |
+    Rain and floods come with cloud, and optical images of the event are often useless. Sentinel-1 radar images the ground
+    through cloud, day or night, and calm open water is dark in radar. This pipeline compares a flood window with a dry
+    reference from the **same orbit track** (so the viewing geometry matches), finds water that was not there before, and
+    separates it from permanent water.
+  use_when:
+    - The flood date is cloudy and optical flood mapping failed.
+    - You want an observation of open-water flooding on river plains and fields.
+    - You need a result for a specific Sentinel-1 pass.
+  not_for:
+    - "Flooded buildings and flooding under dense vegetation. They are bright to radar (double bounce) and missed. Combine with optical in [`multisensor_flood_mapping`](multisensor_flood_mapping.md)."
+    - "Hilly terrain without a terrain filter. Radar shadow is dark; the multi-sensor pipeline removes it using HAND."
+    - "Estimating the event peak. The result describes the dates of the passes used."
+  inputs: |
+    Sentinel-1 RTC (gamma-naught, terrain corrected) from the Microsoft Planetary Computer. No account is needed.
+  cli: |
+    pygeovision channel sar_flood_mapping \
+        --bbox -0.55 5.45 -0.15 5.75 \
+        --date-before 2024-01-05/2024-01-31 \
+        --date-after 2024-06-10/2024-06-25 \
+        --param polarization=vv \
+        --output ./accra_sar_flood
+  params:
+    date_before: "Dry reference: a day, a month (`2026-06`) or a range (`2026-06-01/2026-06-15`)."
+    date_after: "Flood window, same forms. A single day usually contains no pass."
+    polarization: "`vv` (default) or `vh`."
+    resolution_m: "Output grid in metres (default 20)."
+    water_db: "Open-water threshold in dB. Default -15 for VV and -20 for VH; `otsu` selects a histogram threshold of the flood image."
+    change_db: "Required darkening relative to the reference, dB (default 3)."
+    min_patch_ha: "Minimum flooded patch (default 0.1 ha)."
+    speckle_filter: "3×3 mean filter on each scene (default on)."
+    max_scenes: "Most scenes per window (default 8)."
+  dates: |
+    Use ranges of one to two weeks so each window contains at least one acquisition from the same track. If a window is empty,
+    the error lists the nearest acquisitions and you can re-run with them. Choose the reference from a dry period of the same year so soil
+    moisture and vegetation are comparable.
+  stats:
+    flooded_area_ha: Area of newly flooded open water (class 1).
+    permanent_water_area_ha: Area that is water in both windows (class 2).
+    flooded_fraction: Flooded share of valid pixels.
+    water_db: Threshold used, dB.
+    water_db_source: "Whether it was the conventional default, Otsu or your value."
+    otsu_db: Otsu estimate of the threshold for comparison.
+    otsu_separability: How cleanly the histogram separates water from land (0–1). Low values mean the threshold is unreliable here.
+    change_db: Change criterion used.
+    polarization: Polarisation used.
+    orbit_state: Orbit direction used.
+    relative_orbit: Relative orbit used.
+    scenes_reference: Number of reference scenes.
+    scenes_flood: Number of flood scenes.
+    reference_dates: Dates of the reference scenes.
+    flood_dates: Dates of the flood scenes.
+    min_patch_ha: Patch filter used.
+    removed_small_patch_ha: Flooding removed by the patch filter.
+    aoi_coverage_reference: Share of the box covered by the reference scenes.
+    aoi_coverage_flood: Share of the box covered by the flood scenes.
+    speckle_filter: Whether speckle was filtered.
+    resolution_m: Grid size used.
+    resolution_coarsened: Whether the grid was coarsened.
+  interpret: |
+    **Classes in `flood_extent.tif`:** 0 dry, 1 flooded, 2 permanent water, 255 no data. `change_db.tif` shows how much darker
+    each pixel is than the reference (negative = darker). Compare `water_db` with `otsu_db`: if they differ by more than a few dB,
+    the conventional default may not suit the scene; try `--param water_db=otsu`. If the coverage figures are below 1, the box
+    was only partly covered. This is the extent on the dates of the passes, not the maximum extent of the event.
+  workflow: |
+    1. Run with the defaults; compare `water_db` and `otsu_db`.
+    2. Look at `change_db.tif` along the river; flooding should be a contiguous patch next to it.
+    3. Check hills and airports for radar shadow or smooth surfaces. Use the multi-sensor pipeline to remove terrain false alarms.
+    4. Combine with an optical map where the sky was clear.
+  troubleshooting:
+    - symptom: Error listing "nearest acquisitions"
+      fix: The window contained no Sentinel-1 scene. Use one of the listed dates, or widen the range.
+    - symptom: Flooded patches on hills or around airports
+      fix: Radar shadow and smooth surfaces. Use [`multisensor_flood_mapping`](multisensor_flood_mapping.md).
+    - symptom: Large flood area in dry-looking fields
+      fix: Wet soil or a windless lake can be dark; the reference was taken after a harvest or tillage. Choose a closer reference.
+    - symptom: Obvious flood missing in a town or forest
+      fix: Double-bounce makes floodwater bright there. Radar cannot map it; use local reports.
+    - symptom: Gaps or a straight edge in the result
+      fix: A scene covered only part of the box. Check `aoi_coverage_*` and widen the window to include a second track pass.
+  see_also: [multisensor_flood_mapping, flood_mapping, water_bodies, surface_water_dynamics]
+
+snow_cover:
+  why: |
+    Snow cover controls water supply, avalanche risk and the energy balance of mountains. The Normalised Difference Snow Index
+    separates snow from most other surfaces because snow is bright in the green band and dark in the shortwave infrared. This
+    pipeline applies the threshold used by the MODIS snow product (0.4) to Sentinel-2 at 20 m, which shows snow edges
+    that a 500 m product blurs.
+  use_when:
+    - You need the snow-covered area of a mountain basin on a particular date.
+    - You want to track snow-line elevation by combining the map with a DEM.
+  not_for:
+    - "Snow depth or water equivalent. Optical imagery cannot give them."
+    - "Cloudy scenes. Cloud and snow look alike; the cloud mask helps but is not perfect."
+    - "Glacier change. Use [`glacier_monitoring`](glacier_monitoring.md) with end-of-melt dates."
+  inputs: |
+    Sentinel-2 L2A green and SWIR1 bands from the open catalogues. No account is needed.
+  cli: |
+    pygeovision channel snow_cover \
+        --bbox 7.8 46.4 8.3 46.7 \
+        --date 2024-03 \
+        --output ./alps_snow_march
+  params:
+    date: "Month (`2024-01` default)."
+  dates: |
+    A month with clear skies. Snow changes quickly during melt, so a month is a composite of the clearest scene, not an average.
+  stats:
+    snow_area_ha: Snow/ice area.
+    snow_cover_fraction: Snow share of valid pixels.
+    ndsi_threshold: Threshold used (0.4).
+    valid_fraction: Share of the box assessable.
+  interpret: |
+    `snow_extent.tif`: 1 snow/ice, 0 none, 255 no data. The fraction is of **valid** pixels; with much cloud it describes the
+    visible part only. Mixed pixels at the snow edge and shaded slopes cause errors. For the snow-line altitude, extract the
+    elevation of snow-edge pixels from a DEM ([`terrain_analysis`](terrain_analysis.md)).
+  troubleshooting:
+    - symptom: Cloud flagged as snow
+      fix: Residual cloud in the scene. Pick another date and check `valid_fraction`.
+    - symptom: No snow in a snowy winter
+      fix: Dense forest hides snow, or the date was just after a thaw. Check the true-colour image.
+    - symptom: Shadowed snow missing
+      fix: Deep shadow is dark in the green band, so NDSI fails there. Expect underestimation on north-facing slopes.
+  see_also: [glacier_monitoring, land_surface_temperature, terrain_analysis]
+
+solar_detection:
+  why: |
+    Mapping where solar farms are is useful for energy planning, land-use monitoring and permitting checks. No public
+    network is reliable across regions, climates and roof or ground types, and an untrained one would produce confident
+    random output. This pipeline therefore runs the segmentation network that **you** trained, on Sentinel-2 imagery, and
+    stops with a clear message if you pass no checkpoint.
+  use_when:
+    - You trained a solar-panel segmentation network and want to apply it to a new area.
+    - You look for utility-scale solar arrays (hectares in size).
+  not_for:
+    - "Rooftop panels. At 10 m they are not resolved; train and run on sub-metre imagery with the [inference tools](../../inference/index.md) instead."
+    - "Estimating solar potential. Use [`solar_potential`](solar_potential.md), or [`wind_farm_siting`](wind_farm_siting.md) for a siting analysis."
+  inputs: |
+    Your checkpoint (strict load) and Sentinel-2 imagery. The default tile is 256 pixels because panel arrays are small.
+  cli: |
+    pygeovision channel solar_detection \
+        --bbox -5.9 37.4 -5.6 37.6 \
+        --date 2024-06 \
+        --checkpoint runs/solar/best.pth \
+        --class-names "Background,Solar panel" \
+        --output ./andalucia_solar
+  params:
+    date: "Month of imagery (default `2024-06`)."
+    cloud_cover_max: "Scene cloud limit in per cent (default 5, strict because panels are small)."
+    model: Architecture of your checkpoint (default `unet_efficientnet_b4`).
+    checkpoint: Your trained weights. **Required.**
+    bands: Bands fed to the network (default `red, green, blue`). Must match training.
+    num_classes: Classes of your network (default 2).
+    tile_size: Inference window in pixels (default 256).
+    overlap: Window overlap in pixels (default 32).
+  dates: |
+    A clear month. Panels are static, so any clear date works; pick the sharpest scene.
+  stats:
+    panel_coverage: Share of valid pixels classed as panel.
+  interpret: |
+    Class 1 is panel. `panel_coverage` is a pixel share, not capacity. Vectorise class 1 with a minimum area of a few hectares and
+    inspect each polygon against high-resolution imagery before counting installations. Confusion with greenhouses, water and
+    dark roofs is typical for 10 m inputs. Validate with [`postprocess accuracy`](../../data/postprocessing.md).
+  troubleshooting:
+    - symptom: Refuses to run, mentions weights
+      fix: Pass `--checkpoint`.
+    - symptom: Greenhouses and reservoirs flagged
+      fix: Add them as negative examples and retrain, or filter by shape and size after vectorising.
+    - symptom: Nothing detected where you know an array exists
+      fix: The array is smaller than a few pixels at 10 m; use higher-resolution imagery.
+  see_also: [solar_potential, wind_farm_siting, building_footprints]
+
+solar_potential:
+  why: |
+    Terrain decides how much sunlight a slope receives: south-facing slopes in the northern hemisphere receive more than
+    north-facing ones, and steep slopes facing away from the sun receive almost none. This pipeline computes, from a DEM,
+    the cosine of the sun's incidence angle on every cell for one date and time. It is a quick, transparent way to see
+    the effect of slope and aspect on sunlight. It is **not** an annual energy estimate.
+  use_when:
+    - You want a first look at which slopes favour solar installations or crops at a given season and hour.
+    - You teach or explain how aspect and slope control insolation.
+  not_for:
+    - "Annual yield in kWh/m². That needs a time-integrated model with atmosphere and cloud."
+    - "Shading from neighbouring ridges or buildings. Terrain shadowing is not modelled."
+  inputs: |
+    An **OpenTopography API key** (free account), because the DEM comes from OpenTopography (`srtm1arc` by default).
+    Store it once with `pygeovision data auth add opentopography` ([Authentication](../../data/authentication.md)).
+  cli: |
+    pygeovision data auth add opentopography
+    pygeovision channel solar_potential \
+        --bbox 7.8 46.4 8.3 46.7 \
+        --param date=2024-12-21 --param hour=12 \
+        --output ./alps_winter_sun
+  params:
+    date: "Day in the form `YYYY-MM-DD` (default `2024-06-21`). Only the day of year is used."
+    hour: "Solar time in hours (default 12.0 = solar noon). It is **not** clock time: 12 is when the sun is highest."
+    dem_type: "OpenTopography dataset: `srtm90`, `srtm1arc` (default), `cop30`, `cop90`, `nasadem`, `alos` or `gedtm30`."
+  dates: |
+    A full date, not a month. Choose solstices and an equinox to compare seasons.
+  stats:
+    date: Day used.
+    hour: Solar hour used.
+    dem_type: DEM used.
+    sun_zenith_deg: Sun's angle from vertical at the centre of the box.
+    sun_azimuth_deg: Sun's compass bearing (180 = south).
+    mean_relative_irradiance: Mean of the 0–1 factor over valid cells.
+    pct_self_shaded: Share of cells facing away from the sun (factor 0).
+    note: Reminder that this is a single-instant factor.
+  interpret: |
+    The raster is a 0–1 factor: 1 means the surface faces the sun directly, 0 means it faces away or the sun is below the
+    horizon. Compare cells **within** one run. At local solar noon in summer most flat ground is close to 1; in winter at high latitude
+    even flat ground is far below 1, and north-facing slopes are 0. `pct_self_shaded` is the share facing away, not the share
+    shadowed by other terrain.
+  troubleshooting:
+    - symptom: Authentication error from OpenTopography
+      fix: Add the key with `pygeovision data auth add opentopography`.
+    - symptom: '"date must be YYYY-MM-DD"'
+      fix: Give a full date.
+    - symptom: All zeros
+      fix: The sun is below the horizon at that hour (night or polar winter). Choose a daytime hour.
+    - symptom: The hour does not match my clock
+      fix: The hour is solar time; solar noon is 12 regardless of time zone or daylight saving time.
+  see_also: [terrain_analysis, wind_farm_siting, solar_detection]
+
+surface_water_dynamics:
+  why: |
+    A lake or river that looks stable in one image may be new, shrinking or seasonal. The JRC Global Surface Water dataset
+    analysed every usable Landsat scene from 1984 to 2020 and reports how often each pixel was water and how its status
+    changed. This pipeline reads that history for your box and summarises the permanent, seasonal, new and lost water.
+  use_when:
+    - You want to know how a lake, reservoir or floodplain changed over decades.
+    - You need a baseline of permanent water, to separate floods from ordinary water.
+    - You want occurrence (how often a pixel was wet) to define floodplain and wetland extent.
+  not_for:
+    - "Water after 2020. The record ends in December 2020. Use [`water_bodies`](water_bodies.md) for a current map."
+    - "Events. For a flood use [`flood_mapping`](flood_mapping.md) or the radar pipelines."
+  inputs: |
+    JRC Global Surface Water v1.3 on the Microsoft Planetary Computer. No account is needed.
+  cli: |
+    pygeovision channel surface_water_dynamics \
+        --bbox -0.30 6.20 0.30 6.60 \
+        --output ./volta_water_history
+  params:
+    resolution_m: "Grid size in metres. Default is the native 30 m; coarsened automatically for very large boxes."
+  dates: |
+    None. The product covers 1984–2020 as a whole; passing a date has no effect.
+  stats:
+    permanent_now_ha: "Water that is permanent in 2020 (classes 1, 2, 7: permanent, new permanent, seasonal to permanent)."
+    seasonal_now_ha: "Seasonal water in 2020 (classes 4, 5, 8)."
+    lost_ha: "Water that was lost (classes 3, 6)."
+    ephemeral_ha: "Ephemeral water (classes 9, 10)."
+    ever_water_ha: Area that was water at least once.
+    ever_water_share: Share of valid pixels that were ever water.
+    area_ha_by_class: Area per transition class.
+    valid_fraction: Share of the box assessable.
+    resolution_m: Grid size used.
+    resolution_coarsened: Whether the grid was coarsened.
+  interpret: |
+    `water_transitions.tif` has ten classes (0 never water, 1 permanent, 2 new permanent, 3 lost permanent, 4 seasonal,
+    5 new seasonal, 6 lost seasonal, 7 seasonal to permanent, 8 permanent to seasonal, 9 ephemeral permanent, 10 ephemeral
+    seasonal; 255 no data). `water_occurrence.tif` is the percentage of valid observations that were water; values near 100 are
+    permanent water and low values are floodplain or shoreline. `water_seasonality.tif` counts months with water in 2020.
+    Where few scenes were usable (persistent cloud, Landsat 7 stripes) occurrence is less certain.
+  workflow: |
+    Use class 1 and 7 as the permanent-water mask for flood work, and occurrence above 10 % as the floodplain extent. Pair with
+    [`water_bodies`](water_bodies.md) (current water) to see whether a lake has changed since 2020.
+  troubleshooting:
+    - symptom: The map shows a reservoir as 'new permanent'
+      fix: It was filled after 1984. This is correct.
+    - symptom: Nothing recorded
+      fix: Open ocean or very small waters below the 30 m pixel. Check the box and the resolution.
+    - symptom: I need 2024 data
+      fix: Use [`water_bodies`](water_bodies.md) or [`water_extent_timeseries`](water_extent_timeseries.md).
+  see_also: [water_bodies, water_extent_timeseries, flood_mapping, wetland_mapping]
+
+terrain_analysis:
+  why: |
+    Elevation, slope and aspect are the inputs of nearly everything: erosion, hydrology, road planning, habitat, solar siting,
+    avalanche risk. This pipeline fetches the Copernicus 30 m DEM and writes the five standard derivatives with documented
+    methods, so you do not need to assemble them by hand and can compare areas fairly.
+  use_when:
+    - You need elevation, slope, aspect, hillshade or ruggedness for an area.
+    - You need the share of land above slope thresholds (for example above 15° for erosion or construction constraints).
+    - You want a hillshade for a map background.
+  not_for:
+    - "Bare-earth heights under forest or buildings. The DEM is a surface model."
+    - "Fine-scale slope for engineering. A 30 m grid smooths small features."
+  inputs: |
+    The Copernicus GLO-30 DEM from the Microsoft Planetary Computer; no account. OpenTopography products need a key.
+  cli: |
+    pygeovision channel terrain_analysis \
+        --bbox 7.8 46.4 8.3 46.7 \
+        --param slope_thresholds_deg=10,20,30 \
+        --output ./alps_terrain
+  params:
+    dem_source: "`copernicus` (default), `copernicus_aws` (the same product from the public AWS copy; also the automatic fallback) or `opentopography` (needs a key)."
+    dem_type: "DEM product (default `cop30`)."
+    resolution_m: "Grid size in metres (default 30)."
+    slope_thresholds_deg: "Slopes for which the area share above is reported (default 5, 15, 30)."
+    sun_azimuth_deg: "Light direction of the hillshade, degrees clockwise from north (default 315)."
+    sun_elevation_deg: "Light height above the horizon (default 45)."
+  dates: |
+    None. The DEM is static.
+  stats:
+    min_elevation_m: Lowest elevation.
+    max_elevation_m: Highest elevation.
+    mean_elevation_m: Mean elevation.
+    relief_m: Maximum minus minimum elevation.
+    mean_slope_deg: Mean slope.
+    median_slope_deg: Median slope.
+    p95_slope_deg: 95th percentile of slope (steepest 5 % of terrain).
+    max_slope_deg: Steepest slope.
+    mean_tri_m: Mean Terrain Ruggedness Index in metres.
+    pct_area_slope_gt_5deg: Share of area steeper than 5° (one entry per threshold you set).
+    pct_area_slope_gt_15deg: Share steeper than 15°.
+    pct_area_slope_gt_30deg: Share steeper than 30°.
+    dem_source: DEM source.
+    dem_host: Host the DEM came from.
+    sun_azimuth_deg: Hillshade azimuth.
+    sun_elevation_deg: Hillshade sun height.
+    resolution_m: Grid size used.
+    valid_fraction: Share of cells with elevation.
+  interpret: |
+    **Outputs:** `elevation.tif` (m), `slope_deg.tif` (0–90, steepest descent), `aspect_deg.tif` (compass bearing of the downhill
+    direction, 0 = north, clockwise; NaN on perfectly flat cells), `hillshade.tif` (a picture for backgrounds, not irradiance)
+    and `tri_m.tif` (ruggedness: the root of the summed squared height differences to the eight neighbours). Slope and ruggedness
+    depend on resolution: compare areas only at the same grid size. The percentage shares are of valid cells.
+  workflow: |
+    Use `slope_deg.tif` with [`drainage_analysis`](drainage_analysis.md) for flood susceptibility, with
+    [`landslide_detection`](landslide_detection.md) for hillslope filtering, and with [`wind_farm_siting`](wind_farm_siting.md) for
+    constraints. For the extent above a threshold: `pygeovision postprocess vectorise` on a thresholded slope raster.
+  troubleshooting:
+    - symptom: Staircase artefacts or stripes
+      fix: DEM quantisation in very flat terrain. Smooth, or accept the limit.
+    - symptom: Slope too high next to water
+      fix: Water in a DEM is a flat surface with abrupt edges; mask water first.
+    - symptom: Heights on forest are too high
+      fix: The DEM includes tree canopy. A bare-earth model is needed for terrain below forest.
+    - symptom: Refused with a message about size
+      fix: The box is too large for the resolution. Reduce the box or coarsen `resolution_m`.
+  see_also: [drainage_analysis, solar_potential, landslide_detection, wind_farm_siting]
+
+urban_expansion:
+  why: |
+    Cities grow into farmland, forest and wetland, and the question is usually "how much, and where?". The 10 m annual
+    land-cover product identifies built-up area in each year from 2017 to 2023 with one consistent method. This pipeline
+    compares two years and reports gross gain, gross loss and net change separately, because "loss" of built area is often
+    classifier disagreement, and a net figure hides that.
+  use_when:
+    - You need built-up area growth between two years in a form you can cite.
+    - You want a map of where new built-up area appeared, to compare with planning zones or flood hazard.
+    - You want an annual growth rate for reporting.
+  not_for:
+    - "Individual houses or small hamlets. At 10 m they are under-mapped."
+    - "Validated change counts. This is a map product's change."
+    - "Years before 2017 or after 2023."
+  inputs: |
+    The io-lulc-annual-v02 collection on the Microsoft Planetary Computer. No account is needed.
+  cli: |
+    pygeovision channel urban_expansion \
+        --bbox -0.35 5.55 -0.10 5.75 \
+        --date-before 2018 --date-after 2023 \
+        --output ./accra_growth
+  params:
+    date_before: Earlier year (2017–2023).
+    date_after: Later year (2017–2023).
+    resolution_m: Grid size in metres (default 10; coarsened automatically for very large boxes).
+  dates: |
+    Calendar years. Use at least three years apart: single-year differences are dominated by classifier disagreement.
+  stats:
+    year_before: Earlier year.
+    year_after: Later year.
+    built_area_ha_before: Built-up area in the earlier year.
+    built_area_ha_after: Built-up area in the later year.
+    built_share_before: Built-up share of valid pixels, earlier year.
+    built_share_after: Built-up share, later year.
+    gain_ha: Gross new built-up area.
+    loss_ha: Gross built-up area lost.
+    net_change_ha: Gain minus loss.
+    annual_growth_rate: Compound annual growth rate of built-up area.
+    valid_fraction: Share of the box assessable.
+    resolution_m: Grid size used.
+    resolution_coarsened: Whether the grid was coarsened.
+  interpret: |
+    `built_area_change.tif`: 0 not built either year, 1 built both years, 2 new built area, 3 built area lost, 255 no data. Read gross
+    gain **and** loss. A loss that is a large share of gain says the classifier disagreed between years (roofs under trees, dust,
+    construction sites), not that houses were demolished. The annual growth rate is a compound rate between the two years and depends on
+    the span.
+  workflow: |
+    Intersect the new built-up area (class 2) with flood hazard from [`drainage_analysis`](drainage_analysis.md) (HAND ≤ 5 m) to find growth into low-lying
+    land, or with [`land_cover`](land_cover.md) for what it replaced; see [`landcover_change`](landcover_change.md) for the full from→to table.
+  troubleshooting:
+    - symptom: Year outside 2017–2023
+      fix: Use years in range.
+    - symptom: Net change tiny but gain and loss large
+      fix: Classifier noise or genuine redevelopment. Use a longer span and look at the map.
+    - symptom: Small settlements missing
+      fix: 10 m cannot resolve them. Use higher-resolution imagery or [`building_footprints`](building_footprints.md).
+  see_also: [landcover_change, urban_growth, building_footprints, urban_heat_island]
+
+urban_growth:
+  why: |
+    When you need your own classes (informal settlement, industrial growth, specific building types), a published map product
+    is not enough. This pipeline runs a change network you trained on Landsat pairs, so growth can be measured over decades
+    (Landsat starts in 1984). Without a checkpoint it stops: a default network would give random output.
+  use_when:
+    - You trained an urban-change network and want to apply it to Landsat pairs far back in time.
+    - You need long records before 2017 that the annual map does not cover.
+  not_for:
+    - "A quick, citable built-up change. Use [`urban_expansion`](urban_expansion.md), which needs no training."
+  inputs: |
+    Your checkpoint (strict load) and Landsat surface-reflectance imagery. See [Training](../../training/index.md).
+  cli: |
+    pygeovision channel urban_growth \
+        --bbox -0.35 5.55 -0.10 5.75 \
+        --date-before 2000 --date-after 2020 \
+        --checkpoint runs/urban/best.pth \
+        --class-names "No change,Urban growth" \
+        --output ./accra_growth_landsat
+  params:
+    date_before: "Earlier date: a year (`2000`, meaning June of that year) or `YYYY-MM`."
+    date_after: Later date, same forms.
+    start_year: Alias for `date_before`.
+    end_year: Alias for `date_after`.
+    model: Architecture of your checkpoint (default `siamese_unet`).
+    checkpoint: Your trained weights. **Required.**
+    bands: Bands fed to the network (default `red, green, blue`). Must match training.
+    num_classes: Classes of your network (default 2).
+    tile_size: Inference window in pixels.
+    overlap: Window overlap in pixels.
+  dates: |
+    Same season in both years, clear sky. Defaults are 2018 and 2024 if you give none.
+  stats:
+    changed_fraction: Share of valid pixels not classed as 0 (no change).
+  interpret: |
+    Class 0 is no change; other classes mean what your labels meant. Landsat's 30 m pixels limit what can be seen. Validate
+    against reference (for example digitised built-up areas) before quoting hectares.
+  troubleshooting:
+    - symptom: Refuses to run, mentions weights
+      fix: Pass `--checkpoint`.
+    - symptom: Everything changed
+      fix: The two dates are in different seasons or one has cloud.
+    - symptom: Differences between sensors (Landsat 5 vs 8)
+      fix: Train with both sensors in the data, or harmonise before inference.
+  see_also: [urban_expansion, landcover_change, change_detection]
+
+urban_heat_island:
+  why: |
+    Sealed surfaces, little vegetation and dense building heat up under the sun far more than parks, water and fields. Planners need to
+    know which neighbourhoods are hotter for tree planting, cooling centres and building codes. This pipeline reads the Landsat
+    thermal product, converts it to degrees Celsius and marks areas hotter than the scene mean by a threshold, so
+    hot-spots stand out.
+  use_when:
+    - You need a surface-temperature map and hot-spot polygons for a city on a clear summer day.
+    - You want to compare neighbourhoods inside one scene.
+  not_for:
+    - "Air temperature or heat-stress indices such as WBGT."
+    - "Urban-minus-rural intensity. The 'hot' mask is relative to the **whole scene's mean**, not a rural reference. Compute the difference yourself with a rural polygon and [`postprocess zonal-stats`](../../data/postprocessing.md)."
+    - "Night-time heat. Landsat passes in the late morning."
+  inputs: |
+    Landsat 8/9 Collection 2 Level-2 surface temperature from the Microsoft Planetary Computer. No account is needed. The thermal band is
+    about 100 m resampled to 30 m.
+  cli: |
+    pygeovision channel urban_heat_island \
+        --bbox 16.25 48.15 16.50 48.30 \
+        --date 2024-07 \
+        --param threshold_c=3 \
+        --output ./vienna_uhi
+  params:
+    date: "Month (`2024-07` default). Use the warmest, clearest month."
+    threshold_c: "Degrees above the scene mean that count as hot (default 2)."
+  dates: |
+    One clear summer month. Different dates are not comparable without the weather of each overpass.
+  stats:
+    mean_temp_celsius: Mean surface temperature over valid pixels.
+    min_temp_celsius: Coolest pixel.
+    max_temp_celsius: Hottest pixel.
+    threshold_c: Threshold used.
+    pct_heat_island: Share of valid pixels more than the threshold above the scene mean.
+    valid_fraction: Share assessable.
+  interpret: |
+    A surface that is 15 °C hotter than the air is normal on a sunny afternoon over roofs or asphalt. `heat_island_mask.tif` is
+    1 for hot pixels, 0 otherwise, 255 no data. `pct_heat_island` depends on the threshold and on the scene: do not compare it between cities or dates.
+    Pair with [`vegetation_indices`](vegetation_indices.md) or [`land_cover`](land_cover.md) to explain the pattern.
+  workflow: |
+    1. Vectorise the hot mask with a minimum area (`postprocess vectorise --min-area`).
+    2. Summarise land cover and NDVI inside each hot polygon.
+    3. Rank neighbourhoods by mean LST using `postprocess zonal-stats` with a neighbourhood layer.
+  troubleshooting:
+    - symptom: '"No usable imagery"'
+      fix: Landsat revisits every 8 days and cloud removes many passes. Widen to a longer window or another summer month.
+    - symptom: Water bodies appear as the coolest areas and dominate the scene mean
+      fix: That is correct physically but shifts the mean; mask water before computing hot areas.
+    - symptom: Few hot pixels
+      fix: A cool, cloudy or winter scene. Choose a hot, clear day or lower `threshold_c`.
+  see_also: [land_surface_temperature, vegetation_indices, land_cover, urban_expansion]
+
+vegetation_anomaly:
+  why: |
+    Is vegetation greener or browner than usual for this time of year? A single NDVI value cannot tell a normal dry season
+    from a bad one. This pipeline compares NDVI of the month you pick with the same month in earlier years, pixel by pixel,
+    and reports the difference, a z-score, the Vegetation Condition Index and five standard-deviation classes. It
+    is a vegetation anomaly. Low values accompany drought but also late planting, harvest, grazing, fire, flooding and
+    land-cover change, so it points to places that need a look, not a drought declaration.
+  use_when:
+    - You monitor crop or pasture condition and need a map of where it deviates from normal.
+    - You need a defensible comparison with several previous years, with a count of how many years were usable.
+  not_for:
+    - "Declaring drought. The pipeline sees no rainfall, soil moisture or crop type."
+    - "A single year with no history. At least three usable baseline years are required per pixel."
+    - "Change between two specific dates. Use [`change_detection`](change_detection.md) or [`crop_health`](crop_health.md)."
+  inputs: |
+    Sentinel-2 and Landsat (best cloud-masked mosaic per year) from the open catalogues. No account. Sentinel-2 starts in 2015, so
+    the earliest useful target year is about 2019 with five baseline years.
+  cli: |
+    pygeovision channel vegetation_anomaly \
+        --bbox -1.20 9.20 -0.90 9.50 \
+        --date 2024-08 \
+        --param baseline_years=5 \
+        --output ./tamale_anomaly_2024_08
+  params:
+    date: "Target month (`YYYY-MM`). **Required.**"
+    baseline_years: "Number of previous years (an integer N) or an explicit list of years (`2019,2020,2021`). At least 3 must produce a usable image. Default 5."
+    cloud_cover_max: "Scene cloud limit in per cent (default 30)."
+  dates: |
+    Name one month; the baseline is the same month in the previous years. Choose a month in the growing season. For a tropical
+    wet season the cloud limit may leave too few usable years; the report lists `baseline_years_missing`.
+  stats:
+    baseline_years_used: Years that provided a usable baseline image.
+    baseline_years_missing: Years requested that could not be used.
+    min_baseline_observations: Fewest baseline observations at any pixel.
+    mean_ndvi_target: Mean NDVI of the target month.
+    mean_ndvi_baseline: Mean NDVI of the baseline.
+    mean_anomaly: Mean of NDVI minus baseline.
+    mean_vci: Mean Vegetation Condition Index (0 = lowest on record, 100 = highest).
+    pct_below_normal: Share of valid pixels in the two below-normal classes.
+    pct_above_normal: Share in the two above-normal classes.
+    area_ha_much_below_normal: Area with z ≤ -2.
+    class_shares: Share per anomaly class.
+    valid_fraction: Share of the box with a valid target and enough baseline.
+  interpret: |
+    **Outputs:** `ndvi_anomaly.tif` (NDVI minus baseline mean), `ndvi_zscore.tif` (that divided by the baseline standard
+    deviation), `vci.tif` (0–100) and `anomaly_class.tif`: 0 much below normal (z ≤ -2), 1 below (−2 < z ≤ −1), 2 near normal,
+    3 above (1 ≤ z < 2), 4 much above (z ≥ 2), 255 no data. About 5 % of a normal year's pixels fall below z = −2 by chance,
+    so a small share there is not a signal. With few baseline years z-scores are unstable; five or more are best. Look at the pattern: a
+    uniform shift suggests weather, field-shaped patches suggest management, a ring around a lake suggests water.
+  workflow: |
+    1. Check `baseline_years_used` and `valid_fraction` first.
+    2. Map `anomaly_class.tif`; investigate contiguous "much below normal" areas.
+    3. Cross-check with [`evapotranspiration`](evapotranspiration.md) and local rainfall data before calling it drought.
+  troubleshooting:
+    - symptom: '"Fewer than 3 usable baseline years"'
+      fix: Cloud removed most years. Use a drier month, raise `cloud_cover_max`, or give an explicit list of clear years.
+    - symptom: Whole scene strongly negative or positive
+      fix: A sensor or processing difference between the target and baseline mosaics, or a cloud residue. Check a true-colour image.
+    - symptom: Stripes or tile edges
+      fix: Different dates mosaicked within the month. Use a smaller box inside one scene.
+  see_also: [vegetation_indices, crop_health, evapotranspiration, change_detection]
+
+vegetation_indices:
+  why: |
+    Time series of vegetation greenness (NDVI), enhanced greenness (EVI) and moisture (NDWI) show the seasonal cycle of crops
+    and forests. This pipeline computes the three indices for each date you give and tabulates the scene mean, so you
+    see seasons at a glance, and writes the full rasters for each date for mapping.
+  use_when:
+    - You want a quick time series of greenness for a field, farm or district.
+    - You need NDVI/EVI/NDWI rasters for several dates in one command.
+  not_for:
+    - "Comparison with earlier years. Use [`vegetation_anomaly`](vegetation_anomaly.md)."
+    - "Crop type classification."
+    - "Judging a trend from scene means alone. Check the valid share of each date."
+  inputs: |
+    Sentinel-2 L2A from the open catalogues. No account is needed.
+  cli: |
+    pygeovision channel vegetation_indices \
+        --bbox -1.20 9.20 -0.90 9.50 \
+        --dates 2024-04,2024-06,2024-08,2024-10 \
+        --output ./tamale_season
+  params:
+    dates: "List of months or dates (`2024-04,2024-06`). **Required**; dates without usable imagery are skipped and listed."
+  dates: |
+    One scene per date: give months across the season (every month or two). The `--dates` option takes a comma-separated list.
+  stats:
+    n_dates_used: Number of dates with usable imagery.
+    per_date: "For each date: `mean_ndvi`, `mean_evi`, `mean_ndwi` and `valid_fraction`."
+  interpret: |
+    Each `<date>/indices.tif` has three bands (NDVI, EVI, NDWI). NDVI near 0.6 or higher is dense vegetation, 0.2–0.5 is sparse
+    vegetation or crops early in the season, and below 0.1 is bare ground, built-up or water. Compare means across dates only
+    when `valid_fraction` is similar; a cloudy date is less representative. Scene means hide patterns: use the rasters for maps.
+    Vegetation-class polygons in the vectors use fixed NDVI bands (<0.1, 0.1–0.3, 0.3–0.6, ≥0.6), a generic scheme, not a crop classification.
+  workflow: |
+    Take the mean of each date's NDVI inside a field polygon with [`postprocess zonal-stats`](../../data/postprocessing.md) to build a
+    per-field profile. For comparison with past years run [`vegetation_anomaly`](vegetation_anomaly.md).
+  troubleshooting:
+    - symptom: A date is missing in the table
+      fix: No usable imagery on that date (cloud). Use a neighbouring month.
+    - symptom: NDVI around zero everywhere
+      fix: A scene dominated by water or built-up area, or all-cloud. Check `valid_fraction`.
+    - symptom: Means jump between dates
+      fix: Different cloud cover, or a mosaic of different scenes. Check `valid_fraction`.
+  see_also: [vegetation_anomaly, crop_health, evapotranspiration, land_surface_temperature]
+
+volcano_monitoring:
+  why: |
+    Persistent hot ground (fumaroles, crater lakes, lava domes) is a signal of volcanic unrest, and cloud-free Landsat
+    thermal images are free. This pipeline finds pixels far hotter than the rest of the scene and returns them as *candidates*
+    for an analyst, since the same signal arises from wildfires, flares and industrial heat.
+  use_when:
+    - You track persistent warm ground at a known volcano over months or years.
+    - You need a consistent, documented way to extract thermal anomalies from Landsat.
+  not_for:
+    - "Eruption detection or lava mapping. The thermal band saturates over active lava and Landsat revisits only every 8 days. Use dedicated hot-spot services."
+    - "Confirmed activity. An anomaly is a candidate until checked."
+  inputs: |
+    Landsat 8/9 Collection 2 Level-2 surface temperature from the Microsoft Planetary Computer. No account is needed.
+  cli: |
+    pygeovision channel volcano_monitoring \
+        --bbox 15.0 37.65 15.1 37.80 \
+        --date 2024-07 \
+        --param threshold_c=15 \
+        --output ./etna_thermal
+  params:
+    date: "Month (default `2024-07`)."
+    threshold_c: "Degrees above the scene mean that count as an anomaly (default 20)."
+  dates: |
+    Clear scenes only. Repeat for several months and compare the anomaly area to see changes.
+  stats:
+    mean_temp_celsius: Mean surface temperature of the scene.
+    min_temp_celsius: Coolest pixel.
+    max_temp_celsius: Hottest pixel.
+    threshold_c: Threshold used.
+    pct_thermal_anomaly: Share of valid pixels flagged.
+    valid_fraction: Share assessable.
+  interpret: |
+    `thermal_anomaly_mask.tif`: 1 anomaly candidate, 0 otherwise, 255 no data. The threshold is relative to the scene mean, so a larger
+    scene lowers the contrast. A persistent cluster at the crater across several dates is meaningful; an isolated pixel is not.
+  troubleshooting:
+    - symptom: Nothing flagged although the volcano is warm
+      fix: The crater is smaller than the 100 m thermal pixel average or the threshold is too high. Lower `threshold_c`.
+    - symptom: Many flags in a town or on dark rock in the sun
+      fix: Not volcanic. The anomaly is relative to the scene; inspect location and use a smaller box around the volcano.
+    - symptom: Hot area flagged but the scene is cloudy
+      fix: Residual cloud edges. Check `valid_fraction` and the true-colour image.
+  see_also: [active_fire, land_surface_temperature, urban_heat_island, terrain_analysis]
+
+water_bodies:
+  why: |
+    Open surface water is the starting point for lake and reservoir monitoring, flood baselines and water-resource
+    mapping. The Normalised Difference Water Index separates water from land because water absorbs near-infrared light.
+    This pipeline thresholds NDWI on a cloud-free Sentinel-2 mosaic and writes the continuous index, a water mask and the
+    water share.
+  use_when:
+    - You need a current surface-water mask for lakes, reservoirs, rivers and ponds.
+    - You want the continuous NDWI as well, to choose your own threshold.
+  not_for:
+    - "Floods. A single-date mask cannot separate a flood from a lake; use [`flood_mapping`](flood_mapping.md) or the radar pipelines."
+    - "Long-term dynamics. Use [`surface_water_dynamics`](surface_water_dynamics.md) (1984–2020) or [`water_extent_timeseries`](water_extent_timeseries.md)."
+    - "Narrow streams below the pixel size (about 10–20 m)."
+  inputs: |
+    Sentinel-2 L2A green and NIR bands, plus the scene classification layer, from the open catalogues. No account. With
+    `method=model`, your checkpoint.
+  cli: |
+    pygeovision channel water_bodies \
+        --bbox -0.15 51.47 -0.10 51.52 \
+        --date 2024-06 \
+        --param ndwi_threshold=0.2 \
+        --output ./london_water
+  params:
+    date: "Month (`2024-06` default)."
+    method: "`ndwi` (default; index threshold) or `model` (your trained network)."
+    cloud_cover_max: "Scene cloud limit in per cent (default 10)."
+    ndwi_threshold: "NDWI cut-off above which a pixel is water (default 0.3, conservative; McFeeters' original value is 0). Lower values include turbid and shallow water and also more false alarms."
+    model: "Architecture for `method=model` (default `unet_resnet50`)."
+    checkpoint: "Your weights; required for `method=model`."
+    bands: Bands fed to your network.
+    num_classes: Classes of your network (default 2).
+    tile_size: Inference window in pixels.
+    overlap: Window overlap in pixels.
+  dates: |
+    A month with clear sky. For a seasonal lake, run the dry and wet seasons separately.
+  stats:
+    water_coverage: Share of valid pixels classed as water.
+    valid_fraction: Share of the box that was assessable.
+    ndwi_threshold: Threshold used.
+  interpret: |
+    `water_mask.tif`: 1 water, 0 not water, 255 no data. `ndwi.tif` is the continuous index (NaN = no data). Coverage
+    is of valid pixels. Shadows, burn scars and dark roofs can look like water; narrow channels are missed. If water is turbid (brown), NDWI
+    is lower: try 0.0–0.2 and check against the image. Multiply `water_coverage` by the valid area to get hectares, or use
+    `pygeovision postprocess class-stats water_mask.tif`.
+  workflow: |
+    Vectorise with a minimum area to get lake polygons (`postprocess vectorise --target-class 1 --min-area 1000`). Use
+    them as the permanent-water mask for flood analysis, or monitor a reservoir every month with
+    [`water_extent_timeseries`](water_extent_timeseries.md).
+  troubleshooting:
+    - symptom: Rivers or shallow lakes missing
+      fix: Lower `ndwi_threshold` to 0.1 or 0.0 and check turbidity.
+    - symptom: City shadows flagged as water
+      fix: Raise the threshold to 0.3–0.4 or mask built-up areas using [`land_cover`](land_cover.md).
+    - symptom: '"needs your trained weights"'
+      fix: You set `method=model`. Pass `--checkpoint`, or use `method=ndwi`.
+    - symptom: Small ponds missing
+      fix: Below the 10 m pixel size.
+  see_also: [water_extent_timeseries, surface_water_dynamics, flood_mapping, wetland_mapping, water_quality]
+
+water_extent_timeseries:
+  why: |
+    Reservoirs, lakes and floodplains rise and fall. A single date misses the pattern, and comparing raw areas is misleading because
+    a cloudier date sees less water. This pipeline computes water area for each date on cloud-free pixels only, reports the
+    water fraction of what was actually observed, and maps how often each pixel was water.
+  use_when:
+    - You monitor a reservoir or lake through the year.
+    - You need to separate always-wet, sometimes-wet and never-wet ground (floodplain or irrigated area extent).
+  not_for:
+    - "Records before the Sentinel-2 era. Use [`surface_water_dynamics`](surface_water_dynamics.md) for 1984–2020."
+    - "Single events. Use the flood pipelines."
+  inputs: |
+    Sentinel-2 L2A from the open catalogues. No account is needed.
+  cli: |
+    pygeovision channel water_extent_timeseries \
+        --bbox 0.0 6.0 0.5 6.5 \
+        --dates 2024-01,2024-03,2024-05,2024-07,2024-09,2024-11 \
+        --output ./volta_lake_2024
+  params:
+    dates: "List of months or dates. **Required.**"
+    mndwi_threshold: "Water cut-off on MNDWI (default 0)."
+    min_valid_fraction: "Dates observed on fewer than this share of the box are listed but left out of the frequency map (default 0.8)."
+    min_observations: "Pixels need at least this many cloud-free observations for the frequency map (default 2)."
+    cloud_cover_max: "Scene cloud limit in per cent (default 30)."
+  dates: |
+    Several dates across the season or years. Use the same time of month. More dates give a more reliable frequency map.
+  stats:
+    n_dates_requested: Dates you asked for.
+    n_dates_usable: Dates with enough clear coverage.
+    series: "Per date: `water_area_ha`, `valid_fraction`, `water_fraction_of_valid`, `usable`."
+    max_water_area_ha: Largest observed water area.
+    min_water_area_ha: Smallest observed water area.
+    always_water_ha: Area that was water on every usable date.
+    ever_water_ha: Area that was water at least once.
+    variable_water_ha: Area that was sometimes water (ever minus always).
+    mndwi_threshold: Threshold used.
+    min_valid_fraction: Coverage limit used.
+    timeseries_file: The CSV of the series.
+  interpret: |
+    Compare dates by `water_fraction_of_valid`, not raw area. `water_frequency.tif` is the share of a pixel's clear
+    observations that were water: near 1 permanent water, in between seasonal, near 0 rarely wet. `valid_observations.tif`
+    tells you how many observations each pixel has: frequencies from two observations are weak. The `variable_water_ha` figure is
+    the footprint of seasonal change.
+  workflow: |
+    Open `water_timeseries.csv` in a spreadsheet and plot area against date. Threshold the frequency at 0.8 for permanent water and
+    between 0.1 and 0.8 for seasonal water.
+  troubleshooting:
+    - symptom: A date is listed as not usable
+      fix: Fewer than `min_valid_fraction` of the box was visible. Lower the limit or choose a clearer date.
+    - symptom: Area jumps between two dates
+      fix: "Check `valid_fraction` for both: cloud, not real change, is the usual cause."
+    - symptom: Frequency map is noisy
+      fix: Too few observations. Add dates.
+  see_also: [water_bodies, surface_water_dynamics, flood_mapping, evapotranspiration]
+
+water_quality:
+  why: |
+    Algal blooms and turbid water are visible from space. Without field samples you cannot measure concentrations, but you can map
+    *relative* patterns: where chlorophyll-like reflectance is higher inside a lake or reservoir and where the water is
+    more turbid. This pipeline computes the Normalised Difference Chlorophyll Index (NDCI) and red reflectance inside the water
+    mask.
+  use_when:
+    - You want to see spatial patterns of chlorophyll-like signal and turbidity in a lake, reservoir or coastal water.
+    - You want to know where to take samples.
+  not_for:
+    - "Concentrations in µg/l or NTU. Those need calibration with local water samples."
+    - "Clear oligotrophic or shallow bottom-visible water, where bottom reflectance dominates."
+  inputs: |
+    Sentinel-2 L2A (red-edge band 5 and red) from the open catalogues. No account is needed.
+  cli: |
+    pygeovision channel water_quality \
+        --bbox -0.20 5.90 0.00 6.10 \
+        --date 2024-06 \
+        --output ./lake_quality
+  params:
+    date: "Month (`2024-06` default)."
+  dates: |
+    A clear month. Compare the same lake across months with the same pipeline.
+  stats:
+    pct_water: Share of the box classed as water (NDWI > 0).
+    mean_ndci_in_water: Mean NDCI over water pixels.
+    mean_red_reflectance_in_water: Mean red reflectance over water pixels (relative turbidity).
+    note: Reminder that both are relative indicators.
+    valid_fraction: Share assessable.
+  interpret: |
+    `water_quality.tif` has two bands: 1 = NDCI, 2 = red reflectance, both only inside water (NaN elsewhere). Higher NDCI
+    means a stronger chlorophyll-like signal relative to the rest of the water body, and higher red reflectance means more turbid water.
+    Zones in the report are terciles **within this water body**, so they show relative differences, not quality grades. Compare dates only
+    when the same lake is processed identically. Sun glint, wind and bottom reflectance also change the indices.
+  workflow: |
+    Choose sampling points where the indices are low, medium and high, measure chlorophyll or turbidity there, and fit a local calibration.
+    Without it, report the patterns qualitatively.
+  troubleshooting:
+    - symptom: No water found
+      fix: The box has no water above NDWI 0, or is cloud-covered. Check the map and `pct_water`.
+    - symptom: Values vary at the shore
+      fix: Mixed pixels and bottom reflectance. Erode the water mask by one pixel in GIS.
+    - symptom: Streaks across the lake
+      fix: Sun glint or a mosaic seam. Choose another date.
+  see_also: [water_bodies, water_extent_timeseries, coastal_monitoring]
+
+wetland_mapping:
+  why: |
+    Wetlands are more than open water: much of the area is vegetation standing in water (marsh, flooded forest, rice
+    paddy). This pipeline classifies pixels as open water, wet vegetation (water signal and a vegetation signal in the same pixel)
+    or other, using MNDWI for water and EVI for vegetation.
+  use_when:
+    - You need a quick wetland screening on a wet-season date.
+    - You want to separate open water from inundated vegetation.
+  not_for:
+    - "Wetlands that are dry or only soil-saturated at the acquisition date. They are not detected."
+    - "A wetland inventory with ecological types. Combine with [`land_cover`](land_cover.md) (herbaceous wetland, mangrove) and field data."
+  inputs: |
+    Sentinel-2 L2A from the open catalogues. No account is needed.
+  cli: |
+    pygeovision channel wetland_mapping \
+        --bbox 31.2 -2.4 31.6 -2.0 \
+        --date 2024-04 \
+        --output ./kagera_wetland
+  params:
+    date: "Month (`2024-06` default). Use the wet season."
+  dates: |
+    The wettest clear month. Repeat for the dry season to see seasonality.
+  stats:
+    open_water_area_ha: Area of open water (class 1).
+    wet_vegetation_area_ha: Area of wet vegetation (class 2).
+    pct_open_water: Share of valid pixels that are open water.
+    pct_wet_vegetation: Share of valid pixels that are wet vegetation.
+    valid_fraction: Share assessable.
+  interpret: |
+    **Classes in `wetland_classification.tif`:** 0 other, 1 open water, 2 wet vegetation, 255 no data. Wet vegetation is the most uncertain
+    class: wet crops, shadows and floating plants can be mislabelled. Wetland extent from one date is the wetness on that date, so
+    compare wet and dry season or use [`water_extent_timeseries`](water_extent_timeseries.md) for frequency.
+  troubleshooting:
+    - symptom: Almost no wet vegetation
+      fix: The date is too dry, or the vegetation is below the EVI threshold (0.1).
+    - symptom: Rice fields mapped as wetland
+      fix: They are wet vegetation at that date. Mask cropland using [`land_cover`](land_cover.md).
+    - symptom: Cloud gaps
+      fix: Use another month or a radar approach.
+  see_also: [water_bodies, water_extent_timeseries, surface_water_dynamics, land_cover]
+
+wildfire_severity:
+  why: |
+    After a fire, managers need to know how much burned and how severely: for erosion risk, recovery and damage assessment.
+    The Normalised Burn Ratio uses near-infrared (healthy vegetation, high) and shortwave infrared (burned ground, high).
+    The difference between a pre-fire and a post-fire image (dNBR) is the standard severity measure, and it can be classified
+    with USGS thresholds.
+  use_when:
+    - A fire has happened and you have a clear image shortly before and one shortly after.
+    - You need burned area and severity classes for reporting.
+  not_for:
+    - "Active fire detection. Use [`active_fire`](active_fire.md)."
+    - "Dates in different seasons. Vegetation phenology adds to dNBR."
+    - "Calibrated severity. The USGS thresholds are generic; field data give local accuracy."
+  inputs: |
+    Sentinel-2 L2A NIR and SWIR2 bands, plus the scene classification layer, from the open catalogues. No account is needed.
+  cli: |
+    pygeovision channel wildfire_severity \
+        --bbox -122.6 39.7 -121.9 40.2 \
+        --date-before 2018-10 --date-after 2018-12 \
+        --output ./camp_fire
+  params:
+    date_before: "Pre-fire date (`YYYY-MM`), shortly before the fire."
+    date_after: "Post-fire date, shortly after, in the same season where possible."
+  dates: |
+    The closest clear images before and after the fire. A long gap lets regrowth or later fires mix in.
+  stats:
+    burned_area_ha: Area with dNBR at or above the low-severity threshold (0.10).
+    mean_dnbr: Mean dNBR over valid pixels.
+    pct_unburned: Share unburned (dNBR < 0.10).
+    pct_low_severity: Share with dNBR 0.10–0.27.
+    pct_moderate_severity: Share with dNBR 0.27–0.66.
+    pct_high_severity: Share with dNBR at or above 0.66.
+    valid_fraction: Share assessable.
+  interpret: |
+    **Classes in `severity_class.tif`:** 0 unburned, 1 low, 2 moderate, 3 high, 255 no data. `dnbr.tif` is the continuous difference
+    (larger = more change). Smoke, cloud, earlier burn scars, harvest and flooding also reduce NBR: inspect false positives outside the
+    fire perimeter. The classes are not field-calibrated. `burned_area_ha` counts valid pixels only.
+  workflow: |
+    1. Overlay the fire perimeter, if you have one, and compare with the burned area.
+    2. Vectorise class 3 for the high-severity zones.
+    3. Combine with [`forest_change`](forest_change.md) or [`land_cover`](land_cover.md) to see which cover burned.
+  troubleshooting:
+    - symptom: Burn missing or patchy
+      fix: Cloud or smoke on the post-fire date; check `valid_fraction` and choose a later clear date.
+    - symptom: Burned area outside the perimeter
+      fix: Harvest, flooding or another fire. Restrict to a fire perimeter polygon.
+    - symptom: Severity very different from field maps
+      fix: Generic thresholds. Calibrate with composite burn index plots.
+  see_also: [active_fire, forest_change, vegetation_anomaly, land_cover]
+
+wind_farm_siting:
+  why: |
+    Early wind-farm siting rules out most of a region quickly: too steep, built-up, water or wetland. This pipeline applies
+    those exclusions from a DEM and a land-cover map, and ranks the remaining ground by how topographically prominent it is
+    (prominent ground tends to be windier). It is a screening aid. It does **not** estimate wind speed or yield, which need
+    measurements or a wind model.
+  use_when:
+    - You need a first map of ground that passes basic slope and land-use constraints.
+    - You want a consistent, documented screen before commissioning wind resource work.
+  not_for:
+    - "Wind resource or energy yield."
+    - "Anything that depends on grid access, roads, noise set-backs, ecology, aviation or ownership. None are considered."
+  inputs: |
+    An **OpenTopography API key** for the DEM (`pygeovision data auth add opentopography`) and, for the land-cover exclusion, network
+    access to the WorldCover bucket. `use_landcover=False` screens on terrain alone.
+  cli: |
+    pygeovision data auth add opentopography
+    pygeovision channel wind_farm_siting \
+        --bbox 0.0 6.5 0.6 7.1 \
+        --param max_slope_deg=10 \
+        --output ./siting_screen
+  params:
+    max_slope_deg: "Cells steeper than this are excluded (default 15)."
+    exposure_smoothing_px: "Window (pixels) of the regional mean subtracted to measure prominence (default 25)."
+    dem_type: "OpenTopography dataset: `srtm90`, `srtm1arc` (default), `cop30`, `cop90`, `nasadem`, `alos` or `gedtm30`."
+    use_landcover: "Exclude built-up, snow/ice, water, wetland and mangrove cells from WorldCover (default `True`)."
+  dates: |
+    None. DEM and land cover are static (WorldCover is 2021).
+  stats:
+    max_slope_deg: Slope limit used.
+    dem_type: DEM used.
+    landcover_exclusion_applied: Whether land-cover exclusion was applied.
+    pct_area_suitable_by_slope: Share of area passing the slope test.
+    pct_area_suitable_overall: Share passing all tests.
+    suitable_area_ha: Area passing all tests.
+    note: Reminder that wind is not estimated.
+  interpret: |
+    `wind_suitability.tif` shows terrain exposure in metres (elevation minus regional mean) where all constraints pass and is NaN where the ground
+    is excluded. Higher values are more prominent. It is a ranking of candidate ground for further study, nothing more. `pct_area_suitable_overall` shows
+    how much of the region survives the screen.
+  workflow: |
+    Vectorise the suitable cells, remove patches smaller than the minimum site size, then add your own layers (grid, roads, protected areas).
+    Commission wind measurements for the shortlisted sites.
+  troubleshooting:
+    - symptom: Authentication error from OpenTopography
+      fix: Add the key with `pygeovision data auth add opentopography`.
+    - symptom: Land-cover step fails
+      fix: No network access to WorldCover. Run with `--param use_landcover=False`.
+    - symptom: Nearly everything is suitable
+      fix: The region is flat; the slope screen is not selective. Add other constraints.
+  see_also: [terrain_analysis, solar_potential, land_cover, solar_detection]

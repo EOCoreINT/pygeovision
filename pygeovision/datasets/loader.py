@@ -19,34 +19,25 @@ class DatasetLoader:
             if v: print(f"  {k:<18}: {v}")
 
     def download(self, name: str, output_dir: str | None = None) -> Path:
-        """Point to where a real dataset can actually be obtained.
+        """Explain where dataset ``name`` can be obtained; it never downloads anything.
 
-        Real fix, confirmed necessary by direct inspection: this
-        previously created an empty output directory and returned it
-        as if a real download had happened, for the small number of
-        entries that have a real download_url set -- with zero actual
-        file-fetching code anywhere in the function. Checking those
-        real URLs directly confirmed why: EuroSAT, BigEarthNet, DOTA,
-        LEVIR-CD, and CropHarvest all point to human-facing project
-        pages (GitHub repos, project websites), not direct file links.
-        A real HTTP GET against these would download HTML, not the
-        dataset -- worse than the previous behavior, since it would
-        produce a real-looking but wrong file. No automated download is
-        genuinely possible for any of these without navigating
-        registration/terms/manual download links as a human, so this
-        now raises clearly for every real dataset name rather than
-        silently creating a misleading empty "downloaded" directory.
+        The catalogue holds metadata only, and the few recorded ``download_url`` values
+        are project pages (GitHub repositories, registration forms), not file links, so
+        an automated GET would save an HTML page that looks like data.
 
         Raises:
-            ValueError: Always -- with the real URL to visit, whether
-                or not `download_url` happens to be set (neither case
-                supports a genuine automated download today).
+            KeyError: ``name`` is not in the catalogue.
+            ValueError: Always otherwise, with the page to visit when one is recorded.
         """
         from pygeovision.datasets.registry import dataset_registry
         d = dataset_registry[name]
-        real_url = d.download_url or d.paper_url
+        if d.download_url:
+            where = f"Its recorded download_url is a project page, not a direct file link: {d.download_url}"
+        elif d.paper_url:
+            where = f"No download_url is recorded; the dataset's paper is at {d.paper_url}"
+        else:
+            where = (f"No download_url or paper_url is recorded for it; search the web for "
+                     f"'{d.name} {d.year} dataset' to find its official page")
         raise ValueError(
-            f"'{name}' has no real, automated download path -- "
-            f"{'its real download_url is a human-facing project page, not a direct file link' if d.download_url else 'no download_url is set for this entry'}. "
-            f"Visit {real_url!r} directly to obtain it."
+            f"'{name}' has no automated download path -- the catalogue holds metadata only. {where}."
         )

@@ -2,7 +2,7 @@
 pygeovision.data.postprocess
 ============================
 
-20+ validated postprocessing operations for model predictions.
+Postprocessing operations (16 public methods) for model predictions.
 Takes raw model outputs (GeoTIFF predictions, GeoJSON vectors) and
 produces publication-ready, analysis-ready results.
 
@@ -51,6 +51,48 @@ from typing import Any
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+def _geod_area_m2(geom) -> float:
+    """True area in m² of a lon/lat (WGS84) polygon or multipolygon, on the ellipsoid."""
+    from pyproj import Geod
+    return abs(Geod(ellps="WGS84").geometry_area_perimeter(geom)[0])
+
+
+def _geojson_is_geographic(gj: dict) -> bool:
+    """True when a GeoJSON's coordinates are lon/lat degrees.
+
+    1. A legacy ``crs`` member (written by :meth:`PostProcessor.vectorise`) names the CRS: geographic or not.
+    2. Without one (RFC 7946 files are WGS84 but say nothing), coordinates that all lie inside
+       lon/lat range and span less than 5 degrees are taken as degrees, anything else as metres.
+    """
+    crs = (gj or {}).get("crs")
+    name = ((crs or {}).get("properties") or {}).get("name") if isinstance(crs, dict) else None
+    if name:
+        up = str(name).upper()
+        if "PROJCS" in up or "PROJCRS" in up:
+            return False
+        if any(t in up for t in ("EPSG:4326", "CRS84", "GEOGCS", "GEOGCRS")):
+            return True
+        try:
+            from pyproj import CRS
+            return bool(CRS.from_user_input(name).is_geographic)
+        except Exception:
+            pass
+    try:
+        from shapely.geometry import shape
+        from shapely.ops import unary_union
+        geoms = [shape(f["geometry"]) for f in gj.get("features", []) if f.get("geometry")]
+        if not geoms:
+            return False
+        minx, miny, maxx, maxy = unary_union(geoms).bounds
+    except Exception:
+        return False
+    return (-180 <= minx and maxx <= 180 and -90 <= miny and maxy <= 90 and (maxx - minx) < 5 and (maxy - miny) < 5)
+
+
+def _area_m2(geom, geographic: bool) -> float:
+    return _geod_area_m2(geom) if geographic else float(geom.area)
 
 
 def _require_rasterio():
@@ -139,9 +181,10 @@ class PostProcessor:
             band: Band to vectorise (1-based).
             target_class: If set, only vectorise pixels of this class.
                 If ``None``, vectorise all non-nodata classes.
-            min_area_m2: Drop polygons smaller than this area (m²).
-            simplify_tolerance: Douglas-Peucker tolerance in map units.
-                Set to 0 to skip simplification.
+            min_area_m2: Drop polygons smaller than this area (m²). For a lon/lat raster the area is the true
+                ellipsoidal area, not degrees².
+            simplify_tolerance: Douglas-Peucker tolerance in **map units** (degrees for a lon/lat raster,
+                metres for a projected one). Set to 0 to skip simplification.
             nodata: Override nodata value from file metadata.
 
         Returns:
@@ -168,6 +211,7 @@ class PostProcessor:
             data      = src.read(band)
             transform = src.transform
             crs_wkt   = src.crs.to_wkt() if src.crs else None
+            geographic = bool(src.crs is None or src.crs.is_geographic)
             nd        = nodata if nodata is not None else src.nodata
 
         data = data.astype(np.int32)
@@ -187,12 +231,14 @@ class PostProcessor:
             geom = shape(geom_dict)
             if simplify_tolerance > 0:
                 geom = geom.simplify(simplify_tolerance, preserve_topology=True)
-            if min_area_m2 > 0 and geom.area < min_area_m2:
+            area_m2 = _area_m2(geom, geographic)
+            if min_area_m2 > 0 and area_m2 < min_area_m2:
                 continue
             features.append({
                 "type": "Feature",
                 "geometry": mapping(geom),
-                "properties": {"class": int(value), "area_m2": round(geom.area, 2)},
+                "properties": {"class": int(target_class if target_class is not None else value),
+                               "area_m2": round(area_m2, 2)},
             })
 
         gj = {
@@ -463,6 +509,18 @@ class PostProcessor:
         Returns:
             ``output_path``
         """
+        try:
+            with open(input_path) as _f:
+                _gj = json.load(_f)
+            if tolerance >= 0.001 and _geojson_is_geographic(_gj):
+                logger.warning(
+                    "smooth(): tolerance=%s is in DEGREES for this lon/lat file (about %.0f m). Metre-sized "
+                    "values collapse polygons; use e.g. 0.00001 (about 1 m) or reproject the file first.",
+                    tolerance, tolerance * 111_320,
+                )
+        except Exception:
+            pass
+
         pgf = _pygeofetch_postprocessor()
         if pgf is not None:
             try:
@@ -575,10 +633,11 @@ class PostProcessor:
             gj = json.load(f)
 
         regularised = []
+        geographic = _geojson_is_geographic(gj)
         for feat in gj.get("features", []):
             try:
                 geom = geom_mod.shape(feat["geometry"])
-                if geom.area < min_area_m2:
+                if _area_m2(geom, geographic) < min_area_m2:
                     continue
 
                 centroid = geom.centroid
@@ -701,6 +760,7 @@ class PostProcessor:
         with open(input_path) as f:
             gj = json.load(f)
 
+        geographic = _geojson_is_geographic(gj)
         # Group by field
         groups: dict[Any, list] = {}
         for feat in gj.get("features", []):
@@ -719,7 +779,7 @@ class PostProcessor:
                 dissolved_features.append({
                     "type": "Feature",
                     "geometry": geom_mod.mapping(poly),
-                    "properties": {by_field or "class": key, "area_m2": round(poly.area, 2)},
+                    "properties": {by_field or "class": key, "area_m2": round(_area_m2(poly, geographic), 2)},
                 })
 
         out_gj = {
@@ -800,7 +860,9 @@ class PostProcessor:
         Args:
             prediction_path: Classification GeoTIFF.
             band: Band to analyse.
-            pixel_size_m: Override pixel size in metres for area calculation.
+            pixel_size_m: Override pixel size in metres for area calculation (square pixels). By default the
+                true cell area is used: per-row ellipsoidal area for a lon/lat raster, ``res_x * res_y`` for a
+                projected one.
 
         Returns:
             Dict mapping class_id → ``{"pixels", "area_ha", "area_km2", "pct"}``.
@@ -812,32 +874,32 @@ class PostProcessor:
                 print(f"Class {cls}: {info['area_ha']:.1f} ha ({info['pct']:.1f}%)")
         """
         rasterio = _require_rasterio()
+        from pygeovision.reporting.geo import row_pixel_area_ha
 
         with rasterio.open(prediction_path) as src:
             data     = src.read(band).astype(np.int32)
-            _res     = abs(src.transform.a)
-            px_size  = pixel_size_m or _res
             nd       = src.nodata
+            if pixel_size_m:
+                row_ha = np.full(src.height, float(pixel_size_m) ** 2 / 10_000)
+            else:
+                # true cell area: geodesic per row for a lon/lat raster, res_x * res_y for a projected one
+                row_ha = row_pixel_area_ha(src)
 
-        if nd is not None:
-            valid = data[data != int(nd)]
-        else:
-            valid = data.ravel()
-
-        total_px = valid.size
-        classes, counts = np.unique(valid, return_counts=True)
-        px_area_m2 = px_size ** 2
-
-        return {
-            int(cls): {
-                "pixels":   int(cnt),
-                "area_m2":  round(cnt * px_area_m2, 1),
-                "area_ha":  round(cnt * px_area_m2 / 10_000, 3),
-                "area_km2": round(cnt * px_area_m2 / 1_000_000, 5),
+        keep = np.ones(data.shape, dtype=bool) if nd is None else (data != int(nd))
+        total_px = int(keep.sum())
+        out: dict[int, dict[str, float]] = {}
+        for cls in np.unique(data[keep]):
+            per_row = ((data == cls) & keep).sum(axis=1)
+            area_ha = float(per_row @ row_ha)
+            cnt = int(per_row.sum())
+            out[int(cls)] = {
+                "pixels":   cnt,
+                "area_m2":  round(area_ha * 10_000, 1),
+                "area_ha":  round(area_ha, 3),
+                "area_km2": round(area_ha / 100, 5),
                 "pct":      round(100 * cnt / max(total_px, 1), 2),
             }
-            for cls, cnt in zip(classes, counts)
-        }
+        return out
 
     def zonal_statistics(
         self,
@@ -875,15 +937,34 @@ class PostProcessor:
             with open(vector_path) as f:
                 gj = json.load(f)
 
+            # Zones are reprojected to the raster's CRS. A GeoJSON without a CRS member is WGS84 (RFC 7946).
+            with rasterio.open(raster_path) as _src:
+                _rcrs = _src.crs
+            _to_raster = None
+            if _rcrs is not None:
+                from pyproj import CRS, Transformer
+                from shapely.ops import transform as _shp_transform
+                _crs_member = (gj.get("crs") or {}).get("properties", {}).get("name") if isinstance(gj.get("crs"), dict) else None
+                try:
+                    _vcrs = CRS.from_user_input(_crs_member) if _crs_member else CRS.from_epsg(4326)
+                except Exception:
+                    _vcrs = CRS.from_epsg(4326)
+                if _vcrs != CRS.from_user_input(_rcrs.to_wkt()):
+                    _tf = Transformer.from_crs(_vcrs, CRS.from_user_input(_rcrs.to_wkt()), always_xy=True)
+                    _to_raster = lambda g, _tf=_tf: _shp_transform(_tf.transform, g)  # noqa: E731
+
             results = []
             for feat in gj.get("features", []):
                 geom = shape(feat["geometry"])
+                if _to_raster is not None:
+                    geom = _to_raster(geom)
                 props = dict(feat.get("properties") or {})
                 try:
                     with rasterio.open(raster_path) as src:
                         data, _ = rio_mask(src, [geom.__geo_interface__], crop=True)
                         arr = data[band - 1].astype(np.float32)
-                        valid = arr[np.isfinite(arr) & (arr != (src.nodata or -9999))]
+                        _nd = src.nodata
+                        valid = arr[np.isfinite(arr) & ((arr != _nd) if _nd is not None else True)]
 
                     if valid.size > 0:
                         for s in stats:
@@ -913,6 +994,16 @@ class PostProcessor:
         pgf = _pygeofetch_postprocessor()
         if pgf is None:
             return _native()
+
+        # pygeofetch masks with a NaN fill, which cannot be stored in an integer raster: every zone then comes
+        # back empty with no error. Integer rasters (class maps, SCL, counts) are therefore computed natively.
+        try:
+            _rio = _require_rasterio()
+            with _rio.open(raster_path) as _probe:
+                if not np.issubdtype(np.dtype(_probe.dtypes[band - 1]), np.floating):
+                    return _native()
+        except Exception:
+            pass
 
         try:
             import csv
@@ -957,6 +1048,10 @@ class PostProcessor:
                         val = row.get(s)
                         props[f"stat_{s}"] = float(val) if val not in (None, "", "nan") else None
                     results.append({"type": "Feature", "geometry": feat["geometry"], "properties": props})
+
+                if results and all(all(r["properties"].get(f"stat_{s}") is None for s in stats) for r in results):
+                    logger.warning("pygeofetch.zonal_stats returned no values for any zone — recomputing natively.")
+                    return _native()
 
                 if output_path:
                     pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)

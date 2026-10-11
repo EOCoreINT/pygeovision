@@ -338,12 +338,16 @@ class SARPrithviAdapter:
         Returns
         -------
         dict with keys: prediction (np.ndarray H×W), confidence, channels,
-                         model, mode, task, warnings.
+                         model, mode, task, method, warnings. ``method`` is
+                         ``"vh_threshold"`` in zero_shot mode, which does not run Prithvi at
+                         all (it thresholds the mapped VH channel), else ``"prithvi_<mode>"``.
         """
         result: dict = {
             "model": self.backbone, "mode": self.mode, "task": self.task,
             "prediction": None, "confidence": None,
             "channels": [], "warnings": [],
+            # zero_shot never runs Prithvi: it thresholds the mapped VH channel. Say so in the result.
+            "method": "vh_threshold" if self.mode == "zero_shot" else "prithvi_" + self.mode,
         }
 
         # Step 1: Build the 6-channel HLS-like input

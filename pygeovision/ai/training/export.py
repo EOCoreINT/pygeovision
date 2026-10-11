@@ -103,10 +103,11 @@ class ModelExporter:
         logger.info("Exporting to ONNX (opset=%d)…", self.opset_version)
         with torch.no_grad():
             try:
-                torch.onnx.export(
+                from pygeovision._onnx import export_onnx
+                export_onnx(
                     self.model,
                     dummy,
-                    str(output_path),
+                    output_path,
                     opset_version=self.opset_version,
                     input_names=input_names,
                     output_names=output_names,

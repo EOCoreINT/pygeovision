@@ -40,7 +40,7 @@ def test_datasets_unknown_name_is_a_clean_error_and_download_never_pretends():
         r = run(*cmd)
         assert r.exit_code == 1 and "Traceback" not in r.output and "not found" in r.output
     r = run("datasets", "download", "BigEarthNet")
-    assert r.exit_code == 1 and "no real, automated download path" in r.output
+    assert r.exit_code == 1 and "no automated download path" in r.output
 
 
 def test_list_templates_finds_the_packaged_templates():

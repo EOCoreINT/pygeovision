@@ -96,3 +96,20 @@ def test_cli_default_and_error_exit_codes(pair, tmp_path):
     r = CliRunner().invoke(cli, ["ai", "change", "--before", str(pair[0]), "--after", str(pair[1]),
                                  "-o", str(tmp_path / "q.tif"), "--min-magnitude", "1", "--method", "bit"])
     assert r.exit_code != 0
+
+
+def test_cli_backbone_option_selects_the_encoder_of_the_checkpoint(pair, tmp_path):
+    """A bit-r50 checkpoint only loads when the CLI is told the encoder is resnet50."""
+    torch = pytest.importorskip("torch")
+    from pygeovision.cli.main import cli
+    from pygeovision.models import get_model
+    net = get_model("bit-r50", num_classes=2, in_channels=3, pretrained=False)
+    ck = tmp_path / "bit50.pth"
+    torch.save({"model_state_dict": net.state_dict()}, ck)
+    base = ["ai", "change", "--before", str(pair[0]), "--after", str(pair[1]), "-o", str(tmp_path / "o.tif"),
+            "--method", "bit", "--checkpoint", str(ck)]
+    assert CliRunner().invoke(cli, base).exit_code != 0                      # default encoder is resnet18
+    assert CliRunner().invoke(cli, base + ["--backbone", "resnet50"]).exit_code == 0
+    r = CliRunner().invoke(cli, ["ai", "change", "--before", str(pair[0]), "--after", str(pair[1]),
+                                 "-o", str(tmp_path / "x.tif"), "--backbone", "resnet50"])
+    assert r.exit_code != 0 and "bit and dsamnet" in r.output

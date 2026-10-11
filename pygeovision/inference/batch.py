@@ -37,6 +37,7 @@ class BatchInferenceEngine:
         blend_mode: str = "gaussian",
         half_precision: bool = True,
         on_error: str = "skip",       # skip | abort | warn
+        normalise: bool = True,
     ) -> None:
         self.model = model
         self.device = device
@@ -47,6 +48,10 @@ class BatchInferenceEngine:
         self.blend_mode = blend_mode
         self.half_precision = half_precision
         self.on_error = on_error
+        #: True (default) applies the per-band 2-98 percentile stretch of
+        #: ``TiledInference.infer`` to every scene; set False if the model was
+        #: trained on values that are already scaled.
+        self.normalise = normalise
 
     def run_directory(
         self,
@@ -109,7 +114,12 @@ class BatchInferenceEngine:
                     device=self.device,
                     half_precision=self.half_precision,
                 )
-                r = inf.infer(in_path, out_path, band_selection=band_selection)
+                r = inf.infer(in_path, out_path, band_selection=band_selection,
+                              normalise=self.normalise)
+                # TiledInference reports most problems (wrong band count, unreadable
+                # file, ...) in the result instead of raising, so check it.
+                if isinstance(r, dict) and r.get("success") is False:
+                    return in_path, False, {"error": r.get("error") or "inference reported failure"}
                 return in_path, True, r
             except Exception as exc:
                 return in_path, False, {"error": str(exc)}
@@ -170,7 +180,7 @@ class BatchInferenceEngine:
                 from pygeovision.inference.tiled import TiledInference
                 inf = TiledInference(self.model, device=f"cuda:{gpu_id}",
                                       chip_size=self.chip_size, num_classes=self.num_classes)
-                r = inf.infer(f, str(out))
+                r = inf.infer(f, str(out), normalise=self.normalise)
                 (results["succeeded"] if r.get("success") else results["failed"]).append(f)
             return results
 

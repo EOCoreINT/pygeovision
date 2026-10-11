@@ -1,0 +1,317 @@
+# Hand-written notes shown at the top of each generated command page (docs/reference/cli/<group>.md).
+# tools/generate_reference_docs.py merges them with the --help text read from the live command tree.
+# Keys: intro, when, expect, watch, examples. Only commands whose behaviour was checked are given as examples.
+# Every command exits non-zero on failure, so all of them can be used in scripts and CI.
+
+ai:
+  intro: |
+    Commands that work directly on files you already have, without the search-and-download step of a pipeline:
+    rule-based water and building masks, segmentation or detection with your trained weights, bi-temporal change,
+    a quick cloud mask, training-chip export and tiled inference. The full guide is
+    [Direct native inference](../../cli/direct-inference.md).
+  when: |
+    Use `ai` when the imagery is already on disk and you want one answer from it. Use [`channel`](channel.md) when you want
+    PyGeoVision to find the imagery, run the whole analysis and write the report.
+  expect: |
+    Each command writes a GeoTIFF (or, for `detect`, vectors) and prints a one-line confirmation with the path.
+    `ai chips` writes paired `images/` and `labels/` folders of GeoTIFF chips; `ai train` prints a ready-to-run Python
+    training script and does **not** train.
+  watch: |
+    * `ai segment custom`, `ai detect`, `ai infer` need **your trained weights** (`--checkpoint`); the registry holds
+      architectures, not trained models.
+    * `ai segment water` is a documented index rule (green and NIR bands), not a network: pass `--green-band` /
+      `--nir-band` if your file is not blue-green-red-NIR.
+    * SAM, YOLO and CLIP based commands download model weights on first use and need a network.
+    * With several scenes in one `ai chips` folder give each a different `--prefix`, or later chips overwrite earlier ones.
+
+ai-models:
+  intro: |
+    Browse the 14 models of the **legacy AI-engine registry** and manage its cached weights. This registry is separate from
+    the main model registry used by `models` and `GeoTrainer`; [how the registries relate](../../models/registry.md).
+  when: Use it to see what the native `ai` commands can load, or to clear cached checkpoints.
+  expect: '`list` prints a table (name, task, architecture, pretrained mark) and a total; `info` prints one model; `cache` reports or clears the cache.'
+  watch: |
+    * A name that works here may not exist in `models list`, and the reverse. Use `models` for training, `ai-models` only for
+      the native `ai` commands.
+
+benchmark:
+  intro: |
+    Helpers for choosing **which datasets and models to benchmark** for a task, from the catalogue metadata.
+    They do not run a benchmark: scoring a model is done in Python with `ModelEvaluator`
+    ([Benchmarking](../../benchmark/index.md)).
+  when: Use it at the start of a study to shortlist test datasets and candidate models.
+  expect: |
+    `datasets` and `models` print ranked tables (with a note if nothing matches, e.g. no model for the task has pretrained
+    weights); `tasks` lists the task names.
+  watch: |
+    * Rankings come from catalogue metadata (recency, size, diversity), not from measured accuracy.
+    * `--modality` narrows the dataset list, for example `--modality sar`.
+
+channel:
+  intro: |
+    Run any of the **40 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
+    a map, tables and a report. This is the main entry point for end users; every pipeline has its own page in the
+    [pipeline catalogue](../../pipelines/catalog/index.md).
+  when: |
+    Use it when you have a question about a place and a time ("which areas flooded?", "how much forest was lost?"), not a
+    file. Start with `pygeovision channel list` to see every pipeline and whether it needs your trained weights.
+  expect: |
+    A folder (`-o`, default `./output/`) with the output rasters, vector files, `map.png`, report files and
+    `run_summary.json`. [Reading results](../../pipelines/results.md) explains each file. Rebuild reports later without
+    re-running with [`report`](report.md).
+  watch: |
+    * The seven pipelines marked "needs your weights" refuse to run without `--checkpoint`; they never invent a result.
+    * An unknown or removed name exits with code 2 and explains why ([removed pipelines](../../pipelines/removed.md)).
+    * Pipelines that download imagery need a network and, for some providers, [credentials](../../data/authentication.md).
+    * Extra arguments are passed as `--param KEY=VALUE`.
+  examples: |
+    pygeovision channel list
+    pygeovision channel water_bodies --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 -o ./output/
+
+cloud:
+  intro: |
+    Deploy an ONNX model as a hosted endpoint on **AWS SageMaker** or **Google Vertex AI**. (Azure ML is available from
+    Python only: `AzureDeployer`.) See [Cloud deployment](../../edge-cloud/cloud.md).
+  when: Use it to serve a trained model to other applications over HTTP.
+  expect: A summary with the endpoint name and status. Cloud endpoints **cost money while they exist**; delete them when finished.
+  watch: |
+    * **No live cloud call was made while writing this documentation.** The packaging, handler and request building are
+      tested; the real deployment needs your account, credentials, role and bucket.
+    * Read the cloud page before the first deploy: payload limits, IAM permissions and clean-up are covered there.
+
+data:
+  intro: |
+    Search for and download satellite imagery from 22 providers, manage credentials, the search cache and YAML data
+    pipelines. This group is powered by `pygeofetch`; see [Searching and downloading](../../data/search-and-download.md)
+    and [Providers](../../data/providers.md).
+  when: Use it when you want scenes themselves rather than a finished analysis. Pipelines call the same machinery for you.
+  expect: |
+    `search` prints a table (or JSON / ids) of scenes with date, cloud cover and provider; `download` writes the scene
+    files and reports successes and failures; `providers` lists the 22 providers and which need credentials.
+  watch: |
+    * Ten providers are open access; the others need an account. Store credentials once with `data auth`
+      ([how](../../data/authentication.md)); they go in the system keyring.
+    * `--date 2024-06` means the whole month; `--start-date` / `--end-date` give exact days.
+    * No results usually means the date, cloud limit or collection is too strict; see
+      [scene selection](../../data/scene-selection.md).
+
+datasets:
+  intro: |
+    Browse a catalogue of about **460 remote sensing datasets**. It is **metadata only**: nothing is downloaded.
+    See [Dataset catalogue](../../datasets/index.md).
+  when: Use it to find public training or benchmark data for a task, region or sensor.
+  expect: Tables of datasets with task, modality, size and links; `info` shows the full record; `download` tells you where to get the data.
+  watch: |
+    * `datasets download NAME` never downloads: it prints the project page or paper link, because no automated path exists
+      for most datasets.
+    * Names may contain spaces: quote them. A near-miss name suggests the closest match.
+    * Licences shown as "unknown" were not recorded in the catalogue; check the source before using the data.
+
+doctor:
+  intro: |
+    A health check of the installation: Python and package versions, whether `pygeofetch` and `torch` import, stored
+    credentials and the cache.
+  when: Run it first when something does not work, and attach its output when asking for help.
+  expect: |
+    A list of components with a tick or a cross and a summary such as `7/7 components healthy`. A cross names the missing
+    package. See [Troubleshooting](../../getting-started/troubleshooting.md).
+  watch: It checks that components **import**, not that every optional extra (ONNX Runtime, laspy, Optuna …) is installed.
+
+edge:
+  intro: |
+    Export a registry model to **ONNX** and benchmark ONNX Runtime speed. Jetson/TensorRT conversion is Python only
+    (`JetsonConverter`). See [Edge deployment](../../edge-cloud/edge.md).
+  when: Use it to run a trained model without PyTorch, or to measure its speed on a target machine.
+  expect: |
+    `export-onnx` writes the `.onnx` file and prints its size; `benchmark-onnx` prints median and p95 latency and the
+    ONNX Runtime providers in use.
+  watch: |
+    * The export has a **fixed spatial size** unless you pass `--dynamic-size`; ONNX Runtime then refuses other sizes.
+    * Compare the exported model's output with the original on real chips before trusting it
+      ([how](../../edge-cloud/edge.md#check-the-export)).
+    * A CUDA/TensorRT request on a machine without them falls back to the CPU with a warning.
+
+explain:
+  intro: |
+    Grad-CAM saliency maps: which pixels most influenced a prediction. SHAP, uncertainty and attention maps are Python APIs
+    ([Explainability](../../explainability/index.md)).
+  when: Use it to check whether a model looks at the right thing (the field, not the cloud edge).
+  expect: A heat-map image written to `--output`; `--class-idx` selects the class explained.
+  watch: |
+    * Pass `--checkpoint`: the saliency of an untrained model is noise.
+    * A saliency map shows influence, not correctness. See [Grad-CAM](../../explainability/gradcam.md) for how to read it.
+
+indices:
+  intro: |
+    Compute any of **21 spectral indices** (NDVI, EVI, NBR, NDWI, tasselled cap, PCA …) from a multi-band GeoTIFF.
+    Definitions, ranges and cautions are in the [index reference](../../data/indices.md).
+  when: Use it for a single index map from a stack you already have.
+  expect: A single-band float GeoTIFF (and `✓ NDVI → path`); `indices list` prints the 21 indices by category; `all` writes several.
+  watch: |
+    * **Band numbers are positions in your file** (1-based): the defaults assume blue, green, red, NIR, SWIR1, SWIR2 in
+      that order. Pass `--red`, `--nir` … if yours differs. A wrong band number gives a plausible, wrong map.
+    * `ndre` needs `--red-edge N`; without it you get a clear error rather than a guess.
+    * Input must be reflectance (0–1); scale digital numbers first
+      ([`preprocess normalise --method scale_factor`](preprocess.md)).
+  examples: |
+    pygeovision indices list
+    pygeovision indices compute stack.tif ndvi --output ndvi.tif
+    pygeovision indices compute stack.tif nbr --nir 4 --swir2 6 --output nbr.tif
+
+infer:
+  intro: |
+    Tiled inference on a GeoTIFF (or a folder of them) with **your trained model**: the image is cut into overlapping chips,
+    each is predicted, and the results are blended into one seamless raster. See [Inference](../../inference/index.md).
+  when: Use it after training, to map a scene larger than GPU memory.
+  expect: A class-map GeoTIFF on the input grid (`uint8`, 255 = nodata) and a summary of chips and time.
+  watch: |
+    * `--checkpoint` is required and loaded strictly; no other model is ever substituted.
+    * `--normalise` (the default) stretches each band to its 2–98 percentile range. If you trained on reflectance 0–1 pass
+      `--no-normalise`, or the model sees differently scaled data ([why it matters](../../inference/index.md#matching-the-input-to-training)).
+    * `--classes` and `--in-channels` must match the checkpoint.
+
+label:
+  intro: |
+    Create training labels automatically: `osm` burns OpenStreetMap features into a raster; `quality` checks a label raster
+    for obvious problems. See [Labeling](../../labeling/index.md).
+  when: Use `label osm` when you have imagery and need quick, approximate training labels. Use `label quality` before training on any label set.
+  expect: |
+    `osm` writes a class raster (and a GeoJSON of the features): buildings 1, roads 2, water 3 and so on.
+    `quality` prints checks (class balance, slivers, coverage, connectivity) and can save an HTML report.
+  watch: |
+    * Give `--reference` (the image) so the labels sit on the image's exact grid and CRS.
+    * OpenStreetMap is incomplete in many regions and out of date elsewhere; labels are approximate, not truth
+      ([OSM labeling](../../labeling/osm.md)).
+    * `label quality` uses raster-only heuristics. It is **not** a measure of accuracy.
+
+models:
+  intro: |
+    The main model registry: list architectures, show details and download pretrained weights. See
+    [Models](../../models/index.md) and the [model catalogue](../../models/catalog.md).
+  when: Use it to pick an architecture and see its size and weight source before training.
+  expect: '`list` prints names, tasks and parameter counts (filter with `--task`, `--family`, `--max-params`); `summary` counts models per task.'
+  watch: |
+    * The registry holds **architectures**, not trained models. Pretrained weights, where they exist, are generic (ImageNet or
+      foundation weights) until you fine-tune.
+    * Some entries are "listed only": `models info` says so, and building them raises `NotImplementedError`.
+    * `models download` needs a network.
+
+monitor:
+  intro: |
+    Detect **data drift**: whether the imagery you are now feeding a model differs from the imagery it was trained or
+    validated on. See [Monitoring](../../monitoring/index.md).
+  when: Use it periodically in production, comparing a reference folder with a recent one.
+  expect: A per-band statistic table and an overall verdict; `-o` saves the report.
+  watch: |
+    * Drift is a warning that inputs changed (season, sensor, haze), not proof that predictions got worse. Check accuracy on
+      new labelled samples as well ([drift](../../monitoring/drift.md)).
+    * An incomplete comparison (a file that could not be read) exits with code 1 rather than reporting "no drift".
+
+obia:
+  intro: |
+    Object-based image analysis: segment an image into objects, describe them, classify them and assess accuracy.
+    Start with the [OBIA guide](../../obia/index.md).
+  when: Use it for very-high-resolution imagery or when the unit of interest is a parcel, roof or field, not a pixel.
+  expect: |
+    `segment` writes a label raster; `features` a feature table; `classify` a classified raster and vectors;
+    `assess-*` accuracy figures; `demo` a synthetic scene with known answers for practice.
+  watch: |
+    * Segmentation scale changes everything. Compare scales first with `obia scale`.
+    * Accuracy needs **independent** reference objects, not the training samples ([why](../../obia/accuracy.md)).
+
+pipeline:
+  intro: |
+    Run a **YAML workflow** (steps: search, download, infer, export) or list the templates. Authoring guide:
+    [YAML workflows](../../pipelines/yaml-workflows.md). (Not to be confused with `channel`, which runs the built-in pipelines.)
+  when: Use it to repeat the same search → download → inference chain on new places or dates.
+  expect: '`--dry-run` checks the step graph and prints it without running anything; a real run reports each step and the outputs.'
+  watch: '`--set STEP.PARAM=VALUE` overrides a parameter (parsed as JSON, else a string). Always `--dry-run` a new file first.'
+
+postprocess:
+  intro: |
+    Turn a model's classification raster into delivered products: remove specks, vectorise, smooth, regularise building
+    outlines, compute statistics and accuracy, export, and convert to Cloud-Optimized GeoTIFF.
+    Guide: [Postprocessing](../../data/postprocessing.md).
+  when: Use it after inference and before sharing results.
+  expect: A new raster or vector file per command, with the path printed; `class-stats` and `accuracy` print tables.
+  watch: |
+    * Areas are measured in the file's CRS: use a projected (metre) CRS, or the numbers are in degrees
+      ([units and CRS](../../data/postprocessing.md)).
+    * `sieve` changes the map; keep the unsieved raster.
+    * `accuracy` compares against a reference raster on the same grid.
+
+preprocess:
+  intro: |
+    Prepare imagery for analysis: stack band files, clip, resample, normalise, or run the common sequence in one go.
+    Guide: [Preprocessing](../../data/preprocessing.md).
+  when: Use it between downloading and analysing, for files you cannot hand to a model as they are.
+  expect: A new GeoTIFF per command (`✓ Clipped → path`); the input is never modified.
+  watch: |
+    * `stack` deliberately does **not** rescale values. Scaling digital numbers to reflectance is the separate
+      `normalise --method scale_factor` step (Sentinel-2 L2A: divide by 10 000).
+    * `clip --bbox` is in longitude/latitude (WGS84). A box outside the raster stops with a message giving the raster's
+      longitude and latitude range.
+    * `normalise` methods differ: `minmax`/`zscore`/`percentile` rescale by the data of that file, so two scenes will not be
+      comparable; use `scale_factor` for consistent reflectance.
+  examples: |
+    pygeovision preprocess normalise stack.tif --method scale_factor --scale-factor 10000 --output stack_refl.tif
+    pygeovision preprocess clip stack_refl.tif --bbox 15.00,47.84,15.02,47.85 --output site.tif
+    pygeovision preprocess resample site.tif --resolution 10 --method bilinear
+
+report:
+  intro: |
+    Rebuild the map, vectors and reports of an earlier pipeline run without re-running it. See
+    [Rebuilding reports](../../reporting/rebuilding.md).
+  when: Use it to add a format (PDF, Word, Excel, shapefile, KML), to name the classes of a network you trained, or to retitle a report.
+  expect: The report and vector files are (re)written inside the run folder; nothing is downloaded or re-analysed.
+  watch: Needs the run folder from a `channel` run (output rasters and `run_summary.json`).
+
+status:
+  intro: A short status page - PyGeoVision, `pygeofetch`, `torch` and `rasterio` versions, provider count and registered models.
+  when: Use it for a quick look; use [`doctor`](doctor.md) when something is wrong.
+  expect: Version lines with ticks; `--json` prints the same as JSON.
+
+timeseries:
+  intro: |
+    A spectral index through a stack of dated images: one mean per image, a linear trend and anomaly flags.
+    Guide: [Time series](../../advanced/timeseries.md).
+  when: Use it to follow a field, catchment or lake through a season or years.
+  expect: |
+    `analyze` prints one line per image (index mean and valid-pixel share) and a trend line with R² and p-value;
+    `anomaly` lists flagged dates.
+  watch: |
+    * Images must be given in **time order**; use `--dates` for readable labels (same number as images).
+    * A plain z-score cannot flag anything in fewer than 9 images, and a seasonal cycle hides real anomalies: use
+      `--method mad` and `--period 12` (monthly) as appropriate.
+    * `anomaly` needs at least 5 images with data.
+    * This is one number per image; for per-pixel maps use the pipelines `vegetation_anomaly` and `water_extent_timeseries`.
+
+validate:
+  intro: |
+    Check a GeoTIFF for problems before it reaches a model: nulls, data type, CRS, bounds, outliers. See
+    [Validation](../../data/validation.md).
+  when: Use it on every new source of imagery, and always before training or inference on files you did not make.
+  expect: A report with `PASSED`/`FAILED`, error and warning counts and statistics (bands, size, dtype, min/max/mean/std, NaN and zero share).
+  watch: '`for-inference` validates and auto-fixes for a given model type, writing a corrected copy; read what it changed.'
+  examples: pygeovision validate run scene.tif
+
+vlm:
+  intro: |
+    Vision-language models: caption an image, ask a question about it, or search a folder with a text query.
+    Guide: [Vision-language models](../../advanced/vlm.md).
+  when: Use it to triage large collections ("which tiles show flooding?") and to get a first description of an image.
+  expect: |
+    `caption` and `query` print text; `search` prints the top results as `score  path`. Failures (no network, missing file, bad
+    band numbers) are one-line errors.
+  watch: |
+    * Models download from the Hugging Face Hub on first use.
+    * Pass `--bands 3,2,1` for Sentinel-2 files written B2, B3, B4, B8, or the model sees a blue-tinted picture.
+    * Answers are fluent text that can be wrong, and scores only matter by order. Do not use them as measurements.
+
+zoo:
+  intro: |
+    The **AI Model Zoo**: a metadata catalogue of about 96 architectures with size, task, licence and tags. It describes
+    models; it does not build them (use [`models`](models.md) for that).
+  when: Use it to explore what exists for a task or sensor.
+  expect: Tables from `list`, `search`, `top`, `stats`; `info` shows the full record.
+  watch: A zoo entry is not necessarily buildable in PyGeoVision. Check [the model catalogue](../../models/catalog.md) for the build status.

@@ -18,122 +18,208 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _utcnow() -> str:
+    """UTC timestamp as an ISO string without a zone suffix (same format as the old ``utcnow``)."""
+    from datetime import timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+
+
+def _read_band_samples(path: str, per_band: int, rng: Any) -> dict[str, Any]:
+    """Random sample of valid pixel values per band of one GeoTIFF.
+
+    NaN, infinite and nodata pixels are skipped. Returns ``{"band_1": array, ...}``.
+    """
+    import numpy as np
+    import rasterio
+
+    out = {}
+    with rasterio.open(path) as src:
+        nodata = src.nodata
+        data = src.read().astype(np.float32)
+    for b in range(data.shape[0]):
+        flat = data[b].ravel()
+        ok = np.isfinite(flat)
+        if nodata is not None and np.isfinite(nodata):
+            ok &= flat != np.float32(nodata)
+        vals = flat[ok]
+        if vals.size > per_band:
+            vals = vals[rng.choice(vals.size, per_band, replace=False)]
+        out[f"band_{b+1}"] = vals
+    return out
+
+
 class DistributionDrift:
     """Detect input data distribution shift using statistical tests.
 
     Uses the Population Stability Index (PSI) and KL divergence
     to compare reference (training) distribution against production data.
+
+    The reference is stored as per-band histograms with **fixed bin edges**;
+    current data is counted into those same bins (values outside the
+    reference range land in the first/last bin), so a shift in brightness or
+    contrast is visible, not only a change of shape.
     """
 
     PSI_THRESHOLDS = {"low": 0.1, "medium": 0.2, "high": 0.25}
+    MAX_REFERENCE_IMAGES = 100
+    MAX_CURRENT_IMAGES = 50
+    SAMPLES_PER_BAND_PER_IMAGE = 10_000
 
     def __init__(self, reference_stats: dict | None = None,
                  n_bins: int = 10) -> None:
         self.reference_stats = reference_stats
         self.n_bins = n_bins
+        self.n_reference_images = 0
 
     def compute_psi(self, expected: Any, actual: Any) -> float:
-        """Population Stability Index (PSI).
+        """Population Stability Index (PSI) between two samples.
+
+        Bins come from ``expected``; values of ``actual`` outside its range are
+        counted in the outer bins.
         PSI < 0.1: No drift | 0.1-0.2: Minor | >0.2: Major drift.
         """
         import numpy as np
-        exp_hist, bins = np.histogram(expected, bins=self.n_bins, density=True)
-        act_hist, _    = np.histogram(actual,   bins=bins,         density=True)
-        # Add small epsilon to avoid log(0)
-        exp_hist = np.clip(exp_hist, 1e-10, None) / exp_hist.sum()
-        act_hist = np.clip(act_hist, 1e-10, None) / act_hist.sum()
-        psi = float(np.sum((act_hist - exp_hist) * np.log(act_hist / exp_hist)))
-        return psi
+        expected = np.asarray(expected, dtype=float)
+        actual = np.asarray(actual, dtype=float)
+        edges = np.histogram_bin_edges(expected, bins=self.n_bins)
+        exp_counts, _ = np.histogram(expected, bins=edges)
+        act_counts, _ = np.histogram(np.clip(actual, edges[0], edges[-1]), bins=edges)
+        return self._psi_from_counts(exp_counts, act_counts)
+
+    @staticmethod
+    def _psi_from_counts(exp_counts: Any, act_counts: Any) -> float:
+        import numpy as np
+        exp = np.asarray(exp_counts, dtype=float)
+        act = np.asarray(act_counts, dtype=float)
+        # Proportions per bin; empty bins are floored at 1e-4 (the usual PSI convention) so
+        # that a bin empty on one side contributes a large but finite amount.
+        exp = np.clip(exp / exp.sum(), 1e-4, None)
+        act = np.clip(act / act.sum(), 1e-4, None)
+        exp, act = exp / exp.sum(), act / act.sum()
+        return float(np.sum((act - exp) * np.log(act / exp)))
 
     def compute_kl_divergence(self, p: Any, q: Any) -> float:
         """KL divergence — measures distribution distance."""
         import numpy as np
-        p = np.clip(p, 1e-10, None); q = np.clip(q, 1e-10, None)
-        p /= p.sum(); q /= q.sum()
+        p = np.clip(np.asarray(p, dtype=float), 1e-10, None)
+        q = np.clip(np.asarray(q, dtype=float), 1e-10, None)
+        p = p / p.sum(); q = q / q.sum()
         return float(np.sum(p * np.log(p / q)))
 
     def fit_reference(self, images: list[str]) -> dict[str, Any]:
-        """Compute reference statistics from a list of GeoTIFFs."""
+        """Compute reference statistics from a list of GeoTIFFs.
+
+        Up to ``MAX_REFERENCE_IMAGES`` images are used; from each, up to
+        ``SAMPLES_PER_BAND_PER_IMAGE`` random valid pixels per band
+        (reproducible: fixed seed). Unreadable files are skipped with a
+        warning. Returns the statistics (empty if nothing could be read).
+        """
         try:
             import numpy as np
-            import rasterio
+            import rasterio  # noqa: F401
         except ImportError:
             return {}
 
-        band_stats = {}
-        for path in images[:100]:  # max 100 reference images
+        rng = np.random.default_rng(0)
+        pooled: dict[str, list] = {}
+        used = 0
+        for path in list(images)[: self.MAX_REFERENCE_IMAGES]:
             try:
-                with rasterio.open(path) as src:
-                    data = src.read().astype(np.float32)
-                    for b in range(data.shape[0]):
-                        key = f"band_{b+1}"
-                        stats = band_stats.setdefault(key, {"values": []})
-                        sample = data[b].flatten()
-                        stats["values"].extend(sample[::100].tolist())  # 1% sample
-            except Exception:
+                samples = _read_band_samples(path, self.SAMPLES_PER_BAND_PER_IMAGE, rng)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("fit_reference: skipping unreadable image %s (%s)", path, exc)
                 continue
+            used += 1
+            for band, vals in samples.items():
+                pooled.setdefault(band, []).append(vals)
 
+        self.n_reference_images = used
         self.reference_stats = {}
-        for band, stats in band_stats.items():
-            values = np.array(stats["values"])
+        for band, chunks in pooled.items():
+            values = np.concatenate(chunks)
+            if values.size == 0:
+                continue
+            edges = np.histogram_bin_edges(values, bins=self.n_bins)
             self.reference_stats[band] = {
                 "mean": float(values.mean()),
                 "std":  float(values.std()),
                 "p10": float(np.percentile(values, 10)),
                 "p90": float(np.percentile(values, 90)),
-                "histogram": np.histogram(values, bins=self.n_bins)[0].tolist(),
+                "histogram": np.histogram(values, bins=edges)[0].tolist(),
+                "bin_edges": edges.tolist(),
+                "n_samples": int(values.size),
             }
+        if not self.reference_stats:
+            logger.warning("fit_reference: no readable reference images, so no reference statistics")
         return self.reference_stats
 
     def detect(self, current_images: list[str]) -> dict[str, Any]:
-        """Detect drift in current production images vs reference."""
+        """Detect drift in current production images vs reference.
+
+        Compares up to ``MAX_CURRENT_IMAGES`` images per call. Returns
+        ``{"error": ...}`` instead of a "no drift" answer whenever nothing
+        could be compared.
+        """
         if self.reference_stats is None:
             return {"error": "No reference stats. Call fit_reference() first."}
+        if not self.reference_stats:
+            return {"error": "Reference statistics are empty (no readable reference images)."}
+        if any("bin_edges" not in v for v in self.reference_stats.values()):
+            return {"error": "Reference statistics have no bin edges (made by an older version). "
+                             "Call fit_reference() again."}
 
         try:
             import numpy as np
-            import rasterio
+            import rasterio  # noqa: F401
         except ImportError:
             return {"error": "rasterio required"}
 
+        rng = np.random.default_rng(1)
         current_values: dict[str, list] = {}
-        for path in current_images[:50]:
+        n_read = 0
+        for path in list(current_images)[: self.MAX_CURRENT_IMAGES]:
             try:
-                with rasterio.open(path) as src:
-                    data = src.read().astype(np.float32)
-                    for b in range(data.shape[0]):
-                        key = f"band_{b+1}"
-                        current_values.setdefault(key, [])
-                        current_values[key].extend(data[b].flatten()[::100].tolist())
-            except Exception:
+                samples = _read_band_samples(path, self.SAMPLES_PER_BAND_PER_IMAGE, rng)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("detect: skipping unreadable image %s (%s)", path, exc)
                 continue
+            n_read += 1
+            for band, vals in samples.items():
+                current_values.setdefault(band, []).append(vals)
 
         drift_report = {}
-        overall_drift_score = 0.0
-        for band in self.reference_stats:
+        for band, ref_stats in self.reference_stats.items():
             if band not in current_values:
                 continue
-            ref   = np.array(self.reference_stats[band].get("histogram", []))
-            curr  = np.array(np.histogram(current_values[band], bins=self.n_bins)[0], dtype=float)
-
-            if ref.sum() > 0 and curr.sum() > 0:
-                psi = self.compute_psi(ref, curr)
-                kl  = self.compute_kl_divergence(ref + 1e-10, curr + 1e-10)
-            else:
-                psi, kl = 0.0, 0.0
-
+            edges = np.asarray(ref_stats["bin_edges"], dtype=float)
+            ref = np.asarray(ref_stats["histogram"], dtype=float)
+            vals = np.concatenate(current_values[band])
+            if vals.size == 0 or ref.sum() == 0:
+                continue
+            curr = np.histogram(np.clip(vals, edges[0], edges[-1]), bins=edges)[0].astype(float)
+            psi = self._psi_from_counts(ref, curr)
+            kl = self.compute_kl_divergence(curr, ref)
             level = "none" if psi < 0.1 else "minor" if psi < 0.2 else "major"
-            drift_report[band] = {"psi": round(psi, 4), "kl": round(kl, 4), "level": level}
-            overall_drift_score += psi
+            drift_report[band] = {
+                "psi": round(psi, 4), "kl": round(kl, 4), "level": level,
+                "mean_reference": round(ref_stats["mean"], 4),
+                "mean_current": round(float(vals.mean()), 4),
+            }
 
-        n_bands = max(len(drift_report), 1)
-        overall_psi = overall_drift_score / n_bands
+        if not drift_report:
+            return {"error": "Nothing could be compared: no readable current images, or "
+                             "their bands do not match the reference."}
+
+        overall_psi = sum(b["psi"] for b in drift_report.values()) / len(drift_report)
+        worst = max(drift_report, key=lambda k: drift_report[k]["psi"])
         return {
             "overall_psi": round(overall_psi, 4),
             "drift_level": "none" if overall_psi < 0.1 else "minor" if overall_psi < 0.2 else "major",
             "per_band": drift_report,
-            "n_reference": 100,
-            "n_current": len(current_images),
+            "max_psi": drift_report[worst]["psi"],
+            "worst_band": worst,
+            "n_reference": self.n_reference_images,
+            "n_current": n_read,
             "recommendation": self._recommendation(overall_psi),
         }
 
@@ -179,7 +265,7 @@ class PerformanceDrift:
     def log(self, metrics: dict[str, float], timestamp: str | None = None) -> None:
         """Log a new metric measurement."""
         entry = {
-            "timestamp": timestamp or datetime.utcnow().isoformat(),
+            "timestamp": timestamp or _utcnow(),
             **metrics,
         }
         self._history.append(entry)
@@ -286,23 +372,34 @@ class DriftDetector:
         return self
 
     def check(self, current_images: list[str],
-               current_metrics: dict[str, float] | None = None) -> dict[str, Any]:
-        """Run full drift check and return combined report."""
+               current_metrics: dict[str, float] | None = None,
+               recent_n: int | None = None) -> dict[str, Any]:
+        """Run full drift check and return combined report.
+
+        ``recent_n`` is how many of the latest logged measurements are averaged for
+        the performance comparison (default: the whole window, 100). A small value
+        reacts faster to a sudden drop; ``1`` compares only the newest measurement.
+        """
         data_report = self.data_drift.detect(current_images)
         if current_metrics:
             self.perf_drift.log(current_metrics)
-        perf_report = self.perf_drift.detect()
+        perf_report = self.perf_drift.detect(recent_n)
 
         any_drift = (
             data_report.get("drift_level") in ("minor", "major") or
             perf_report.get("drift_detected", False)
         )
+        errors = [r["error"] for r in (data_report, perf_report) if "error" in r]
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": _utcnow(),
             "drift_detected": any_drift,
             "data_drift": data_report,
             "performance_drift": perf_report,
             "action_required": data_report.get("drift_level") == "major" or perf_report.get("drift_detected"),
+            # True when the data comparison could not be made: "drift_detected: False" then means
+            # "unknown", not "no drift".
+            "incomplete": "error" in data_report,
+            "errors": errors,
         }
 
     def save_report(self, report: dict, path: str | None = None) -> str:

@@ -8,7 +8,6 @@ with imagery tiles.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from pathlib import Path
@@ -26,32 +25,18 @@ logger = logging.getLogger(__name__)
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OVERPASS_TIMEOUT = 60  # seconds
 
-# OSM feature type → class ID mapping for common tasks
-OSM_BUILDING_CLASSES = {
-    "background": 0,
-    "building": 1,
-}
-
-OSM_LANDUSE_CLASSES = {
-    "background": 0,
-    "residential": 1,
-    "commercial": 2,
-    "industrial": 3,
-    "farmland": 4,
-    "forest": 5,
-    "water": 6,
-    "meadow": 7,
-    "park": 8,
-}
-
-OSM_ROAD_CLASSES = {
-    "background": 0,
-    "motorway": 1,
-    "primary": 2,
-    "secondary": 3,
-    "tertiary": 4,
-    "residential": 5,
-    "footway": 6,
+# What each ``feature_type`` paints: category -> raster value. Values come from the same table the
+# area labeler (``pygeovision.labeling.osm``) uses, so geometry is handled identically (roads are buffered
+# lines, lakes with islands are assembled, buildings win overlaps).
+OSM_TILE_CLASSES: dict[str, dict[str, int]] = {
+    "buildings": {"buildings": 1},
+    "roads": {"roads": 1},
+    "water": {"water": 1},
+    "landuse": {"residential": 1, "commercial": 2, "agricultural": 3, "vegetation": 4},
+    "all": {  # same numbers as OSMLabeler.label()
+        "buildings": 1, "roads": 2, "water": 3, "vegetation": 4, "agricultural": 5,
+        "commercial": 6, "residential": 7, "solar_panels": 8, "parking": 9, "sports": 10,
+    },
 }
 
 
@@ -88,10 +73,9 @@ class OSMLabeler(BaseLabeler):
         confidence_threshold: float = 0.5,
     ) -> None:
         super().__init__(confidence_threshold=confidence_threshold)
-        valid_types = {"buildings", "roads", "landuse", "water", "all"}
-        if feature_type not in valid_types:
+        if feature_type not in OSM_TILE_CLASSES:
             raise OSMLabelingError(
-                f"Invalid feature_type '{feature_type}'. Choose from {valid_types}"
+                f"Invalid feature_type '{feature_type}'. Choose from {set(OSM_TILE_CLASSES)}"
             )
         self.feature_type = feature_type
         self.overpass_url = overpass_url
@@ -132,6 +116,8 @@ class OSMLabeler(BaseLabeler):
         LabelingResult
         """
         feature_type = kwargs.get("feature_type", self.feature_type)
+        if feature_type not in OSM_TILE_CLASSES:
+            raise OSMLabelingError(f"Invalid feature_type '{feature_type}'. Choose from {set(OSM_TILE_CLASSES)}")
 
         # Build bounding box (min_lon, min_lat, max_lon, max_lat)
         # Handle both legacy (bounds obj) and new TileMetadata (tuple)
@@ -147,9 +133,9 @@ class OSMLabeler(BaseLabeler):
         # Rate limit
         self._throttle()
 
-        # Query Overpass API
+        classes = OSM_TILE_CLASSES[feature_type]
         try:
-            features = self._query_overpass(bounds, feature_type)
+            geojson = self._fetch_geojson(bounds, feature_type)
         except Exception as exc:
             return LabelingResult(
                 tile_id=tile.tile_id,
@@ -157,18 +143,12 @@ class OSMLabeler(BaseLabeler):
                 error=f"Overpass query failed: {exc}",
             )
 
-        if not features:
+        if not geojson["features"]:
             return self._skip_tile(tile, "No OSM features found in tile bounds")
 
-        # Rasterize features to a label mask
+        # Rasterize onto the tile's own grid (its CRS and transform), not onto a lon/lat envelope.
         try:
-            mask = self._rasterize_features(
-                features=features,
-                bounds=bounds,
-                height=tile.height,
-                width=tile.width,
-                feature_type=feature_type,
-            )
+            mask = self._rasterize_geojson(geojson, tile, classes)
         except Exception as exc:
             return LabelingResult(
                 tile_id=tile.tile_id,
@@ -199,87 +179,40 @@ class OSMLabeler(BaseLabeler):
     # Overpass API
     # ------------------------------------------------------------------
 
-    def _query_overpass(
+    def _fetch_geojson(
         self,
         bounds: tuple[float, float, float, float],
         feature_type: str,
-    ) -> list[dict[str, Any]]:
-        """
-        Query the Overpass API for features within bounds.
+    ) -> dict[str, Any]:
+        """Query Overpass for ``bounds`` (lon_min, lat_min, lon_max, lat_max) and return categorised GeoJSON."""
+        from pygeovision.labeling.osm import OSMLabeler as AreaLabeler  # noqa: PLC0415
 
-        Parameters
-        ----------
-        bounds : tuple
-            (min_lon, min_lat, max_lon, max_lat) in WGS84.
-        feature_type : str
-            OSM feature type.
-
-        Returns
-        -------
-        list of dict
-            GeoJSON-like feature dicts.
-        """
-        import urllib.parse  # noqa: PLC0415
-        import urllib.request  # noqa: PLC0415
-
-        query = self._build_overpass_query(bounds, feature_type)
-        data = urllib.parse.urlencode({"data": query}).encode("utf-8")
-
-        req = urllib.request.Request(
-            self.overpass_url,
-            data=data,
-            method="POST",
-        )
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        req.add_header("User-Agent", "PyGeoVision-OSMLabeler/1.0")
-
-        try:
-            with urllib.request.urlopen(req, timeout=OVERPASS_TIMEOUT) as resp:
-                response_data = json.loads(resp.read().decode("utf-8"))
-        except Exception as exc:
-            raise OSMLabelingError(f"Overpass request failed: {exc}") from exc
-
-        return response_data.get("elements", [])
+        area = AreaLabeler(endpoint=self.overpass_url, timeout=OVERPASS_TIMEOUT)
+        categories = list(OSM_TILE_CLASSES[feature_type])
+        data = area._fetch_overpass(area._build_overpass_query(bounds, categories))
+        if data is None:
+            raise OSMLabelingError(f"Overpass request failed ({area._last_error or 'no response'})")
+        remark = str(data.get("remark", ""))
+        if "runtime error" in remark.lower():
+            raise OSMLabelingError(f"Overpass could not complete the query: {remark}")
+        return area._osm_to_geojson(data, categories)
 
     @staticmethod
-    def _build_overpass_query(
-        bounds: tuple[float, float, float, float],
-        feature_type: str,
-    ) -> str:
-        """Build an Overpass QL query string."""
-        min_lon, min_lat, max_lon, max_lat = bounds
-        bbox = f"{min_lat},{min_lon},{max_lat},{max_lon}"
+    def _rasterize_geojson(geojson: dict[str, Any], tile: TileMetadata, classes: dict[str, int]) -> np.ndarray:
+        """Burn categorised lon/lat features onto ``tile``'s exact pixel grid."""
+        from affine import Affine  # noqa: PLC0415
 
-        if feature_type == "buildings":
-            filters = 'way["building"]'
-            relations = 'relation["building"]'
-        elif feature_type == "roads":
-            filters = 'way["highway"]'
-            relations = ""
-        elif feature_type == "landuse":
-            filters = 'way["landuse"]'
-            relations = 'relation["landuse"]'
-        elif feature_type == "water":
-            filters = 'way["natural"="water"]'
-            relations = 'relation["natural"="water"]'
-        else:  # "all"
-            filters = "way"
-            relations = "relation"
+        from pygeovision.labeling.osm import OSMLabeler as AreaLabeler  # noqa: PLC0415
 
-        parts = [f"{filters}({bbox});"]
-        if relations:
-            parts.append(f"{relations}({bbox});")
+        transform = Affine(*tile.transform) if len(tile.transform) == 6 else Affine.identity()
+        crs = tile.crs if isinstance(tile.crs, str) else str(tile.crs)
+        import rasterio.crs  # noqa: PLC0415
 
-        query = f"""
-[out:json][timeout:{OVERPASS_TIMEOUT}];
-(
-  {''.join(parts)}
-);
-out body;
->;
-out skel qt;
-""".strip()
-        return query
+        label, _ = AreaLabeler()._burn(
+            geojson, transform, tile.width, tile.height, rasterio.crs.CRS.from_user_input(crs),
+            all_touched=False, value_map=classes,
+        )
+        return label
 
     def _throttle(self) -> None:
         """Enforce rate limiting between API requests."""
@@ -370,28 +303,14 @@ out skel qt;
         return mask
 
     @staticmethod
-    def _get_class_id(tags: dict[str, Any], feature_type: str) -> int:
-        """Map OSM tags to a class ID."""
-        if feature_type == "buildings":
-            return 1  # All buildings → class 1
-        if feature_type == "roads":
-            highway = tags.get("highway", "")
-            return OSM_ROAD_CLASSES.get(highway, 1)
-        if feature_type in ("landuse", "all"):
-            landuse = tags.get("landuse", tags.get("natural", ""))
-            return OSM_LANDUSE_CLASSES.get(landuse, 1)
-        return 1
-
-    @staticmethod
     def _get_class_names(feature_type: str) -> list[str]:
-        """Return class names for a feature type."""
-        if feature_type == "buildings":
-            return ["background", "building"]
-        if feature_type == "roads":
-            return list(OSM_ROAD_CLASSES.keys())
-        if feature_type in ("landuse", "all"):
-            return list(OSM_LANDUSE_CLASSES.keys())
-        return ["background", "foreground"]
+        """Class names for a feature type, index = raster value (0 is background)."""
+        classes = OSM_TILE_CLASSES[feature_type]
+        names = ["background"] + [""] * max(classes.values())
+        singular = {"buildings": "building", "roads": "road"}
+        for cat, value in classes.items():
+            names[value] = singular.get(cat, cat) if len(classes) == 1 else cat
+        return names
 
     @staticmethod
     def _reproject_bounds(

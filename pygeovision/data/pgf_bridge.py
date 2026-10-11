@@ -20,7 +20,7 @@ PyGeoFetch v2.0 (README / future) will add:
 
 PyGeoVision owns:
   • Preprocessor          — stack, clip, cloud-mask, normalise, resample (own rasterio impl)
-  • SpectralIndices        — 22 indices (own numpy impl)
+  • SpectralIndices        — 21 indices (own numpy impl)
   • PostProcessor          — vectorise, sieve, accuracy, zonal_stats (own impl)
   • DataValidator          — mandatory validation gate before AI
   • Native model layer (segmentation, detection, change, classification)
@@ -307,12 +307,12 @@ class PyGeoFetchBridge:
         self._post    = pgv_postprocessor
 
         if self._pgf:
-            logger.info("PyGeoFetch v1.0 Python API active — using native search/download")
+            logger.debug("PyGeoFetch v1.0 Python API active — using native search/download")
         else:
             logger.info("PyGeoFetch not installed — falling back to pystac-client")
 
         if self._pgf_v2:
-            logger.info("PyGeoFetch v2.0 processing engine detected — using native preprocessing")
+            logger.debug("PyGeoFetch v2.0 processing engine detected — using native preprocessing")
 
     # ------------------------------------------------------------------
     # Search
@@ -666,7 +666,22 @@ class PyGeoFetchBridge:
         steps_applied = []
 
         # ── PyGeoFetch v2.0 native preprocessing (future-proof path) ────
-        if use_pgf_preprocess and self._pgf_v2:
+        # The pygeofetch route cannot honour every argument. Rather than silently dropping them (an ignored
+        # polygon clip or mask would return a *different* raster than the one asked for) the call is routed to
+        # PyGeoVision's own Preprocessor, which implements all of them.
+        _native_only = [
+            name for name, used in (
+                ("clip_geojson", bool(clip_geojson)),
+                ("stack_bands/stack_dir", bool(stack_bands or stack_dir)),
+                ("cloud_mask_path", bool(cloud_mask_path)),
+                ("scl_keep_classes", tuple(scl_keep_classes) != (4, 5, 6)),
+                ("a scene directory as input_path", pathlib.Path(input_path).is_dir()),
+            ) if used
+        ]
+        if use_pgf_preprocess and self._pgf_v2 and _native_only:
+            logger.info("prepare_for_ai: using PyGeoVision's own preprocessor because the pygeofetch route "
+                        "does not support %s", ", ".join(_native_only))
+        if use_pgf_preprocess and self._pgf_v2 and not _native_only:
             return self._prepare_via_pgf_v2(
                 input_path, stack_bands=stack_bands, bbox=bbox,
                 bbox_crs=bbox_crs,                     # ← was missing
@@ -891,12 +906,26 @@ class PyGeoFetchBridge:
     # Preprocessing proxy (v2.0 native / PGV fallback)
     # ------------------------------------------------------------------
 
+    def _need_pgf2(self, operation: str) -> None:
+        """Raise unless the pygeofetch processing engine is installed.
+
+        These operations have no PyGeoVision implementation. Returning the unchanged input (or a different
+        operation's output) under the operation's name would hand back a file that is *not* the product asked
+        for, so the call fails instead.
+        """
+        if not self._pgf_v2:
+            from pygeovision.core.exceptions import PreprocessingError
+            raise PreprocessingError(
+                f"{operation} needs the pygeofetch processing engine (pygeofetch >= 2.0), which is not "
+                f"installed. PyGeoVision has no built-in {operation}; install or upgrade pygeofetch."
+            )
+
     def preprocess_atmos(self, input_path: str, method: str = "dos1", **kw) -> str:
         """Atmospheric correction.
 
-        Uses PyGeoFetch v2.0 ``preprocess.atmos()`` when available.
-        PyGeoVision does not implement full atmospheric correction —
-        use ``normalise("scale_factor")`` as an approximation.
+        Needs the PyGeoFetch v2.0 ``preprocess.atmos()`` engine; raises ``PreprocessingError`` without it.
+        (Sentinel-2 L2A and Landsat Level-2 products are already surface reflectance: use
+        :func:`pygeovision.data.radiometric.stack_and_prepare_bands` to scale them.)
 
         Args:
             input_path: Input GeoTIFF.
@@ -906,17 +935,9 @@ class PyGeoFetchBridge:
         Returns:
             Output path.
         """
-        if self._pgf_v2:
-            r = self._pgf.preprocess.atmos(input_path, method=method, **kw)
-            return str(r.output_path)
-        # PGV approximation: scale-factor normalisation acts like DOS1 correction
-        if self._pre:
-            logger.info(
-                "PyGeoFetch v2.0 not available — using scale_factor normalisation "
-                "as DOS1 approximation"
-            )
-            return self._pre.normalise(input_path, method="scale_factor")
-        return input_path
+        self._need_pgf2("atmospheric correction")
+        r = self._pgf.preprocess.atmos(input_path, method=method, **kw)
+        return str(r.output_path)
 
     def preprocess_cloud_mask(
         self, input_path: str, method: str = "scl",
@@ -1004,8 +1025,8 @@ class PyGeoFetchBridge:
                                   resampling=Resampling.bilinear)
             return out
         except Exception as e:
-            logger.warning("Reproject fallback failed: %s", e)
-            return input_path
+            from pygeovision.core.exceptions import PreprocessingError
+            raise PreprocessingError(f"reprojection of {input_path} to {crs} failed: {e}") from e
 
     def preprocess_resample(
         self, input_path: str, resolution: float,
@@ -1025,24 +1046,19 @@ class PyGeoFetchBridge:
         method: str = "brovey", **kw
     ) -> str:
         """Pan-sharpening (brovey or IHS)."""
-        if self._pgf_v2:
-            r = self._pgf.preprocess.pansharpen(pan=pan, ms=ms, method=method, **kw)
-            return str(r.output_path)
-        logger.warning("Pan-sharpening requires PyGeoFetch v2.0 or GDAL pansharpen")
-        return ms
+        self._need_pgf2("pan-sharpening")
+        r = self._pgf.preprocess.pansharpen(pan=pan, ms=ms, method=method, **kw)
+        return str(r.output_path)
 
     def preprocess_tile(
         self, input_path: str, tile_size: int = 512,
         overlap: int = 64, output_dir: str | None = None, **kw
     ) -> list[str]:
         """Cut a scene into chips for training."""
-        if self._pgf_v2:
-            r = self._pgf.preprocess.tile(
-                input_path, tile_size=tile_size, overlap=overlap, **kw)
-            return [str(p) for p in (r.output_paths or [str(r.output_path)])]
-        # PGV fallback: return the original scene (caller handles tiling via TiledInference)
-        logger.info("tile() → TiledInference handles tiling at inference time")
-        return [input_path]
+        self._need_pgf2("tiling into chips")
+        r = self._pgf.preprocess.tile(
+            input_path, tile_size=tile_size, overlap=overlap, **kw)
+        return [str(p) for p in (r.output_paths or [str(r.output_path)])]
 
     def preprocess_mosaic(self, inputs: list[str], method: str = "first", **kw) -> str:
         """Mosaic multiple scenes."""
@@ -1066,8 +1082,8 @@ class PyGeoFetchBridge:
                 dst.write(mosaic)
             return out
         except Exception as e:
-            logger.warning("mosaic fallback failed: %s", e)
-            return inputs[0]
+            from pygeovision.core.exceptions import PreprocessingError
+            raise PreprocessingError(f"mosaic of {len(inputs)} raster(s) failed: {e}") from e
 
     def preprocess_composite(
         self, inputs: list[str], method: str = "median",
@@ -1104,30 +1120,26 @@ class PyGeoFetchBridge:
                 dst.write(comp)
             return out
         except Exception as e:
-            logger.warning("composite fallback failed: %s", e)
-            return inputs[0]
+            from pygeovision.core.exceptions import PreprocessingError
+            raise PreprocessingError(f"{method} composite of {len(inputs)} raster(s) failed: {e}") from e
 
     def preprocess_topo_correct(
         self, input_path: str, dem: str,
         method: str = "c_correction", **kw
     ) -> str:
         """Topographic correction using a DEM."""
-        if self._pgf_v2:
-            r = self._pgf.preprocess.topo_correct(
-                input_path, dem=dem, method=method, **kw)
-            return str(r.output_path)
-        logger.warning("topo_correct() requires PyGeoFetch v2.0")
-        return input_path
+        self._need_pgf2("topographic correction")
+        r = self._pgf.preprocess.topo_correct(
+            input_path, dem=dem, method=method, **kw)
+        return str(r.output_path)
 
     def preprocess_cloud_fill(
         self, cloudy: str, time_series: list[str], **kw
     ) -> str:
         """Fill cloud gaps using a temporal series."""
-        if self._pgf_v2:
-            r = self._pgf.preprocess.cloud_fill(cloudy, time_series=time_series, **kw)
-            return str(r.output_path)
-        logger.warning("cloud_fill() requires PyGeoFetch v2.0")
-        return cloudy
+        self._need_pgf2("cloud filling")
+        r = self._pgf.preprocess.cloud_fill(cloudy, time_series=time_series, **kw)
+        return str(r.output_path)
 
     # ------------------------------------------------------------------
     # Spectral indices proxy (v2.0 native / PGV fallback)

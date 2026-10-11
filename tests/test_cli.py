@@ -64,7 +64,7 @@ class TestAITrainCommand:
             "--output", str(tmp_path / "model.pth"),
         ])
         assert result.exit_code == 0, result.output
-        assert "resnet50" in result.output  # the documented default
+        assert "faster-rcnn-r50" in result.output  # the documented default for detection
 
 
 class TestIndicesComputeValidateFlag:

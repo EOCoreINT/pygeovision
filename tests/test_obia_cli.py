@@ -56,3 +56,21 @@ def test_classify_requires_exactly_one_source(workdir):
     d = str(workdir)
     r = CliRunner().invoke(cli, ["obia", "classify", f"{d}/scene.tif", f"{d}/labels.tif", "--output", f"{d}/x.gpkg"])
     assert r.exit_code == 2 and "exactly one" in r.output
+
+
+def test_bad_rule_is_a_clean_error_not_a_traceback(workdir):
+    d = str(workdir)
+    if not __import__("os").path.exists(f"{d}/labels.tif"):
+        _run("obia", "demo", d, "--size", "112")
+        _run("obia", "segment", f"{d}/scene.tif", "--scale", "20", "--output-labels", f"{d}/labels.tif")
+    with open(f"{d}/bad.yaml", "w") as fh:
+        fh.write('rules:\n  - {class: water, when: "mean_ndwii > 0.3"}\n')
+    r = CliRunner().invoke(cli, ["obia", "classify", f"{d}/scene.tif", f"{d}/labels.tif", "--rules",
+                                 f"{d}/bad.yaml", "--output", f"{d}/y.gpkg"])
+    assert r.exit_code == 1 and "cannot evaluate rule" in r.output and "available columns" in r.output
+    assert "Traceback" not in r.output
+    with open(f"{d}/worse.yaml", "w") as fh:
+        fh.write("nothing: here\n")
+    r = CliRunner().invoke(cli, ["obia", "classify", f"{d}/scene.tif", f"{d}/labels.tif", "--rules",
+                                 f"{d}/worse.yaml", "--output", f"{d}/y.gpkg"])
+    assert r.exit_code == 1 and "expected 'rules:" in r.output

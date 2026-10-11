@@ -65,8 +65,7 @@ class ModelRegistry:
         Args:
             info: ModelInfo describing the model.
 
-        Raises:
-            ValueError: If a model with the same name is already registered.
+        A model with the same name is replaced, with a warning.
         """
         if info.name in self._models:
             logger.warning(
@@ -319,8 +318,8 @@ def _register_builtin_models() -> None:
             task="change_detection",
             architecture="ChangeFormer",
             input_bands=3,
-            pretrained_available=True,
-            description="Transformer-based change detection (ChangeFormer).",
+            pretrained_available=False,
+            description="Two SegFormer networks (one per date) fused by a 1x1 convolution; randomly initialised, no pretrained weights. Not the published ChangeFormer.",
             tags=["change-detection", "rgb", "transformer"],
             factory_fn=lambda **kw: build_changeformer(**kw),
         ),

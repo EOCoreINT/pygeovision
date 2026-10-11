@@ -31,7 +31,10 @@ class MoondreamGeo:
     MODEL_ID = "vikhyatk/moondream2"
     REVISION = "2025-06-21"
 
-    def __init__(self, device: str | None = None, revision: str | None = None) -> None:
+    def __init__(self, device: str | None = None, revision: str | None = None,
+                 bands: tuple[int, ...] | None = None) -> None:
+        """``bands``: file band numbers shown to the model as R, G, B (default: the first three)."""
+        self.bands = tuple(bands) if bands else None
         self.device = device or "cpu"
         self.revision = revision or self.REVISION
         self._model: Any = None
@@ -59,28 +62,14 @@ class MoondreamGeo:
                 details="Needs network access to the Hugging Face Hub (or a populated cache).",
             ) from exc
 
-    @staticmethod
-    def _load_pil(image_path: str):
-        import numpy as np
-        import rasterio
-        from PIL import Image
-        with rasterio.open(image_path) as src:
-            data = src.read(list(range(1, min(src.count, 3) + 1)), masked=True).astype("float32")
-        out = np.zeros(data.shape, dtype="float32")
-        for b in range(data.shape[0]):
-            valid = data[b].compressed()
-            if valid.size:
-                p2, p98 = np.percentile(valid, (2, 98))
-                out[b] = np.clip((data[b].filled(p2) - p2) / (p98 - p2 + 1e-8) * 255, 0, 255)
-        if out.shape[0] == 1:
-            out = np.repeat(out, 3, axis=0)
-        elif out.shape[0] == 2:
-            out = np.stack([out[0], out[1], out[0]], axis=0)
-        return Image.fromarray(out[:3].transpose(1, 2, 0).astype(np.uint8))
+    def _load_pil(self, image_path: str):
+        """The file as an 8-bit RGB picture (``bands``, shared percentile stretch, nodata black)."""
+        from pygeovision.models.vlm._image import load_rgb_pil
+        return load_rgb_pil(image_path, bands=self.bands)
 
     def _ask(self, image_path: str, question: str | None) -> str:
+        img = self._load_pil(image_path)      # bad file or bands fail here, before any model download
         self._load()
-        img = self._load_pil(image_path)
         model = self._model
         if hasattr(model, "caption") and hasattr(model, "query"):      # current API
             if question is None:
@@ -99,12 +88,12 @@ class MoondreamGeo:
         return self._ask(image_path, question)
 
     def batch_caption(self, image_dir: str, top_k: int = 10) -> list[dict]:
-        """Caption up to ``top_k`` GeoTIFFs under ``image_dir`` (sorted by path).
+        """Caption the first ``top_k`` images under ``image_dir`` (``.tif/.tiff/.png/.jpg/.jpeg``, recursive, sorted by path).
 
         A file that fails is reported in its result (``"error"``) rather than aborting the batch.
         """
-        import pathlib
-        paths = sorted(pathlib.Path(image_dir).rglob("*.tif"))[:top_k]
+        from pygeovision.models.vlm._image import list_images
+        paths = list_images(image_dir)[:top_k]
         results = []
         for p in paths:
             try:

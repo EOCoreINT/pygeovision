@@ -1,9 +1,10 @@
 """
 EarthNets Benchmark Builder (Phase 5.2).
 
-Selects the canonical top-5 datasets per task, generates unified benchmark
-configs with standard 60/20/20 splits, and runs cross-task / cross-domain
-evaluation using the EarthNets ranking formula.
+Selects the top-ranked catalogue datasets per task and writes benchmark
+*configurations* (dataset names, split ratios, a primary-metric name, a seed).
+It does not download data, create splits or run models: the split ratios are
+recorded for you to apply, and ``ModelEvaluator`` does the scoring.
 """
 from __future__ import annotations
 
@@ -43,6 +44,10 @@ class BenchmarkConfig:
     notes: str = ""
 
     def __post_init__(self) -> None:
+        missing = {"train", "val", "test"} - set(self.split_ratios)
+        if missing or abs(sum(self.split_ratios.values()) - 1.0) > 1e-6 or min(self.split_ratios.values()) < 0:
+            raise ValueError(f"split_ratios must have train/val/test keys, be non-negative and sum to 1; "
+                             f"got {self.split_ratios}")
         if not self.metric:
             _metric_map = {
                 "segmentation":     "mean_iou",
@@ -75,8 +80,9 @@ class BenchmarkConfig:
 class BenchmarkBuilder:
     """Build EarthNets-style benchmark configurations (Phase 5.2).
 
-    Selects the top-5 datasets per task using the EarthNets ranking formula
-    and generates standardised benchmark configs with 60/20/20 splits.
+    Selects the top-5 datasets per task using the EarthNets metadata ranking and
+    records a 60/20/20 split ratio and a primary-metric name in a JSON config.
+    No split is created and no data is touched.
 
     Example::
 

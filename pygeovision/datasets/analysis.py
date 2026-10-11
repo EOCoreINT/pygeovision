@@ -1,7 +1,7 @@
 """
 EarthNets Dataset Analysis Tools (Phase 5.1).
 Volume trends, resolution distributions, correlation matrix,
-t-SNE/UMAP clustering, radar charts — all from the 500+ catalog.
+t-SNE/UMAP clustering, radar charts — all computed from the catalogue metadata (about 460 datasets).
 """
 from __future__ import annotations
 
@@ -11,8 +11,13 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _bar(count: int, peak: int, width: int = 40) -> str:
+    """A text bar scaled so the largest count is ``width`` characters wide."""
+    return "█" * max(1 if count else 0, round(count / max(peak, 1) * width))
+
+
 class DatasetAnalyzer:
-    """Analyse the 500+ dataset catalog using EarthNets methodology.
+    """Analyse the dataset catalogue (about 460 datasets) using EarthNets methodology.
 
     Example::
 
@@ -70,9 +75,9 @@ class DatasetAnalyzer:
                     break
         if show:
             print("\nSpatial resolution distribution:")
+            peak = max(counts.values(), default=0)
             for label, count in counts.items():
-                bar = "█" * count
-                print(f"  {label:>10}: {bar} ({count})")
+                print(f"  {label:>10}: {_bar(count, peak)} ({count})")
         return counts
 
     # ── Domain distribution ───────────────────────────────────────────
@@ -83,9 +88,9 @@ class DatasetAnalyzer:
             counts[d.domain] = counts.get(d.domain, 0) + 1
         if show:
             print(f"\nDataset distribution by domain ({len(counts)} domains):")
+            peak = max(counts.values(), default=0)
             for domain, count in sorted(counts.items(), key=lambda x: -x[1]):
-                bar = "█" * count
-                print(f"  {domain:<22}: {bar} ({count})")
+                print(f"  {domain:<22}: {_bar(count, peak)} ({count})")
         return counts
 
     # ── Modality distribution ─────────────────────────────────────────
@@ -96,9 +101,9 @@ class DatasetAnalyzer:
             counts[d.modality] = counts.get(d.modality, 0) + 1
         if show:
             print("\nDataset distribution by modality:")
+            peak = max(counts.values(), default=0)
             for mod, count in sorted(counts.items(), key=lambda x: -x[1]):
-                bar = "█" * count
-                print(f"  {mod:<18}: {bar} ({count})")
+                print(f"  {mod:<18}: {_bar(count, peak)} ({count})")
         return counts
 
     # ── Correlation matrix ────────────────────────────────────────────
@@ -107,10 +112,12 @@ class DatasetAnalyzer:
         names: list[str] | None = None,
         show: bool = True,
     ) -> list[list[float]]:
-        """Compute pairwise EarthNets similarity matrix.
+        """Compute a pairwise EarthNets-style similarity matrix.
 
-        Returns an N×N matrix where entry [i][j] is the similarity
-        between datasets i and j (0=dissimilar, 1=identical).
+        Returns an N×N matrix where entry [i][j] is the similarity between datasets
+        i and j (1 on the diagonal). Without ``names`` it covers only the **first 30**
+        catalogue entries. The weights differ slightly from ``DatasetRegistry.similar_to``
+        (symmetric task overlap, 0.3 for different modalities), so the two rankings can differ.
         """
         datasets = (
             [self.registry[n] for n in names]
@@ -151,9 +158,13 @@ class DatasetAnalyzer:
         n_components: int = 2,
         save_path: str | None = None,
     ) -> Any | None:
-        """Cluster all datasets in 2D using t-SNE or UMAP.
+        """Embed all datasets in 2-D with t-SNE or UMAP and optionally save a scatter plot.
 
-        Requires: scikit-learn (t-SNE) or umap-learn (UMAP).
+        The inputs are seven numbers per dataset in which ``domain`` and ``modality`` are
+        encoded as their alphabetical index, so neighbouring points are only loosely
+        "similar": treat the picture as a rough overview, not a clustering result.
+        Requires scikit-learn (t-SNE) or umap-learn (UMAP); returns ``None`` with a
+        warning when the package is missing.
         """
         try:
             import numpy as np
@@ -179,7 +190,6 @@ class DatasetAnalyzer:
             features.append(feat)
 
         X = np.array(features)
-        [d.name for d in self._datasets]
         domains = [d.domain for d in self._datasets]
 
         try:
@@ -209,6 +219,7 @@ class DatasetAnalyzer:
                     ax.set_xlabel(f"{method.upper()}-1"); ax.set_ylabel(f"{method.upper()}-2")
                     plt.tight_layout()
                     plt.savefig(save_path, dpi=150, bbox_inches="tight")
+                    plt.close(fig)
                     logger.info("Cluster plot saved → %s", save_path)
                 except ImportError:
                     logger.warning("matplotlib required for plot")

@@ -1,9 +1,15 @@
 """
-DatasetRegistry — catalogs 500+ remote sensing datasets (EarthNets Phase 1.1).
+DatasetRegistry — a searchable catalogue of about 460 remote sensing datasets (EarthNets Phase 1.1).
 
 Each dataset has 9 core attributes matching EarthNets methodology:
   domain, year, n_samples, sample_size, n_classes, modality,
   resolution_m, volume_gb, download_url
+
+The numbers are hand-entered, approximate metadata (what a dataset's paper or
+page reports, from memory); they are for discovery and comparison, not a
+substitute for reading the dataset's own documentation. ``license`` is
+``"unknown"`` unless a licence was recorded, and ``download_url`` /
+``paper_url`` are empty for most entries.
 """
 from __future__ import annotations
 
@@ -42,7 +48,7 @@ class DatasetInfo:
     description: str = ""
     download_url: str = ""
     paper_url: str = ""
-    license: str = "CC-BY-4.0"
+    license: str = "unknown"   # not recorded for any catalogued entry yet; check the dataset's own page
     tags: list[str] = field(default_factory=list)
 
     # EarthNets similarity score (computed, not stored)
@@ -60,8 +66,8 @@ class DatasetInfo:
         }
 
 
-def _build_catalog() -> list[DatasetInfo]:
-    """Build the 500+ dataset catalog. Grouped by domain."""
+def _raw_catalog() -> list[DatasetInfo]:
+    """The catalogue as written, grouped by domain. Some datasets are listed more than once."""
     C: list[DatasetInfo] = []
 
     # ── Land Cover / Classification ──────────────────────────────────────
@@ -744,8 +750,32 @@ def _build_catalog() -> list[DatasetInfo]:
     return C
 
 
+def _build_catalog() -> list[DatasetInfo]:
+    """The catalogue with one entry per dataset name.
+
+    The source list names some datasets twice with conflicting numbers (the second
+    entry often counts annotations or points instead of images). The **first**
+    entry of a name wins for every value; empty ``description`` / ``download_url`` /
+    ``paper_url`` fields are filled from later entries, and ``tasks`` / ``tags``
+    are the union (first-seen order) so a dataset stays findable under every task
+    it was listed for.
+    """
+    merged: dict[str, DatasetInfo] = {}
+    for d in _raw_catalog():
+        first = merged.get(d.name)
+        if first is None:
+            merged[d.name] = d
+            continue
+        for attr in ("description", "download_url", "paper_url"):
+            if not getattr(first, attr) and getattr(d, attr):
+                setattr(first, attr, getattr(d, attr))
+        first.tasks = list(dict.fromkeys([*first.tasks, *d.tasks]))
+        first.tags = list(dict.fromkeys([*first.tags, *d.tags]))
+    return list(merged.values())
+
+
 class DatasetRegistry:
-    """EarthNets-style registry of 500+ remote sensing datasets (Phase 1.1).
+    """EarthNets-style registry of about 460 remote sensing datasets (Phase 1.1).
 
     Usage:
         >>> registry = DatasetRegistry()
@@ -773,7 +803,10 @@ class DatasetRegistry:
 
     def __getitem__(self, name: str) -> DatasetInfo:
         if name not in self._by_name:
-            raise KeyError(f"Dataset '{name}' not found. Use registry.search() to discover datasets.")
+            import difflib
+            close = difflib.get_close_matches(name, list(self._by_name), n=3, cutoff=0.6)
+            hint = f" Did you mean: {', '.join(close)}?" if close else ""
+            raise KeyError(f"Dataset '{name}' not found.{hint} Use registry.search() to discover datasets.")
         return self._by_name[name]
 
     def __contains__(self, name: str) -> bool:
@@ -827,28 +860,38 @@ class DatasetRegistry:
         max_resolution_m: float | None = None,
         n_classes_min: int | None = None,
     ) -> list[DatasetInfo]:
-        """Filter datasets by any combination of attributes."""
+        """Filter datasets by any combination of attributes (all given conditions must hold).
+
+        ``task`` matches when it is one of the dataset's tasks. ``min_resolution_m`` /
+        ``max_resolution_m`` bound the ground sampling distance, so
+        ``max_resolution_m=1`` keeps imagery with pixels of 1 m or finer.
+        """
         out = []
         for d in self._catalog:
-            if domain and d.domain != domain: continue
-            if modality and d.modality != modality: continue
-            if task and task not in d.tasks: continue
-            if min_year and d.year < min_year: continue
-            if max_year and d.year > max_year: continue
-            if min_samples and d.n_samples < min_samples: continue
-            if max_volume_gb and d.volume_gb > max_volume_gb: continue
-            if min_resolution_m and d.resolution_m < min_resolution_m: continue
-            if max_resolution_m and d.resolution_m > max_resolution_m: continue
-            if n_classes_min and d.n_classes < n_classes_min: continue
+            if domain is not None and d.domain != domain: continue
+            if modality is not None and d.modality != modality: continue
+            if task is not None and task not in d.tasks: continue
+            if min_year is not None and d.year < min_year: continue
+            if max_year is not None and d.year > max_year: continue
+            if min_samples is not None and d.n_samples < min_samples: continue
+            if max_volume_gb is not None and d.volume_gb > max_volume_gb: continue
+            if min_resolution_m is not None and d.resolution_m < min_resolution_m: continue
+            if max_resolution_m is not None and d.resolution_m > max_resolution_m: continue
+            if n_classes_min is not None and d.n_classes < n_classes_min: continue
             out.append(d)
         return out
 
-    def top_for_task(self, task: str, n: int = 5) -> list[DatasetInfo]:
+    def top_for_task(self, task: str, n: int = 5, modality: str | None = None) -> list[DatasetInfo]:
         """Return the top-n datasets for a given task using EarthNets ranking.
 
         Ranking criteria: recency (year), scale (samples), classes, resolution.
+        It is a heuristic over catalogue metadata (newer, bigger, more classes,
+        finer pixels score higher), **not** a measure of how good or how
+        widely used a dataset is, and it mixes modalities and point clouds
+        with images; pass ``modality`` (e.g. ``"rgb"``, ``"sar"``) to compare
+        like with like. ``n_samples`` counts points for point-cloud datasets.
         """
-        candidates = self.filter(task=task)
+        candidates = self.filter(task=task, modality=modality)
         def _score(d: DatasetInfo) -> float:
             year_score = (d.year - 2000) / 24            # 0-1 recency
             scale_score = min(1.0, d.n_samples / 100000) # 0-1 scale
@@ -914,13 +957,13 @@ class DatasetRegistry:
         }
 
     def print_table(self, datasets: list[DatasetInfo] | None = None) -> None:
-        """Print a formatted table of datasets."""
-        items = datasets or self._catalog[:20]
+        """Print a formatted table of datasets (the first 20 of the catalogue when none given)."""
+        items = self._catalog[:20] if datasets is None else datasets
         print(f"\n{'Name':<30} {'Domain':<15} {'Modality':<16} {'Year':>4} {'Samples':>10} {'Res(m)':>8} {'Vol(GB)':>8}")
         print("─" * 100)
         for d in items:
             print(f"{d.name:<30} {d.domain:<15} {d.modality:<16} {d.year:>4} {d.n_samples:>10,} {d.resolution_m:>8.1f} {d.volume_gb:>8.1f}")
-        print(f"\nShowing {len(items)} of {len(self._catalog)} datasets")
+        print(f"\n{len(items)} shown; the catalogue holds {len(self._catalog)} datasets")
 
 
 # Module-level singleton

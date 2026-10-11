@@ -90,6 +90,27 @@ def _safe_output(input_path: str, output_path: str | None, suffix: str) -> str:
     return str(out)
 
 
+def _crop_or_explain(rio_mask, src, geoms, what: str, **kwargs):
+    """``rasterio.mask.mask`` that explains an empty overlap instead of failing with a window error."""
+    try:
+        return rio_mask(src, geoms, **kwargs)
+    except Exception as exc:                               # WindowError / "Input shapes do not overlap raster"
+        if type(exc).__name__ == "WindowError" or "do not overlap" in str(exc) or "empty" in str(exc).lower():
+            b = src.bounds
+            where = f"x {b.left:.6g} to {b.right:.6g}, y {b.bottom:.6g} to {b.top:.6g} in {src.crs}"
+            try:
+                from rasterio.warp import transform_bounds
+                w = transform_bounds(src.crs, "EPSG:4326", *b)
+                where += f" (longitude {w[0]:.4f} to {w[2]:.4f}, latitude {w[1]:.4f} to {w[3]:.4f})"
+            except Exception:
+                pass
+            raise ValueError(
+                f"{what} does not overlap the raster. The raster covers {where}. Check the coordinate order "
+                "(min_lon, min_lat, max_lon, max_lat) and that the area is inside the image."
+            ) from exc
+        raise
+
+
 class Preprocessor:
     """Complete satellite image preprocessing pipeline.
 
@@ -332,8 +353,10 @@ class Preprocessor:
                 bbox_proj = bbox
 
             geom = [_mapping(_box(*bbox_proj))]
-            data, transform = rio_mask(src, geom,
-                                        crop=True, all_touched=all_touched)
+            if not (bbox[0] < bbox[2] and bbox[1] < bbox[3]):
+                raise ValueError(f"bbox must be (min_x, min_y, max_x, max_y) with min < max; got {tuple(bbox)}")
+            data, transform = _crop_or_explain(rio_mask, src, geom, f"The bbox {tuple(bbox)}",
+                                               crop=True, all_touched=all_touched)
             profile = src.profile.copy()
             profile.update(
                 height=data.shape[1],
@@ -431,8 +454,8 @@ class Preprocessor:
                 )
 
             _nodata = nodata if nodata is not None else src.nodata
-            data, transform = rio_mask(
-                src, geoms,
+            data, transform = _crop_or_explain(
+                rio_mask, src, geoms, "The polygon",
                 crop=crop,
                 all_touched=all_touched,
                 nodata=_nodata,
@@ -779,23 +802,14 @@ class Preprocessor:
     ) -> str:
         """Normalise pixel values across all bands.
 
-        Methods
-        -------
-        ``minmax``
-            Scale each band independently to [0, 1] using its
-            per-band min and max.
+        The methods are:
 
-        ``zscore``
-            Standardise each band to zero mean, unit variance
-            (``(x - mean) / std``).
-
-        ``percentile``
-            Clip to the [p, 100-p] percentile range then scale to [0, 1].
-            Robust to outliers and sensor saturation.
-
-        ``scale_factor``
-            Divide all bands by ``scale_factor`` (e.g. 10000 for HLS /
-            Sentinel-2 L2A reflectance → [0, 1] range).
+        * ``minmax``: scale each band independently to [0, 1] using its per-band min and max.
+        * ``zscore``: standardise each band to zero mean, unit variance (``(x - mean) / std``).
+        * ``percentile``: clip to the [p, 100-p] percentile range, then scale to [0, 1].
+          Robust to outliers and sensor saturation.
+        * ``scale_factor``: divide all bands by ``scale_factor`` (e.g. 10000 for HLS /
+          Sentinel-2 L2A reflectance, giving the [0, 1] range).
 
         Args:
             input_path: Source GeoTIFF.

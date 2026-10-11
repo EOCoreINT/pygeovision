@@ -153,7 +153,7 @@ def auth_remove(provider, yes):
               help="Satellite shortcut: sentinel-2, landsat, planet, dem, etc.")
 @click.option("--collections", default=None,
               help="STAC collection IDs (e.g. sentinel-2-l2a,landsat-c2-l2).")
-@click.option("--cloud-max", default=30.0, show_default=True, help="Max cloud cover %%.")
+@click.option("--cloud-max", default=30.0, show_default=True, help="Max cloud cover (percent).")
 @click.option("--max-results", default=50, show_default=True)
 @click.option("--sort-by", default="datetime",
               type=click.Choice(["datetime", "cloud_cover", "score", "satellite"]))
@@ -170,11 +170,13 @@ def data_search(bbox, date_str, start_date, end_date, providers, satellite,
         pygeovision data search --bbox -0.15 51.47 -0.10 51.52 \\
             --date 2024-06 --collections sentinel-2-l2a --cloud-max 10
 
+    \b
         # Multi-provider with credentials
         pygeovision data search --bbox -74.1 40.6 -73.7 40.9 \\
             --start-date 2024-01-01 --end-date 2024-06-01 \\
             --providers planetary_computer,copernicus,usgs --cloud-max 20
 
+    \b
         # Satellite shortcut
         pygeovision data search --bbox -74.1 40.6 -73.7 40.9 \\
             --date 2024-06 --satellite sentinel-2
@@ -300,9 +302,9 @@ def data_download(search_file, bbox, date_str, providers, output, parallel,
             --output ./data/ --parallel 4 \\
             --post-process unzip,reproject:EPSG:4326,compress:lzw,cog
 
+    \b
         pygeovision data download --from-search results.geojson \\
-            --output ./data/ --verify-checksum
-    """
+            --output ./data/ --verify-checksum"""
     from pygeovision import PyGeoVision
     from pygeovision.data.fetch import SatelliteFetcher
 
@@ -386,8 +388,9 @@ def data_pipeline_run(yaml_file, step):
               parallel: 4
               output: ./raw/
               verify_checksum: true
+          - process:
+              actions: [reproject:EPSG:4326, cog]
           - export:
-              format: cloud_optimized_geotiff
               destination: s3://my-bucket/
     """
     from pygeovision import PyGeoVision
@@ -575,7 +578,11 @@ def _load_user_model(model, checkpoint, num_classes, in_channels, raster=None):
 @click.option("--checkpoint", type=click.Path(exists=True), default=None,
               help="Your trained weights for --model (target=custom; required there).")
 @click.option("--num-classes", default=2, show_default=True, help="Classes the checkpoint was trained for.")
-def ai_segment(target, input_path, output, model, checkpoint, num_classes):
+@click.option("--green-band", type=int, default=None,
+              help="target=water: 1-based green band (default 2 of a blue-green-red-NIR stack).")
+@click.option("--nir-band", type=int, default=None,
+              help="target=water: 1-based near-infrared band (default 4).")
+def ai_segment(target, input_path, output, model, checkpoint, num_classes, green_band, nir_band):
     """Segment geospatial features natively.
 
     \b
@@ -591,7 +598,11 @@ def ai_segment(target, input_path, output, model, checkpoint, num_classes):
     if target == "buildings":
         client.segmentation.buildings(input_path, output_path=output)
     elif target == "water":
-        client.segmentation.water(input_path, output_path=output)
+        try:
+            client.segmentation.water(input_path, output_path=output,
+                                      green_band=green_band, nir_band=nir_band)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
     elif target == "sam":
         client.segmentation.sam(input_path, output_path=output)
     elif target == "custom":
@@ -609,7 +620,9 @@ def ai_segment(target, input_path, output, model, checkpoint, num_classes):
 @ai.command("detect")
 @click.argument("target", type=click.Choice(["generic", "ships", "cars", "custom"]))
 @click.option("--input", "-i", "input_path", required=True, type=click.Path(exists=True))
-@click.option("--output", "-o", required=True, help="Output detections GeoTIFF/GeoJSON.")
+@click.option("--output", "-o", required=True,
+              help="generic/ships/cars: GeoJSON file of boxes (use .geojson). custom: a GeoTIFF of per-pixel "
+                   "class scores (the model must output one score map per class, not boxes).")
 @click.option("--model", default=None, help="Registry model name (target=custom).")
 @click.option("--checkpoint", type=click.Path(exists=True), default=None,
               help="Your trained weights for --model (target=custom; required there).")
@@ -619,20 +632,23 @@ def ai_detect(target, input_path, output, model, checkpoint, num_classes):
 
     \b
     Examples:
-        pygeovision ai detect generic --input aerial.tif --output detections.tif
-        pygeovision ai detect ships --input port.tif --output ships.tif
+        pygeovision ai detect generic --input aerial.tif --output detections.geojson
+        pygeovision ai detect ships --input port.tif --output ships.geojson
     """
     from pygeovision import PyGeoVision
     client = PyGeoVision()
 
     click.echo(f"Running native {target} detection on {input_path}...")
 
-    if target == "generic":
-        client.detection.generic(input_path, output_path=output)
-    elif target == "ships":
-        client.detection.ships(input_path, output_path=output)
-    elif target == "cars":
-        client.detection.cars(input_path, output_path=output)
+    if target in ("generic", "ships", "cars"):
+        if Path(output).suffix.lower() in (".tif", ".tiff"):
+            raise click.ClickException(
+                f"'{target}' writes the detected boxes as GeoJSON, not a raster; "
+                f"use a path ending in .geojson (got {output}).")
+        res = getattr(client.detection, target)(input_path, output_path=output)
+        if isinstance(res, dict) and res.get("error"):
+            raise click.ClickException(str(res["error"]))
+        click.echo(f"  {res.get('n_detections', 0)} object(s) found")
     elif target == "custom":
         if not model:
             click.echo("--model required for custom detection", err=True)
@@ -685,7 +701,10 @@ def ai_classify(mode, input_path, classes, output):
 @click.option("--num-classes", default=2, show_default=True, help="Network output classes.")
 @click.option("--min-magnitude", type=float, default=None,
               help="spectral_diff only: absolute magnitude floor, in the raster's units.")
-def ai_change(before, after, output, method, checkpoint, num_classes, min_magnitude):
+@click.option("--backbone", type=click.Choice(["resnet18", "resnet50"]), default=None,
+              help="bit / dsamnet only: the encoder the checkpoint was trained with (default resnet18; "
+                   "the registry's bit-r50 is resnet50).")
+def ai_change(before, after, output, method, checkpoint, num_classes, min_magnitude, backbone):
     """Bi-temporal change detection.
 
     The default is change vector analysis with an Otsu threshold; it needs no
@@ -704,6 +723,8 @@ def ai_change(before, after, output, method, checkpoint, num_classes, min_magnit
     click.echo(f"Running {method} change detection...")
     kw = {}
     if method == "spectral_diff":
+        if backbone is not None:
+            raise click.UsageError("--backbone only applies to the bit and dsamnet methods")
         if checkpoint:
             raise click.UsageError("--checkpoint only applies to the network methods")
         if min_magnitude is not None:
@@ -711,6 +732,10 @@ def ai_change(before, after, output, method, checkpoint, num_classes, min_magnit
     else:
         if min_magnitude is not None:
             raise click.UsageError("--min-magnitude only applies to --method spectral_diff")
+        if backbone is not None:
+            if method == "changeformer":
+                raise click.UsageError("--backbone applies to bit and dsamnet; changeformer has one fixed architecture")
+            kw["backbone"] = backbone
         kw.update(checkpoint=checkpoint, num_classes=num_classes)
     try:
         result = client.change.detect(before, after, output_path=output, method=method, **kw)
@@ -731,7 +756,8 @@ def ai_change(before, after, output, method, checkpoint, num_classes, min_magnit
 @click.option("--output", "-o", required=True, help="Output model checkpoint path.")
 @click.option("--num-classes", default=2, show_default=True)
 @click.option("--epochs", default=50, show_default=True)
-@click.option("--backbone", default="resnet50", show_default=True)
+@click.option("--backbone", default=None,
+              help="Native registry model name (default: unet-r50 for segmentation, faster-rcnn-r50 for detection).")
 def ai_train(task, data_dir, output, num_classes, epochs, backbone):
     """Configure a native training run (segmentation or detection).
 
@@ -746,12 +772,14 @@ def ai_train(task, data_dir, output, num_classes, epochs, backbone):
     """
     from pygeovision.ai.training.trainer import TrainingConfig
 
+    backbone = backbone or ("faster-rcnn-r50" if task == "detection" else "unet-r50")
     click.echo(f"Preparing native {task} training config...")
     click.echo(f"  Data: {data_dir} | Classes: {num_classes} | Epochs: {epochs} | Backbone: {backbone}")
 
     cfg = TrainingConfig(task=task, num_classes=num_classes, max_epochs=epochs)
     click.echo("✓ Config ready. This command does NOT train anything itself -- build "
                "your model with the chosen backbone, then train it yourself:")
+    click.echo("    from pygeovision.models import get_model")
     click.echo("    from pygeovision.ai.training.trainer import GeoTrainer")
     click.echo(f"    model = get_model({backbone!r}, num_classes={num_classes}, pretrained=True)")
     click.echo("    # To finetune from an existing checkpoint instead of pretrained weights:")
@@ -772,7 +800,12 @@ def ai_train(task, data_dir, output, num_classes, epochs, backbone):
 @click.option("--in-channels", type=int, default=None, help="Bands the model was trained on (default: the input's).")
 @click.option("--tile-size", default=512, show_default=True)
 @click.option("--overlap", default=64, show_default=True)
-def ai_infer(input_path, model, checkpoint, output, num_classes, in_channels, tile_size, overlap):
+@click.option("--normalise/--no-normalise", "normalise", default=True, show_default=True,
+              help="Stretch every band to its own 2-98 percentile range before the model sees it. "
+                   "Use --no-normalise if the model was trained on values that were already scaled "
+                   "(for example reflectance 0-1), otherwise the prediction is made on differently "
+                   "scaled data and can be wrong.")
+def ai_infer(input_path, model, checkpoint, output, num_classes, in_channels, tile_size, overlap, normalise):
     """Run tiled inference on a large GeoTIFF with your trained model.
 
     \b
@@ -785,7 +818,7 @@ def ai_infer(input_path, model, checkpoint, output, num_classes, in_channels, ti
     click.echo(f"Running tiled inference: {input_path} → {output}")
     m = _load_user_model(model, checkpoint, num_classes, in_channels, raster=input_path)
     engine = TiledInference(model=m, chip_size=tile_size, overlap=overlap, num_classes=num_classes)
-    result = engine.infer(input_path, output)
+    result = engine.infer(input_path, output, normalise=normalise)
     if not result.get("success"):
         raise click.ClickException(str(result.get("error")))
     click.echo(f"✓ Inference complete → {output}  ({result.get('n_chips', 0)} chips)")
@@ -797,7 +830,10 @@ def ai_infer(input_path, model, checkpoint, output, num_classes, in_channels, ti
 @click.option("--output", "-o", required=True, help="Output chip directory.")
 @click.option("--chip-size", default=256, show_default=True)
 @click.option("--overlap", default=0, show_default=True)
-def ai_chips(image, label, output, chip_size, overlap):
+@click.option("--prefix", default="chip", show_default=True,
+              help="File-name prefix. Use a different prefix per scene when several scenes go into one folder, "
+                   "otherwise chips of the later scene overwrite those of the earlier one.")
+def ai_chips(image, label, output, chip_size, overlap, prefix):
     """Export aligned imagery/label training chips (native windowed tiling).
 
     \b
@@ -815,6 +851,17 @@ def ai_chips(image, label, output, chip_size, overlap):
     stride = chip_size - overlap
     n_chips = 0
     with rasterio.open(image) as img_src, rasterio.open(label) as lbl_src:
+        # Chips are cut by pixel window, so image and label must be on the same grid;
+        # otherwise every chip pairs an image patch with the wrong piece of the label.
+        if (img_src.height, img_src.width) != (lbl_src.height, lbl_src.width) or (
+            img_src.crs != lbl_src.crs
+            or not img_src.transform.almost_equals(lbl_src.transform)
+        ):
+            raise click.ClickException(
+                f"image and label are not on the same grid: image is {img_src.width}x{img_src.height} "
+                f"in {img_src.crs}, label is {lbl_src.width}x{lbl_src.height} in {lbl_src.crs}. "
+                "Resample the label onto the image grid (same CRS, size and origin) before cutting chips."
+            )
         H, W = img_src.height, img_src.width
         for row in range(0, H - chip_size + 1, stride):
             for col in range(0, W - chip_size + 1, stride):
@@ -829,8 +876,8 @@ def ai_chips(image, label, output, chip_size, overlap):
                 lbl_profile.update(height=chip_size, width=chip_size, count=1,
                                    transform=lbl_src.window_transform(win))
 
-                img_path = out_dir / "images" / f"chip_{row}_{col}.tif"
-                lbl_path = out_dir / "labels" / f"chip_{row}_{col}.tif"
+                img_path = out_dir / "images" / f"{prefix}_{row}_{col}.tif"
+                lbl_path = out_dir / "labels" / f"{prefix}_{row}_{col}.tif"
                 from pygeovision.data._profile import writable_profile
                 img_profile = writable_profile(img_profile)
                 with rasterio.open(img_path, "w", **img_profile) as dst:
@@ -887,14 +934,38 @@ def ai_cloud_mask(input_path, output, brightness_threshold):
 # =========================================================================
 
 def _parse_param(raw: str) -> tuple[str, Any]:
-    """'key=value' -> (key, value); value is parsed as JSON when it is valid JSON."""
+    """'key=value' -> (key, value).
+
+    The value is parsed as JSON when it is valid JSON (``0.2``, ``true``, ``[5, 10, 15]``). A plain comma-separated list
+    of numbers (``5,10,15``) is read as a list of numbers, because that is how people write one on a command line;
+    anything else stays a string.
+    """
     if "=" not in raw:
         raise click.BadParameter(f"--param expects KEY=VALUE, got {raw!r}")
     key, _, text = raw.partition("=")
     try:
         return key.strip(), json.loads(text)
     except ValueError:
-        return key.strip(), text
+        pass
+    numbers = _number_list(text)
+    return key.strip(), numbers if numbers is not None else text
+
+
+def _number_list(text: str) -> list[float | int] | None:
+    """``"5,10,15"`` -> ``[5, 10, 15]``; ``None`` when the text is not a comma-separated list of numbers."""
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) < 2:
+        return None
+    values: list[float | int] = []
+    for part in parts:
+        try:
+            value = json.loads(part)
+        except ValueError:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        values.append(value)
+    return values
 
 
 @cli.command("channel")
@@ -916,7 +987,8 @@ def _parse_param(raw: str) -> tuple[str, Any]:
                    "rejected by the search layer itself, not validated here.")
 @click.option("--param", "params", multiple=True, metavar="KEY=VALUE",
               help="Any other pipeline argument, e.g. --param anomaly_threshold=0.2 "
-                   "--param dem_type=cop30 (repeatable; values are parsed as JSON when possible).")
+                   "--param dem_type=cop30 (repeatable). Values are read as JSON when possible, and 5,10,15 is a list "
+                   "of numbers.")
 @click.option("--no-report", is_flag=True,
               help="Skip the map, vector layers and reports (also: PYGEOVISION_REPORT=0).")
 @click.option("--report-formats", default="pdf,xlsx,docx", show_default=True,
@@ -942,20 +1014,23 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, dat
     Examples:
         pygeovision channel list
 
+    \b
         pygeovision channel water_bodies \\
             --bbox -0.15 51.47 -0.10 51.52 --date 2024-06
 
+    \b
         pygeovision channel wildfire_severity \\
             --bbox -122.6 39.7 -121.9 40.2 \\
             --date-before 2018-10 --date-after 2018-12
 
+    \b
         pygeovision channel building_footprints \\
             --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 \\
             --checkpoint runs/buildings/best.pth
 
+    \b
         pygeovision channel crop_health --bbox ... \\
-            --date-before 2024-05 --date-after 2024-08 --param anomaly_threshold=0.2
-    """
+            --date-before 2024-05 --date-after 2024-08 --param anomaly_threshold=0.2"""
     from pygeovision.ai.pipelines import list_pipelines, pipeline_catalogue, pipeline_kinds
 
     if pipeline_name == "list":
@@ -1100,7 +1175,7 @@ def ai_models() -> None:
                                  "change_detection", "super_resolution"]))
 @click.option("--pretrained-only", is_flag=True)
 def ai_models_list(task, pretrained_only):
-    """List all registered PyGeoVision AI models (14+ built-in)."""
+    """List the 14 models of the legacy AI-engine registry."""
     from pygeovision.ai.models.registry import registry
     results = registry.list_models(task=task, pretrained_only=pretrained_only)
     if not results:
@@ -1296,7 +1371,8 @@ def models_info(name):
     if spec.hf_id:  click.echo(f"  HF ID: {spec.hf_id}")
     if spec.timm_id:click.echo(f"  timm:  {spec.timm_id}")
     click.echo(f"  Desc:  {spec.description}")
-    click.echo(f"  Pretrained on: {spec.pretrained_on}")
+    if spec.pretrained_on:
+        click.echo(f"  Pretrained on: {spec.pretrained_on}")
     click.echo()
 
 @models_grp.command("download")
@@ -1350,18 +1426,26 @@ def infer_grp():
 @click.option("--blend", default="gaussian", show_default=True,
                type=click.Choice(["gaussian","linear","constant"]))
 @click.option("--device", default=None, help="cuda|cpu|mps")
-def infer_predict(image_path, model, checkpoint, output, classes, in_channels, chip_size, overlap, blend, device):
+@click.option("--normalise/--no-normalise", "normalise", default=True, show_default=True,
+              help="Stretch every band to its own 2-98 percentile range before the model sees it. "
+                   "Use --no-normalise if the model was trained on values that were already scaled "
+                   "(for example reflectance 0-1), otherwise the prediction is made on differently "
+                   "scaled data and can be wrong.")
+def infer_predict(image_path, model, checkpoint, output, classes, in_channels, chip_size, overlap, blend, device,
+                  normalise):
     """Run tiled inference on a GeoTIFF with your trained model."""
     import pathlib
     output = output or str(pathlib.Path(image_path).with_suffix("")) + f"_{model}_pred.tif"
     click.echo(f"\n  Inference: {image_path}")
     click.echo(f"  Model:     {model} | classes={classes} | chip={chip_size} | blend={blend}")
+    click.echo("  Input:     " + ("per-band 2-98 percentile stretch (--no-normalise to turn off)"
+                                 if normalise else "used as stored (no stretch)"))
     m = _load_user_model(model, checkpoint, classes, in_channels, raster=image_path)
     from pygeovision.inference.tiled import TiledInference
     try:
         inf = TiledInference(model=m, chip_size=chip_size, overlap=overlap,
                               blend_mode=blend, num_classes=classes, device=device)
-        result = inf.infer(image_path, output)
+        result = inf.infer(image_path, output, normalise=normalise)
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
         sys.exit(1)
@@ -1382,7 +1466,15 @@ def infer_predict(image_path, model, checkpoint, output, classes, in_channels, c
               help="Bands the model was trained on (default: the first input file's).")
 @click.option("--workers", "-w", default=2, show_default=True)
 @click.option("--pattern", default="*.tif", show_default=True)
-def infer_batch(input_dir, output_dir, model, checkpoint, classes, in_channels, workers, pattern):
+@click.option("--overwrite", is_flag=True,
+              help="Predict again even if the output file already exists (default: skip those files).")
+@click.option("--normalise/--no-normalise", "normalise", default=True, show_default=True,
+              help="Stretch every band to its own 2-98 percentile range before the model sees it. "
+                   "Use --no-normalise if the model was trained on values that were already scaled "
+                   "(for example reflectance 0-1), otherwise the prediction is made on differently "
+                   "scaled data and can be wrong.")
+def infer_batch(input_dir, output_dir, model, checkpoint, classes, in_channels, workers, pattern, overwrite,
+                normalise):
     """Run batch inference on a directory of GeoTIFFs with your trained model."""
     click.echo(f"\n  Batch inference: {input_dir} → {output_dir}")
     first = next(iter(sorted(Path(input_dir).glob(pattern))), None)
@@ -1391,15 +1483,21 @@ def infer_batch(input_dir, output_dir, model, checkpoint, classes, in_channels, 
     m = _load_user_model(model, checkpoint, classes, in_channels, raster=first)
     try:
         from pygeovision.inference.batch import BatchInferenceEngine
-        engine = BatchInferenceEngine(model=m, n_workers=workers, num_classes=classes)
-        result = engine.run_directory(input_dir, output_dir, pattern=pattern)
+        engine = BatchInferenceEngine(model=m, n_workers=workers, num_classes=classes, normalise=normalise)
+        result = engine.run_directory(input_dir, output_dir, pattern=pattern, skip_existing=not overwrite)
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
         sys.exit(1)
+    if result.get("success") is False:
+        raise click.ClickException(str(result.get("error")))
     n_ok, n_bad = result.get("n_success", 0), result.get("n_failed", 0)
-    click.echo(f"  {'✓' if not n_bad else '✗'} {n_ok}/{n_ok + n_bad} succeeded")
+    n_skipped = result.get("skipped", 0)
+    click.echo(f"  {'✓' if not n_bad else '✗'} {n_ok}/{n_ok + n_bad} succeeded"
+               + (f", {n_skipped} skipped (output already exists; --overwrite to redo)" if n_skipped else ""))
     click.echo(f"  Time: {result.get('total_time_s',0)}s | {result.get('throughput_fps',0)} fps\n")
-    if n_bad or not n_ok:
+    for bad in result.get("failed", []):
+        click.echo(f"  ✗ {bad.get('path')}: {bad.get('error')}", err=True)
+    if n_bad or not (n_ok or n_skipped):
         sys.exit(1)
 
 
@@ -1409,39 +1507,65 @@ def label_grp():
     """Auto-labeling from OSM, satellite data, and foundation models."""
 
 @label_grp.command("osm")
-@click.argument("bbox", nargs=4, type=float)
-@click.option("--output", "-o", default="./labels/osm.tif")
-@click.option("--categories", "-c", multiple=True,
-               default=["buildings","roads","water"], show_default=True)
-def label_osm(bbox, output, categories):
-    """Generate labels from OpenStreetMap."""
+@click.argument("bbox", nargs=4, type=float, metavar="LON_MIN LAT_MIN LON_MAX LAT_MAX")
+@click.option("--output", "-o", default="./labels/osm.tif", show_default=True, help="Label raster to write.")
+@click.option("--categories", "-c", multiple=True, default=["buildings", "roads", "water"], show_default=True,
+              help="Repeat for several: buildings roads water vegetation agricultural commercial "
+                   "residential solar_panels parking sports.")
+@click.option("--reference", "reference", type=click.Path(exists=True), default=None,
+              help="Imagery raster: write the labels on its exact grid and CRS (recommended for training).")
+@click.option("--resolution", default=10.0, show_default=True, type=float,
+              help="Pixel size in metres when there is no --reference.")
+@click.option("--all-touched", is_flag=True, help="Burn every pixel an area touches (keeps tiny buildings).")
+@click.option("--vector/--no-vector", default=True, show_default=True, help="Also write the features as GeoJSON.")
+def label_osm(bbox, output, categories, reference, resolution, all_touched, vector):
+    """Generate labels from OpenStreetMap (class values: buildings 1, roads 2, water 3, vegetation 4,
+    agricultural 5, commercial 6, residential 7, solar_panels 8, parking 9, sports 10)."""
     from pygeovision.labeling.osm import OSMLabeler
     click.echo(f"\n  OSM Labeling: bbox={tuple(bbox)}")
-    result = OSMLabeler().label(bbox, categories=list(categories), output_path=output)
+    try:
+        result = OSMLabeler().label(bbox, categories=list(categories), output_path=output,
+                                    reference_raster=reference, resolution_m=resolution,
+                                    save_vector=vector, all_touched=all_touched)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
     if result.get("success"):
         click.echo(f"  ✓ {result['n_features']} features → {output}")
+        for cat, n in sorted(result["categories"].items(), key=lambda kv: -kv[1]):
+            click.echo(f"      {cat:<14} {n:>7}   (raster value {result['class_values'][cat]})")
+        if result.get("vector_path"):
+            click.echo(f"    vectors → {result['vector_path']}")
     else:
         click.echo(f"  ✗ {result.get('error')}", err=True)
         sys.exit(1)
 
 @label_grp.command("quality")
 @click.argument("label_path")
+@click.option("--num-classes", type=int, default=None,
+              help="Classes are 0..N-1. Default: inferred from the raster.")
+@click.option("--check", "checks", multiple=True,
+              type=click.Choice(["class_balance", "slivers", "coverage", "connectivity", "boundaries"]),
+              help="Run only these checks (repeatable). Default: all except boundaries.")
 @click.option("--html", is_flag=True, help="Save HTML report")
-def label_quality(label_path, html):
-    """Assess label quality."""
+def label_quality(label_path, num_classes, checks, html):
+    """Assess label quality (raster-only heuristics; not a measure of accuracy)."""
+    from pathlib import Path as _P
+
     from pygeovision.labeling.quality import LabelQualityAssessor
-    qa = LabelQualityAssessor()
-    report = qa.assess(label_path)
+    qa = LabelQualityAssessor(num_classes=num_classes)
+    report = qa.assess(label_path, checks=list(checks) or None)
+    if report.get("error"):
+        raise click.ClickException(f"cannot read {label_path}: {report['error']}")
     click.echo(f"\n  Quality Grade: {report.get('quality_grade')} ({report.get('quality_score',0):.0%})")
     for check, data in report.get("checks", {}).items():
-        icon = "✓" if data.get("status")=="ok" else "⚠"
+        icon = "✓" if data.get("status") == "ok" else "⚠"
         click.echo(f"  {icon} {check}: score={data.get('score','?')}")
     for rec in report.get("recommendations", []):
         click.echo(f"  ⟶ {rec}")
     if html:
-        html_path = label_path.replace(".tif", "_quality.html")
-        with open(html_path, "w") as f:
-            f.write(qa.report_html(report))
+        lp = _P(label_path)
+        html_path = lp.with_name(lp.stem + "_quality.html")
+        html_path.write_text(qa.report_html(report))
         click.echo(f"  ✓ HTML report: {html_path}")
     click.echo()
 
@@ -1449,7 +1573,7 @@ def label_quality(label_path, html):
 # ── explain ───────────────────────────────────────────────────────────────────
 @cli.group("explain")
 def explain_grp():
-    """Explainability — GradCAM, SHAP, uncertainty maps."""
+    """Explainability — GradCAM saliency maps (SHAP, uncertainty and attention maps are Python APIs)."""
 
 @explain_grp.command("gradcam")
 @click.argument("image_path")
@@ -1471,8 +1595,10 @@ def explain_gradcam(image_path, model, output, class_idx, checkpoint, classes, i
                 in_channels = src.count
         m = _registry_model(model, classes, in_channels, checkpoint)
         cam = GradCAM(m)
-        cam.batch_explain(image_path, output, class_idx=class_idx)
-        click.echo(f"  ✓ GradCAM → {output}")
+        res = cam.batch_explain(image_path, output, class_idx=class_idx)
+        if not res.get("success"):
+            raise click.ClickException(res.get("error", "GradCAM failed"))
+        click.echo(f"  ✓ GradCAM ({res.get('n_chips', '?')} chips) → {output}")
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
         sys.exit(1)
@@ -1501,8 +1627,12 @@ def monitor_drift(reference_dir, current_dir, output):
     import json
     with open(output, "w") as f:
         json.dump(report, f, indent=2, default=str)
-    level = report.get("data_drift", {}).get("drift_level", "?")
-    click.echo(f"  Drift level: {level} | Report: {output}")
+    if report.get("incomplete"):
+        click.echo(f"  ✗ drift could not be assessed: {report['data_drift'].get('error')} | Report: {output}", err=True)
+        sys.exit(1)
+    dd = report["data_drift"]
+    click.echo(f"  Drift level: {dd['drift_level']} (PSI {dd['overall_psi']}, worst band {dd['worst_band']}"
+               f" {dd['max_psi']}) | Report: {output}")
 
 
 # ── pipeline ──────────────────────────────────────────────────────────────────
@@ -1594,14 +1724,17 @@ def _registry_model(name, classes, in_channels, checkpoint=None):
 @click.option("--checkpoint", type=click.Path(exists=True), default=None,
               help="Your trained weights (strict load). Without it the registry's pretrained "
                    "initialisation is exported -- fine for latency tests, not a trained model.")
-def edge_export_onnx(model_name, output, classes, in_channels, input_size, checkpoint):
-    """Export a model to ONNX format."""
+@click.option("--dynamic-size", is_flag=True, default=False,
+              help="Let the ONNX model accept any height and width (default: exactly --input-size).")
+def edge_export_onnx(model_name, output, classes, in_channels, input_size, checkpoint, dynamic_size):
+    """Export a registry model to ONNX (fixed input size unless --dynamic-size)."""
     click.echo(f"\n  Exporting {model_name} → ONNX ({output})")
     try:
         from pygeovision.edge.onnx_rt import ONNXRuntimeInference
         m = _registry_model(model_name, classes, in_channels, checkpoint)
         ONNXRuntimeInference.from_pytorch(
-            m, output, input_shape=(1, in_channels, input_size, input_size), simplify=False
+            m, output, input_shape=(1, in_channels, input_size, input_size), simplify=False,
+            dynamic_spatial=dynamic_size,
         )
         click.echo(f"  ✓ ONNX exported: {output}\n")
     except Exception as exc:
@@ -1619,7 +1752,8 @@ def edge_benchmark(onnx_path, device, runs):
         eng = ONNXRuntimeInference(onnx_path, device=device)
         result = eng.benchmark(n_runs=runs)
         click.echo(f"\n  ONNX Benchmark ({onnx_path}):")
-        click.echo(f"  Mean: {result['mean_ms']} ms | P95: {result['p95_ms']} ms | {result['fps']} FPS\n")
+        click.echo(f"  Mean: {result['mean_ms']} ms | Median: {result['median_ms']} ms | "
+                   f"P95: {result['p95_ms']} ms | {result['fps']} FPS | providers: {', '.join(result['providers'])}\n")
     except Exception as exc:
         click.echo(f"  ✗ {exc}", err=True)
         sys.exit(1)
@@ -1666,32 +1800,67 @@ def cloud_deploy_gcp(model_path, endpoint_name, project, region):
 def vlm_grp():
     """Vision-Language Models — caption, query, search imagery."""
 
+def _vlm_call(fn):
+    """Run a VLM action, turning missing packages, missing files and model-loading failures into clean CLI errors."""
+    try:
+        return fn()
+    except (ImportError, FileNotFoundError, OSError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        if type(exc).__name__ == "ModelLoadError":
+            raise click.ClickException(str(exc)) from exc
+        raise
+
+
+def _parse_bands(ctx, param, value):
+    """``--bands 3,2,1`` -> (3, 2, 1)."""
+    if value is None:
+        return None
+    try:
+        bands = tuple(int(b) for b in value.split(","))
+    except ValueError:
+        raise click.BadParameter("give band numbers separated by commas, e.g. 3,2,1") from None
+    if not 1 <= len(bands) <= 3 or min(bands) < 1:
+        raise click.BadParameter("give 1 to 3 band numbers, each 1 or more")
+    return bands
+
+
+_bands_option = click.option("--bands", callback=_parse_bands, default=None,
+                             help="File bands shown to the model as R,G,B, e.g. 3,2,1 for a B2,B3,B4,B8 Sentinel-2 file "
+                                  "(default: the first three).")
+
+
 @vlm_grp.command("caption")
-@click.argument("image_path")
-def vlm_caption(image_path):
-    """Generate a natural language caption for a satellite image."""
+@click.argument("image_path", type=click.Path(exists=True, dir_okay=False))
+@_bands_option
+def vlm_caption(image_path, bands):
+    """Generate a natural language caption for a satellite image (Moondream2, downloaded on first use)."""
     from pygeovision.advanced.vlm.moondream_geo import MoondreamGeo
     click.echo(f"\n  Generating caption for: {image_path}")
-    caption = MoondreamGeo().caption(image_path)
+    caption = _vlm_call(lambda: MoondreamGeo(bands=bands).caption(image_path))
     click.echo(f"  Caption: {caption}\n")
 
 @vlm_grp.command("query")
-@click.argument("image_path")
+@click.argument("image_path", type=click.Path(exists=True, dir_okay=False))
 @click.argument("question")
-def vlm_query(image_path, question):
-    """Answer a question about a satellite image."""
+@_bands_option
+def vlm_query(image_path, question, bands):
+    """Answer a question about a satellite image (Moondream2, downloaded on first use)."""
     from pygeovision.advanced.vlm.moondream_geo import MoondreamGeo
-    answer = MoondreamGeo().vqa(image_path, question)
+    answer = _vlm_call(lambda: MoondreamGeo(bands=bands).vqa(image_path, question))
     click.echo(f"  A: {answer}\n")
 
 @vlm_grp.command("search")
 @click.argument("query")
-@click.argument("image_dir")
+@click.argument("image_dir", type=click.Path(exists=True, file_okay=False))
 @click.option("--top-k", default=5, show_default=True, type=int)
-def vlm_search(query, image_dir, top_k):
-    """Search a directory of images by text query."""
+@click.option("--model", default="openclip-b32", show_default=True,
+              help="CLIP model: openclip-b32, openclip-l14, clip-vit-b32, remoteclip-b32, remoteclip-l14, georsclip.")
+@_bands_option
+def vlm_search(query, image_dir, top_k, model, bands):
+    """Rank the images in IMAGE_DIR against a text query (every image is embedded on every call)."""
     from pygeovision.advanced.vlm.clip_geo import CLIPGeo
-    results = CLIPGeo().search(query, image_dir, top_k=top_k)
+    results = _vlm_call(lambda: CLIPGeo(model=model, bands=bands).search(query, image_dir, top_k=top_k))
     click.echo(f"\n  Top {len(results)} results for '{query}':")
     for r in results:
         click.echo(f"  {r['score']:.3f}  {r['path']}")
@@ -1701,44 +1870,84 @@ def vlm_search(query, image_dir, top_k):
 # ── timeseries ────────────────────────────────────────────────────────────────
 @cli.group("timeseries")
 def timeseries_grp():
-    """Time series analysis — NDVI trends, anomaly detection."""
+    """Time series of a spectral index over a stack of images: per-date statistics, trend, anomalies."""
+
+
+def _ts_series(images, index, sensor, dates):
+    """Run the index series, turning input mistakes into one-line CLI errors."""
+    from pygeovision.advanced.timeseries import GeoTimeSeries
+    date_list = [d.strip() for d in dates.split(",")] if dates else None
+    try:
+        ts = GeoTimeSeries(sensor=sensor)
+        series = ts.compute_index_series(list(images), index=index, date_strings=date_list)
+    except (ValueError, ImportError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    for path, why in series.get("errors", {}).items():
+        click.echo(f"  warning: {path}: {why}", err=True)
+    return ts, series
+
 
 @timeseries_grp.command("analyze")
-@click.argument("images", nargs=-1, required=True)
+@click.argument("images", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False))
 @click.option("--index", "-i", default="ndvi", show_default=True,
-               type=click.Choice(["ndvi","ndwi","evi","savi","ndbi"]))
-@click.option("--sensor", "-s", default="sentinel2", show_default=True)
-@click.option("--output", "-o", default=None)
-def ts_analyze(images, index, sensor, output):
-    """Compute spectral index time series."""
-    from pygeovision.advanced.timeseries import GeoTimeSeries
-    ts = GeoTimeSeries(sensor=sensor)
-    series = ts.compute_index_series(list(images), index=index)
+               type=click.Choice(["ndvi", "ndwi", "evi", "savi", "ndbi"]), help="Index to compute.")
+@click.option("--sensor", "-s", default="sentinel2", show_default=True,
+               type=click.Choice(["sentinel2", "landsat8", "planet", "naip"]),
+               help="Band-order preset (positions of red/nir/... in your files).")
+@click.option("--dates", default=None, help="Comma-separated label per image, e.g. 2024-01,2024-02 (default 1..N).")
+@click.option("--period", type=int, default=None, help="Steps per seasonal cycle (12 for monthly): trend with the cycle removed.")
+@click.option("--output", "-o", default=None, help="Write the full series (mean/std/p10/p90/valid_fraction) as JSON.")
+def ts_analyze(images, index, sensor, dates, period, output):
+    """Mean index per image, in the order given, plus a linear trend.
+
+    Images must be listed in time order. An image that cannot be read prints N/A and a warning.
+    """
+    ts, series = _ts_series(images, index, sensor, dates)
     click.echo(f"\n  {index.upper()} series: {len(images)} images")
-    vals = series.get("mean", [])
-    for i, v in enumerate(vals):
-        click.echo(f"  [{i+1:>3}] {v:.4f}" if v is not None else f"  [{i+1:>3}] N/A")
-    trend = ts.compute_trend(series)
-    click.echo(f"  Trend: {trend.get('direction','?')} (slope={trend.get('slope',0):.6f})\n")
+    for lab, v, vf in zip(series["dates"], series["mean"], series["valid_fraction"]):
+        if v is None:
+            click.echo(f"  {lab!s:>10}  N/A")
+        else:
+            click.echo(f"  {lab!s:>10}  {v:.4f}   (valid pixels {vf:.0%})")
+    try:
+        trend = ts.compute_trend(series, period=period)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if trend["direction"] == "insufficient_data":
+        click.echo("  Trend: not enough dates (need 3)\n")
+    else:
+        sig = {True: "significant", False: "not significant", None: ""}[trend.get("significant")]
+        click.echo(f"  Trend: {trend['direction']} (slope={trend['slope']:.6f} per step, "
+                   f"R2={trend['r_squared']:.2f}, p={trend.get('p_value')}; {sig})\n")
     if output:
         import json
         with open(output, "w") as f:
             json.dump(series, f, indent=2)
         click.echo(f"  ✓ Saved: {output}\n")
 
+
 @timeseries_grp.command("anomaly")
-@click.argument("images", nargs=-1, required=True)
-@click.option("--threshold", "-t", default=2.5, show_default=True, type=float)
-def ts_anomaly(images, threshold):
-    """Detect anomalous dates in a time series."""
-    from pygeovision.advanced.timeseries import GeoTimeSeries
-    ts = GeoTimeSeries()
-    series = ts.compute_index_series(list(images), "ndvi")
-    anomalies = ts.detect_anomalies(series, threshold=threshold)
+@click.argument("images", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option("--threshold", "-t", default=None, type=float, help="Score above which a date is flagged (default 2.5 zscore, 3.5 mad).")
+@click.option("--method", "-m", default="zscore", show_default=True, type=click.Choice(["zscore", "mad"]),
+               help="mad = median-based, robust to the anomaly itself.")
+@click.option("--index", "-i", default="ndvi", show_default=True,
+               type=click.Choice(["ndvi", "ndwi", "evi", "savi", "ndbi"]))
+@click.option("--sensor", "-s", default="sentinel2", show_default=True,
+               type=click.Choice(["sentinel2", "landsat8", "planet", "naip"]))
+@click.option("--dates", default=None, help="Comma-separated label per image.")
+@click.option("--period", type=int, default=None, help="Steps per seasonal cycle (12 for monthly): compare like with like.")
+def ts_anomaly(images, threshold, method, index, sensor, dates, period):
+    """Flag dates whose mean index is unusual (needs at least 5 images with data)."""
+    ts, series = _ts_series(images, index, sensor, dates)
+    try:
+        anomalies = ts.detect_anomalies(series, method=method, threshold=threshold, period=period)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     if anomalies:
-        click.echo(f"\n  Found {len(anomalies)} anomalies (z>{threshold}):")
+        click.echo(f"\n  Found {len(anomalies)} anomalies ({method}):")
         for a in anomalies:
-            click.echo(f"  {a['date']}: value={a['value']:.4f} z={a['zscore']:.2f} ({a['type']})")
+            click.echo(f"  {a['date']}: value={a['value']:.4f} expected={a['expected']:.4f} z={a['zscore']:.2f} ({a['type']})")
     else:
         click.echo("  No anomalies detected.")
     click.echo()
@@ -1758,7 +1967,7 @@ if __name__ == "__main__":
 
 @cli.group()
 def datasets() -> None:
-    """Browse, search, and download 500+ remote sensing datasets (EarthNets)."""
+    """Browse and search a catalogue of about 460 remote sensing datasets (metadata only; nothing is downloaded)."""
 
 
 @datasets.command("list")
@@ -1770,7 +1979,7 @@ def datasets() -> None:
 @click.option("--max-res-m", default=None, type=float, help="Max spatial resolution in metres.")
 @click.option("--limit", default=25, show_default=True)
 def datasets_list(domain, modality, task, min_year, max_volume_gb, max_res_m, limit):
-    """List datasets from the 500+ EarthNets catalog."""
+    """List datasets from the catalogue (about 460), optionally filtered."""
     from pygeovision.datasets.registry import dataset_registry
     items = dataset_registry.filter(
         domain=domain, modality=modality, task=task,
@@ -1825,17 +2034,21 @@ def datasets_download(name, output):
 @datasets.command("top")
 @click.argument("task", default="segmentation")
 @click.option("--n", default=5, show_default=True, help="Number of top datasets to show.")
-def datasets_top(task, n):
+@click.option("--modality", default=None, help="Only datasets of this modality (rgb, multispectral, sar, ...).")
+def datasets_top(task, n, modality):
     """Show the top-N datasets for a given ML task (EarthNets ranking).
+
+    The ranking is a metadata heuristic (newer, larger, more classes, finer pixels), not a
+    quality measure; it mixes modalities unless you pass --modality.
 
     \b
     Tasks: segmentation, detection, classification, change_detection,
            multi_label, regression, prediction, self_supervised, vqa
     """
     from pygeovision.datasets.registry import dataset_registry
-    top = dataset_registry.top_for_task(task, n=n)
+    top = dataset_registry.top_for_task(task, n=n, modality=modality)
     if not top:
-        click.echo(f"No datasets found for task '{task}'.")
+        click.echo(f"No datasets found for task '{task}'" + (f" with modality '{modality}'." if modality else "."))
         return
     click.echo(f"\nTop-{n} datasets for '{task}' (EarthNets ranking):\n")
     dataset_registry.print_table(top)
@@ -1887,7 +2100,7 @@ def datasets_stats():
 
 @cli.group()
 def zoo() -> None:
-    """Browse the AI Model Zoo (98+ architectures across all geospatial tasks)."""
+    """Browse the AI Model Zoo, a metadata catalogue of about 96 architectures (it describes models; it does not build them)."""
 
 
 @zoo.command("list")
@@ -1986,8 +2199,9 @@ def benchmark() -> None:
 @benchmark.command("datasets")
 @click.argument("task")
 @click.option("--n", default=5, show_default=True, help="Number of top datasets to show.")
-def benchmark_datasets(task, n):
-    """Select the best benchmark datasets for a given task (EarthNets top-5).
+@click.option("--modality", default=None, help="Only datasets of this modality (rgb, multispectral, sar, ...).")
+def benchmark_datasets(task, n, modality):
+    """List candidate benchmark datasets for a task, ranked by the EarthNets metadata heuristic.
 
     \b
     Example:
@@ -1996,12 +2210,12 @@ def benchmark_datasets(task, n):
         pygeovision benchmark datasets change_detection
     """
     from pygeovision.datasets.registry import dataset_registry
-    top = dataset_registry.top_for_task(task, n=n)
+    top = dataset_registry.top_for_task(task, n=n, modality=modality)
     if not top:
-        click.echo(f"No datasets found for task '{task}'.")
+        click.echo(f"No datasets found for task '{task}'" + (f" with modality '{modality}'." if modality else "."))
         return
     click.echo(f"\n{'═'*70}")
-    click.echo(f"  Recommended Benchmark Datasets for '{task}' (EarthNets Top-{n})")
+    click.echo(f"  Candidate Benchmark Datasets for '{task}' (EarthNets Top-{n})")
     click.echo(f"{'═'*70}")
     dataset_registry.print_table(top)
 
@@ -2014,7 +2228,12 @@ def benchmark_models(task, n):
     from pygeovision.ai.models.zoo import model_zoo
     top = model_zoo.top_for_task(task, n=n)
     if not top:
-        click.echo(f"No models found for task '{task}'.")
+        n_all = len(model_zoo.filter(task=task))
+        if n_all:
+            click.echo(f"No models with pretrained weights for task '{task}' "
+                       f"({n_all} registered without them; see 'pygeovision zoo list --task {task}').")
+        else:
+            click.echo(f"No models found for task '{task}'.")
         return
     click.echo(f"\nRecommended models for '{task}' benchmarks:")
     model_zoo.print_table(top)
@@ -2140,8 +2359,16 @@ def preprocess_clip(input_path, bbox, output, validate):
     """
     from pygeovision.preprocess import Preprocessor
     pre = Preprocessor()
-    coords = tuple(float(x) for x in bbox.split(","))
-    out = pre.clip_to_bbox(input_path, coords, output_path=output)
+    try:
+        coords = tuple(float(x) for x in bbox.split(","))
+    except ValueError:
+        raise click.BadParameter("give four numbers: minlon,minlat,maxlon,maxlat", param_hint="--bbox") from None
+    if len(coords) != 4:
+        raise click.BadParameter("give four numbers: minlon,minlat,maxlon,maxlat", param_hint="--bbox")
+    try:
+        out = pre.clip_to_bbox(input_path, coords, output_path=output)
+    except (ValueError, FileNotFoundError) as exc:
+        raise click.ClickException(str(exc)) from exc
     click.echo(f"  ✓ Clipped → {out}")
     if validate:
         click.echo(pre.validate(out).summary())
@@ -2243,7 +2470,7 @@ def preprocess_pipeline(input_path, output, bands, bbox, scl, normalise, resampl
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# INDICES command group — 22 spectral indices
+# INDICES command group — 21 spectral indices
 # ═══════════════════════════════════════════════════════════════════════
 
 @cli.group("indices")
@@ -2261,8 +2488,10 @@ def indices_grp():
 @click.option("--blue", default=1, show_default=True, type=int)
 @click.option("--swir1", default=5, show_default=True, type=int)
 @click.option("--swir2", default=6, show_default=True, type=int)
+@click.option("--red-edge", "red_edge", default=None, type=int,
+              help="1-based red-edge band index (required for ndre; the default six-band stack has none).")
 @click.option("--validate", is_flag=True, default=False)
-def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1, swir2, validate):
+def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1, swir2, red_edge, validate):
     """Compute a spectral index.
 
     INDEX_NAME: ndvi, evi, savi, msavi, ndwi, mndwi, ndbi, bsi, nbr, bai, ndsi, rvi, arvi, lswi, ndre, wdrvi, vari, exg
@@ -2290,7 +2519,7 @@ def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1
         "rvi":  lambda: ix.rvi( input_path, red, nir, output),
         "arvi": lambda: ix.arvi(input_path, blue, red, nir, output_path=output),
         "lswi": lambda: ix.lswi(input_path, nir, swir1, output),
-        "ndre": lambda: ix.ndre(input_path, swir1, nir, output),
+        "ndre": lambda: ix.ndre(input_path, red_edge, nir, output),
         "wdrvi":lambda: ix.wdrvi(input_path, red, nir, output),
         "vari": lambda: ix.vari(input_path, blue, green, red, output),
         "exg":  lambda: ix.exg( input_path, blue, green, red, output),
@@ -2299,6 +2528,10 @@ def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1
     if idx not in fn_map:
         click.echo(f"Error: unknown index '{index_name}'. Available: {sorted(fn_map)}", err=True)
         return
+    if idx == "ndre" and red_edge is None:
+        click.echo("Error: ndre needs a red-edge band. Pass --red-edge N (the 1-based position of Sentinel-2 B05 in "
+                   "your file); the default six-band stack B02,B03,B04,B08,B11,B12 does not contain one.", err=True)
+        raise SystemExit(2)
 
     result = fn_map[idx]()
     if isinstance(result, str):
@@ -2321,7 +2554,7 @@ def indices_compute(input_path, index_name, output, red, nir, green, blue, swir1
 @click.argument("input_path")
 @click.option("--output-dir", required=True, help="Directory for all index GeoTIFFs.")
 @click.option("--indices", default=None,
-              help="Comma-separated list. Default: all 16 standard indices.")
+              help="Comma-separated list. Default: every index the default band layout supports (NDRE is skipped unless a red-edge band is configured).")
 def indices_all(input_path, output_dir, indices):
     """Compute all (or selected) spectral indices in one command.
 
@@ -2456,7 +2689,7 @@ def post_smooth(input_path, output, tolerance):
 @click.option("--output", required=True)
 @click.option("--min-area", default=10.0, type=float, show_default=True)
 def post_regularise(input_path, output, min_area):
-    """Regularise building footprints to minimum rotated rectangles.
+    """Regularise building footprints: snap near-axis-aligned edges to the building's dominant orientation.
 
     \b
     Example:
@@ -2704,9 +2937,16 @@ def obia_classify(input_path, labels_path, output, samples, rules, class_column,
         import yaml
         with open(rules) as fh:
             spec = yaml.safe_load(fh)
-        rb = RuleBasedClassifier([(r["class"], r["when"]) for r in spec["rules"]],
-                                 default=spec.get("default", "unclassified"))
-        res = rb.classify(F)
+        try:
+            rb = RuleBasedClassifier([(r["class"], r["when"]) for r in spec["rules"]],
+                                     default=spec.get("default", "unclassified"))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise click.ClickException(
+                f"{rules}: expected 'rules: [{{class: water, when: \"mean_ndwi > 0.3\"}}, ...]' ({exc!r})")
+        try:
+            res = rb.classify(F)
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
     else:
         gdf = gpd.read_file(samples)
         if crs is not None and gdf.crs is not None:
@@ -2714,7 +2954,10 @@ def obia_classify(input_path, labels_path, output, samples, rules, class_column,
         s = samples_from_geometries(lab, gdf, class_column, tr)
         if s.empty:
             raise click.ClickException("no image object overlaps the sample geometries")
-        res = ObjectClassifier(method).fit(F, s).predict(F)
+        try:
+            res = ObjectClassifier(method).fit(F, s).predict(F)
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
         click.echo(f"  trained on {len(s)} sample objects ({s.nunique()} classes)")
         click.echo("  note: judge accuracy with reference data that was NOT used for training")
     res.to_vector(lab, tr, crs).to_file(output)

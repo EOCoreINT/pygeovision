@@ -750,7 +750,7 @@ pygeovision benchmark models segmentation --n 3
 pygeovision models download segformer-b0           # fetches nvidia/segformer-b0-... from Hugging Face
 ```
 
-### Dataset catalogue (`pygeovision datasets`, 503 entries; metadata only)
+### Dataset catalogue (`pygeovision datasets`, about 460 entries; metadata only)
 
 Dataset names may contain spaces — quote them.
 

@@ -209,3 +209,185 @@ class TestAlertManager:
         am.check_drift_report(report)
         severities = [r["severity"] for r in received]
         assert "critical" in severities or "warning" in severities
+
+
+# --------------------------------------------------------------------------------------
+# Regression tests added with the monitoring documentation pass
+# --------------------------------------------------------------------------------------
+import numpy as np
+import pytest
+
+rasterio = pytest.importorskip("rasterio")
+
+
+def _tif(path, arr, nodata=None):
+    from rasterio.transform import from_origin
+    arr = np.asarray(arr, dtype="float32")
+    with rasterio.open(path, "w", driver="GTiff", height=arr.shape[1], width=arr.shape[2], count=arr.shape[0],
+                       dtype="float32", crs="EPSG:32633", transform=from_origin(0, 100, 1, 1), nodata=nodata) as dst:
+        dst.write(arr)
+
+
+def _scene(seed, scale=1.0, offset=0.0, bands=3, size=64):
+    rng = np.random.default_rng(seed)
+    return rng.uniform(20, 120, (bands, size, size)) * scale + offset
+
+
+class TestDataDriftDetectsShifts:
+    def test_uniform_brightness_shift_is_seen(self, tmp_path):
+        """Histograms used to be built on each image set's own range, so a shift of every pixel by a
+        constant gave PSI ~ 0 ('no drift')."""
+        from pygeovision.monitoring.drift import DistributionDrift
+        ref = [tmp_path / f"r{i}.tif" for i in range(3)]
+        cur = [tmp_path / f"c{i}.tif" for i in range(3)]
+        for i, p in enumerate(ref):
+            _tif(p, _scene(i))
+        for i, p in enumerate(cur):
+            _tif(p, _scene(10 + i, offset=60))
+        d = DistributionDrift()
+        d.fit_reference([str(p) for p in ref])
+        rep = d.detect([str(p) for p in cur])
+        assert rep["drift_level"] == "major" and rep["overall_psi"] > 0.5
+
+    def test_same_distribution_is_stable(self, tmp_path):
+        from pygeovision.monitoring.drift import DistributionDrift
+        ref = [str(tmp_path / f"r{i}.tif") for i in range(3)]
+        cur = [str(tmp_path / f"c{i}.tif") for i in range(2)]
+        for i, p in enumerate(ref):
+            _tif(p, _scene(i))
+        for i, p in enumerate(cur):
+            _tif(p, _scene(20 + i))
+        d = DistributionDrift()
+        d.fit_reference(ref)
+        rep = d.detect(cur)
+        assert rep["drift_level"] == "none"
+        assert rep["n_reference"] == 3 and rep["n_current"] == 2
+        assert set(rep["per_band"]) == {"band_1", "band_2", "band_3"}
+        assert rep["worst_band"] in rep["per_band"] and rep["max_psi"] >= rep["overall_psi"]
+
+    def test_reference_keeps_bin_edges(self, tmp_path):
+        from pygeovision.monitoring.drift import DistributionDrift
+        p = str(tmp_path / "r.tif")
+        _tif(p, _scene(0))
+        d = DistributionDrift(n_bins=8)
+        stats = d.fit_reference([p])
+        assert len(stats["band_1"]["bin_edges"]) == 9 and len(stats["band_1"]["histogram"]) == 8
+
+    def test_nodata_pixels_are_ignored(self, tmp_path):
+        from pygeovision.monitoring.drift import DistributionDrift
+        arr = _scene(0)
+        arr[:, :, :32] = 0
+        tagged, untagged = str(tmp_path / "t.tif"), str(tmp_path / "u.tif")
+        _tif(tagged, arr, nodata=0)
+        _tif(untagged, arr)
+        d = DistributionDrift()
+        s = d.fit_reference([tagged])
+        assert s["band_1"]["mean"] > 40                      # zeros left out
+        s = d.fit_reference([untagged])
+        assert s["band_1"]["mean"] < 40                      # zeros counted
+
+    def test_unreadable_files_are_skipped_with_count(self, tmp_path):
+        from pygeovision.monitoring.drift import DistributionDrift
+        good, bad = str(tmp_path / "g.tif"), str(tmp_path / "bad.tif")
+        _tif(good, _scene(0))
+        (tmp_path / "bad.tif").write_text("not a tiff")
+        d = DistributionDrift()
+        d.fit_reference([good, bad])
+        assert d.n_reference_images == 1
+        rep = d.detect([good, bad])
+        assert rep["n_current"] == 1
+
+    def test_nothing_comparable_is_an_error_not_no_drift(self, tmp_path):
+        from pygeovision.monitoring.drift import DistributionDrift, DriftDetector
+        good = str(tmp_path / "g.tif")
+        _tif(good, _scene(0))
+        d = DistributionDrift()
+        d.fit_reference([good])
+        assert "error" in d.detect([str(tmp_path / "missing.tif")])
+        empty = DistributionDrift()
+        empty.fit_reference([])
+        assert "error" in empty.detect([good])
+        det = DriftDetector(storage_dir=str(tmp_path / "m"))
+        det.fit([])
+        rep = det.check([good])
+        assert rep["incomplete"] is True and rep["drift_detected"] is False and rep["errors"]
+
+    def test_psi_counts_values_outside_reference_range(self):
+        from pygeovision.monitoring.drift import DistributionDrift
+        a = np.random.default_rng(0).normal(0, 1, 2000)
+        assert DistributionDrift().compute_psi(a, a + 6) > 1.0
+
+
+class TestPerformanceWindow:
+    def test_recent_n_reacts_to_a_sudden_drop(self, tmp_path):
+        from pygeovision.monitoring.drift import DriftDetector
+        good = str(tmp_path / "g.tif")
+        _tif(good, _scene(0))
+        d = DriftDetector(storage_dir=str(tmp_path / "m"))
+        d.fit([good], reference_metrics={"mean_iou": 0.80})
+        for v in (0.80, 0.80, 0.80, 0.80, 0.60):
+            rep_window = d.check([good], {"mean_iou": v})
+        assert rep_window["performance_drift"]["drift_detected"] is False     # averaged over all 5
+        rep_last = d.check([good], recent_n=1)
+        assert rep_last["performance_drift"]["drift_detected"] is True
+
+
+class TestAlertChannels:
+    def test_channel_without_handler_is_reported(self, caplog):
+        import logging
+
+        from pygeovision.monitoring.alerts import AlertManager
+        am = AlertManager(channels=["log", "email"])
+        with caplog.at_level(logging.WARNING):
+            am.trigger("warning", "x")
+        assert "email" in caplog.text and "no handler" in caplog.text
+
+
+class TestAIMonitoringHardening:
+    def test_fit_reference_accepts_lists(self):
+        from pygeovision.ai.monitoring import DriftDetector
+        d = DriftDetector()
+        d.fit_reference([[0.0, 1.0], [1.0, 2.0], [2.0, 3.0]])
+        assert d.check([[0.5, 1.5], [1.5, 2.5]]).drift_score >= 0
+
+    def test_column_mismatch_and_bad_method(self):
+        pytest.importorskip("scipy")
+        from pygeovision.ai.monitoring import DriftDetector
+        d = DriftDetector()
+        d.fit_reference(np.random.randn(50, 3))
+        with pytest.raises(ValueError, match="columns"):
+            d.check(np.random.randn(10, 2))
+        e = DriftDetector(method="nope")
+        e.fit_reference(np.random.randn(50, 3))
+        with pytest.raises(ValueError, match="unknown method"):
+            e.check(np.random.randn(10, 3))
+
+    def test_corrupt_history_is_kept_aside(self, tmp_path):
+        from pygeovision.ai.monitoring import PerformanceTracker
+        p = tmp_path / "h.json"
+        p.write_text("{broken")
+        t = PerformanceTracker(storage_path=p)
+        t.log({"miou": 0.5})
+        assert (tmp_path / "h.corrupt.json").read_text() == "{broken"
+        assert len(t.get_trend("miou")) == 1
+
+
+class TestMonitorCLI:
+    def test_drift_command_reports_incomplete(self, tmp_path):
+        from click.testing import CliRunner
+
+        from pygeovision.cli.main import cli
+        a, b = tmp_path / "a", tmp_path / "b"
+        a.mkdir(); b.mkdir()
+        res = CliRunner().invoke(cli, ["monitor", "drift", str(a), str(b), "-o", str(tmp_path / "r.json")])
+        assert res.exit_code == 1 and "could not be assessed" in res.output
+
+    def test_drift_command_ok(self, tmp_path):
+        from click.testing import CliRunner
+
+        from pygeovision.cli.main import cli
+        a, b = tmp_path / "a", tmp_path / "b"
+        a.mkdir(); b.mkdir()
+        _tif(a / "1.tif", _scene(1)); _tif(b / "1.tif", _scene(2, offset=80))
+        res = CliRunner().invoke(cli, ["monitor", "drift", str(a), str(b), "-o", str(tmp_path / "r.json")])
+        assert res.exit_code == 0 and "major" in res.output

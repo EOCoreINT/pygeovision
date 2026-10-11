@@ -66,7 +66,8 @@ class GeoModel:
             import torch
             self.model.eval()
             dummy = torch.randn(*input_shape)
-            torch.onnx.export(self.model, dummy, output_path,
+            from pygeovision._onnx import export_onnx
+            export_onnx(self.model, dummy, output_path,
                                opset_version=17, input_names=["input"],
                                output_names=["output"],
                                dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}})

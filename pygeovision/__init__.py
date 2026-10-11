@@ -181,13 +181,19 @@ class PyGeoVision:
 
         configure_logging(getattr(logging, log_level.upper(), logging.INFO))
 
-        self.config = PyGeoVisionConfig.load(config_path) if config_path else PyGeoVisionConfig()
+        # Defaults, then ~/.pygeovision/config.yaml, ./.pygeovision.yaml, config_path, then PYGEOVISION_* variables.
+        self.config = PyGeoVisionConfig.load(Path(config_path) if config_path else None)
 
         # Core data layer — wraps pygeofetch
         self.data = SatelliteFetcher(
             config_path=Path(config_path) if config_path else None,
             cache_dir=cache_dir,
         )
+
+        # Data-layer settings from the configuration (the other sections are read where they are used).
+        _pgf_cfg = self.config.pygeofetch
+        self.data.default_providers = list(_pgf_cfg.default_providers)
+        self.data.set_cache_ttl(_pgf_cfg.cache_ttl_seconds)
 
         self._ai_engine: Any | None = None
 
@@ -259,15 +265,15 @@ class PyGeoVision:
         from pygeovision.data.validator import DataValidator
         self.validator = DataValidator(mode="fix")
 
-        # Preprocessor — 100+ spatial preprocessing operations
+        # Preprocessor — stack, clip, mosaic, mask, normalise, resample (12 public methods)
         from pygeovision.preprocess import Preprocessor
         self.preprocess = Preprocessor(validator=self.validator)
 
-        # SpectralIndices — 22 validated indices (NDVI, EVI, NBR, TCT, PCA…)
+        # SpectralIndices — 21 indices (NDVI, EVI, NBR, TCT, PCA…)
         from pygeovision.data.indices import SpectralIndices
         self.indices = SpectralIndices(validator=self.validator)
 
-        # PostProcessor — 20+ prediction postprocessing operations
+        # PostProcessor — vectorise, sieve, smooth, accuracy, zonal statistics, export (16 public methods)
         from pygeovision.data.postprocess import PostProcessor
         self.postprocess = PostProcessor(validator=self.validator)
 
@@ -657,10 +663,32 @@ class PyGeoVision:
         if want_report is None:
             want_report = os.environ.get("PYGEOVISION_REPORT", "1").strip().lower() not in ("0", "false", "no", "off")
         p = get_pipeline(pipeline_name, pgv_client=self)
+        self._warn_unknown_pipeline_arguments(p, kwargs)
         result = p.run(bbox=bbox, output_dir=output_dir, **kwargs)
         if want_report and result.success:
             self._attach_deliverables(result, bbox, output_dir, kwargs, report_formats, vector_formats, class_names, report_title)
         return result
+
+    #: Arguments every pipeline passes on to the data layer even though they are not in its ``run()`` signature.
+    _COMMON_PIPELINE_ARGUMENTS = frozenset({"providers", "session", "cache_dir", "resolution_m"})
+
+    @classmethod
+    def _warn_unknown_pipeline_arguments(cls, pipeline: Any, kwargs: dict[str, Any]) -> None:
+        """A misspelt argument (``ndwi_threshhold``) would otherwise be swallowed by ``**kwargs`` and do nothing."""
+        import difflib
+        import inspect
+        import logging
+
+        known = set(inspect.signature(pipeline.run).parameters) | cls._COMMON_PIPELINE_ARGUMENTS
+        for key in kwargs:
+            if key in known:
+                continue
+            hint = difflib.get_close_matches(key, sorted(known - {"self", "kwargs", "bbox", "output_dir"}), n=1)
+            logging.getLogger("pygeovision").warning(
+                "Pipeline %r has no argument %r, so it has no effect.%s Arguments: %s", pipeline.name, key,
+                f" Did you mean {hint[0]!r}?" if hint else "",
+                ", ".join(sorted(known - {"self", "kwargs", "bbox", "output_dir"})) or "none",
+            )
 
     @staticmethod
     def _attach_deliverables(result, bbox, output_dir, kwargs, report_formats, vector_formats, class_names, title) -> None:
@@ -709,9 +737,8 @@ class PyGeoVision:
                 output="./raw/",
                 post_process=["unzip", "reproject:EPSG:4326", "cog"],
             ).export(
-                format="cloud_optimized_geotiff",
                 destination="s3://my-bucket/",
-            ).schedule("0 6 * * 1")
+            ).set_schedule("0 6 * * 1")
             pipeline.run()
         """
         return DataPipeline(name=name, description=description, schedule=schedule)
@@ -741,8 +768,9 @@ class PyGeoVision:
                   parallel: 4
                   output: ./raw/
                   verify_checksum: true
+              - process:
+                  actions: [reproject:EPSG:4326, cog]
               - export:
-                  format: cloud_optimized_geotiff
                   destination: s3://my-bucket/ndvi/
 
         Args:
@@ -891,20 +919,38 @@ class PyGeoVision:
         resample_m: float | None = None,
         model_type: str = "segmentation",
         output_path: str | None = None,
-        use_pgf_preprocess: bool = True,   # <-- add this
+        use_pgf_preprocess: bool = True,
     ) -> dict[str, Any]:
-        """Complete preprocessing pipeline — raw scene → AI-ready array.
-        ...
+        """Complete preprocessing pipeline: raw scene to an AI-ready array.
+
+        Steps, in order: stack bands, clip, cloud/SCL mask, normalise, resample, validate
+        (:class:`~pygeovision.data.validator.DataValidator` fixes nulls, outliers and dtype).
+        The details, and the returned dictionary (``array``, ``output_path``, ``shape``,
+        ``resolution_m``, ``report``, ``steps``), are documented on
+        :meth:`pygeovision.data.pgf_bridge.PyGeoFetchBridge.prepare_for_ai`, which this forwards to.
+
         Args:
-            ...
-            output_path: Save preprocessed file here.
-            use_pgf_preprocess: Use PyGeoFetch v2.0's native preprocessing
-                engine when available (default True). Set False to force
-                PyGeoVision's own pure-rasterio Preprocessor instead — useful
-                when PyGeoFetch's native clip/reproject has a known bug for
-                your CRS/geometry combination (e.g. a double-reprojection
-                issue causing "PROJ: utm: Invalid latitude").
-        ...
+            input_path: A stacked GeoTIFF or a scene directory.
+            stack_bands: Band names to stack from ``input_path`` / ``stack_dir``.
+            stack_dir: Alternative directory for band discovery.
+            bbox: Clip box ``(min_lon, min_lat, max_lon, max_lat)`` in ``bbox_crs``.
+            bbox_crs: CRS of ``bbox`` (default ``EPSG:4326``).
+            clip_geojson: GeoJSON polygon to clip to.
+            cloud_mask_path: Binary cloud mask (1 = cloud, 0 = clear).
+            scl_path: Sentinel-2 Scene Classification Layer for cloud and shadow masking.
+            scl_keep_classes: SCL classes to keep (default vegetation, bare soil, water).
+            normalise: ``"scale_factor"``, ``"minmax"``, ``"zscore"``, ``"percentile"`` or ``None``.
+            scale_factor: Divisor for ``"scale_factor"`` (10000 for Sentinel-2 L2A).
+            resample_m: Target pixel size in metres.
+            model_type: Model-type hint for the validator.
+            output_path: Save the preprocessed file here.
+            use_pgf_preprocess: Use pygeofetch's native preprocessing when available.
+                ``False`` forces PyGeoVision's own rasterio ``Preprocessor``, useful when
+                pygeofetch's clip/reproject fails for your CRS or geometry
+                (for example "PROJ: utm: Invalid latitude").
+
+        Returns:
+            The dictionary described above.
         """
         return self._pgf_bridge.prepare_for_ai(
             input_path,
@@ -921,7 +967,7 @@ class PyGeoVision:
             resample_m       = resample_m,
             model_type       = model_type,
             output_path      = output_path,
-            use_pgf_preprocess = use_pgf_preprocess,   # <-- and forward it
+            use_pgf_preprocess = use_pgf_preprocess,
         )
 
     def pgf_pipeline(self, name: str) -> Any:
@@ -1012,9 +1058,9 @@ class PyGeoVision:
             f"pygeofetch={pgf} | pgf_v2={pgf_v2} | ai={ai_stack} | "
             f"datasets={len(dataset_registry)} | models={len(model_zoo)} | "
             f"pipelines={len(list_pipelines())} | "
-            f"validator=✓ | preprocess=✓ | indices=22 | postprocess=✓ | "
-            f"labeling=7src | losses=10 | inference=4 | "
-            f"xai=4 | monitoring=3 | cloud=3·aws·azure·gcp | "
+            f"validator=✓ | preprocess=✓ | indices=21 | postprocess=✓ | "
+            f"labeling=OSM+buildings+WorldCover+DW+SAM | losses=10 | inference=4 | "
+            f"xai=5 | monitoring=3 | cloud=3·aws·azure·gcp | "
             f"edge=ONNX+Jetson | vlm=CLIP+Moon | few_shot | timeseries | 3D)"
         )
 
@@ -1039,7 +1085,7 @@ class _LabelingClientProxy:
         return ESAWorldCoverLabeler().label(bbox, output_path=output_path, **kw)
     def dynamic_world(self, bbox, date_range=None, output_path="./labels/dynamic_world.tif", **kw):
         from pygeovision.labeling.landcover import DynamicWorldLabeler
-        return DynamicWorldLabeler().label(bbox, date_range=date_range or ("2024-01-01","2024-12-31"),
+        return DynamicWorldLabeler().label(bbox, date_range=date_range or ("2023-01-01","2023-12-31"),
                                             output_path=output_path, **kw)
     def sam_auto(self, image_path, output_path="./labels/sam.tif", **kw):
         from pygeovision.labeling.sam_auto import SAMAutoLabeler
@@ -1180,59 +1226,59 @@ class _CloudClientProxy:
 
 class _FewShotClientProxy:
     """client.few_shot — few-shot learning for geospatial classification."""
-    def learner(self, backbone="dinov2-base", method="prototypical"):
+    def learner(self, backbone="dinov2-base", method="prototypical", **kw):
         from pygeovision.advanced.few_shot import FewShotLearner
-        return FewShotLearner(backbone=backbone, method=method)
+        return FewShotLearner(backbone=backbone, method=method, **kw)
     def __repr__(self): return "FewShotLayer(learner)"
 
 
 class _MultiTaskClientProxy:
     """client.multitask — multi-task model training."""
-    def model(self, backbone="resnet50", tasks=None, n_classes=None):
+    def model(self, backbone="resnet50", tasks=None, n_classes=None, **kw):
         from pygeovision.advanced.multitask import MultiTaskLearner
-        return MultiTaskLearner(backbone=backbone, tasks=tasks, n_classes=n_classes)
+        return MultiTaskLearner(backbone=backbone, tasks=tasks, n_classes=n_classes, **kw)
     def __repr__(self): return "MultiTaskLayer(model)"
 
 
 class _AutoMLClientProxy:
     """client.automl — automated hyperparameter optimisation."""
-    def optimizer(self, metric="val_iou", n_trials=50, backend="optuna"):
+    def optimizer(self, metric="val_iou", n_trials=50, backend="optuna", **kw):
         from pygeovision.advanced.automl import GeoAutoML
-        return GeoAutoML(metric=metric, n_trials=n_trials, backend=backend)
+        return GeoAutoML(metric=metric, n_trials=n_trials, backend=backend, **kw)
     def __repr__(self): return "AutoMLLayer(optimizer)"
 
 
 class _VLMClientProxy:
     """client.vlm — vision-language models (CLIP, Moondream)."""
-    def clip(self, model="remoteclip-b32"):
+    def clip(self, model="remoteclip-b32", **kw):
         from pygeovision.advanced.vlm.clip_geo import CLIPGeo
-        return CLIPGeo(model=model)
-    def moondream(self):
+        return CLIPGeo(model=model, **kw)
+    def moondream(self, **kw):
         from pygeovision.advanced.vlm.moondream_geo import MoondreamGeo
-        return MoondreamGeo()
-    def retrieval(self, model="openclip-b32"):
+        return MoondreamGeo(**kw)
+    def retrieval(self, model="openclip-b32", **kw):
         from pygeovision.advanced.vlm.retrieval import GeoImageRetrieval
-        return GeoImageRetrieval(model=model)
-    def zero_shot(self, image_path, categories, model="remoteclip-b32"):
-        return self.clip(model).zero_shot(image_path, categories)
-    def caption(self, image_path):
-        return self.moondream().caption(image_path)
-    def vqa(self, image_path, question):
-        return self.moondream().vqa(image_path, question)
+        return GeoImageRetrieval(model=model, **kw)
+    def zero_shot(self, image_path, categories, model="remoteclip-b32", **kw):
+        return self.clip(model, **kw).zero_shot(image_path, categories)
+    def caption(self, image_path, **kw):
+        return self.moondream(**kw).caption(image_path)
+    def vqa(self, image_path, question, **kw):
+        return self.moondream(**kw).vqa(image_path, question)
     def __repr__(self): return "VLMLayer(clip|moondream|retrieval|zero_shot|caption|vqa)"
 
 
 class _TimeSeriesClientProxy:
-    """client.timeseries — temporal analysis of satellite image stacks."""
-    def analyzer(self, sensor="sentinel2"):
+    """client.timeseries — spectral-index time series over a stack of images."""
+    def analyzer(self, sensor="sentinel2", band_map=None):
         from pygeovision.advanced.timeseries import GeoTimeSeries
-        return GeoTimeSeries(sensor=sensor)
-    def ndvi_series(self, image_paths, date_strings=None, sensor="sentinel2"):
+        return GeoTimeSeries(sensor=sensor, band_map=band_map)
+    def ndvi_series(self, image_paths, date_strings=None, sensor="sentinel2", **kw):
         from pygeovision.advanced.timeseries import GeoTimeSeries
-        return GeoTimeSeries(sensor).compute_index_series(image_paths, "ndvi", date_strings)
-    def index_series(self, image_paths, index="ndvi", date_strings=None, sensor="sentinel2"):
+        return GeoTimeSeries(sensor).compute_index_series(image_paths, "ndvi", date_strings, **kw)
+    def index_series(self, image_paths, index="ndvi", date_strings=None, sensor="sentinel2", **kw):
         from pygeovision.advanced.timeseries import GeoTimeSeries
-        return GeoTimeSeries(sensor).compute_index_series(image_paths, index, date_strings)
+        return GeoTimeSeries(sensor).compute_index_series(image_paths, index, date_strings, **kw)
     def __repr__(self): return "TimeSeriesLayer(analyzer|ndvi_series|index_series)"
 
 
@@ -1269,17 +1315,34 @@ class _SegmentationClientProxy:
         """Segment building footprints via SAM auto-segmentation."""
         from pygeovision.labeling.sam_auto import SAMAutoLabeler
         return SAMAutoLabeler().auto_label(image_path, output_path, **kw)
-    def water(self, image_path, output_path="./output/water.tif", ndwi_threshold=0.0, **kw):
-        """Extract water bodies via NDWI thresholding."""
+    def water(self, image_path, output_path="./output/water.tif", ndwi_threshold=0.0,
+              green_band=None, nir_band=None, **kw):
+        """Extract water bodies via NDWI thresholding, ``(green - nir) / (green + nir) > ndwi_threshold``.
+
+        The image is assumed to be a stack in the order blue, green, red, NIR (what ``prepare_stack``
+        writes), so by default green is band 2 and NIR is band 4 (1-based). For any other layout pass
+        ``green_band=`` and ``nir_band=``. An image with fewer than four bands needs both, because
+        guessing would compute a different index (red minus green, for an RGB image) and call it water.
+        """
         import numpy as np
         import rasterio
         with rasterio.open(image_path) as src:
             profile = src.profile.copy()
             n_bands = src.count
-            green_idx = 2 if n_bands >= 4 else 1
-            nir_idx   = 4 if n_bands >= 4 else min(n_bands, 2)
-            green = src.read(green_idx).astype(np.float32)
-            nir   = src.read(nir_idx).astype(np.float32)
+            if green_band is None and nir_band is None:
+                if n_bands < 4:
+                    raise ValueError(
+                        f"{image_path} has {n_bands} band(s). Water mapping by NDWI needs a green and a "
+                        f"near-infrared band: pass green_band= and nir_band= (1-based) to say which, or "
+                        f"use a blue-green-red-NIR stack.")
+                green_band, nir_band = 2, 4
+            elif green_band is None or nir_band is None:
+                raise ValueError("pass both green_band and nir_band, or neither")
+            for name, idx in (("green_band", green_band), ("nir_band", nir_band)):
+                if not 1 <= int(idx) <= n_bands:
+                    raise ValueError(f"{name}={idx} is outside the {n_bands} band(s) of {image_path}")
+            green = src.read(int(green_band)).astype(np.float32)
+            nir   = src.read(int(nir_band)).astype(np.float32)
         ndwi = (green - nir) / (green + nir + 1e-8)
         water_mask = (ndwi > ndwi_threshold).astype(np.uint8)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -1401,7 +1464,8 @@ class _ChangeDetectionClientProxy:
             ok2 = s2.read_masks().all(axis=0) > 0
         if img1.shape != img2.shape:
             raise ValueError(f"before/after rasters differ in shape {img1.shape} vs {img2.shape}; "
-                             "resample to a common grid first (pygeovision preprocess align)")
+                             "clip both to the same bounding box and resample to the same resolution first "
+                             "(pygeovision preprocess clip / resample)")
         valid = ok1 & ok2 & np.isfinite(img1).all(0) & np.isfinite(img2).all(0)
         if not valid.any():
             raise ValueError("no pixel is valid in both rasters")

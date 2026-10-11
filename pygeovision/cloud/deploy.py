@@ -1,17 +1,93 @@
 """
 Cloud deployment utilities (F4) — AWS SageMaker, Azure ML, GCP Vertex AI.
-Deploy PyGeoVision models to all major cloud providers.
+
+Thin wrappers over each provider's SDK that upload a model artifact and create a
+real-time endpoint. They need the provider SDK, credentials and (usually) a billable
+account, so they are not exercised against live services in PyGeoVision's own tests:
+treat them as a starting point and read the provider's console/logs when a deployment
+does not come up. Every ``deploy`` returns a dict with ``success`` and, on failure, ``error``.
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+import tarfile
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Handler the SageMaker PyTorch inference container calls (model_fn / input_fn / predict_fn /
+# output_fn). It serves an ONNX file with onnxruntime and speaks JSON: {"inputs": [[[...]]]}
+# in, {"predictions": [...]} out.
+SAGEMAKER_INFERENCE_PY = '''"""Serve an ONNX model with onnxruntime inside the SageMaker PyTorch container.
+
+Request:  {"inputs": <(C,H,W) or (B,C,H,W) nested list>, "argmax": false}
+Response: {"predictions": <logits (B,classes,H,W), or class ids (B,H,W) when "argmax" is true>}
+"""
+import json
+import os
+
+import numpy as np
+import onnxruntime as ort
+
+
+def model_fn(model_dir):
+    files = sorted(f for f in os.listdir(model_dir) if f.endswith(".onnx"))
+    if not files:
+        raise FileNotFoundError("no .onnx file in " + model_dir)
+    wanted = ("CUDAExecutionProvider", "CPUExecutionProvider")
+    providers = [p for p in wanted if p in ort.get_available_providers()]
+    return ort.InferenceSession(os.path.join(model_dir, files[0]), providers=providers)
+
+
+def input_fn(request_body, content_type="application/json"):
+    if content_type != "application/json":
+        raise ValueError("unsupported content type: " + str(content_type))
+    payload = json.loads(request_body)
+    argmax = bool(payload.get("argmax", False)) if isinstance(payload, dict) else False
+    array = np.asarray(payload["inputs"] if isinstance(payload, dict) else payload, dtype=np.float32)
+    return (array[None] if array.ndim == 3 else array), argmax
+
+
+def predict_fn(data, session):
+    array, argmax = data
+    out = session.run(None, {session.get_inputs()[0].name: array})[0]
+    return out.argmax(axis=1) if argmax else out
+
+
+def output_fn(prediction, accept="application/json"):
+    return json.dumps({"predictions": prediction.tolist()}), "application/json"
+'''
+
+
+def build_sagemaker_archive(model_path: str | Path, output_path: str | Path | None = None) -> Path:
+    """Pack an ``.onnx`` file into the ``model.tar.gz`` layout SageMaker's PyTorch container serves.
+
+    The archive holds the model at its root plus ``code/inference.py`` (the handler above) and
+    ``code/requirements.txt`` (``onnxruntime``, installed by the container at start-up).
+    Returns the archive path (default: next to the model, ``<name>.tar.gz``).
+    """
+    model_path = Path(model_path)
+    if not model_path.is_file():
+        raise FileNotFoundError(f"model file not found: {model_path}")
+    if model_path.suffix != ".onnx":
+        raise ValueError(f"expected an .onnx file, got {model_path.name!r}; for other formats "
+                         "build your own model.tar.gz with a code/inference.py handler")
+    out = Path(output_path) if output_path else model_path.with_suffix(".tar.gz")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        code = Path(tmp) / "code"
+        code.mkdir()
+        (code / "inference.py").write_text(SAGEMAKER_INFERENCE_PY)
+        (code / "requirements.txt").write_text("onnxruntime\nnumpy\n")
+        with tarfile.open(out, "w:gz") as tar:
+            tar.add(model_path, arcname=model_path.name)
+            tar.add(code, arcname="code")
+    return out
 
 
 class CloudDeployer(ABC):
@@ -86,11 +162,29 @@ class AWSDeployer(CloudDeployer):
         max_instances: int = 3,
         auto_scale: bool = True,
     ) -> dict[str, Any]:
-        """Package and deploy a model to AWS SageMaker."""
+        """Upload a model to S3 and create a SageMaker real-time endpoint.
+
+        ``model_path`` is either a ready SageMaker ``model.tar.gz`` (with your own
+        ``code/inference.py``) or an ``.onnx`` file, which is packed with
+        :func:`build_sagemaker_archive` first. Needs ``bucket`` (or ``AWS_S3_BUCKET``) and
+        ``role_arn`` (or ``AWS_SAGEMAKER_ROLE_ARN``). Creating the endpoint bills until
+        :meth:`delete_endpoint` is called. Returns ``{"success": False, "error": ...}`` rather than raising.
+        """
         try:
             import boto3
             import sagemaker
             from sagemaker.model import Model
+
+            missing = [n for n, v in (("bucket (AWS_S3_BUCKET)", self.bucket),
+                                      ("role_arn (AWS_SAGEMAKER_ROLE_ARN)", self.role_arn)) if not v]
+            if missing:
+                return {"success": False, "error": "AWSDeployer needs " + " and ".join(missing)}
+
+            model_path = Path(model_path)
+            if not model_path.is_file():
+                return {"success": False, "error": f"model file not found: {model_path}"}
+            if not model_path.name.endswith(".tar.gz"):
+                model_path = build_sagemaker_archive(model_path, Path(tempfile.mkdtemp()) / (model_path.stem + ".tar.gz"))
 
             # Upload model to S3
             s3 = boto3.client("s3", region_name=self.region)
@@ -184,7 +278,16 @@ class AWSDeployer(CloudDeployer):
         except Exception as exc:
             logger.warning("Auto-scaling setup failed: %s", exc)
 
-    def predict(self, endpoint_name: str, input_data: Any) -> Any:
+    def predict(self, endpoint_name: str, input_data: Any, argmax: bool = False) -> Any:
+        """Send one chip (or a batch) to the endpoint and return the decoded JSON response.
+
+        For an endpoint made by :meth:`deploy` from an ``.onnx`` file the response is
+        ``{"predictions": ...}``: logits ``(B, classes, H, W)``, or class ids ``(B, H, W)`` with
+        ``argmax=True`` (about 20-30 times smaller; use it to stay under SageMaker's 6 MB response
+        limit). A NumPy array is sent as ``{"inputs": array.tolist(), "argmax": ...}``; any other
+        object is sent as JSON unchanged. Service errors (bad credentials, unknown endpoint, payload
+        too large) are raised by boto3; only a missing SDK is returned as ``{"error": ...}``.
+        """
         try:
             import json as _json
 
@@ -192,7 +295,7 @@ class AWSDeployer(CloudDeployer):
             import numpy as np
             runtime = boto3.client("sagemaker-runtime", region_name=self.region)
             if isinstance(input_data, np.ndarray):
-                payload = _json.dumps({"inputs": input_data.tolist()})
+                payload = _json.dumps({"inputs": input_data.tolist(), "argmax": bool(argmax)})
             else:
                 payload = _json.dumps(input_data)
             resp = runtime.invoke_endpoint(
@@ -217,19 +320,37 @@ class AWSDeployer(CloudDeployer):
         try:
             resp = self._get_client().list_endpoints(StatusEquals="InService")
             return [e["EndpointName"] for e in resp.get("Endpoints", [])]
-        except Exception:
+        except Exception as exc:
+            logger.warning("could not list SageMaker endpoints (an empty list does NOT mean there are none): %s", exc)
             return []
 
     def generate_iam_policy(self) -> str:
-        """Generate a minimal IAM policy JSON for PyGeoVision deployment."""
+        """IAM policy JSON for the *user or role that runs* ``deploy`` / ``predict`` / ``delete_endpoint``.
+
+        Covers the S3 upload, creating, describing, invoking and deleting the endpoint, passing the
+        execution role to SageMaker, and the auto-scaling calls. The SageMaker *execution role*
+        (``role_arn``) is a different identity and needs its own permissions (read the bucket, pull the
+        container image from ECR, write CloudWatch logs). Tighten the ``Resource`` entries for production.
+        """
         policy = {
             "Version": "2012-10-17",
             "Statement": [
                 {"Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
                  "Resource": [f"arn:aws:s3:::{self.bucket}/*", f"arn:aws:s3:::{self.bucket}"]},
-                {"Effect": "Allow", "Action": ["sagemaker:CreateModel", "sagemaker:CreateEndpoint",
-                  "sagemaker:CreateEndpointConfig", "sagemaker:DeleteEndpoint",
-                  "sagemaker:InvokeEndpoint", "sagemaker:ListEndpoints"],
+                {"Effect": "Allow", "Action": [
+                    "sagemaker:CreateModel", "sagemaker:CreateEndpointConfig", "sagemaker:CreateEndpoint",
+                    "sagemaker:DescribeModel", "sagemaker:DescribeEndpointConfig", "sagemaker:DescribeEndpoint",
+                    "sagemaker:InvokeEndpoint", "sagemaker:ListEndpoints",
+                    "sagemaker:DeleteEndpoint", "sagemaker:DeleteEndpointConfig", "sagemaker:DeleteModel"],
+                 "Resource": "*"},
+                {"Effect": "Allow", "Action": "iam:PassRole",
+                 "Resource": self.role_arn or "*",
+                 "Condition": {"StringEquals": {"iam:PassedToService": "sagemaker.amazonaws.com"}}},
+                {"Effect": "Allow", "Action": [
+                    "application-autoscaling:RegisterScalableTarget",
+                    "application-autoscaling:PutScalingPolicy",
+                    "application-autoscaling:DescribeScalableTargets",
+                    "iam:CreateServiceLinkedRole"],
                  "Resource": "*"},
             ]
         }
@@ -267,7 +388,13 @@ class AzureDeployer(CloudDeployer):
         vm_size: str = "Standard_NC4as_T4_v3",
         instance_count: int = 1,
     ) -> dict[str, Any]:
-        """Deploy model to Azure ML online endpoint."""
+        """Register ``model_path`` and create a managed online endpoint with one deployment named ``default``.
+
+        The deployment is created **without** an environment or scoring script, so Azure ML can only serve
+        models it understands without code (for example MLflow models); a bare ONNX file will most likely
+        be rejected at the deployment step. Extend the deployment with an ``Environment`` and
+        ``CodeConfiguration`` for a custom model. Endpoints bill until deleted.
+        """
         try:
             from azure.ai.ml import MLClient
             from azure.ai.ml.entities import (
@@ -327,8 +454,10 @@ class AzureDeployer(CloudDeployer):
             ml = MLClient(DefaultAzureCredential(), self.subscription_id,
                            self.resource_group, self.workspace_name)
             payload = {"inputs": input_data.tolist() if hasattr(input_data, "tolist") else input_data}
-            result = ml.online_endpoints.invoke(endpoint_name, request_file=_json.dumps(payload))
-            return result
+            with tempfile.TemporaryDirectory() as tmp:                 # invoke() wants a file path
+                request = Path(tmp) / "request.json"
+                request.write_text(_json.dumps(payload))
+                return ml.online_endpoints.invoke(endpoint_name=endpoint_name, request_file=str(request))
         except ImportError:
             return {"error": "pip install azure-ai-ml"}
 
@@ -350,7 +479,8 @@ class AzureDeployer(CloudDeployer):
             ml = MLClient(DefaultAzureCredential(), self.subscription_id,
                            self.resource_group, self.workspace_name)
             return [e.name for e in ml.online_endpoints.list()]
-        except Exception:
+        except Exception as exc:
+            logger.warning("could not list Azure ML endpoints (an empty list does NOT mean there are none): %s", exc)
             return []
 
 
@@ -377,7 +507,14 @@ class GCPDeployer(CloudDeployer):
         accelerator_count: int = 1,
         gcs_bucket: str | None = None,
     ) -> dict[str, Any]:
-        """Deploy model to GCP Vertex AI."""
+        """Upload ``model_path`` to ``gs://<bucket>/pygeovision/models/<endpoint_name>/`` and deploy it on Vertex AI.
+
+        ``gcs_bucket`` (or ``GCS_BUCKET``, default ``<project_id>-pgv``) must already exist. The model is
+        served by Google's prebuilt PyTorch container, which expects a model archive/handler in the format
+        that container documents; a bare ``.onnx`` file is uploaded as is, so it is not served unless you
+        supply a matching container or archive. ``min_replica_count`` is 1 and ``max_replica_count`` 5.
+        Endpoints bill until deleted.
+        """
         try:
             from google.cloud import aiplatform, storage
 
@@ -387,9 +524,10 @@ class GCPDeployer(CloudDeployer):
             bucket = gcs_bucket or os.environ.get("GCS_BUCKET", f"{self.project_id}-pgv")
             gcs_client = storage.Client(project=self.project_id)
             gcs_bucket_obj = gcs_client.bucket(bucket)
-            blob = gcs_bucket_obj.blob(f"pygeovision/models/{Path(model_path).name}")
+            prefix = f"pygeovision/models/{endpoint_name}"           # one folder per endpoint
+            blob = gcs_bucket_obj.blob(f"{prefix}/{Path(model_path).name}")
             blob.upload_from_filename(str(model_path))
-            model_gcs_uri = f"gs://{bucket}/pygeovision/models/"
+            model_gcs_uri = f"gs://{bucket}/{prefix}/"
             logger.info("Model uploaded: %s", model_gcs_uri)
 
             # Upload model to Vertex AI
@@ -458,5 +596,6 @@ class GCPDeployer(CloudDeployer):
             from google.cloud import aiplatform
             aiplatform.init(project=self.project_id, location=self.region)
             return [e.display_name for e in aiplatform.Endpoint.list()]
-        except Exception:
+        except Exception as exc:
+            logger.warning("could not list Vertex AI endpoints (an empty list does NOT mean there are none): %s", exc)
             return []

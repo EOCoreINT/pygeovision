@@ -70,8 +70,10 @@ class CLIPGeo:
     OPENCLIP_CHECKPOINTS = dict(_OPENCLIP_CHECKPOINTS)
 
     def __init__(self, model: str = "openclip-b32", device: str | None = None,
-                 cache_dir: str | None = None) -> None:
+                 cache_dir: str | None = None, bands: tuple[int, ...] | None = None) -> None:
+        """``bands``: file band numbers shown to the model as R, G, B (default: the first three)."""
         self.model_name = model
+        self.bands = tuple(bands) if bands else None
         self.device = device or "cpu"
         self.cache_dir = cache_dir
         self._backend: str | None = None  # "transformers" | "open_clip"
@@ -141,25 +143,17 @@ class CLIPGeo:
         self._backend = "open_clip"
 
     def _load_image(self, image_path: str):
-        import numpy as np
-        import rasterio
-        from PIL import Image
-        with rasterio.open(image_path) as src:
-            data = src.read(list(range(1, min(src.count, 4) + 1))).astype(float)
-        for b in range(data.shape[0]):
-            p2, p98 = np.percentile(data[b], (2, 98))
-            data[b] = np.clip((data[b] - p2) / (p98 - p2 + 1e-8) * 255, 0, 255)
-        if data.shape[0] == 1:
-            data = np.repeat(data, 3, axis=0)
-        return Image.fromarray(data[:3].transpose(1, 2, 0).astype(np.uint8))
+        """The file as an 8-bit RGB picture (first three bands, shared percentile stretch, nodata black)."""
+        from pygeovision.models.vlm._image import load_rgb_pil
+        return load_rgb_pil(image_path, bands=self.bands)
 
     # ── Unified public API — works identically regardless of backend ──────────
 
     def zero_shot(self, image_path: str, categories: list[str]) -> dict[str, float]:
         """Zero-shot classify an image against text categories."""
         import torch
+        img = self._load_image(image_path)      # bad file or bands fail here, before any model download
         self._load()
-        img = self._load_image(image_path)
 
         if self._backend == "transformers":
             inputs = self._processor(text=categories, images=img,
@@ -219,12 +213,16 @@ class CLIPGeo:
         return F.normalize(feat, dim=-1).cpu().numpy().squeeze()
 
     def search(self, query: str, image_dir: str, top_k: int = 5) -> list[dict]:
-        """Search a directory of images by text query."""
-        import pathlib
+        """Rank the images under ``image_dir`` (``.tif/.tiff/.png/.jpg/.jpeg``, recursive) against a text query.
 
+        Every image is embedded again on every call; for a collection you search repeatedly build a
+        ``GeoImageRetrieval`` index once. Unreadable files are skipped with a warning. Scores are cosine
+        similarities (about 0.15 to 0.35 for CLIP: only their order means anything).
+        """
         import numpy as np
-        image_paths = list(pathlib.Path(image_dir).rglob("*.tif")) + \
-                      list(pathlib.Path(image_dir).rglob("*.png"))
+
+        from pygeovision.models.vlm._image import list_images
+        image_paths = list_images(image_dir)
         query_emb = self.embed_text(query)
         results = []
         for p in image_paths:

@@ -7,6 +7,9 @@ from typing import Any
 #: scheduler (cosine, step) is measured in epochs and must be stepped once
 #: per epoch -- stepping it per batch finishes a ``max_epochs``-long cosine
 #: curve within the first epoch and then climbs back up.
+OPTIMIZERS = ("adamw", "adam", "sgd", "lion")
+SCHEDULERS = ("cosine", "cosine_warmup", "warmup_cosine", "linear", "step", "plateau", "onecycle", "none")
+
 PER_BATCH_SCHEDULERS = frozenset({"cosine_warmup", "linear", "onecycle", "warmup_cosine"})
 
 
@@ -36,24 +39,24 @@ def build_optimizer(model: Any, cfg: Any, param_groups: list[dict[str, Any]] | N
         elif name == "lion":
             try:
                 from lion_pytorch import Lion
-                return Lion(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
-            except ImportError:
-                return optim.AdamW(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
-        elif name == "lars":
-            try:
-                from torch.optim import SGD
-                from torch.optim.lr_scheduler import LinearLR
-                return SGD(params, lr=cfg.learning_rate, momentum=0.9, weight_decay=cfg.weight_decay)
-            except Exception:
-                return optim.AdamW(params, lr=cfg.learning_rate)
-        else:
-            return optim.AdamW(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
-    except ImportError:
-        raise ImportError("torch is required for training. pip install torch")
+            except ImportError as exc:
+                raise ImportError("optimizer='lion' needs the lion-pytorch package: pip install lion-pytorch "
+                                  "(or choose adamw / adam / sgd)") from exc
+            return Lion(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
+        raise ValueError(f"Unknown optimizer {cfg.optimizer!r}. Choose one of: {', '.join(OPTIMIZERS)}. "
+                         f"(LARS is not implemented; use 'sgd'.)")
+    except ImportError as exc:
+        if "torch" in str(exc).lower() and "lion" not in str(exc).lower():
+            raise ImportError("torch is required for training. pip install torch") from exc
+        raise
 
 
 def build_scheduler(optimizer: Any, cfg: Any, steps_per_epoch: int = 100) -> Any | None:
-    """Build LR scheduler from TrainingConfig."""
+    """Build LR scheduler from TrainingConfig.
+
+    ``warmup_epochs`` only affects ``cosine_warmup`` and ``warmup_cosine``; ``cosine``, ``step`` and
+    ``plateau`` start at the full learning rate. ``scheduler="none"`` keeps the rate constant.
+    """
     try:
         import torch.optim.lr_scheduler as sched
         name = cfg.scheduler.lower()
@@ -85,8 +88,10 @@ def build_scheduler(optimizer: Any, cfg: Any, steps_per_epoch: int = 100) -> Any
             warmup = LinearLR(optimizer, start_factor=cfg.warmup_lr_scale, end_factor=1.0, total_iters=warmup_steps)
             cosine = CosineAnnealingLR(optimizer, T_max=total_steps - warmup_steps, eta_min=cfg.min_lr)
             scheduler = SequentialLR(optimizer, schedulers=[warmup, cosine], milestones=[warmup_steps])
+        elif name == "none":
+            return None
         else:
-            scheduler = sched.CosineAnnealingLR(optimizer, T_max=cfg.max_epochs, eta_min=cfg.min_lr)
+            raise ValueError(f"Unknown scheduler {cfg.scheduler!r}. Choose one of: {', '.join(SCHEDULERS)}.")
         return scheduler
     except ImportError:
         return None
