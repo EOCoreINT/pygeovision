@@ -9,19 +9,13 @@
 [![PyPI](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![Python](https://img.shields.io/pypi/pyversions/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Providers](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
-[![Pipelines](https://img.shields.io/badge/Pipelines-25-22c55e?style=flat-square)](#-end-to-end-pipelines)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22258220.svg)](https://doi.org/10.5281/zenodo.22258220)
+[![Providers](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://pygeofetch.readthedocs.io/en/latest/)
+[![Pipelines](https://img.shields.io/badge/Pipelines-40-22c55e?style=flat-square)](#-end-to-end-pipelines)
 [![Models](https://img.shields.io/badge/Registered_architectures-77-a855f7?style=flat-square)](#-models-and-training)
 [![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
 
 [Features](#-features) · [Install](#-installation) · [Quick start](#-quick-start) · [CLI](#-command-line) · [Pipelines](#-end-to-end-pipelines) · [OBIA](#-object-based-image-analysis-obia) · [Status](#-project-status) · [Docs](#-documentation)
-
-
-# ⚠️ Work In Progress (Pre-Alpha)
-This repository is currently an active research and development (R&D) playground as part of my pre-Master's roadmap for the Copernicus Master in Digital Earth. Architecture is shifting rapidly. 
-
-
-**Go from "I need imagery of this place" to a finished map, mask, or dataset — without stitching together a satellite API, a preprocessing pipeline, and a separate AI platform yourself.**
 
 </div>
 
@@ -38,11 +32,11 @@ pipeline, a modelling framework and a pile of custom code. PyGeoVision puts thos
 package, so there are fewer joins in the chain for things to quietly break.
 
 - **One search/download interface across 22 providers** (Sentinel, Landsat, Planet, Maxar, Copernicus,
-  USGS and more) through [PyGeoFetch](https://pygeovision.readthedocs.io/en/latest/), with credentials
+  USGS and more) through [PyGeoFetch](https://pygeofetch.readthedocs.io/en/latest/), with credentials
   stored once in the system keyring.
 - **Models that run inside the package** — segmentation, detection, change detection, classification and
   foundation-model embeddings — with no separate AI-platform account.
-- **25 pipelines** from a bounding box to a finished output — 19 run out of the box, 6 run a model you trained.
+- **40 pipelines** from a bounding box to a finished output — 33 run out of the box, 7 run a model you trained.
 - **A training stack** with fine-tuning, geospatial losses and tiled inference for full scenes.
 - **Object-based image analysis** — segmentation, object features, rule/fuzzy/supervised classification
   and object-level accuracy.
@@ -138,20 +132,22 @@ pygeovision doctor    # diagnose a broken setup
 `zoo`, `label`, `explain`, `monitor`, `edge`, `cloud`, `vlm`, `timeseries`, `validate`, `preprocess`,
 `indices`, `postprocess`, `benchmark`, `datasets`, `infer` and `obia`.
 
-[`CLI_TESTING_GUIDE.md`](CLI_TESTING_GUIDE.md) has a runnable example for every command, including all 25
+[`CLI_TESTING_GUIDE.md`](CLI_TESTING_GUIDE.md) has a runnable example for every command, including all 40
 pipelines, and says which ones need network access, credentials or your own trained weights.
 `python tools/verify_cli_guide.py` runs the offline examples on synthetic data.
 
 ## 🛰️ End-to-end pipelines
 
-The catalogue holds **25 pipelines**, all runnable from Python (`client.pipeline(name, ...)`) and from the CLI
+The catalogue holds **40 pipelines**, all runnable from Python (`client.pipeline(name, ...)`) and from the CLI
 (`pygeovision channel <name>`). `pygeovision channel list` shows each one and its kind:
 
-- **19 run out of the box.** Each is a documented index, terrain product or published reference map, computed
-  on valid pixels only (cloud- and shadow-masked pixels are nodata, never a class).
-- **6 need a model you trained** (`building_footprints`, `solar_detection`, `crop_monitoring`,
-  `disaster_assessment`, `deforestation`, `urban_growth`). PyGeoVision ships no weights for them; without
-  `checkpoint=` they refuse to run, before downloading any imagery.
+- **33 run out of the box.** Each is a documented index, terrain product, published reference map or published
+  vector dataset, computed on valid pixels only (cloud- and shadow-masked pixels are nodata, never a class).
+- **7 need a model you trained** (`solar_detection`, `crop_monitoring`, `road_extraction`,
+  `disaster_assessment`, `deforestation`, `urban_growth`, `landslide_detection`). PyGeoVision ships no weights
+  for them; without `checkpoint=` they refuse to run, before downloading any imagery.
+  (`building_footprints` also takes a checkpoint, but by default it returns Microsoft, Google or OpenStreetMap
+  footprints and needs none.)
 
 Every run also leaves a **presentation-ready deliverables folder** (needs `pip install "pygeovision[report]"`):
 
@@ -176,15 +172,25 @@ and `result.deliverables`.
 | `land_cover` | ESA WorldCover 2021 reference map for the area (static; not a change product) |
 | `crop_health` · `vegetation_indices` · `water_quality` | NDVI anomaly, NDVI/EVI/NDWI time series, chlorophyll proxy (NDCI) |
 | `flood_mapping` · `coastal_monitoring` · `wetland_mapping` | Flood extent vs permanent water, shoreline change, wetland water/vegetation classes |
+| `sar_flood_mapping` | Flood extent from Sentinel-1 radar (works through cloud): open water that is new compared with a dry reference |
+| `multisensor_flood_mapping` | Flood extent from Sentinel-1 radar + Sentinel-2 optical + terrain (HAND), with per-pixel sensor agreement (confirmed / radar only / optical only / disputed) |
 | `wildfire_severity` | dNBR burn severity (USGS classes) |
 | `snow_cover` · `glacier_monitoring` | NDSI snow map, glacier-area change |
 | `urban_heat_island` · `land_surface_temperature` · `volcano_monitoring` | Landsat surface temperature and thresholded hot spots |
 | `biodiversity_hotspot` | Land-cover diversity (Shannon) hotspots |
 | `solar_potential` · `archaeological_site` · `wind_farm_siting` | DEM-based terrain suitability and relief layers (OpenTopography key needed) |
-| `building_footprints` · `solar_detection` · `crop_monitoring` | Segmentation with **your** checkpoint |
-| `disaster_assessment` · `deforestation` · `urban_growth` | Bi-temporal change maps with **your** siamese checkpoint |
+| `building_footprints` | Microsoft / Google / OpenStreetMap footprints (GeoPackage, density and count rasters); or your network with `checkpoint=` |
+| `road_network` | OpenStreetMap roads: length by class, road density, GeoPackage |
+| `landcover_change` · `urban_expansion` | Change between two years (2017-2023) of the annual 10 m land-cover map: transitions, built-area gain and loss |
+| `forest_change` | Forest loss and gain 2015-2020 from the JAXA PALSAR forest/non-forest map |
+| `surface_water_dynamics` | Permanent, seasonal, new and lost water 1984-2020 (JRC Global Surface Water) |
+| `evapotranspiration` · `active_fire` | MODIS annual ET/PET (MOD16A3GF); MODIS active-fire detections (MOD14A1) |
+| `terrain_analysis` · `drainage_analysis` | Slope, aspect, hillshade, ruggedness; flow accumulation, streams (Strahler) and HAND from the Copernicus DEM |
+| `vegetation_anomaly` · `water_extent_timeseries` | NDVI z-score / VCI against earlier years; water area per date and water frequency |
+| `solar_detection` · `crop_monitoring` · `road_extraction` | Segmentation with **your** checkpoint |
+| `disaster_assessment` · `deforestation` · `urban_growth` · `landslide_detection` | Bi-temporal change maps with **your** siamese checkpoint |
 
-The other 24 of the original 49 were removed before launch because they could not produce a correct result
+The other 21 of the original 49 stay removed because they could not produce a correct result
 (untrained networks, placeholder indices, invented constants). Each removal has a documented reason: see
 [removed pipelines](docs/pipelines/removed.md).
 
@@ -265,12 +271,12 @@ pytest tests/
 ```
 
 With the full stack installed, the offline suite (`tests/test_live.py` excluded) runs about 1,300 tests, all of which
-pass without network access, GPU or pretrained weights. To exercise every CLI command and all 25 pipelines by hand,
+pass without network access, GPU or pretrained weights. To exercise every CLI command and all 40 pipelines by hand,
 follow [CLI_TESTING_GUIDE.md](CLI_TESTING_GUIDE.md).
 
 ## 📋 Documentation
 
-Full documentation is at **https://appiahkubis14.github.io/pygeovision-docs/**. To build it locally:
+Full documentation is at **https://pygeovision.readthedocs.io/en/latest/**. To build it locally:
 
 ```bash
 pip install -r docs/requirements.txt
@@ -287,6 +293,6 @@ PyGeoVision is free and open-source software, released under the [MIT License](L
 
 ## Acknowledgements
 
-The satellite data layer is built on **[PyGeoFetch](https://pygeovision.readthedocs.io/en/latest/)**,
+The satellite data layer is built on **[pygeofetch](https://pygeofetch.readthedocs.io/en/latest/)**,
 a universal satellite data pipeline that handles search, download, authentication, caching and pipeline
 orchestration. The modelling, training, labeling and OBIA layers are implemented inside PyGeoVision itself.

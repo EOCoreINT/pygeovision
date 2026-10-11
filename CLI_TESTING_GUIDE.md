@@ -100,7 +100,7 @@ python tools/verify_install.py        # lists every file that is missing or diff
 
 ---
 
-## 3. The 25 pipelines (`pygeovision channel`)
+## 3. The 40 pipelines (`pygeovision channel`)
 
 `channel <name>` downloads imagery with pygeofetch and then computes an index, a terrain product, a reference
 map, or runs *your* network. `channel list` shows each one and whether it runs out of the box (`ready`) or
@@ -108,13 +108,13 @@ needs your trained weights (`needs_weights`).
 
 ```bash
 # [offline]
-pygeovision channel list                                       # 25 pipelines (19 ready, 6 need your weights)
+pygeovision channel list                                       # 40 pipelines (33 ready, 7 need your weights)
 expect_fail pygeovision channel not_a_pipeline --bbox 0 0 1 1  # unknown name: exit 2 with the reason
-expect_fail pygeovision channel building_footprints --bbox -0.15 51.47 -0.10 51.52 --date 2024-06
+expect_fail pygeovision channel road_extraction --bbox -0.15 51.47 -0.10 51.52 --date 2024-06
                                                                # needs_weights without --checkpoint: refuses
 ```
 
-### 3.1 Test all 25 at once, offline
+### 3.1 Test all 40 at once, offline
 
 `tools/offline_pipeline_smoke.py` runs every pipeline through the **real CLI** with only the three network
 calls replaced (scene download, OpenTopography DEM, WorldCover tile) by synthetic data. Parsing, validation,
@@ -122,13 +122,13 @@ band maths, nodata handling, the strict checkpoint load, file writing and statis
 
 ```bash
 # [offline]
-python tools/offline_pipeline_smoke.py                       # all 25; exit 0 only if all succeed
+python tools/offline_pipeline_smoke.py                       # all 40; exit 0 only if all succeed
 python tools/offline_pipeline_smoke.py water_bodies flood_mapping   # just some
 python tools/offline_pipeline_smoke.py --commands            # print the real-data command for each
 ```
 
-Expect: 25 lines starting `OK` (each also states how many reports, maps and vector files it produced), then
-`25/25 pipelines succeeded`. The smoke run fails a pipeline whose run did not leave a map, a GeoPackage and the PDF,
+Expect: 40 lines starting `OK` (each also states how many reports, maps and vector files it produced), then
+`40/40 pipelines succeeded`. The smoke run fails a pipeline whose run did not leave a map, a GeoPackage and the PDF,
 Word and Excel reports.
 
 ### 3.1.1 What every run produces: map, vectors and a report
@@ -221,6 +221,22 @@ Common options: `-o DIR` output directory · `--date` / `--date-before` / `--dat
 | `archaeological_site` ² | `pygeovision channel archaeological_site --bbox -1.9 51.1 -1.7 51.2 -o out/arch` | `local_relief_model.tif`, `multidirectional_hillshade.tif` | visualisation layers for expert interpretation |
 | `solar_potential` ² | `pygeovision channel solar_potential --bbox 11.3 47.2 11.5 47.3 --date 2024-06-21 --param hour=12 -o out/solar` | `solar_potential.tif` | `mean_relative_irradiance` 0–1; clear-sky, no shadows from terrain |
 | `wind_farm_siting` ² | `pygeovision channel wind_farm_siting --bbox 8.0 54.0 8.6 54.4 -o out/wind` | `wind_suitability.tif`, `landcover_for_exclusion.tif` | screening only: no wind speed or yield |
+| `building_footprints` ³ | `pygeovision channel building_footprints --bbox -0.15 51.47 -0.10 51.52 --param source=microsoft -o out/bld_ms` (also `source=google`, `source=osm`, `--param cell_m=250`) | `building_footprints.gpkg`, `building_density.tif`, `building_count.tif` | `building_count`, `building_coverage`; the `source_note` states the dataset's date and completeness |
+| `road_network` ³ | `pygeovision channel road_network --bbox -0.15 51.47 -0.10 51.52 -o out/roads` | `road_network.gpkg`, `road_density.tif` | `total_length_km`, `km_by_highway`; completeness depends on OpenStreetMap mapping |
+| `landcover_change` ³ | `pygeovision channel landcover_change --bbox 0.45 5.90 0.52 5.97 --date-before 2018 --date-after 2023 -o out/lcc` | `change_mask.tif`, `transition.tif`, `landcover_<year>.tif` | `transitions` (largest from-to pairs), `changed_in_patches_of_3px_or_less` (high = noise) |
+| `urban_expansion` ³ | `pygeovision channel urban_expansion --bbox -0.15 51.47 -0.10 51.52 --date-before 2018 --date-after 2023 -o out/urb` | `built_area_change.tif` (0/1/2 new/3 lost) | `gain_ha`, `loss_ha` reported separately |
+| `forest_change` ³ | `pygeovision channel forest_change --bbox -62.5 -9.0 -62.3 -8.8 --date-before 2015 --date-after 2020 -o out/fc` | `forest_change.tif` | `forest_loss_ha`; years 2015-2020 only |
+| `surface_water_dynamics` ³ | `pygeovision channel surface_water_dynamics --bbox 0.45 5.90 0.52 5.97 -o out/gsw` | `water_transitions.tif`, `water_occurrence.tif`, `water_seasonality.tif` | history ends in 2020 |
+| `evapotranspiration` ³ | `pygeovision channel evapotranspiration --bbox 0.40 5.90 0.60 6.10 --date 2022 -o out/et` | `et_mm_per_year.tif`, `pet_mm_per_year.tif`, `et_pet_ratio.tif` | `mean_et_mm`; 500 m pixels |
+| `active_fire` ³ | `pygeovision channel active_fire --bbox 0.40 5.90 0.60 6.10 --date 2024-02 --param min_confidence=nominal -o out/fire_days` | `fire_days.tif`, `observed_days.tif`, `fire_detections.gpkg` | a detection is a hot 1 km pixel, not a burned area |
+| `terrain_analysis` ³ | `pygeovision channel terrain_analysis --bbox 11.3 47.2 11.5 47.3 -o out/terrain` | `slope_deg.tif`, `aspect_deg.tif`, `hillshade.tif`, `elevation.tif`, `tri_m.tif` | `pct_area_slope_gt_15deg` |
+| `drainage_analysis` ³ | `pygeovision channel drainage_analysis --bbox 11.3 47.2 11.4 47.3 --param stream_threshold_km2=1 -o out/drain` | `flow_accumulation_km2.tif`, `stream_order.tif`, `hand_m.tif`, `stream_network.gpkg` | `stream_length_km`; HAND is not a flood map; about a minute per 5 million cells |
+| `vegetation_anomaly` | `pygeovision channel vegetation_anomaly --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --param baseline_years=5 -o out/vanom` | `ndvi_zscore.tif`, `ndvi_anomaly.tif`, `vci.tif`, `anomaly_class.tif` | needs at least 3 usable baseline years; a vegetation anomaly is not a drought declaration |
+| `sar_flood_mapping` ³ | `pygeovision channel sar_flood_mapping --bbox -0.35 5.45 0.05 5.75 --date-before 2026-06-01/2026-06-20 --date-after 2026-06-27/2026-07-06 -o out/sar_flood` | `flood_extent.tif` (0 dry, 1 flooded, 2 permanent water, 255 nodata), `change_db.tif`, `before_db.tif`, `after_db.tif` | `flooded_area_ha`, `water_db`, `scenes_reference` / `scenes_flood`; open-water flooding only |
+| `multisensor_flood_mapping` ³ | `pygeovision channel multisensor_flood_mapping --bbox -0.35 5.45 0.05 5.75 --date-before 2026-06-01/2026-06-20 --date-after 2026-06-27/2026-07-06 -o out/ms_flood` | `flood_extent.tif` (0 not flooded, 1 radar+optical, 2 radar only, 3 optical only, 4 disputed, 5 water in reference, 255 nodata), `change_db.tif`, `mndwi_after.tif`, `hand_m.tif` | `flooded_area_ha`, `flooded_fraction` (of land, sea excluded), `flooded_confirmed_ha`, `sensors_used`, `data_notes`, `water_db_source`, `radar_optical_f1_reference`; urban flooding is under-mapped |
+| `water_extent_timeseries` | `pygeovision channel water_extent_timeseries --bbox -0.15 51.47 -0.10 51.52 --dates 2024-01,2024-03,2024-05 -o out/wts` | `water_frequency.tif`, `water_timeseries.csv` | compare `water_fraction_of_valid`, not raw area |
+
+³ Reads published data (Microsoft Planetary Computer, OpenStreetMap, Microsoft/Google building files) over the internet; no account or key. Each run's `product_note` / `source_note` states what the product is and is not. Verified offline against synthetic fixtures; run one live before relying on it.
 
 ¹ Landsat thermal: needs Landsat Collection 2 Level-2 scenes (Sentinel-2 has no thermal band).
 ² DEM pipelines need a free OpenTopography key: `pygeovision data auth add opentopography --api-key KEY`.
@@ -233,7 +249,9 @@ a message naming the mismatching tensor. Train it with `pygeovision.ai.training.
 
 | Pipeline | Command | Model it expects (default) |
 |---|---|---|
-| `building_footprints` | `pygeovision channel building_footprints --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --checkpoint buildings.pth -o out/bld` | `unet_resnet50`, 2 classes, RGB |
+| `building_footprints` (network mode) | `pygeovision channel building_footprints --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --checkpoint buildings.pth -o out/bld` | `unet_resnet50`, 2 classes, RGB (without `--checkpoint` it returns published footprints and needs no weights) |
+| `road_extraction` | `pygeovision channel road_extraction --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --checkpoint roads.pth -o out/roads` | `unet_resnet50`, 2 classes, RGB |
+| `landslide_detection` | `pygeovision channel landslide_detection --bbox 85.0 27.8 85.3 28.1 --date-before 2015-04 --date-after 2015-06 --checkpoint slides.pth -o out/slides` | `siamese_unet`, 2 classes |
 | `solar_detection` | `pygeovision channel solar_detection --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 --checkpoint solar.pth -o out/solar_det` | `unet_efficientnet_b4`, 2 classes, RGB |
 | `crop_monitoring` | `pygeovision channel crop_monitoring --bbox -0.15 51.47 -0.10 51.52 --date 2023-06 --param num_classes=3 --checkpoint crops.pth -o out/crops` | `segformer_b2`, your class count |
 | `deforestation` | `pygeovision channel deforestation --bbox -62.5 -9.0 -62.0 -8.5 --date-before 2023-06 --date-after 2024-06 --checkpoint forest.pth -o out/defor` | `changeformer`, 3 classes |
@@ -241,7 +259,7 @@ a message naming the mismatching tensor. Train it with `pygeovision.ai.training.
 | `disaster_assessment` | `pygeovision channel disaster_assessment --bbox -95.5 29.5 -95.0 30.0 --date-before 2017-08 --date-after 2017-09 --param disaster_type=flood --checkpoint damage.pth -o out/disaster` | `siamese_unet`, 4 classes |
 
 To prove the wiring of one of them before you have a trained model (output is meaningless), see
-`tools/offline_pipeline_smoke.py` — it does exactly this for all six — or:
+`tools/offline_pipeline_smoke.py` — it does exactly this for all seven — or:
 
 ```bash
 # [offline]
@@ -755,7 +773,7 @@ expect_fail pygeovision datasets download BigEarthNet        # prints the page t
 ## 18. YAML pipelines (`pygeovision pipeline`)
 
 A second, simpler pipeline system: a YAML file of steps (`search`, `download`, `infer`, `export`) with
-dependencies. Unlike the 25 `channel` pipelines it is a scaffold you fill in. Every step does its work or
+dependencies. Unlike the 40 `channel` pipelines it is a scaffold you fill in. Every step does its work or
 fails — an empty search, a failed download, a missing checkpoint or an unsupported action makes the run exit
 `1` rather than report success.
 
@@ -815,7 +833,7 @@ described in its section).
 | ☐ | `pygeovision benchmark datasets` | ● | — |  |
 | ☐ | `pygeovision benchmark models` | ● | — |  |
 | ☐ | `pygeovision benchmark tasks` | ● | — |  |
-| ☐ | `pygeovision channel` | ● | — | 19 ready + 6 needs-weights pipelines: all 25 run offline via tools/offline_pipeline_smoke.py; real data needs network |
+| ☐ | `pygeovision channel` | ● | — | 33 ready + 7 needs-weights pipelines: all 40 run offline via tools/offline_pipeline_smoke.py; real data needs network |
 | ☐ | `pygeovision cloud deploy-aws` | ◐ | cloud | cloud account (offline: clean failure) |
 | ☐ | `pygeovision cloud deploy-gcp` | ◐ | cloud | cloud account (offline: clean failure) |
 | ☐ | `pygeovision data auth add` | ● | — |  |
@@ -929,8 +947,8 @@ described in its section).
 
 The `# [offline]` blocks were extracted from this file and executed in order, in an empty directory, against
 the data from `tools/make_test_data.py` with network access blocked: every command that should succeed exited
-`0`, every `expect_fail` command exited non-zero. The 25 pipelines were additionally run with
-`tools/offline_pipeline_smoke.py` (25/25, including the map, GeoPackage and PDF/Word/Excel check). The repository test suite also passes offline. **No `# [network]`,
+`0`, every `expect_fail` command exited non-zero. The 40 pipelines were additionally run with
+`tools/offline_pipeline_smoke.py` (40/40, including the map, GeoPackage and PDF/Word/Excel check). The repository test suite also passes offline. **No `# [network]`,
 `# [credentials]`, `# [weights]` or `# [cloud]` block was executed successfully** (there is no network, no
 trained or pretrained weights, no GPU and no cloud account in the environment where this was written); for the
 ones that were attempted offline the section describes how they fail. Treat the first run of each on your own

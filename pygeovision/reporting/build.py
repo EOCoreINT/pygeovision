@@ -99,10 +99,14 @@ class Deliverables:
 # Context passed to the headline sentences
 # ---------------------------------------------------------------------------
 
+_CHANGE_NETWORKS = ("disaster_assessment", "deforestation", "urban_growth", "landslide_detection")
+
+
 class _Ctx:
     def __init__(self, stats: dict[str, Any], meta: dict[str, Any], params: dict[str, Any]) -> None:
         self.s, self.m, self.p = stats, meta, params
         self.timeseries: list[dict[str, Any]] = []
+        self.chart_captions: dict[Path, str] = {}
         self._rows: dict[str, list[dict[str, Any]]] = {}
 
     def f(self, code: str, v: Any) -> str:
@@ -162,6 +166,9 @@ def _norm_formats(formats: Sequence[str] | str | None, allowed: Sequence[str], d
 
 def _period(meta: dict[str, Any], stats: dict[str, Any]) -> str:
     if meta.get("date_before") and meta.get("date_after"):
+        before, after = str(meta["date_before"]), str(meta["date_after"])
+        if "\u2013" in before or "\u2013" in after:           # a date range on either side: "to" would read ambiguously
+            return f"{before} \u2192 {after}"
         return f"{meta['date_before']} to {meta['date_after']}"
     if meta.get("dates"):
         return ", ".join(str(d) for d in meta["dates"])
@@ -200,7 +207,7 @@ def _resolve_defs(layer: Layer, meta: dict[str, Any], params: dict[str, Any], cl
     defs: dict[int, ClassDef] = {}
     if class_names:
         for v in set(present) | {0}:
-            d = user_class(v, class_names, "No change" if pipeline in ("disaster_assessment", "deforestation", "urban_growth") else "Background")
+            d = user_class(v, class_names, "No change" if pipeline in _CHANGE_NETWORKS else "Background")
             defs[v] = d
         return defs
     if layer.classes:
@@ -216,7 +223,7 @@ def _resolve_defs(layer: Layer, meta: dict[str, Any], params: dict[str, Any], cl
             defs.update({i + 1: user_class(i + 1, list(["Background"] + list(names)), "Background") for i in range(len(names))})
     for v in present:
         if v not in defs:
-            base0 = "No change" if pipeline in ("disaster_assessment", "deforestation", "urban_growth") else "Background"
+            base0 = "No change" if pipeline in _CHANGE_NETWORKS else "Background"
             defs[v] = user_class(v, None, base0)
     return defs
 
@@ -348,6 +355,62 @@ def _dynamic_layers(spec: ReportSpec, stats: dict[str, Any], out: Path) -> tuple
     return layers, rows
 
 
+def _chart_series(cs: Any, value: Any) -> tuple[list[str], list[Any]]:
+    """Labels and values of a ``ChartSpec``'s statistic (a dict, or a list of dicts)."""
+    if isinstance(value, dict):
+        items = [(str(k), v) for k, v in value.items()]
+    elif isinstance(value, (list, tuple)):
+        keys = (cs.x,) if isinstance(cs.x, str) else tuple(cs.x)
+        items = [(" → ".join(str(r.get(k)) for k in keys), r.get(cs.y)) for r in value if isinstance(r, dict)]
+    else:
+        return [], []
+    return [a for a, _ in items], [b for _, b in items]
+
+
+def _spec_tables(spec: ReportSpec, stats: dict[str, Any]) -> list[Table]:
+    """Tables for the list / dict statistics a spec asks to show."""
+    tables: list[Table] = []
+    for ts in spec.tables:
+        value = stats.get(ts.stat)
+        if not value:
+            continue
+        if isinstance(value, dict):
+            cols = [Col(ts.key_header, "text", "left", 3.0), Col(ts.value_header, ts.value_fmt, "right", 1.5)]
+            rows = [[k, v] for k, v in value.items()]
+        else:
+            cols = [Col(head, code, "left" if code == "text" else "right", 2.5 if code == "text" else 1.3)
+                    for _, head, code in ts.columns]
+            rows = [[r.get(key) for key, _, _ in ts.columns] for r in value[:ts.max_rows]]
+        note = f"Showing the first {ts.max_rows} of {len(value)} rows." if len(value) > ts.max_rows and not isinstance(value, dict) else ""
+        tables.append(Table(ts.title, cols, rows, note=note, sheet=ts.sheet or ts.title[:31]))
+    return tables
+
+
+def _vector_file_layers(meta: dict[str, Any], out: Path, pipeline: str, period: str, aoi_area_ha: float,
+                        max_features: int, warn: list[str]) -> list[Any]:
+    """Vector layers a pipeline wrote itself (``metadata['vector_files']``): buildings, roads, streams, fire points."""
+    from pygeovision.reporting.vectors import load_vector_file
+    layers = []
+    for vf in meta.get("vector_files") or []:
+        try:
+            path = Path(vf["path"])
+            if not path.is_absolute() and not path.exists():
+                # a relative path is normally relative to where the pipeline ran ("out/run/x.gpkg"), but accept one
+                # relative to the output directory ("x.gpkg") too; joining the two blindly doubled the folder
+                path = out / path if (out / path).exists() else path
+            lyr = load_vector_file(vf["name"], path, pipeline=pipeline, period=period, aoi_area_ha=aoi_area_ha,
+                                   max_features=max_features)
+        except Exception as exc:  # noqa: BLE001 - a vector deliverable must not lose the rest of the report
+            logger.warning("vector file %s failed: %s", vf, exc, exc_info=True)
+            warn.append(f"vector layer '{vf.get('name', '?')}' could not be read: {exc}")
+            continue
+        if lyr.n_features:
+            layers.append(lyr)
+        elif lyr.note:
+            warn.append(f"{lyr.name}: {lyr.note}")
+    return layers
+
+
 # ---------------------------------------------------------------------------
 # Tables
 # ---------------------------------------------------------------------------
@@ -387,7 +450,7 @@ def _metric_rows(spec: ReportSpec, stats: dict[str, Any]) -> tuple[list[list[Any
 
 
 def _extra_stat_rows(stats: dict[str, Any], used: set[str]) -> list[list[Any]]:
-    skip = {"note", "per_date", "class_breakdown"}
+    skip = {"note", "per_date", "class_breakdown", "source_note", "product_note"}
     rows = []
     for k, v in stats.items():
         if k in used or k in skip or k.endswith("_path") or isinstance(v, (dict, list, tuple)):
@@ -462,6 +525,8 @@ def generate_deliverables(
 
     # -- analyse every layer ------------------------------------------------
     layers: list[Layer] = list(spec.layers)
+    if spec.extra_layers is not None:
+        layers += list(spec.extra_layers(stats, meta))
     if spec.multi_date:
         layers, c.timeseries = _dynamic_layers(spec, stats, out)
     outs: list[_LayerOut] = []
@@ -522,7 +587,16 @@ def generate_deliverables(
             warn.append(f"map could not be drawn: {exc}")
         cdir = dest / "maps"
         try:
-            if spec.chart == "timeseries" and c.timeseries:
+            if spec.charts:
+                for cs in spec.charts:
+                    labels, vals = _chart_series(cs, stats.get(cs.stat))
+                    if not any(v is not None for v in vals):
+                        continue
+                    p = maps.chart_values(labels, vals, cdir / f"{result.pipeline}_chart_{F.slug(cs.stat + '_' + cs.y)}.png",
+                                          title=cs.title, ylabel=cs.ylabel, kind=cs.kind, fmt=cs.fmt)
+                    chart_paths.append(p)
+                    c.chart_captions[p] = cs.title
+            elif spec.chart == "timeseries" and c.timeseries:
                 chart_paths.append(maps.chart_timeseries(c.timeseries, cdir / f"{result.pipeline}_chart.png", title="Scene means by date"))
             elif spec.chart == "before_after" and not F.is_missing(stats.get("area_ha_before")):
                 chart_paths.append(maps.chart_before_after(stats.get("area_ha_before"), stats.get("area_ha_after"),
@@ -545,6 +619,8 @@ def generate_deliverables(
 
     # -- vectors ------------------------------------------------------------
     vec_layers = [lo.vector for lo in outs if lo.vector is not None]
+    if make_vectors and vec_fmts:
+        vec_layers += _vector_file_layers(meta, out, result.pipeline, period, aoi_km2 * 100.0, max_polygons, warn)
     if make_vectors and vec_fmts:
         try:
             aoi = aoi_frame(bbox, {"pipeline": result.pipeline, "title": spec.title, "period": period, "area_km2": round(aoi_km2, 3),
@@ -644,7 +720,9 @@ def _assemble(result, spec, c, outs, bbox, params, period, aoi_km2, metric_rows,
         quality.append(("warn", f"Only {valid * 100:.0f} % of the area has valid (cloud-free) pixels, so percentages rest on a small part of the area."))
     if any(lo.notes for lo in outs):
         quality.append(("info", "Some statistics were computed on a reduced-resolution read of a very large raster."))
-    if getattr(result, "pipeline", "") and spec.limitations and any("network you trained" in t for t in spec.limitations):
+    published_dataset = "building_count" in stats          # building_footprints in dataset mode: no network involved
+    if getattr(result, "pipeline", "") and spec.limitations and not published_dataset \
+            and any("network you trained" in t for t in spec.limitations):
         quality.append(("warn", "Model output: accuracy is not assessed in this report. Validate against reference data before using the figures."))
     if not class_names and any(lo.layer.classes_hint == "user" for lo in outs):
         quality.append(("info", "Class names are generic. Pass class names (CLI --class-names) to label them in the maps and tables."))
@@ -664,6 +742,9 @@ def _assemble(result, spec, c, outs, bbox, params, period, aoi_km2, metric_rows,
     note = stats.get("note")
     if note:
         blocks.append(callout(str(note), "info"))
+    for key in ("source_note", "product_note"):
+        if stats.get(key):
+            blocks.append(callout(str(stats[key]), "info"))
     sections.append(Section("Executive summary", blocks))
 
     # 2 study area and inputs
@@ -703,7 +784,7 @@ def _assemble(result, spec, c, outs, bbox, params, period, aoi_km2, metric_rows,
     if main_fig:
         blocks.append(figure_block(main_fig, f"Map: {spec.title}"))
     for p in deliv.charts[:1]:
-        blocks.append(figure_block(p, "Summary chart"))
+        blocks.append(figure_block(p, c.chart_captions.get(p, "Summary chart")))
     if c.timeseries:
         rows = [[r["date"], r["mean_ndvi"], r["mean_evi"], r["mean_ndwi"], r["valid_fraction"]] for r in c.timeseries]
         blocks.append(table_block(Table("Scene means by date", [Col("Date", "text", "left", 1.4), Col("Mean NDVI", "num3", "right"),
@@ -712,6 +793,8 @@ def _assemble(result, spec, c, outs, bbox, params, period, aoi_km2, metric_rows,
     for lo in outs:
         if lo.rows and not spec.multi_date:
             blocks.append(table_block(_class_table(lo, f"Class areas: {lo.layer.title}")))
+    for t in _spec_tables(spec, stats):
+        blocks.append(table_block(t))
     if metric_rows:
         t = _fmt_rows_for_table(metric_rows)
         t.title, t.sheet = "Key statistics (reported by the pipeline)", "Metrics"
@@ -729,7 +812,7 @@ def _assemble(result, spec, c, outs, bbox, params, period, aoi_km2, metric_rows,
             blocks.append(table_block(_stat_table(lo.summary, lo.layer.label if lo.layer.label and len(lo.layer.label) < 14 else "",
                                                   f"Value statistics: {lo.layer.title}")))
     for p in deliv.charts[1:]:
-        blocks.append(figure_block(p, "Distribution of values"))
+        blocks.append(figure_block(p, c.chart_captions.get(p, "Distribution of values")))
     sections.append(Section("Results", blocks))
 
     # 3b additional maps
@@ -773,19 +856,23 @@ def _assemble(result, spec, c, outs, bbox, params, period, aoi_km2, metric_rows,
     desc = {"gpkg": "GeoPackage (all layers)", "geojson": "GeoJSON, EPSG:4326", "shp": "Shapefile, EPSG:4326", "kml": "KML (Google Earth)"}
     for fmt, paths in deliv.vectors.items():
         for p in paths:
-            files.append([rel(p), desc.get(fmt, fmt), "Polygons with area and class attributes"])
+            files.append([rel(p), desc.get(fmt, fmt), "Vector features with attributes"])
     files.append(["run_summary.json", "JSON", "Machine-readable record of this run"])
     sections.append(Section("Deliverables", [table_block(Table("Files", [Col("File", "text", "left", 4.2), Col("Type", "text", "left", 2.0),
                                                                           Col("Contents", "text", "left", 3.2)], files, sheet="Files"))]))
     if vec_layers:
-        vrows = [[v.name, v.n_features, (v.classes["area_ha"].sum() if v.classes is not None else float(v.gdf["area_ha"].sum())),
-                  v.note or ""] for v in vec_layers]
+        def _total_ha(v):
+            if v.classes is not None:
+                return v.classes["area_ha"].sum()
+            return float(v.gdf["area_ha"].sum()) if "area_ha" in v.gdf.columns else None
+        vrows = [[v.name, v.n_features, _total_ha(v), v.note or ""] for v in vec_layers]
         sections[-1].blocks.append(table_block(Table("Vector layers", [Col("Layer", "text", "left", 2.4), Col("Features", "int", "right", 1.0),
                                                                        Col("Total area (ha)", "num1", "right", 1.4), Col("Note", "text", "left", 4.0)],
                                                       vrows, sheet="Vectors")))
-        sections[-1].blocks.append(para("All vector layers carry class_id, class_name, color_hex, area_ha, area_m2 (equal-area projection), "
-                                        "pct_aoi, cx, cy, pipeline and period. Coordinates are WGS 84 (EPSG:4326). "
-                                        "The GeoPackage also holds a dissolved '<layer>_classes' summary per layer and the 'aoi' outline."))
+        sections[-1].blocks.append(para("Vector layers made from rasters carry class_id, class_name, color_hex, area_ha, area_m2 (equal-area projection), "
+                                        "pct_aoi, cx, cy, pipeline and period; layers a pipeline wrote itself (buildings, roads, streams, fire points) "
+                                        "keep their own attributes. Coordinates are WGS 84 (EPSG:4326). "
+                                        "The GeoPackage also holds the 'aoi' outline and, for raster-derived layers, a dissolved '<layer>_classes' summary."))
 
     # 7 references
     if spec.references:

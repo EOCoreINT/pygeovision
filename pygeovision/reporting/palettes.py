@@ -33,6 +33,19 @@ WORLDCOVER = (
     ClassDef(100, "Moss and lichen", "#fae6a0"),
 )
 
+# 10 m annual land-cover legend of the Impact Observatory / Esri product on the Planetary Computer (io-lulc-annual-v02)
+IO_LULC = (
+    ClassDef(1, "Water", "#1A5BAB"),
+    ClassDef(2, "Trees", "#358221"),
+    ClassDef(4, "Flooded vegetation", "#87D19E"),
+    ClassDef(5, "Crops", "#FFDB5C"),
+    ClassDef(7, "Built area", "#ED022A"),
+    ClassDef(8, "Bare ground", "#EDE9E4"),
+    ClassDef(9, "Snow and ice", "#F2FAFF"),
+    ClassDef(10, "Clouds", "#C8C8C8"),
+    ClassDef(11, "Rangeland", "#C6AD8D"),
+)
+
 # Google Dynamic World legend
 DYNAMIC_WORLD = (
     ClassDef(0, "Water", "#419bdf"),

@@ -2,10 +2,10 @@
 # Multi-stage build: base → deps → test → production → gpu
 #
 # Usage:
-#   docker build -t pygeovision:2.1.8 .
-#   docker build --target gpu -t pygeovision:2.1.8-gpu .
-#   docker run -p 8080:8080 -v $(pwd)/models:/models pygeovision:2.1.8
-#   docker run pygeovision:2.1.8 pygeovision status
+#   docker build -t pygeovision:2.1.9 .
+#   docker build --target gpu -t pygeovision:2.1.9-gpu .
+#   docker run -p 8080:8080 -v $(pwd)/models:/models pygeovision:2.1.9
+#   docker run pygeovision:2.1.9 pygeovision status
 
 # ── Stage 1: base system ─────────────────────────────────────────────────────
 FROM python:3.11-slim AS base

@@ -13,15 +13,12 @@ Example:
 
 from __future__ import annotations
 
-import csv
-import gzip
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import requests
 
 from pygeovision.ai.labeling.base_labeler import BaseLabeler, LabelingResult
 from pygeovision.core.exceptions import LabelingError
@@ -239,165 +236,13 @@ class GoogleBuildingsLabeler(BaseLabeler):
         Returns:
             List of building dicts with 'geometry' and 'confidence' keys.
         """
-        # Determine which S2 tiles cover this bbox and download them
-        s2_tile_urls = self._get_s2_tile_urls(bbox_wgs84)
-        buildings: list[dict[str, Any]] = []
+        from pygeovision.data import footprints as fp  # noqa: PLC0415
 
-        for url in s2_tile_urls:
-            tile_buildings = self._download_tile_csv(url, bbox_wgs84)
-            buildings.extend(tile_buildings)
-
-        logger.debug(
-            "Fetched %d buildings (confidence >= %.2f) for bbox %s",
-            len(buildings),
-            self.config.confidence_threshold,
-            bbox_wgs84,
-        )
-        return buildings
-
-    def _get_s2_tile_urls(
-        self, bbox_wgs84: tuple[float, float, float, float]
-    ) -> list[str]:
-        """Identify GOB tile CSV URLs that intersect the bounding box.
-
-        Google Open Buildings stores data as per-S2-cell CSV.gz files.
-        We approximate coverage by computing S2 cell IDs at level 4.
-
-        Args:
-            bbox_wgs84: (minx, miny, maxx, maxy) in WGS-84.
-
-        Returns:
-            List of tile CSV.gz URLs.
-        """
-        # Try to use s2geometry if available, otherwise fall back to bbox-based URL
-        try:
-            import s2geometry as s2  # type: ignore
-
-            minx, miny, maxx, maxy = bbox_wgs84
-            region = s2.S2LatLngRect(
-                s2.S2LatLng.FromDegrees(miny, minx),
-                s2.S2LatLng.FromDegrees(maxy, maxx),
-            )
-            coverer = s2.S2RegionCoverer()
-            coverer.set_fixed_level(4)
-            covering = coverer.GetCovering(region)
-            return [
-                f"{_GOB_BASE_URL}/{cell_id.ToToken()}_buildings.csv.gz"
-                for cell_id in covering
-            ]
-        except ImportError:
-            # Fallback: use the tiles manifest to find relevant tiles
-            return self._get_tiles_from_manifest(bbox_wgs84)
-
-    def _get_tiles_from_manifest(
-        self, bbox_wgs84: tuple[float, float, float, float]
-    ) -> list[str]:
-        """Get tile URLs from the GOB tiles manifest CSV.
-
-        Args:
-            bbox_wgs84: (minx, miny, maxx, maxy) in WGS-84.
-
-        Returns:
-            Filtered list of tile URLs that intersect the bbox.
-        """
-        from shapely.geometry import box
-
-        manifest_path = self.config.cache_dir / "tiles_manifest.csv"
-
-        if not manifest_path.exists():
-            logger.info("Downloading Google Open Buildings tile manifest…")
-            resp = requests.get(
-                _S2_LOOKUP_URL, timeout=self.config.request_timeout
-            )
-            resp.raise_for_status()
-            content = gzip.decompress(resp.content).decode("utf-8")
-            manifest_path.write_text(content)
-            logger.info("Manifest cached at %s", manifest_path)
-
-        query_box = box(*bbox_wgs84)
-        urls: list[str] = []
-
-        with open(manifest_path, newline="") as fh:
-            reader = csv.DictReader(fh)
-            for row in reader:
-                try:
-                    tile_box = box(
-                        float(row["longitude_min"]),
-                        float(row["latitude_min"]),
-                        float(row["longitude_max"]),
-                        float(row["latitude_max"]),
-                    )
-                    if query_box.intersects(tile_box):
-                        urls.append(row["tile_url"])
-                except (KeyError, ValueError):
-                    continue
-
-        logger.debug("Found %d GOB tiles intersecting bbox", len(urls))
-        return urls
-
-    def _download_tile_csv(
-        self,
-        url: str,
-        bbox_wgs84: tuple[float, float, float, float],
-    ) -> list[dict[str, Any]]:
-        """Download and parse a single GOB tile CSV.gz.
-
-        Args:
-            url: URL to the tile CSV.gz file.
-            bbox_wgs84: Bounding box for spatial filtering.
-
-        Returns:
-            List of building records intersecting the bbox.
-        """
-        import json
-
-        from shapely import wkt
-        from shapely.errors import ShapelyError
-        from shapely.geometry import box, shape
-
-        # Check cache
-        tile_name = url.split("/")[-1]
-        cache_path = self.config.cache_dir / tile_name
-
-        if not cache_path.exists():
-            try:
-                resp = requests.get(url, timeout=self.config.request_timeout)
-                resp.raise_for_status()
-                cache_path.write_bytes(resp.content)
-            except requests.HTTPError as exc:
-                if exc.response is not None and exc.response.status_code == 404:
-                    logger.debug("GOB tile not found (404): %s", url)
-                    return []
-                raise
-
-        query_box = box(*bbox_wgs84)
-        buildings: list[dict[str, Any]] = []
-        bad_rows = 0
-
-        with gzip.open(cache_path, "rt") as fh:
-            reader = csv.DictReader(fh)
-            for row in reader:
-                try:
-                    confidence = float(row.get("confidence", 1.0))
-                    if confidence < self.config.confidence_threshold:
-                        continue
-
-                    raw = row["geometry"].strip()
-                    # Open Buildings CSVs carry WKT; accept GeoJSON too.
-                    geom = shape(json.loads(raw)) if raw.startswith("{") else wkt.loads(raw)
-                    if not query_box.intersects(geom):
-                        continue
-
-                    buildings.append(
-                        {"geometry": geom, "confidence": confidence}
-                    )
-                except (KeyError, ValueError, json.JSONDecodeError, ShapelyError):
-                    bad_rows += 1
-                    continue
-
-        if bad_rows:
-            logger.warning("GOB tile %s: %d rows had unreadable geometry/confidence and were skipped",
-                           tile_name, bad_rows)
+        gdf = fp.google_footprints(bbox_wgs84, min_confidence=self.config.confidence_threshold,
+                                   cache_dir=self.config.cache_dir)
+        buildings = [{"geometry": g, "confidence": float(c)} for g, c in zip(gdf.geometry, gdf["confidence"])]
+        logger.debug("Fetched %d buildings (confidence >= %.2f) for bbox %s", len(buildings),
+                     self.config.confidence_threshold, bbox_wgs84)
         return buildings
 
     def _rasterize_polygons(

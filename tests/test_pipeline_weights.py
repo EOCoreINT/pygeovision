@@ -18,7 +18,7 @@ rasterio = pytest.importorskip("rasterio")
 from pipeline_synth import BBOX, no_network, patch_downloads, read, write_raster  # noqa: E402
 
 from pygeovision.ai.pipelines import (  # noqa: E402
-    BuildingFootprintsPipeline, ChangeDetectionPipeline, CropMonitoringPipeline,
+    BuildingFootprintsPipeline, ChangeDetectionPipeline, CropMonitoringPipeline, LandslideDetectionPipeline, RoadExtractionPipeline,
     DeforestationPipeline, DisasterAssessmentPipeline, LandCoverPipeline,
     ModelWeightsRequired, SolarDetectionPipeline, UrbanGrowthPipeline, WaterBodiesPipeline,
     pipeline_kinds,
@@ -50,8 +50,9 @@ def pair(tmp_path):
 
 # (class, kwargs that make the call otherwise valid)
 GATED = [
-    (BuildingFootprintsPipeline, {}),
     (SolarDetectionPipeline, {}),
+    (RoadExtractionPipeline, {}),
+    (LandslideDetectionPipeline, {"date_before": "2024-01", "date_after": "2024-02"}),
     (CropMonitoringPipeline, {"crop_classes": ["wheat", "maize"]}),
     (DisasterAssessmentPipeline, {"date_before": "2024-01", "date_after": "2024-02"}),
     (DeforestationPipeline, {"date_before": "2020", "date_after": "2024"}),
@@ -83,8 +84,8 @@ class TestNoWeightsNoRun:
     def test_kind_marks_exactly_the_weight_pipelines(self):
         kinds = pipeline_kinds()
         needs = {n for n, k in kinds.items() if k == "needs_weights"}
-        assert needs == {"building_footprints", "solar_detection", "crop_monitoring",
-                         "disaster_assessment", "deforestation", "urban_growth"}
+        assert needs == {"solar_detection", "crop_monitoring", "disaster_assessment", "deforestation", "urban_growth",
+                         "road_extraction", "landslide_detection"}
 
     def test_crop_monitoring_needs_class_count(self, tmp_path, monkeypatch):
         no_network(monkeypatch)

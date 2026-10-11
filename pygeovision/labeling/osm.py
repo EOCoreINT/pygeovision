@@ -131,8 +131,11 @@ class OSMLabeler:
             for endpoint in OVERPASS_ENDPOINTS:
                 try:
                     import requests
-                    resp = requests.post(endpoint, data={"data": query},
-                                         timeout=self.timeout)
+
+                    from pygeovision._version import __version__
+                    resp = requests.post(endpoint, data={"data": query}, timeout=self.timeout,
+                                         headers={"User-Agent": f"PyGeoVision/{__version__} (+https://github.com/pygeovision)",
+                                                  "Accept": "*/*"})
                     if resp.status_code == 200:
                         return resp.json()
                     logger.warning("Overpass %s HTTP %d (attempt %d)", endpoint, resp.status_code, attempt)

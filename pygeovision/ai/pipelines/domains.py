@@ -264,7 +264,10 @@ class FloodMappingPipeline(_WaterChange):
             res = self._water_pair(bbox, out, date_before, date_after, mndwi_threshold,
                                    cloud_cover_max, kwargs.get("providers"))
             if res is None:
-                return self._fail("No usable imagery for one or both dates.", t0)
+                return self._fail("No usable imagery for one or both dates. A single day rarely has a scene "
+                                       "(Sentinel-2 passes about every 5 days): give each date as a range such as "
+                                       "2026-06-27/2026-07-06, raise cloud_cover_max, or use sar_flood_mapping, which "
+                                       "uses radar and is not blocked by cloud.", t0)
             w_b, w_a, valid, profile, px_ha = res
             classes = np.zeros(w_a.shape, dtype=np.uint8)
             classes[w_a & ~w_b] = 1

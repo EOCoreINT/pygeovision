@@ -227,19 +227,22 @@ class TestLabelTilesContract:
         assert tiles and all(pathlib.Path(t.extra["tile_path"]).exists() for t in tiles)
 
 
-def test_open_buildings_csv_with_wkt_geometry_is_parsed(tmp_path):
-    """Open Buildings CSVs store WKT; the parser used json.loads and silently skipped every row."""
-    import csv
-    import gzip
+def test_google_labeler_reads_footprints_through_the_shared_reader(tmp_path, monkeypatch):
+    """The labeler's own tile-URL/CSV code was wrong and is gone; WKT parsing and the confidence filter are tested
+    in tests/test_reference_data.py against the shared reader, which the labeler now calls."""
+    import geopandas as gpd
+    from shapely.geometry import box
 
     from pygeovision.ai.labeling.google_buildings import GoogleBuildingsLabeler
+    from pygeovision.data import footprints as fp
+    seen = {}
+
+    def fake(bbox, **kw):
+        seen.update(kw, bbox=bbox)
+        return gpd.GeoDataFrame({"confidence": [0.9]}, geometry=[box(0.4, 0.4, 0.6, 0.6)], crs="EPSG:4326")
+    monkeypatch.setattr(fp, "google_footprints", fake)
     lab = GoogleBuildingsLabeler.__new__(GoogleBuildingsLabeler)
-    lab.config = SimpleNamespace(cache_dir=tmp_path, request_timeout=5, confidence_threshold=0.5)
-    with gzip.open(tmp_path / "t.csv.gz", "wt", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(["latitude", "longitude", "area_in_meters", "confidence", "geometry"])
-        w.writerow([0.5, 0.5, 1, 0.9, "POLYGON((0.4 0.4, 0.6 0.4, 0.6 0.6, 0.4 0.6, 0.4 0.4))"])
-        w.writerow([0.5, 0.5, 1, 0.2, "POLYGON((0.4 0.4, 0.6 0.4, 0.6 0.6, 0.4 0.6, 0.4 0.4))"])  # low conf
-        w.writerow([9, 9, 1, 0.9, "POLYGON((9 9, 9.1 9, 9.1 9.1, 9 9.1, 9 9))"])                # outside
-    got = lab._download_tile_csv("https://x/t.csv.gz", (0.0, 0.0, 1.0, 1.0))
+    lab.config = SimpleNamespace(cache_dir=tmp_path, request_timeout=5, confidence_threshold=0.7)
+    got = lab._fetch_buildings((0.0, 0.0, 1.0, 1.0))
     assert len(got) == 1 and got[0]["confidence"] == 0.9
+    assert seen["min_confidence"] == 0.7 and seen["bbox"] == (0.0, 0.0, 1.0, 1.0)

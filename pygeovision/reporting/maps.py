@@ -361,6 +361,50 @@ def chart_timeseries(rows: Sequence[dict[str, Any]], out_path: Path, *, title: s
     return _save(fig, out_path)
 
 
+def chart_values(labels: Sequence[str], values: Sequence[float | None], out_path: Path, *, title: str, ylabel: str,
+                 kind: str = "bar", fmt: str = "{:,.1f}", color: str = ACCENT) -> Path:
+    """One series as bars (``bar`` vertical, ``barh`` horizontal) or a line with markers. Missing values are left out."""
+    pairs = [(str(lab), float(v)) for lab, v in zip(labels, values) if v is not None and np.isfinite(float(v))]
+    fig = _figure(CHART_SIZE)
+    if kind == "barh":
+        ax = fig.add_axes([0.30, 0.14, 0.64, 0.70])
+        pairs = pairs[::-1]
+        ys = np.arange(len(pairs))
+        vals = [v for _, v in pairs]
+        ax.barh(ys, vals, color=color, edgecolor=INK, linewidth=0.4, height=0.62)
+        ax.set_yticks(ys)
+        ax.set_yticklabels([textwrap.shorten(lab, 38, placeholder="…") for lab, _ in pairs], fontsize=10.4)
+        top = max(vals) if vals and max(vals) > 0 else 1.0
+        for y, v in zip(ys, vals):
+            ax.text(v + top * 0.01, y, fmt.format(v), va="center", fontsize=10.4, color=INK)
+        ax.set_xlim(0, top * 1.22)
+        ax.set_xlabel(ylabel, fontsize=11.1, color=INK)
+        _style_axes(ax)
+        ax.grid(axis="x", color="#e4e7eb", lw=0.7)
+        ax.grid(axis="y", visible=False)
+    else:
+        ax = fig.add_axes([0.09, 0.20, 0.86, 0.64])
+        xs = np.arange(len(pairs))
+        vals = [v for _, v in pairs]
+        if kind == "line":
+            ax.plot(xs, vals, marker="o", lw=2, color=color)
+        else:
+            ax.bar(xs, vals, color=color, edgecolor=INK, linewidth=0.4, width=0.62)
+        for x, v in zip(xs, vals):
+            ax.annotate(fmt.format(v), (x, v), textcoords="offset points", xytext=(0, 6), ha="center", fontsize=9.8, color=INK)
+        ax.set_xticks(xs)
+        ax.set_xticklabels([lab for lab, _ in pairs], fontsize=10.4, rotation=0 if len(pairs) <= 8 else 45,
+                           ha="center" if len(pairs) <= 8 else "right")
+        top = max(vals) if vals else 1.0
+        ax.set_ylim(min(0.0, min(vals) if vals else 0.0), (top * 1.15) if top > 0 else 1.0)
+        ax.set_ylabel(ylabel, fontsize=11.1, color=INK)
+        _style_axes(ax)
+    if not pairs:
+        ax.text(0.5, 0.5, "no values to show", transform=ax.transAxes, ha="center", va="center", color=MUTED)
+    fig.text(0.04, 0.95, title, fontsize=16.9, fontweight="bold", color=INK, va="top")
+    return _save(fig, out_path)
+
+
 def chart_before_after(before: float | None, after: float | None, labels: tuple[str, str], out_path: Path, *, title: str, unit: str = "ha") -> Path:
     fig = _figure(CHART_SIZE)
     ax = fig.add_axes([0.14, 0.14, 0.62, 0.70])

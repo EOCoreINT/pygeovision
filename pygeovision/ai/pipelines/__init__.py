@@ -1503,23 +1503,37 @@ class _NetworkPipeline(BasePipeline):
     kind = "needs_weights"
 
 
-class BuildingFootprintsPipeline(_NetworkPipeline):
-    """Building segmentation with a network you trained (``checkpoint=`` required).
+class BuildingFootprintsPipeline(BasePipeline):
+    """Building footprints for a bounding box -- from a published dataset, or from a network you trained.
 
-    Output ``building_mask.tif``: class map (1 = building). ``stats``
-    holds ``building_coverage``.
+    **Published footprints (default, ``kind = "ready"``).** ``source`` is ``"microsoft"`` (Microsoft Global ML
+    Building Footprints), ``"google"`` (Google Open Buildings v3; ``min_confidence`` filters its detections) or
+    ``"osm"`` (OpenStreetMap). Nothing is detected on your imagery: you get the dataset's polygons, clipped to the
+    box and measured. Outputs: ``building_footprints.gpkg`` (every polygon, with ``area_m2``),
+    ``building_density.tif`` (share of each ``cell_m`` cell covered by buildings) and ``building_count.tif``.
+    The datasets differ in date, completeness and error; ``stats['source_note']`` says how.
+
+    **Your own network.** Pass ``checkpoint=`` (a ``.pth`` you trained with ``GeoTrainer``) to segment buildings in
+    Sentinel-2 imagery instead; output ``building_mask.tif`` (class map, 1 = building). At 10 m individual houses
+    are not resolvable, so use this for dense built-up areas or with higher-resolution imagery.
     """
     name = "building_footprints"
-    description = "Building segmentation with your trained model (checkpoint required)"
+    description = ("Building footprints from Microsoft, Google or OpenStreetMap data (or segmentation with your "
+                   "own trained model)")
     domain = "urban"
-    tags = ["urban", "segmentation", "needs-weights"]
+    kind = "ready"
+    tags = ["urban", "buildings", "vector", "reference-product"]
 
-    def run(self, bbox, output_dir, date="2024-06", model="unet_resnet50", checkpoint=None,
-            cloud_cover_max=15.0, bands=("red", "green", "blue"), num_classes=2,
-            tile_size=512, overlap=64, **kwargs):
+    def run(self, bbox, output_dir, date="2024-06", source="microsoft", checkpoint=None, cell_m=100.0,
+            min_confidence=0.65, model="unet_resnet50", cloud_cover_max=15.0, bands=("red", "green", "blue"),
+            num_classes=2, tile_size=512, overlap=64, **kwargs):
         import time
         t0 = time.time()
         output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        if checkpoint is None:
+            from pygeovision.ai.pipelines.vector_products import run_building_reference
+            return run_building_reference(self, bbox, output_dir, source, cell_m, min_confidence,
+                                          kwargs.get("cache_dir"), kwargs.get("session"), t0)
         providers = kwargs.pop("providers", None)
         try:
             net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
@@ -1699,6 +1713,59 @@ class UrbanGrowthPipeline(_BitemporalNetworkPipeline):
                               bands, num_classes, tile_size, overlap, kwargs, {})
 
 
+class RoadExtractionPipeline(_NetworkPipeline):
+    """Road segmentation with a network you trained (``checkpoint=`` required).
+
+    Roads are a few pixels wide at 10 m, so train on the imagery you will run it on (the ``road_network`` pipeline
+    gives OpenStreetMap lines to rasterise as labels). Output ``road_mask.tif`` (class map, 1 = road).
+    """
+    name = "road_extraction"
+    description = "Road segmentation with your trained model (checkpoint required)"
+    domain = "infrastructure"
+    tags = ["infrastructure", "roads", "segmentation", "needs-weights"]
+
+    def run(self, bbox, output_dir, date="2024-06", cloud_cover_max=10.0, model="unet_resnet50",
+            checkpoint=None, bands=("red", "green", "blue"), num_classes=2, tile_size=512, overlap=64, **kwargs):
+        import time
+        t0 = time.time()
+        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        providers = kwargs.pop("providers", None)
+        try:
+            net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
+            img = self._search_and_download(bbox, date, output_dir, providers=providers,
+                                            cloud_cover_max=cloud_cover_max, bands=bands)
+            if not img:
+                return self._fail("No usable imagery found.", t0)
+            out = output_dir / "road_mask.tif"
+            pred = self._run_model(img, out, net, num_classes, len(bands), tile_size, overlap)
+            return self._ok(out, {"road_coverage": float((pred == 1).mean())},
+                            {"date": date, "model": model, "bands": bands, "num_classes": num_classes}, t0)
+        except Exception as exc:
+            return self._fail(str(exc), t0)
+
+
+class LandslideDetectionPipeline(_BitemporalNetworkPipeline):
+    """Landslide scars between a before and an after image, with a change network you trained.
+
+    ``date_before`` and ``date_after`` bracket the event. The network sees only the two images; add a DEM or slope
+    layer as extra channels when you train if you want terrain to inform it. Output ``landslide_map.tif``.
+    """
+    name = "landslide_detection"
+    description = "Landslide scars from a before/after pair with your trained change model (checkpoint required)"
+    domain = "disaster"
+    tags = ["disaster", "landslide", "change", "needs-weights"]
+    _output_name = "landslide_map.tif"
+
+    def run(self, bbox, output_dir, date_before=None, date_after=None, model="siamese_unet",
+            checkpoint=None, bands=("red", "green", "blue"), num_classes=2, tile_size=512, overlap=64, **kwargs):
+        if not date_before or not date_after:
+            import time
+            t0 = time.time()
+            return self._fail("landslide_detection needs date_before and date_after.", t0)
+        return self._run_pair(bbox, output_dir, date_before, date_after, model, checkpoint,
+                              bands, num_classes, tile_size, overlap, kwargs, {})
+
+
 # ---------------------------------------------------------------------------
 # Catalogue
 # ---------------------------------------------------------------------------
@@ -1713,13 +1780,23 @@ _CORE_PIPELINES: dict[str, type] = {
     "urban_growth":        UrbanGrowthPipeline,
     "water_bodies":        WaterBodiesPipeline,
     "solar_detection":     SolarDetectionPipeline,
+    "road_extraction":     RoadExtractionPipeline,
+    "landslide_detection": LandslideDetectionPipeline,
 }
 
 
 def pipeline_catalogue() -> dict[str, type]:
     """Every pipeline (core + domain), keyed by name."""
     from pygeovision.ai.pipelines import domains
-    return {**_CORE_PIPELINES, **domains.DOMAIN_PIPELINES}
+    from pygeovision.ai.pipelines.multisensor_flood import MULTISENSOR_PIPELINES
+    from pygeovision.ai.pipelines.reference_products import REFERENCE_PIPELINES
+    from pygeovision.ai.pipelines.sar_flood import SAR_PIPELINES
+    from pygeovision.ai.pipelines.terrain import TERRAIN_PIPELINES
+    from pygeovision.ai.pipelines.timeseries import TIMESERIES_PIPELINES
+    from pygeovision.ai.pipelines.vector_products import VECTOR_PIPELINES
+    return {**_CORE_PIPELINES, **domains.DOMAIN_PIPELINES, **REFERENCE_PIPELINES, **VECTOR_PIPELINES,
+            **TERRAIN_PIPELINES, **TIMESERIES_PIPELINES, **SAR_PIPELINES,
+            **MULTISENSOR_PIPELINES}
 
 
 def get_pipeline(name: str, pgv_client: Any) -> BasePipeline:

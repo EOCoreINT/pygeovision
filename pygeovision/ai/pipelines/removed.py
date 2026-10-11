@@ -40,10 +40,6 @@ REMOVED_PIPELINES: dict[str, str] = {
     ),
     # -- untrained network ------------------------------------------------
     "crop_type_mapping": _UNTRAINED + "Use crop_monitoring with your own checkpoint.",
-    "road_extraction": _UNTRAINED + "Train a road-segmentation model with GeoTrainer to bring it back.",
-    "landslide_detection": (
-        _UNTRAINED + "Its description also claimed a DEM input that was never used."
-    ),
     "canopy_height": (
         "CHMv2Model builds an untrained decoder (no canopy-height weights exist in "
         "the package), so heights were random; the pipeline also reported success "
@@ -100,7 +96,6 @@ REMOVED_PIPELINES: dict[str, str] = {
     "port_monitoring": _COCO,
     "parking_occupancy": _COCO,
     # -- built on a static reference map ----------------------------------
-    "landcover_change": _STATIC_WC,
     "mine_detection": _STATIC_WC,
     "construction_progress": _STATIC_WC,
     "mangrove_mapping": _STATIC_WC,

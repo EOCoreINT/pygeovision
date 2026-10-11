@@ -54,9 +54,12 @@ def main() -> None:
     (DOCS / "pipelines").mkdir(exist_ok=True)
     (DOCS / "pipelines" / "ready.md").write_text(_page(
         "Pipelines that run out of the box",
-        "These need nothing but a bounding box and dates. Each is a documented index, "
-        "a terrain product, or a published reference map. Cloud- and shadow-masked "
-        "pixels are written as nodata and excluded from every percentage and area.",
+        "These need nothing but a bounding box and dates (or years). Each is a documented index, "
+        "a terrain product, a published reference map or a published vector dataset. Cloud- and "
+        "shadow-masked pixels are written as nodata and excluded from every percentage and area. "
+        "The reference-product pipelines read public data (Microsoft Planetary Computer, OpenStreetMap, "
+        "Microsoft and Google building footprints) over the internet and need no account; "
+        "each result carries the product's own caveats in `stats[\"product_note\"]` or `stats[\"source_note\"]`.",
         "ready"))
     (DOCS / "pipelines" / "needs-weights.md").write_text(_page(
         "Pipelines that need your trained weights",
@@ -67,8 +70,10 @@ def main() -> None:
         "never a silent fallback.",
         "needs_weights"))
     removed = [f"{NOTICE}# Pipelines removed before launch\n",
-               f"{len(REMOVED_PIPELINES)} of the original 49 pipelines were removed because they could not "
-               "produce a correct result. Asking for one raises an error that quotes the reason below.\n"]
+               f"{len(REMOVED_PIPELINES)} of the original 49 pipelines stay removed because they cannot "
+               "produce a correct result today. (Three others, `landcover_change`, `road_extraction` and "
+               "`landslide_detection`, came back once a real implementation existed.) "
+               "Asking for one raises an error that quotes the reason below.\n"]
     for n, why in sorted(REMOVED_PIPELINES.items()):
         removed.append(f"- **`{n}`**: {why.strip()}")
     (DOCS / "pipelines" / "removed.md").write_text("\n".join(removed) + "\n")

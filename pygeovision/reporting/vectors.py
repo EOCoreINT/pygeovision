@@ -138,6 +138,43 @@ def polygonise(
     return VectorLayer(name, gdf, classes, source_layer, note, min_px, raw)
 
 
+def load_vector_file(name: str, path: Path, *, pipeline: str, period: str, aoi_area_ha: float,
+                     max_features: int = DEFAULT_MAX_POLYGONS, layer: str | None = None) -> VectorLayer:
+    """A vector layer that a pipeline already wrote (buildings, roads, streams, fire points) as a report deliverable.
+
+    Geometries are kept as they are -- nothing is rasterised or merged. Attributes the exports expect are added
+    (``patch_id``, ``class_id``/``class_name`` when missing, ``area_ha`` and ``pct_aoi`` for polygons). A layer with
+    more than ``max_features`` features is not exported (the pipeline's own file still has all of them); the returned
+    layer is empty and its ``note`` says why.
+    """
+    import geopandas as gpd
+
+    path = Path(path)
+    gdf = gpd.read_file(path, layer=layer or name)
+    if len(gdf) > max_features:
+        return VectorLayer(name, gdf.iloc[0:0].copy(), None, name,
+                           f"{len(gdf):,} features exceed the {max_features:,}-feature limit for the report exports; "
+                           f"all of them are in {path.name}.")
+    gdf = gdf.to_crs("EPSG:4326") if gdf.crs is not None else gdf.set_crs("EPSG:4326")
+    if len(gdf) and gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all():
+        area_m2 = gdf.to_crs(EQUAL_AREA_CRS).area
+        gdf["area_ha"] = (area_m2 / 1e4).round(4)
+        gdf["pct_aoi"] = (gdf["area_ha"] / aoi_area_ha * 100.0).round(5) if aoi_area_ha > 0 else np.nan
+    if "class_id" not in gdf.columns:
+        gdf["class_id"] = 0
+    if "class_name" not in gdf.columns:
+        gdf["class_name"] = name
+    if len(gdf):
+        cent = gdf.geometry.representative_point()
+        gdf["cx"] = cent.x.round(6)
+        gdf["cy"] = cent.y.round(6)
+    gdf["pipeline"] = pipeline
+    gdf["period"] = period
+    gdf = gdf.reset_index(drop=True)
+    gdf.insert(0, "patch_id", np.arange(1, len(gdf) + 1))
+    return VectorLayer(name, gdf, None, name, "", 0, len(gdf))
+
+
 def aoi_frame(bbox: tuple[float, float, float, float], attrs: dict[str, Any]) -> Any:
     """A one-row GeoDataFrame with the requested area of interest."""
     import geopandas as gpd

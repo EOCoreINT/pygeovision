@@ -22,12 +22,13 @@ def mock_sv_with_geotiff(mock_pgv_client, small_geotiff):
 
 
 class TestBuildingFootprintsPipeline:
-    def test_pipeline_refuses_without_trained_weights(self, tmp_dir, mock_pgv_client):
+    def test_network_mode_refuses_a_missing_checkpoint_without_searching(self, tmp_dir, mock_pgv_client):
         from pygeovision.ai.pipelines import get_pipeline
         pipeline = get_pipeline("building_footprints", mock_pgv_client)
-        result = pipeline.run(bbox=(-0.1, 51.4, 0.0, 51.5), output_dir=tmp_dir, date="2024-06")
+        result = pipeline.run(bbox=(-0.1, 51.4, 0.0, 51.5), output_dir=tmp_dir, date="2024-06",
+                              checkpoint=str(tmp_dir / "missing.pth"))
         assert result.success is False
-        assert "trained weights" in result.error
+        assert "not found" in result.error
         mock_pgv_client.search.assert_not_called()
 
     def test_pipeline_with_no_imagery(self, tmp_dir, mock_pgv_client):
@@ -63,6 +64,7 @@ class TestBuildingFootprintsPipeline:
                 bbox=(-0.1, 51.4, 0.0, 51.5),
                 output_dir=tmp_dir,
                 date="2024-06",
+                checkpoint=str(tmp_dir / "no_such.pth"),
             )
         # Should succeed or fail gracefully
         assert result.pipeline == "building_footprints"

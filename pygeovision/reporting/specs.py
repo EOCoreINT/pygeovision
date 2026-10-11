@@ -83,6 +83,39 @@ class Metric:
 
 
 @dataclass(frozen=True)
+class TableSpec:
+    """A table built from one entry of ``result.stats``.
+
+    The entry is either a list of dicts (``columns`` = (key, header, format code) for each column) or a plain
+    ``{name: number}`` dict (two columns: ``key_header``, ``value_header`` formatted with ``value_fmt``).
+    """
+    stat: str
+    title: str
+    columns: tuple[tuple[str, str, str], ...] = ()
+    key_header: str = "Item"
+    value_header: str = "Value"
+    value_fmt: str = "num2"
+    max_rows: int = 40
+    sheet: str = ""
+
+
+@dataclass(frozen=True)
+class ChartSpec:
+    """A bar / line chart of one entry of ``result.stats`` (a list of dicts, or a ``{label: number}`` dict).
+
+    ``x`` is the dict key (or keys, joined with " -> ") holding each row's label and ``y`` the key holding its value;
+    for a plain dict both are ignored.
+    """
+    stat: str
+    title: str
+    ylabel: str
+    y: str = ""
+    x: str | tuple[str, ...] = "date"
+    kind: str = "bar"                        # "bar" | "barh" | "line"
+    fmt: str = "{:,.1f}"
+
+
+@dataclass(frozen=True)
 class ReportSpec:
     pipeline: str
     title: str
@@ -96,6 +129,9 @@ class ReportSpec:
     references: tuple[str, ...] = ()
     chart: str = "auto"                      # "auto" | "timeseries" | "before_after"
     multi_date: bool = False
+    tables: tuple[TableSpec, ...] = ()       # extra tables from list / dict statistics
+    charts: tuple[ChartSpec, ...] = ()       # when given, these replace the automatic class-area chart
+    extra_layers: Callable[[dict[str, Any], dict[str, Any]], Sequence[Layer]] | None = None   # layers that depend on the run
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +153,8 @@ R_DW = "Brown, C.F. et al. (2022). Dynamic World, near real-time global 10 m lan
 R_SHANNON = "Shannon, C.E. (1948). A mathematical theory of communication. Bell System Technical Journal 27, 379-423."
 R_SUN = "Duffie, J.A. & Beckman, W.A. Solar Engineering of Thermal Processes (Wiley); Spencer, J.W. (1971). Fourier series representation of the position of the sun. Search 2(5), 172."
 R_LST = "USGS. Landsat Collection 2 Level-2 Science Product Guide (LSDS-1619)."
+R_TWELE = "Twele, A., Cao, W., Plank, S. & Martinis, S. (2016). Sentinel-1-based flood mapping: a fully automated processing chain. International Journal of Remote Sensing 37(13), 2990-3004."
+R_S1RTC = "Catalyst / ESA. Sentinel-1 Radiometrically Terrain Corrected (RTC) backscatter, Microsoft Planetary Computer (sentinel-1-rtc); contains modified Copernicus Sentinel data."
 R_S2 = "ESA. Sentinel-2 Level-2A surface reflectance (Copernicus programme)."
 
 _USER_CLASSES_NOTE = ("Class meanings come from the labels your network was trained on; this report cannot know them. "
@@ -161,6 +199,45 @@ def _h_flood(c):
     return [f"{c.f('ha', s.get('flooded_area_ha'))} ({c.f('frac', s.get('flooded_fraction'))} of the valid area) is water on "
             f"{c.m.get('date_after')} that was not water on {c.m.get('date_before')}.",
             f"A further {c.f('ha', s.get('permanent_water_area_ha'))} is permanent water (water on both dates)."]
+
+
+def _h_sar_flood(c):
+    s = c.s
+    return [f"{c.f('ha', s.get('flooded_area_ha'))} ({c.f('frac', s.get('flooded_fraction'))} of the valid area) is open water in the "
+            f"flood window ({c.m.get('date_after')}) that was not water in the reference window ({c.m.get('date_before')}); "
+            f"{c.f('ha', s.get('permanent_water_area_ha'))} is water in both.",
+            f"Sentinel-1 {str(s.get('polarization', '')).upper()}, {s.get('orbit_state')} orbit {s.get('relative_orbit')}: "
+            f"{s.get('scenes_reference')} reference and {s.get('scenes_flood')} flood scene(s); water below "
+            f"{c.f('num1', s.get('water_db'))} dB ({s.get('water_db_source')}), at least {c.f('num1', s.get('change_db'))} dB darker than the reference."]
+
+
+def _h_multisensor(c):
+    s = c.s
+    flooded, land = s.get("flooded_area_ha") or 0.0, s.get("land_area_ha") or 0.0
+    used = ", ".join(s.get("sensors_used") or []) or "none"
+    if land and flooded / land < 0.0005:
+        first = (f"No significant open-water flooding was detected between {c.m.get('date_before')} and {c.m.get('date_after')}: "
+                 f"{c.f('ha', flooded)} of {c.f('ha', land)} of land. Floodwater between buildings or under vegetation, "
+                 f"which radar and optical imagery both miss, cannot be ruled out.")
+    else:
+        first = (f"{c.f('ha', flooded)} ({c.f('frac', s.get('flooded_fraction'))} of the land) is flooded between "
+                 f"{c.m.get('date_before')} and {c.m.get('date_after')}: {c.f('ha', s.get('flooded_confirmed_ha'))} confirmed by "
+                 f"radar and optical, {c.f('ha', s.get('flooded_radar_only_ha'))} radar only, "
+                 f"{c.f('ha', s.get('flooded_optical_only_ha'))} optical only. A further {c.f('ha', s.get('flooded_disputed_ha'))} "
+                 f"is disputed (radar flooded, a clear optical view says dry).")
+    lines = [first,
+             f"{c.f('ha', s.get('permanent_water_area_ha'))} was already water in the reference window (sea, lakes, rivers) and is "
+             f"excluded from the flooded area and from the percentages.",
+             f"Data used: {used}. Optical imagery gave a clear view of {c.f('frac', s.get('optical_coverage'))} of the land."]
+    if s.get("radar_optical_f1_reference") is not None:
+        lines.append(f"Radar and optical agree on where the water was before the event (F1 {c.num(s.get('radar_optical_f1_reference'), 2)}); "
+                     f"radar water threshold {c.f('num1', s.get('water_db'))} dB ({s.get('water_db_source')}).")
+    if s.get("hand_applied") and (s.get("excluded_by_hand_ha") or 0) > 0:
+        lines.append(f"{c.f('ha', s.get('excluded_by_hand_ha'))} of apparent flooding was removed because it lies more than "
+                     f"{c.f('num1', s.get('max_hand_m'))} m above the nearest drainage.")
+    if s.get("data_notes"):
+        lines.append(f"Data gaps: {s.get('data_notes')}.")
+    return lines
 
 
 def _h_coastal(c):
@@ -299,6 +376,170 @@ _WATER_BLUE = "#1f78b4"
 _FIRE = ("#d9dee3", "#fed976", "#fd8d3c", "#bd0026")
 
 # ---------------------------------------------------------------------------
+# Headlines for the reference-product, terrain, vector and time-series pipelines
+# ---------------------------------------------------------------------------
+
+def _h_buildings(c):
+    s = c.s
+    if "building_count" not in s:
+        return _h_network_mask("building", "building_coverage")(c)
+    src = {"microsoft": "Microsoft ML Building Footprints", "google": "Google Open Buildings v3",
+           "osm": "OpenStreetMap"}.get(s.get("source"), str(s.get("source")))
+    return [f"{c.f('int', s.get('building_count'))} buildings from {src} fall inside the area, covering {c.f('ha', s.get('building_area_ha'))} "
+            f"({c.f('frac', s.get('building_coverage'))} of the area; {c.num(s.get('buildings_per_km2'), 0)} per km²).",
+            "These are the dataset's polygons, not detections on your own imagery."]
+
+
+def _h_roads(c):
+    s = c.s
+    groups = s.get("km_by_group") or {}
+    top = max(groups.items(), key=lambda kv: kv[1])[0] if groups else None
+    out = [f"OpenStreetMap holds {c.num(s.get('total_length_km'), 1)} km of roads and paths in the area "
+           f"({c.num(s.get('road_density_km_per_km2'), 2)} km per km²)."]
+    if top:
+        out.append(f"The longest group is {top} ({c.num(groups[top], 1)} km).")
+    return out
+
+
+def _h_lc_change(c):
+    s = c.s
+    out = [f"{c.f('ha', s.get('changed_area_ha'))} ({c.f('frac', s.get('change_fraction'))} of the valid area) is mapped as a different "
+           f"land-cover class in {s.get('year_after')} than in {s.get('year_before')}."]
+    t = s.get("transitions") or []
+    if t:
+        out.append(f"The largest change is {t[0]['from']} to {t[0]['to']}: {c.f('ha', t[0]['area_ha'])}.")
+    return out
+
+
+def _h_urban_expansion(c):
+    s = c.s
+    out = [f"Built-up area went from {c.f('ha', s.get('built_area_ha_before'))} in {s.get('year_before')} to "
+           f"{c.f('ha', s.get('built_area_ha_after'))} in {s.get('year_after')}: gross gain {c.f('ha', s.get('gain_ha'))}, "
+           f"gross loss {c.f('ha', s.get('loss_ha'))}, net {c.f('ha', s.get('net_change_ha'))}."]
+    if s.get("annual_growth_rate") is not None:
+        out.append(f"Compound annual growth of the built-up area: {c.f('frac', s.get('annual_growth_rate'))} per year.")
+    return out
+
+
+def _h_forest_change(c):
+    s = c.s
+    out = [f"Forest went from {c.f('ha', s.get('forest_area_ha_before'))} in {s.get('year_before')} to "
+           f"{c.f('ha', s.get('forest_area_ha_after'))} in {s.get('year_after')}: loss {c.f('ha', s.get('forest_loss_ha'))}, "
+           f"gain {c.f('ha', s.get('forest_gain_ha'))}."]
+    if s.get("loss_share_of_initial_forest") is not None:
+        out.append(f"The loss is {c.f('frac', s.get('loss_share_of_initial_forest'))} of the {s.get('year_before')} forest "
+                   f"({c.f('ha', s.get('loss_ha_per_year'))} per year).")
+    return out
+
+
+def _h_water_history(c):
+    s = c.s
+    return [f"{c.f('ha', s.get('ever_water_ha'))} ({c.f('frac', s.get('ever_water_share'))} of the valid area) was water at some time "
+            f"between 1984 and 2020.",
+            f"By the end of 2020: {c.f('ha', s.get('permanent_now_ha'))} permanent and {c.f('ha', s.get('seasonal_now_ha'))} seasonal water; "
+            f"{c.f('ha', s.get('lost_ha'))} of water had been lost and {c.f('ha', s.get('ephemeral_ha'))} was ephemeral."]
+
+
+def _h_et(c):
+    s = c.s
+    return [f"Mean evapotranspiration in {s.get('year')} is {c.num(s.get('mean_et_mm'), 0)} mm per year "
+            f"(range {c.num(s.get('min_et_mm'), 0)} to {c.num(s.get('max_et_mm'), 0)} mm).",
+            f"Potential evapotranspiration averages {c.num(s.get('mean_pet_mm'), 0)} mm; the ET/PET ratio is {c.num(s.get('mean_et_pet_ratio'), 2)}. "
+            f"Over the area that is {c.num(s.get('total_et_volume_million_m3'), 2)} million m³ of water."]
+
+
+def _h_active_fire(c):
+    s = c.s
+    n = s.get("detections_pixel_days") or 0
+    if not n:
+        return [f"No fire pixel at '{s.get('min_confidence')}' confidence or above was detected between {s.get('start')} and {s.get('end')} "
+                f"({s.get('days_with_data')} days with data)."]
+    return [f"{c.f('int', n)} fire detections (pixel-days) on {c.f('int', s.get('pixels_with_fire'))} different 1 km pixels between "
+            f"{s.get('start')} and {s.get('end')}.",
+            f"A pixel burned for up to {s.get('max_days_with_fire_in_a_pixel')} day(s); the strongest fire radiative power is "
+            f"{c.num(s.get('max_frp_mw'), 1)} MW."]
+
+
+def _h_terrain(c):
+    s = c.s
+    return [f"Elevation runs from {c.f('m', s.get('min_elevation_m'))} to {c.f('m', s.get('max_elevation_m'))} "
+            f"(relief {c.f('m', s.get('relief_m'))}, mean {c.f('m', s.get('mean_elevation_m'))}).",
+            f"Mean slope is {c.f('deg', s.get('mean_slope_deg'))}; the steepest 5 % of cells exceed {c.f('deg', s.get('p95_slope_deg'))}."]
+
+
+def _h_drainage(c):
+    s = c.s
+    out = [f"Streams draining at least {c.num(s.get('stream_threshold_km2'), 2)} km² total {c.num(s.get('stream_length_km'), 1)} km "
+           f"(density {c.num(s.get('drainage_density_km_per_km2'), 2)} km per km²), up to Strahler order {s.get('max_strahler_order')}."]
+    hands = sorted((k for k in s if k.startswith("pct_area_hand_le_")), key=lambda k: float(k.removeprefix("pct_area_hand_le_").removesuffix("m")))
+    if hands:
+        out.append("Share of the area within a given height above the nearest stream: " + ", ".join(
+            f"{c.f('frac', s[k])} within {k.removeprefix('pct_area_hand_le_')}" for k in hands) + ".")
+    return out
+
+
+def _h_veg_anomaly(c):
+    s = c.s
+    return [f"NDVI in {c.m.get('date')} is on average {c.num(s.get('mean_anomaly'), 3)} from the {len(s.get('baseline_years_used') or [])}-year "
+            f"baseline mean ({c.num(s.get('mean_ndvi_target'), 2)} against {c.num(s.get('mean_ndvi_baseline'), 2)}).",
+            f"{c.f('frac', s.get('pct_below_normal'))} of the observed area is more than one standard deviation below normal and "
+            f"{c.f('frac', s.get('pct_above_normal'))} above; mean Vegetation Condition Index {c.num(s.get('mean_vci'), 0)} of 100."]
+
+
+def _h_water_series(c):
+    s = c.s
+    return [f"{s.get('n_dates_usable')} of {s.get('n_dates_requested')} dates were observed well enough to use. Observed water area ranged "
+            f"from {c.f('ha', s.get('min_water_area_ha'))} to {c.f('ha', s.get('max_water_area_ha'))}.",
+            f"{c.f('ha', s.get('always_water_ha'))} was water on every date it was seen and {c.f('ha', s.get('variable_water_ha'))} "
+            f"was water on some dates only."]
+
+
+# ---------------------------------------------------------------------------
+# Class legends for the new products
+# ---------------------------------------------------------------------------
+
+_LC_CHANGE_YEAR = _cd((1, "Water", "#1A5BAB"), (2, "Trees", "#358221"), (4, "Flooded vegetation", "#87D19E"), (5, "Crops", "#FFDB5C"),
+                      (7, "Built area", "#ED022A"), (8, "Bare ground", "#EDE9E4"), (9, "Snow and ice", "#F2FAFF"),
+                      (10, "Clouds", "#C8C8C8"), (11, "Rangeland", "#C6AD8D"))
+_GSW_CLASSES = _cd((0, "Never water", NO_CHANGE), (1, "Permanent", "#08306b"), (2, "New permanent", "#2171b5"), (3, "Lost permanent", "#d94801"),
+                   (4, "Seasonal", "#6baed6"), (5, "New seasonal", "#9ecae1"), (6, "Lost seasonal", "#fdae6b"),
+                   (7, "Seasonal to permanent", "#4292c6"), (8, "Permanent to seasonal", "#c6dbef"),
+                   (9, "Ephemeral permanent", "#fdd0a2"), (10, "Ephemeral seasonal", "#fee6ce"))
+_STREAM_ORDER = _cd((0, "No stream", NO_CHANGE), (1, "Order 1", "#c6dbef"), (2, "Order 2", "#9ecae1"), (3, "Order 3", "#6baed6"),
+                    (4, "Order 4", "#4292c6"), (5, "Order 5", "#2171b5"), (6, "Order 6", "#08519c"), (7, "Order 7", "#08306b"),
+                    (8, "Order 8", "#041f4a"))
+_ANOMALY_CLASSES = _cd((0, "Much below normal (z <= -2)", "#8c510a"), (1, "Below normal (-2 < z <= -1)", "#d8b365"),
+                       (2, "Near normal (|z| < 1)", NO_CHANGE), (3, "Above normal (1 <= z < 2)", "#5ab4ac"),
+                       (4, "Much above normal (z >= 2)", "#01665e"))
+
+R_IO = "Karra, K. et al. (2021). Global land use / land cover with Sentinel-2 and deep learning. IGARSS 2021, 4704-4707. (Impact Observatory / Esri 10 m annual land cover, io-lulc-annual-v02, Microsoft Planetary Computer.)"
+R_FNF = "Shimada, M. et al. (2014). New global forest/non-forest maps from ALOS PALSAR data (2007-2010). Remote Sensing of Environment 155, 13-31. (JAXA global PALSAR-2/PALSAR forest/non-forest map, Microsoft Planetary Computer.)"
+R_GSW = "Pekel, J.-F., Cottam, A., Gorelick, N. & Belward, A.S. (2016). High-resolution mapping of global surface water and its long-term changes. Nature 540, 418-422."
+R_MOD16 = "Running, S., Mu, Q., Zhao, M. & Moreno, A. MODIS/Terra Net Evapotranspiration Gap-Filled Yearly L4 Global 500 m SIN Grid V061 (MOD16A3GF). NASA LP DAAC."
+R_FIRE = "Giglio, L., Schroeder, W. & Justice, C.O. (2016). The collection 6 MODIS active fire detection algorithm and fire products. Remote Sensing of Environment 178, 31-41."
+R_COPDEM = "European Space Agency / Airbus. Copernicus DEM GLO-30 (doi:10.5270/ESA-c5d3d65)."
+R_TRI = "Riley, S.J., DeGloria, S.D. & Elliot, R. (1999). A terrain ruggedness index that quantifies topographic heterogeneity. Intermountain Journal of Sciences 5(1-4), 23-27."
+R_FLOOD = "Barnes, R., Lehman, C. & Mulla, D. (2014). Priority-flood: an optimal depression-filling and watershed-labeling algorithm for digital elevation models. Computers & Geosciences 62, 117-127."
+R_D8 = "O'Callaghan, J.F. & Mark, D.M. (1984). The extraction of drainage networks from digital elevation data. Computer Vision, Graphics, and Image Processing 28(3), 323-344."
+R_STRAHLER = "Strahler, A.N. (1957). Quantitative analysis of watershed geomorphology. Transactions of the American Geophysical Union 38(6), 913-920."
+R_HAND = "Rennó, C.D. et al. (2008). HAND, a new terrain descriptor using SRTM-DEM: mapping terra-firme rainforest environments in Amazonia. Remote Sensing of Environment 112(9), 3469-3481."
+R_VCI = "Kogan, F.N. (1995). Application of vegetation index and brightness temperature for drought detection. Advances in Space Research 15(11), 91-100."
+R_MSFT = "Microsoft. Global ML Building Footprints (github.com/microsoft/GlobalMLBuildingFootprints), Open Data Commons Open Database License."
+R_GOOGLE = "Sirko, W. et al. (2021). Continental-scale building detection from high resolution satellite imagery. arXiv:2107.12283. (Google Open Buildings v3.)"
+R_OSM = "OpenStreetMap contributors. Data (c) OpenStreetMap, available under the Open Database License (openstreetmap.org/copyright)."
+
+
+def _lc_year_layers(stats, meta):
+    out = []
+    for key, tag in (("year_before", "before"), ("year_after", "after")):
+        y = stats.get(key)
+        if y is not None:
+            out.append(Layer(f"landcover_{tag}", f"landcover_{y}.tif", f"Land cover {y}", "classes", classes=_LC_CHANGE_YEAR,
+                             optional=True))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # The specs
 # ---------------------------------------------------------------------------
 
@@ -376,6 +617,67 @@ _SPEC_LIST: list[ReportSpec] = [
         limitations=("Optical imagery cannot see through cloud; the largest floods often coincide with the cloudiest days. Radar (Sentinel-1) is the usual complement.",
                      "Shadow, wet soil and dark surfaces can resemble water at MNDWI 0; check urban and mountain areas."),
         references=(R_MNDWI, R_S2)),
+
+    ReportSpec(
+        "sar_flood_mapping", "Flood Extent Mapping (Sentinel-1 radar)",
+        "Which open-water areas are newly flooded compared with a dry reference, as seen by radar through cloud?",
+        ("Only Sentinel-1 scenes of one orbit track (same direction and relative orbit) present in both windows are compared, so the viewing geometry is the same.",
+         "Each window is the per-pixel median, in dB, of its terrain-corrected backscatter scenes (a 3x3 mean filter is applied to each scene first), which suppresses speckle.",
+         "Water = backscatter below the threshold in dB. Flooded = water in the flood window, not water in the reference, and at least the stated number of dB darker; permanent water = water in both.",
+         "Flooded patches smaller than the minimum patch size are removed. Pixels without a valid measurement in either window are nodata, never 'dry'."),
+        (Layer("flood", "flood_extent.tif", "Flood extent", "classes",
+               classes=_cd((0, "Dry", NO_CHANGE), (1, "Flooded", "#e6550d"), (2, "Permanent water", _WATER_BLUE)), muted=(0,),
+               vector=VectorSpec("flood_extent", keep=(1, 2)), primary=True),
+         Layer("change", "change_db.tif", "Backscatter change, flood minus reference (dB)", "continuous", cmap="RdBu", vmin=-10, vmax=10,
+               center=0.0, label="dB", optional=True)),
+        (Metric("flooded_area_ha", "Flooded area", "ha"), Metric("permanent_water_area_ha", "Permanent water", "ha"),
+         Metric("flooded_fraction", "Flooded share of valid area", "frac"), Metric("water_db", "Water threshold (dB)", "num1"),
+         Metric("change_db", "Required darkening (dB)", "num1"), Metric("scenes_reference", "Reference scenes", "int"),
+         Metric("scenes_flood", "Flood-window scenes", "int"), Metric("valid_fraction", "Valid share of AOI", "frac")),
+        _h_sar_flood,
+        reading=("The flood layer shows open floodwater seen by radar on the dates of the scenes used, not the maximum extent of the event.",
+                 "Compare the water threshold with the Otsu estimate in the statistics: if they differ a lot, the conventional default may not suit this scene."),
+        limitations=("Floodwater between buildings and under dense vegetation is bright to radar (double bounce) and is not detected, so urban and forest flooding is under-mapped; use this for open-water flooding such as river plains and fields.",
+                     "Water that had receded before the overpass is not seen, and a flood that peaked between two passes is under-estimated.",
+                     "Wind-roughened water is bright and missed; wet soil, smooth tarmac and radar shadow can be dark. Requiring the pixel to be darker than the same-track reference removes shadow and permanent dark surfaces but not everything.",
+                     "The default water threshold is a conventional value per polarisation, not a calibration to this scene. There is no ground truth here, so accuracy is not assessed."),
+        references=(R_TWELE, R_OTSU, R_S1RTC)),
+
+    ReportSpec(
+        "multisensor_flood_mapping", "Flood Extent Mapping (radar + optical + terrain)",
+        "Where is there newly flooded ground, and how many independent sensors agree?",
+        ("Radar: Sentinel-1 scenes of one orbit track are compared between a dry reference window and the flood window (per-pixel median in dB; water below the threshold; at least the stated number of dB darker).",
+         "Optical: Sentinel-2 MNDWI = (green - SWIR1)/(green + SWIR1) is computed per scene with cloud, shadow and cirrus removed using the Scene Classification Layer, then the per-pixel median of the clear observations is taken for each window; water = MNDWI above the threshold.",
+         "The sensors inform each other: the radar water threshold is calibrated on the optical water map of the reference window (so both describe the same dry-period water), the radar change is measured after removing the average brightness offset between the two windows, and a clear optical view of the flood window confirms or contradicts each radar flood pixel.",
+         "The sensors are not blended into one score. Each pixel is classed by what each sensor says: confirmed (both), radar only (optical had no clear view), optical only, or disputed (radar flooded, optical clear and dry).",
+         "Terrain: flooding on ground higher than the stated height above the nearest drainage (HAND, from the Copernicus DEM) is removed. Water already present in the reference window is shown separately.",
+         "Small patches are removed; pixels no sensor could observe are nodata, never 'dry'."),
+        (Layer("flood", "flood_extent.tif", "Flood extent by sensor agreement", "classes",
+               classes=_cd((0, "Not flooded", NO_CHANGE), (1, "Flooded: radar + optical", "#b2182b"), (2, "Flooded: radar only", "#ef8a62"),
+                           (3, "Flooded: optical only", "#fdb863"), (4, "Disputed", "#8073ac"), (5, "Water in reference window", _WATER_BLUE)),
+               muted=(0, 5), vector=VectorSpec("flood_extent", keep=(1, 2, 3, 4)), primary=True),
+         Layer("change", "change_db.tif", "Radar backscatter change, flood minus reference (dB)", "continuous", cmap="RdBu", vmin=-10, vmax=10,
+               center=0.0, label="dB", optional=True),
+         Layer("mndwi", "mndwi_after.tif", "Optical MNDWI in the flood window", "continuous", cmap="BrBG", vmin=-1, vmax=1,
+               center=0.0, label="MNDWI", optional=True),
+         Layer("hand", "hand_m.tif", "Height above nearest drainage (m)", "continuous", cmap="viridis_r", vmin=0, vmax=30,
+               label="m", optional=True)),
+        (Metric("flooded_area_ha", "Flooded area (classes 1-3)", "ha"), Metric("flooded_fraction", "Flooded share of land", "frac"),
+         Metric("flooded_confirmed_ha", "Confirmed by radar and optical", "ha"),
+         Metric("flooded_radar_only_ha", "Radar only", "ha"), Metric("flooded_optical_only_ha", "Optical only", "ha"),
+         Metric("flooded_disputed_ha", "Disputed", "ha"), Metric("permanent_water_area_ha", "Water in reference window", "ha"),
+         Metric("excluded_by_hand_ha", "Removed by terrain (HAND)", "ha"), Metric("optical_coverage", "Share of land with a clear optical view", "frac"),
+         Metric("radar_optical_f1_reference", "Radar-optical water agreement before the event (F1)", "num2"),
+         Metric("water_db", "Radar water threshold (dB)", "num1"), Metric("radiometric_offset_db", "Radar offset between windows (dB)", "num2"),
+         Metric("valid_fraction", "Valid share of AOI", "frac")),
+        _h_multisensor,
+        reading=("Trust 'radar + optical' most. 'Radar only' is expected where the optical view was cloud-covered; 'disputed' areas are where the sensors contradict each other and should be checked.",
+                 "If 'Data used' lacks sentinel-2 or the terrain, the result is radar-based only and the data gaps line says why."),
+        limitations=("Floodwater between buildings and under vegetation is bright to radar and dark-to-bright in optical imagery; urban flooding is under-mapped by both. Use local reports or high-resolution imagery for towns.",
+                     "Optical imagery cannot see through cloud, and the cloudiest dates are often the flood dates. 'Optical only' and 'confirmed' therefore describe the clear days only.",
+                     "Water that receded before the acquisitions is not seen; a peak between passes is under-estimated.",
+                     "The water thresholds (radar dB, MNDWI 0) are conventional values, not calibrated to this scene, and there is no ground truth here, so accuracy is not assessed."),
+        references=(R_TWELE, R_MNDWI, R_HAND, R_COPDEM, R_S1RTC, R_S2)),
 
     ReportSpec(
         "coastal_monitoring", "Coastal Change (shoreline retreat and advance)",
@@ -635,16 +937,26 @@ _SPEC_LIST: list[ReportSpec] = [
         references=(R_OTSU, R_S2)),
 
     ReportSpec(
-        "building_footprints", "Building Footprints (trained network)",
-        "Where does your network see buildings?",
-        ("Tiled inference with a segmentation network you trained (checkpoint required); class 1 = building.",),
-        (Layer("mask", "building_mask.tif", "Building mask", "classes",
+        "building_footprints", "Building Footprints",
+        "Where are the buildings in the area, how many, and how much ground do they cover?",
+        ("Published footprints (default): the polygons of Microsoft's Global ML Building Footprints, Google's Open Buildings v3 or OpenStreetMap are read for the box, clipped to it and measured in the local UTM zone. Nothing is detected on your imagery.",
+         "building_density.tif is the share of each cell covered by building area (a building counts in the cell holding its centroid); building_count.tif counts buildings per cell.",
+         "With a checkpoint the pipeline instead runs a segmentation network you trained (class 1 = building) and writes building_mask.tif."),
+        (Layer("density", "building_density.tif", "Share of each cell covered by buildings", "continuous", cmap="YlOrRd", vmin=0, label="share of cell",
+               primary=True, optional=True),
+         Layer("count", "building_count.tif", "Buildings per cell", "continuous", cmap="Purples", vmin=0, label="buildings", optional=True),
+         Layer("mask", "building_mask.tif", "Building mask (trained network)", "classes",
                classes=_cd((0, "Background", NO_CHANGE), (1, "Building", "#c2185b")), muted=(0,),
-               vector=VectorSpec("buildings", keep=(1,)), primary=True),),
-        (Metric("building_coverage", "Building share of area", "frac"),),
-        _h_network_mask("building", "building_coverage"),
-        limitations=(_NETWORK_LIMIT, "At 10 m Sentinel-2 resolution individual houses are not resolvable; use higher-resolution imagery for footprints."),
-        references=()),
+               vector=VectorSpec("buildings", keep=(1,)), optional=True)),
+        (Metric("building_count", "Buildings", "int"), Metric("building_area_ha", "Total footprint area", "ha"),
+         Metric("building_coverage", "Share of the area covered by buildings", "frac"), Metric("buildings_per_km2", "Buildings per km²", "num1"),
+         Metric("mean_building_area_m2", "Mean footprint (m²)", "num1"), Metric("median_building_area_m2", "Median footprint (m²)", "num1"),
+         Metric("max_cell_coverage", "Highest cell coverage", "frac"), Metric("aoi_area_km2", "Area (km²)", "num2")),
+        _h_buildings,
+        reading=("Dataset footprints differ in date: a recent building may be missing and a demolished one still present.",),
+        limitations=("Published footprints are only as complete, accurate and current as their source; compare the three sources if it matters.",
+                     "A building_mask.tif result (only when you pass a checkpoint) is the output of a network you trained and has not been checked against reference data; at 10 m individual houses are not resolvable."),
+        references=(R_MSFT, R_GOOGLE, R_OSM)),
 
     ReportSpec(
         "crop_monitoring", "Crop-Type Map (trained network)",
@@ -702,6 +1014,273 @@ _SPEC_LIST: list[ReportSpec] = [
         limitations=(_NETWORK_LIMIT, _USER_CLASSES_NOTE),
         references=()),
 ]
+
+_NEW_SPECS: list[ReportSpec] = [
+    ReportSpec(
+        "landcover_change", "Land-Cover Change (annual 10 m land cover)",
+        "Where does the annual 10 m land-cover map differ between two years, and from which class to which?",
+        ("The Impact Observatory / Esri annual land-cover product (2017-2023, nine classes) is read for both years from the "
+         "Microsoft Planetary Computer, windowed to the area and resampled (nearest neighbour) onto one UTM grid.",
+         "A pixel is 'changed' when its class differs between the years. Pixels that are no-data or cloud in either year are nodata.",
+         "`min_change_ha` can remove changed patches smaller than a given area; the transition table lists the largest from-to pairs."),
+        (Layer("change", "change_mask.tif", "Land-cover change", "classes",
+               classes=_cd((0, "Unchanged", NO_CHANGE), (1, "Changed class", "#d7301f")), muted=(0,),
+               vector=VectorSpec("landcover_change", keep=(1,)), primary=True),),
+        (Metric("changed_area_ha", "Changed area", "ha"), Metric("change_fraction", "Share of valid area changed", "frac"),
+         Metric("changed_in_patches_of_3px_or_less", "Changed area in patches of 3 pixels or fewer", "frac",
+                "a high value points to classifier noise rather than real change"),
+         Metric("valid_fraction", "Valid share of the area", "frac"), Metric("resolution_m", "Grid resolution (m)", "num1")),
+        _h_lc_change,
+        reading=("Each year is classified independently, so a pixel can change class because of classifier disagreement. Large, compact patches are more trustworthy than scattered single pixels.",),
+        limitations=("Not an accuracy assessment: the product is a global model output and its errors differ by class and region.",
+                     "Short-lived land cover (seasonal flooding, fallow, burn scars) changes class between years without a lasting change on the ground.",
+                     "Reported areas are pixel counts on the output grid, not survey measurements."),
+        references=(R_IO,),
+        tables=(TableSpec("transitions", "Largest class changes", (("from", "From", "text"), ("to", "To", "text"), ("area_ha", "Area (ha)", "num1")),
+                          sheet="Transitions"),
+                TableSpec("area_ha_before", "Area by class, first year", key_header="Class", value_header="Area (ha)", value_fmt="num1", sheet="Area before"),
+                TableSpec("area_ha_after", "Area by class, second year", key_header="Class", value_header="Area (ha)", value_fmt="num1", sheet="Area after")),
+        charts=(ChartSpec("transitions", "Largest class changes (hectares)", "Area (ha)", y="area_ha", x=("from", "to"), kind="barh", fmt="{:,.2f}"),),
+        extra_layers=_lc_year_layers),
+
+    ReportSpec(
+        "urban_expansion", "Urban Expansion (annual 10 m land cover)",
+        "How much built-up area appeared or disappeared between two years?",
+        ("Built area is class 7 of the annual 10 m land-cover product (Impact Observatory / Esri, 2017-2023) on both dates.",
+         "A pixel is 'new built' when it is built in the second year only, 'lost' when built in the first year only. Gross gain and loss are reported separately because each year is classified on its own.",
+         "Pixels that are no-data or cloud in either year are nodata; percentages are over valid pixels."),
+        (Layer("built", "built_area_change.tif", "Built-up area change", "classes",
+               classes=_cd((0, "Not built", NO_CHANGE), (1, "Built in both years", "#8d99a6"), (2, "New built area", "#d7301f"),
+                           (3, "Built area lost", "#2b83ba")), muted=(0,),
+               vector=VectorSpec("built_change", keep=(2, 3)), primary=True),),
+        (Metric("built_area_ha_before", "Built area, first year", "ha"), Metric("built_area_ha_after", "Built area, second year", "ha"),
+         Metric("gain_ha", "Gross gain", "ha"), Metric("loss_ha", "Gross loss", "ha"), Metric("net_change_ha", "Net change", "ha"),
+         Metric("built_share_before", "Built share, first year", "frac"), Metric("built_share_after", "Built share, second year", "frac"),
+         Metric("annual_growth_rate", "Compound annual growth of built area", "frac"), Metric("valid_fraction", "Valid share of the area", "frac")),
+        _h_urban_expansion,
+        reading=("'Built area lost' is more often classifier disagreement (roofs under trees, dust, construction sites) than demolition. Read the gross figures, not only the net.",),
+        limitations=("At 10 m, individual houses and narrow streets are not resolved; small settlements are under-mapped.",
+                     "This is a map product's change, not a validated change inventory.",),
+        references=(R_IO,)),
+
+    ReportSpec(
+        "forest_change", "Forest Change (JAXA PALSAR forest / non-forest)",
+        "How much forest was lost or gained between two years from the radar-based forest map?",
+        ("The JAXA global PALSAR forest / non-forest map (25 m, 2015-2020) is read for both years from the Microsoft Planetary Computer and resampled onto one UTM grid.",
+         "'Forest' is class 1 (canopy cover above 90 %) by default, or classes 1 and 2 (above 10 %) with include_open_forest.",
+         "Pixels that are water or no-data in either year are nodata. Loss is forest then, non-forest now; gain is the reverse."),
+        (Layer("forest", "forest_change.tif", "Forest change", "classes",
+               classes=_cd((0, "Non-forest", NO_CHANGE), (1, "Forest in both years", "#2f6f3e"), (2, "Forest loss", "#d55e00"),
+                           (3, "Forest gain", "#0072b2")), muted=(0, 1),
+               vector=VectorSpec("forest_change", keep=(2, 3)), primary=True),),
+        (Metric("forest_area_ha_before", "Forest, first year", "ha"), Metric("forest_area_ha_after", "Forest, second year", "ha"),
+         Metric("forest_loss_ha", "Forest loss", "ha"), Metric("forest_gain_ha", "Forest gain", "ha"), Metric("net_change_ha", "Net change", "ha"),
+         Metric("loss_ha_per_year", "Loss per year", "ha"), Metric("loss_share_of_initial_forest", "Loss as share of first-year forest", "frac"),
+         Metric("valid_fraction", "Valid share of the area", "frac")),
+        _h_forest_change,
+        reading=("Radar backscatter responds to structure and moisture, so plantations count as forest and flooded or very dry conditions can move pixels between classes. Treat small, scattered changes as noise.",),
+        limitations=("Each year is mapped separately: gains and losses include mapping disagreement, not only change on the ground.",
+                     "Covers 2015-2020 only; it says nothing about later forest loss.",
+                     "It cannot tell the cause of loss (logging, fire, farming, natural dieback)."),
+        references=(R_FNF,)),
+
+    ReportSpec(
+        "surface_water_dynamics", "Surface Water History 1984-2020 (JRC Global Surface Water)",
+        "Where has surface water been permanent, seasonal, new or lost over the Landsat record?",
+        ("JRC Global Surface Water v1.3 (30 m, built from every usable Landsat 5/7/8 scene from March 1984 to December 2020) is read from the Microsoft Planetary Computer.",
+         "The transitions layer compares the first and last years of the record; occurrence is the percentage of valid observations that showed water; seasonality is the number of months with water in 2020.",
+         "Class groups: permanent now = permanent, new permanent, seasonal to permanent; seasonal now = seasonal, new seasonal, permanent to seasonal; lost = lost permanent, lost seasonal; ephemeral = ephemeral permanent and seasonal."),
+        (Layer("transitions", "water_transitions.tif", "Water transitions 1984-2020", "classes", classes=_GSW_CLASSES, muted=(0,),
+               vector=VectorSpec("water_transitions", skip=(0,)), primary=True),
+         Layer("occurrence", "water_occurrence.tif", "Water occurrence (% of observations)", "continuous", cmap="Blues", vmin=0, vmax=100,
+               label="% of observations", optional=True),
+         Layer("seasonality", "water_seasonality.tif", "Months with water in 2020", "continuous", cmap="YlGnBu", vmin=0, vmax=12,
+               label="months", optional=True)),
+        (Metric("ever_water_ha", "Water at some time, 1984-2020", "ha"), Metric("ever_water_share", "Share of valid area ever water", "frac"),
+         Metric("permanent_now_ha", "Permanent water now", "ha"), Metric("seasonal_now_ha", "Seasonal water now", "ha"),
+         Metric("lost_ha", "Lost water", "ha"), Metric("ephemeral_ha", "Ephemeral water", "ha"), Metric("valid_fraction", "Valid share of the area", "frac")),
+        _h_water_history,
+        reading=("Occurrence near 100 % marks permanent water; low occurrence marks floodplain or shoreline that is wet only sometimes.",),
+        limitations=("The record ends in December 2020: later change is not shown. Use water_bodies for a current map and flood_mapping for an event.",
+                     "Observation counts differ by place (clouds, Landsat 7 stripes before 2003 coverage), so occurrence is less certain where few scenes were usable.",),
+        references=(R_GSW,)),
+
+    ReportSpec(
+        "evapotranspiration", "Annual Evapotranspiration (MODIS MOD16A3GF)",
+        "How much water does the land surface return to the atmosphere in a year, compared with the potential?",
+        ("MOD16A3GF (500 m, gap-filled yearly Penman-Monteith ET and PET) is read from the Microsoft Planetary Computer for the requested year.",
+         "Stored values are scaled by 0.1 to kg m-2 per year (= mm per year); fill and land-class codes (open water, urban, barren, snow) are nodata, never zero.",
+         "ET/PET is computed where both are valid and PET is above zero. The volume is mean ET depth times the valid area."),
+        (Layer("et", "et_mm_per_year.tif", "Evapotranspiration (mm per year)", "continuous", cmap="YlGnBu", label="mm per year", primary=True),
+         Layer("pet", "pet_mm_per_year.tif", "Potential evapotranspiration (mm per year)", "continuous", cmap="YlOrBr", label="mm per year", optional=True),
+         Layer("ratio", "et_pet_ratio.tif", "ET / PET", "continuous", cmap="RdYlBu", vmin=0, vmax=1.2, label="ET / PET", optional=True)),
+        (Metric("mean_et_mm", "Mean ET (mm per year)", "num1"), Metric("mean_pet_mm", "Mean PET (mm per year)", "num1"),
+         Metric("mean_et_pet_ratio", "Mean ET / PET", "num2"), Metric("total_et_volume_million_m3", "Total ET volume (million m³)", "num2"),
+         Metric("valid_fraction", "Valid share of the area", "frac")),
+        _h_et,
+        reading=("ET/PET near 1 means water is not limiting; low values mean water-limited land (dry season, drylands, sparse cover).",),
+        limitations=("500 m pixels average everything inside them: small fields, wetlands and urban pockets are blended.",
+                     "A modelled product driven by weather reanalysis and MODIS vegetation; it is not measured flux and has no uncertainty layer here.",
+                     "Open water and built-up pixels have no estimate, so the volume excludes them."),
+        references=(R_MOD16,)),
+
+    ReportSpec(
+        "active_fire", "Active Fire Detections (MODIS MOD14A1)",
+        "Where and on how many days did MODIS detect fire in a period?",
+        ("Daily MOD14A1 granules (1 km) are read from the Microsoft Planetary Computer for the period.",
+         "A pixel-day is a fire detection when its fire mask is 7 (low), 8 (nominal) or 9 (high confidence) and at least min_confidence; cloud, water and unknown pixels are never counted as 'no fire'.",
+         "fire_days.tif counts detection days per pixel; observed_days.tif counts days the pixel was seen clear; max_frp_mw.tif is the strongest fire radiative power (MW)."),
+        (Layer("fire_days", "fire_days.tif", "Days with a fire detection", "continuous", cmap="YlOrRd", vmin=0, label="days", primary=True),
+         Layer("observed", "observed_days.tif", "Days observed clear", "continuous", cmap="Greys", vmin=0, label="days", optional=True),
+         Layer("frp", "max_frp_mw.tif", "Maximum fire radiative power (MW)", "continuous", cmap="magma_r", vmin=0, label="MW", optional=True)),
+        (Metric("detections_pixel_days", "Fire detections (pixel-days)", "int"), Metric("pixels_with_fire", "Pixels with at least one detection", "int"),
+         Metric("max_days_with_fire_in_a_pixel", "Most detection days in one pixel", "int"), Metric("max_frp_mw", "Strongest FRP (MW)", "num1"),
+         Metric("days_with_data", "Days with data", "int"), Metric("mean_observed_days", "Mean days observed clear per pixel", "num1")),
+        _h_active_fire,
+        reading=("A detection is a hot 1 km pixel at overpass time, not a burned area. Use wildfire_severity (dNBR) for burn extent.",),
+        limitations=("Fires smaller or cooler than the sensor threshold, or under cloud and thick smoke, are missed; absence is not evidence of no fire.",
+                     "Two overpasses a day at most (Terra and Aqua are separate products; this uses Terra MOD14A1), so short fires between overpasses are missed.",
+                     "Agricultural burning, gas flares and hot bare ground can also trigger detections."),
+        references=(R_FIRE,),
+        tables=(TableSpec("per_day_detections", "Detections per day", key_header="Date", value_header="Fire pixels", value_fmt="int", sheet="Per day"),),
+        charts=(ChartSpec("per_day_detections", "Fire pixels per day", "Fire pixels", kind="bar", fmt="{:,.0f}"),)),
+
+    ReportSpec(
+        "terrain_analysis", "Terrain Analysis (Copernicus DEM)",
+        "What do elevation, slope, aspect and ruggedness look like in the area?",
+        ("Elevation comes from the Copernicus GLO-30 DEM (or an OpenTopography product), warped onto a metric grid.",
+         "Slope and aspect use Horn's 3x3 method; aspect is the compass bearing of the downhill direction. The hillshade is lit from the stated sun azimuth and elevation.",
+         "TRI is the root of the summed squared differences between a cell and its eight neighbours."),
+        (Layer("slope", "slope_deg.tif", "Slope (degrees)", "continuous", cmap="YlOrBr", vmin=0, label="degrees", primary=True),
+         Layer("elevation", "elevation.tif", "Elevation (m)", "continuous", cmap="terrain", label="m", optional=True),
+         Layer("hillshade", "hillshade.tif", "Hillshade", "continuous", cmap="gray", vmin=0, vmax=1, label="illumination", optional=True),
+         Layer("aspect", "aspect_deg.tif", "Aspect (bearing of the downhill direction)", "continuous", cmap="twilight", vmin=0, vmax=360, label="degrees", optional=True),
+         Layer("tri", "tri_m.tif", "Terrain ruggedness index (m)", "continuous", cmap="magma_r", vmin=0, label="m", optional=True)),
+        (Metric("min_elevation_m", "Lowest elevation", "m"), Metric("max_elevation_m", "Highest elevation", "m"),
+         Metric("mean_elevation_m", "Mean elevation", "m"), Metric("relief_m", "Relief", "m"),
+         Metric("mean_slope_deg", "Mean slope", "deg"), Metric("p95_slope_deg", "95th percentile slope", "deg"),
+         Metric("mean_tri_m", "Mean ruggedness (TRI)", "m"), Metric("valid_fraction", "Valid share of the area", "frac")),
+        _h_terrain,
+        reading=("Slope is the steepest rate of change over a 3 x 3 cell window, so it is smoother than the true ground at fine scale.",),
+        limitations=("The DEM is a surface model: tree canopy and buildings are included in the heights.",
+                     "Slope and ruggedness depend on the grid resolution; compare areas only at the same resolution."),
+        references=(R_COPDEM, R_HORN, R_TRI)),
+
+    ReportSpec(
+        "drainage_analysis", "Drainage Analysis (flow accumulation, streams, HAND)",
+        "Where does water collect, which cells form streams, and how high does the ground stand above them?",
+        ("The DEM is conditioned with Priority-Flood (depressions filled, flats resolved); water is routed D8 to the steepest downhill neighbour; flow accumulation is the draining area through each cell.",
+         "Cells draining at least the stream threshold are streams, numbered by Strahler order.",
+         "HAND (Height Above the Nearest Drainage) is each cell's elevation above the stream cell it drains into."),
+        (Layer("hand", "hand_m.tif", "Height above nearest drainage (m)", "continuous", cmap="Blues_r", vmin=0, vmax=30, label="m", primary=True),
+         Layer("streams", "stream_order.tif", "Stream network by Strahler order", "classes", classes=_STREAM_ORDER, muted=(0,)),
+         Layer("flow", "flow_accumulation_km2.tif", "Contributing area (km²)", "continuous", cmap="PuBu", vmin=0, label="km²", optional=True)),
+        (Metric("stream_length_km", "Stream length (km)", "num1"), Metric("drainage_density_km_per_km2", "Drainage density (km per km²)", "num2"),
+         Metric("max_strahler_order", "Highest Strahler order", "int"), Metric("mean_hand_m", "Mean HAND", "m"),
+         Metric("largest_contributing_area_km2", "Largest contributing area (km²)", "num2"), Metric("cells_filled", "Cells raised by depression filling", "int"),
+         Metric("max_fill_depth_m", "Deepest fill", "m"), Metric("valid_fraction", "Valid share of the area", "frac")),
+        _h_drainage,
+        reading=("Low HAND is a necessary condition for river flooding, not a flood map: it knows nothing of rainfall, discharge, channel capacity or defences.",),
+        limitations=("Contributing areas are cut at the edge of the box, so streams near the boundary are under-estimated; use a box that includes the whole catchment where it matters.",
+                     "The stream threshold is a choice. Channels, culverts and embankments finer than the DEM resolution are not represented.",
+                     "A surface model (canopy, buildings) can block or divert modelled flow."),
+        references=(R_COPDEM, R_FLOOD, R_D8, R_STRAHLER, R_HAND)),
+
+    ReportSpec(
+        "vegetation_anomaly", "Vegetation Anomaly (NDVI against the same month in earlier years)",
+        "Is vegetation greener or browner than usual for this time of year?",
+        ("NDVI is computed for the requested month and for the same month in each baseline year, each from the best cloud-masked Sentinel-2 / Landsat mosaic; every year is aligned to the grid of the first.",
+         "Anomaly = NDVI - baseline mean; z-score = anomaly / baseline standard deviation (sample, at least 3 years); VCI = 100 (NDVI - min) / (max - min) over the baseline and the target.",
+         "A pixel needs at least three cloud-free baseline years. Cloud-masked pixels are nodata, never 'normal'."),
+        (Layer("z", "ndvi_zscore.tif", "NDVI z-score against the baseline", "continuous", cmap="BrBG", vmin=-3, vmax=3, center=0.0, label="z-score", primary=True),
+         Layer("class", "anomaly_class.tif", "Anomaly class", "classes", classes=_ANOMALY_CLASSES, muted=(2,)),
+         Layer("anomaly", "ndvi_anomaly.tif", "NDVI anomaly (NDVI minus baseline mean)", "continuous", cmap="BrBG", vmin=-0.4, vmax=0.4, center=0.0,
+               label="NDVI", optional=True),
+         Layer("vci", "vci.tif", "Vegetation Condition Index", "continuous", cmap="RdYlGn", vmin=0, vmax=100, label="VCI", optional=True)),
+        (Metric("mean_ndvi_target", "Mean NDVI, target month", "num3"), Metric("mean_ndvi_baseline", "Mean NDVI, baseline", "num3"),
+         Metric("mean_anomaly", "Mean anomaly", "num3"), Metric("mean_vci", "Mean VCI", "num1"),
+         Metric("pct_below_normal", "Share more than 1 sd below normal", "frac"), Metric("pct_above_normal", "Share more than 1 sd above normal", "frac"),
+         Metric("min_baseline_observations", "Fewest baseline years at a valid pixel", "int"), Metric("valid_fraction", "Valid share of the area", "frac")),
+        _h_veg_anomaly,
+        reading=("Low values accompany drought, but also late planting, harvest, grazing, burning, flooding, land-cover change and cloud residue.",),
+        limitations=("A vegetation anomaly is not a drought declaration: the pipeline sees no rainfall, soil moisture or crop type.",
+                     "With few baseline years the baseline mean and standard deviation are themselves uncertain; z-scores are most meaningful with 5 or more years.",
+                     "Different sensors across years can shift NDVI slightly."),
+        references=(R_VCI, R_S2)),
+
+    ReportSpec(
+        "water_extent_timeseries", "Water Extent Through Time (MNDWI)",
+        "How much open water is there on each date, and how often was each pixel water?",
+        ("On each date water is MNDWI = (green - SWIR1) / (green + SWIR1) above the threshold (default 0), computed on cloud-free pixels only.",
+         "Water frequency is, per pixel, the share of its cloud-free observations in which it was water (needs at least min_observations).",
+         "A date observed on fewer than min_valid_fraction of the area is listed but left out of the frequency map."),
+        (Layer("frequency", "water_frequency.tif", "Water frequency (share of cloud-free observations)", "continuous", cmap="Blues", vmin=0, vmax=1,
+               label="share of observations", primary=True),
+         Layer("observations", "valid_observations.tif", "Cloud-free observations", "continuous", cmap="Greys", vmin=0, label="dates", optional=True)),
+        (Metric("n_dates_requested", "Dates requested", "int"), Metric("n_dates_usable", "Dates used", "int"),
+         Metric("always_water_ha", "Water on every observed date", "ha"), Metric("variable_water_ha", "Water on some dates only", "ha"),
+         Metric("ever_water_ha", "Water on at least one date", "ha"), Metric("min_water_area_ha", "Smallest observed water area", "ha"),
+         Metric("max_water_area_ha", "Largest observed water area", "ha")),
+        _h_water_series,
+        reading=("Compare dates through the water fraction of the observed pixels, not the raw area: a cloudier date sees less ground and so less water.",),
+        limitations=("Shadow, wet soil, burn scars and dark pavement can be mistaken for water, as in any single-index mask.",
+                     "Water under cloud on a date is unknown, not dry; it contributes nothing to that date.",),
+        references=(R_MNDWI, R_S2),
+        tables=(TableSpec("series", "Water area by date",
+                          (("date", "Date", "text"), ("usable", "Used", "bool"), ("valid_fraction", "Observed share", "frac"),
+                           ("water_area_ha", "Water area (ha)", "num1"), ("water_fraction_of_valid", "Water share of observed", "frac"),
+                           ("note", "Note", "text")), sheet="Timeseries"),),
+        charts=(ChartSpec("series", "Observed water area by date", "Water area (ha)", y="water_area_ha", x="date", kind="line"),
+                ChartSpec("series", "Water share of the observed pixels", "Share of observed pixels", y="water_fraction_of_valid", x="date",
+                          kind="line", fmt="{:.1%}")),
+        multi_date=False),
+
+    ReportSpec(
+        "road_network", "Road Network (OpenStreetMap)",
+        "How many kilometres of road are mapped in the area, of which kinds, and where are they dense?",
+        ("Every OpenStreetMap way tagged 'highway' inside the box is downloaded through the Overpass API, clipped to the box, and measured in the local UTM zone.",
+         "Ways that are proposed, under construction, razed or abandoned are left out unless exclude says otherwise.",
+         "Road density is kilometres of road per square kilometre in square cells; lines are cut every cell/5 metres and each piece is assigned to the cell holding its midpoint."),
+        (Layer("density", "road_density.tif", "Road density (km per km²)", "continuous", cmap="YlOrBr", vmin=0, label="km per km²", primary=True),),
+        (Metric("total_length_km", "Total road length (km)", "num1"), Metric("road_density_km_per_km2", "Road density (km per km²)", "num2"),
+         Metric("segments", "Mapped ways", "int"), Metric("unnamed_share_of_length", "Share of length without a name", "frac"),
+         Metric("aoi_area_km2", "Area (km²)", "num2")),
+        _h_roads,
+        reading=("Density is in cells of cell_m metres; very high values in a single cell can be a junction or dual carriageway rather than a dense grid.",),
+        limitations=("This is what OpenStreetMap volunteers have drawn, not a detection from imagery. Minor roads and tracks in rural areas are often incomplete, so compare densities between places only where mapping effort is similar.",
+                     "Each OSM way counts once: a divided road mapped as two ways is counted twice, which is how its carriageways are mapped but exceeds the centreline length.",
+                     "Road class comes from the OSM 'highway' tag, which is a mapping convention and not a measured width or surface."),
+        references=(R_OSM,),
+        tables=(TableSpec("km_by_highway", "Road length by OpenStreetMap highway class", key_header="Highway class", value_header="Length (km)",
+                          value_fmt="num2", sheet="Roads by class"),
+                TableSpec("km_by_group", "Road length by group", key_header="Group", value_header="Length (km)", value_fmt="num2", sheet="Roads by group")),
+        charts=(ChartSpec("km_by_highway", "Road length by highway class (km)", "Length (km)", kind="barh", fmt="{:,.1f} km"),)),
+
+    ReportSpec(
+        "road_extraction", "Road Extraction (trained network)",
+        "Where does your network see roads?",
+        ("Tiled inference with a segmentation network you trained (checkpoint required); class 1 = road.",),
+        (Layer("mask", "road_mask.tif", "Road mask", "classes",
+               classes=_cd((0, "Background", NO_CHANGE), (1, "Road", "#7b3294")), muted=(0,),
+               vector=VectorSpec("roads", keep=(1,)), primary=True),),
+        (Metric("road_coverage", "Road share of area", "frac"),),
+        _h_network_mask("road", "road_coverage"),
+        limitations=(_NETWORK_LIMIT, "Roads are only a few pixels wide at 10 m; expect gaps and merged parallel roads. Train and run on the same kind of imagery.",),
+        references=()),
+
+    ReportSpec(
+        "landslide_detection", "Landslide Detection (trained network)",
+        "Where does your network see landslide scars between a before and an after image?",
+        ("Two-image (siamese) inference with a change network you trained (checkpoint required). Class 0 is no change; other classes are those you trained on.",),
+        (Layer("change", "landslide_map.tif", "Landslide classes", "classes", classes_hint="user",
+               vector=VectorSpec("landslides", skip=(0,)), primary=True),),
+        (Metric("changed_fraction", "Changed share of area", "frac"),),
+        _h_network_change,
+        limitations=(_NETWORK_LIMIT, _USER_CLASSES_NOTE, "Cloud, shadow and seasonal change between the two images also alter the pixels; the network only sees the two images."),
+        references=()),
+]
+
+_SPEC_LIST.extend(_NEW_SPECS)
 
 SPECS: dict[str, ReportSpec] = {s.pipeline: s for s in _SPEC_LIST}
 

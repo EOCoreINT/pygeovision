@@ -21,11 +21,8 @@ from pygeovision.core.exceptions import BuildingFootprintError
 
 logger = logging.getLogger(__name__)
 
-# Microsoft Building Footprints are distributed as Azure Blob Storage files
-# partitioned by quadkey. Coverage index:
-MS_BUILDINGS_INDEX_URL = (
-    "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
-)
+# The partition index (dataset-links.csv) moves between releases, so it is located by
+# pygeovision.data.footprints rather than pinned here.
 
 
 class MicrosoftBuildingsLabeler(BaseLabeler):
@@ -61,7 +58,6 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
         self.cache_dir = Path(cache_dir) if cache_dir else Path(".pygeovision_cache/ms_buildings")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.quadkey_zoom = quadkey_zoom
-        self._index_cache: dict[str, str] | None = None
 
     @property
     def name(self) -> str:
@@ -96,17 +92,18 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
         if bounds_wgs84 is None:
             return self._skip_tile(tile, "Cannot reproject bounds to WGS84")
 
-        # Get quadkeys covering this tile
-        quadkeys = self._bounds_to_quadkeys(bounds_wgs84)
+        # The partition index, download and parsing live in pygeovision.data.footprints (shared with the
+        # building_footprints pipeline); a failure is reported as the tile's error, never swallowed.
+        from pygeovision.data import footprints as fp  # noqa: PLC0415
 
-        # Download and load footprint data for each quadkey
-        geometries: list[Any] = []
-        for qk in quadkeys:
-            try:
-                geoms = self._load_footprints_for_quadkey(qk, bounds_wgs84)
-                geometries.extend(geoms)
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("Failed to load footprints for quadkey %s: %s", qk, exc)
+        try:
+            gdf = fp.microsoft_footprints(bounds_wgs84, cache_dir=self.cache_dir)
+        except fp.FootprintSourceError as exc:
+            logger.warning("Microsoft footprints unavailable for tile %s: %s", tile.tile_id, exc)
+            return LabelingResult(tile_id=tile.tile_id, source=self.name, error=str(exc))
+        import shapely.geometry as sg  # noqa: PLC0415
+
+        geometries = [sg.mapping(g) for g in gdf.geometry]
 
         if not geometries:
             return self._skip_tile(tile, "No building footprints found in tile bounds")
@@ -164,113 +161,6 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
         except Exception as exc:  # noqa: BLE001
             logger.warning("CRS reprojection failed: %s", exc)
             return None
-
-    def _bounds_to_quadkeys(
-        self,
-        bounds: tuple[float, float, float, float],
-    ) -> list[str]:
-        """Convert WGS84 bounds to covering QuadKeys at zoom level."""
-        min_lon, min_lat, max_lon, max_lat = bounds
-        try:
-            import mercantile  # noqa: PLC0415
-
-            tiles = list(
-                mercantile.tiles(min_lon, min_lat, max_lon, max_lat, zooms=self.quadkey_zoom)
-            )
-            return [mercantile.quadkey(t) for t in tiles]
-        except ImportError:
-            # Fallback: return a single approximate quadkey
-            logger.debug("mercantile not installed — using fallback quadkey computation")
-            return [self._latlon_to_quadkey(
-                (min_lat + max_lat) / 2,
-                (min_lon + max_lon) / 2,
-                self.quadkey_zoom,
-            )]
-
-    @staticmethod
-    def _latlon_to_quadkey(lat: float, lon: float, zoom: int) -> str:
-        """Simple lat/lon to QuadKey conversion."""
-        x = int((lon + 180) / 360 * (2**zoom))
-        lat_rad = lat * 3.14159 / 180
-        import math  # noqa: PLC0415
-
-        y = int((1 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2 * (2**zoom))
-        qk = ""
-        for i in range(zoom, 0, -1):
-            digit = 0
-            mask = 1 << (i - 1)
-            if x & mask:
-                digit += 1
-            if y & mask:
-                digit += 2
-            qk += str(digit)
-        return qk
-
-    def _load_footprints_for_quadkey(
-        self,
-        quadkey: str,
-        bounds: tuple[float, float, float, float],
-    ) -> list[Any]:
-        """Load building footprints for a quadkey from cache or download."""
-        cache_file = self.cache_dir / f"{quadkey}.geojsonl.gz"
-
-        if not cache_file.exists():
-            self._download_quadkey(quadkey, cache_file)
-
-        if not cache_file.exists():
-            return []
-
-        return self._parse_footprints(cache_file, bounds)
-
-    def _download_quadkey(self, quadkey: str, output_path: Path) -> None:
-        """Download footprint data for a quadkey from Microsoft Azure."""
-        import urllib.request  # noqa: PLC0415
-
-        # Construct URL (Microsoft publishes footprints per quadkey)
-        url = (
-            f"https://minedbuildings.blob.core.windows.net/global-buildings/"
-            f"{quadkey}.geojsonl.gz"
-        )
-        try:
-            urllib.request.urlretrieve(url, str(output_path))
-            logger.debug("Downloaded MS buildings for quadkey %s", quadkey)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Download failed for quadkey %s: %s", quadkey, exc)
-
-    @staticmethod
-    def _parse_footprints(
-        filepath: Path,
-        bounds: tuple[float, float, float, float],
-    ) -> list[Any]:
-        """Parse GeoJSONL file and filter by bounds."""
-        import gzip  # noqa: PLC0415
-        import json  # noqa: PLC0415
-
-        try:
-            import shapely.geometry as sg  # noqa: PLC0415
-
-            bbox_geom = sg.box(*bounds)
-        except ImportError:
-            return []
-
-        geometries = []
-        try:
-            with gzip.open(filepath, "rt", encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        feature = json.loads(line)
-                        geom = sg.shape(feature["geometry"])
-                        if geom.intersects(bbox_geom):
-                            geometries.append(sg.mapping(geom.intersection(bbox_geom)))
-                    except Exception:  # noqa: BLE001
-                        continue
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Failed to parse footprints from %s: %s", filepath, exc)
-
-        return geometries
 
     @staticmethod
     def _rasterize_buildings(

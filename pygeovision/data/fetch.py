@@ -913,6 +913,9 @@ class SatelliteFetcher:
             logger.warning("pystac_client not installed — no fallback available")
             return results
 
+        # element84 *is* the AWS Earth Search endpoint: search it once, as aws_earth, instead of warning
+        providers = list(dict.fromkeys("aws_earth" if p == "element84" else p for p in providers))
+
         # STAC endpoint mapping
         _STAC_ENDPOINTS = {
             "planetary_computer": "https://planetarycomputer.microsoft.com/api/stac/v1",

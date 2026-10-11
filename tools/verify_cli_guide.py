@@ -56,7 +56,7 @@ def leaf_commands() -> list[str]:
 
 # Commands whose single entry in the CLI tree covers variants that are not all runnable offline.
 NOTES = {
-    "channel": "19 ready + 6 needs-weights pipelines: all 25 run offline via tools/offline_pipeline_smoke.py; real data needs network",
+    "channel": "33 ready + 7 needs-weights pipelines: all 40 run offline via tools/offline_pipeline_smoke.py; real data needs network",
     "report": "rebuilds PDF/Word/Excel, maps and vectors from a saved run; runs offline on the smoke-test outputs",
     "ai segment": "water, custom offline; buildings, sam need network + weights",
     "ai detect": "generic/ships/cars need `ultralytics` + a YOLO download; custom refusal offline",

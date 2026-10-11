@@ -1,9 +1,11 @@
 """The pipeline catalogue: what exists, what was removed, and how it is reached.
 
 PyGeoVision shipped 49 named pipelines; 24 had no working implementation
-(placeholder indices, untrained networks, invented constants). They were
-removed before launch and 25 remain: 19 run out of the box ("ready") and
-6 run a network you trained yourself ("needs_weights").
+(placeholder indices, untrained networks, invented constants) and were removed
+before launch. Three of them (landcover_change, road_extraction,
+landslide_detection) came back once a real implementation existed, and ten new
+ones were added, so 40 are available: 33 run out of the box ("ready") and 7 run
+a network you trained yourself ("needs_weights").
 """
 from __future__ import annotations
 
@@ -16,15 +18,18 @@ from pygeovision.ai import pipelines as P
 from pygeovision.ai.pipelines import domains
 from pygeovision.ai.pipelines.removed import REMOVED_PIPELINES
 
-NEEDS_WEIGHTS = {"building_footprints", "solar_detection", "crop_monitoring",
-                 "disaster_assessment", "deforestation", "urban_growth"}
+NEEDS_WEIGHTS = {"solar_detection", "crop_monitoring", "disaster_assessment", "deforestation", "urban_growth",
+                 "road_extraction", "landslide_detection"}
+#: pipelines that are not among the original 49
+ADDED = {"urban_expansion", "forest_change", "surface_water_dynamics", "evapotranspiration", "active_fire", "road_network",
+         "terrain_analysis", "drainage_analysis", "vegetation_anomaly", "water_extent_timeseries", "sar_flood_mapping", "multisensor_flood_mapping"}
 
 
 class TestCatalogue:
     def test_counts(self):
         kinds = P.pipeline_kinds()
-        assert len(kinds) == 25
-        assert sum(k == "ready" for k in kinds.values()) == 19
+        assert len(kinds) == 40
+        assert sum(k == "ready" for k in kinds.values()) == 33
         assert {n for n, k in kinds.items() if k == "needs_weights"} == NEEDS_WEIGHTS
 
     def test_sorted_and_unique(self):
@@ -34,8 +39,9 @@ class TestCatalogue:
     def test_original_49_are_exactly_kept_plus_removed(self):
         kept, removed = set(P.list_pipelines()), set(REMOVED_PIPELINES)
         assert not kept & removed, "a pipeline cannot be both available and removed"
-        assert len(kept | removed) == 49
-        assert len(removed) == 24
+        assert ADDED <= kept
+        assert len((kept - ADDED) | removed) == 49
+        assert len(removed) == 21
 
     def test_every_pipeline_is_described(self):
         for name, cls in P.pipeline_catalogue().items():
@@ -137,9 +143,9 @@ class TestChannelCli:
     def test_list(self, run):
         out = run("list")
         assert out.exit_code == 0
-        assert "25 PyGeoVision pipelines" in out.output
-        assert "19 ready" in out.output and "6 need your trained weights" in out.output
-        for name in ("flood_mapping", "building_footprints"):
+        assert "40 PyGeoVision pipelines" in out.output
+        assert "33 ready" in out.output and "7 need your trained weights" in out.output
+        for name in ("flood_mapping", "building_footprints", "drainage_analysis"):
             assert name in out.output
 
     def test_removed_name_exits_2_with_reason(self, run):
@@ -156,7 +162,7 @@ class TestChannelCli:
     def test_needs_weights_without_checkpoint_fails_clearly(self, run, tmp_path, monkeypatch):
         from pipeline_synth import no_network
         no_network(monkeypatch)
-        out = run("building_footprints", "--bbox", "-0.15", "51.47", "-0.10", "51.52",
+        out = run("road_extraction", "--bbox", "-0.15", "51.47", "-0.10", "51.52",
                   "--date", "2024-06", "-o", str(tmp_path))
         assert out.exit_code == 1
         assert "checkpoint" in out.output
