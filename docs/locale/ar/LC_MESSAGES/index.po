@@ -16,6 +16,9 @@ msgstr "البدء"
 msgid "Pipelines"
 msgstr "خطوط المعالجة"
 
+msgid "Case studies"
+msgstr "دراسات حالة"
+
 msgid "Examples"
 msgstr "أمثلة"
 

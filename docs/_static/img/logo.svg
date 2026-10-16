@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="PyGeoVision">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b6a9c"/><stop offset="1" stop-color="#1fa37a"/></linearGradient></defs>
+  <!-- a lens (vision) over a terrain contour (geo) with one detected object -->
+  <circle cx="16" cy="16" r="14" fill="none" stroke="url(#g)" stroke-width="3"/>
+  <path d="M6 20c3-5 5-8 8-8s4 4 6 4 3-2 6-4" fill="none" stroke="url(#g)" stroke-width="2.2" stroke-linecap="round"/>
+  <rect x="17" y="17" width="6" height="6" rx="1" fill="none" stroke="url(#g)" stroke-width="2"/>
+  <circle cx="22.5" cy="8.5" r="2.2" fill="url(#g)"/>
+</svg>

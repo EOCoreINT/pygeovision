@@ -475,6 +475,49 @@ FIGURES: dict[str, dict] = {
             dict(title="Search", lines=["Let a search try", "settings for you"], cmd="HPO, AutoML"),
             dict(title="Pick", lines=["Keep the best run", "and its config"]),
         ]),
+    "flow-case-flood": dict(
+        alt="Multisensor flood mapping: choose a dry reference window and a flood window, compare Sentinel-1 radar, compute Sentinel-2 MNDWI, class each pixel by what each sensor says, remove ground high above the nearest drainage, write the maps and reports",
+        steps=[
+            dict(title="Two windows", lines=["A dry reference and", "a flood window, as", "date ranges"], cmd="--date-before/after"),
+            dict(title="Radar", lines=["Sentinel-1 median in", "dB per window; water", "threshold calibrated"], cmd="water_db=auto"),
+            dict(title="Optical", lines=["Sentinel-2 MNDWI,", "cloud and shadow", "masked, never dry"], cmd="mndwi_threshold"),
+            dict(title="Agree", lines=["Both, radar only,", "optical only or", "disputed, per pixel"], cmd="flood_extent.tif"),
+            dict(title="Terrain", lines=["Drop floods more than", "15 m above the", "nearest drainage"], cmd="max_hand_m=15"),
+            dict(title="Deliver", lines=["GeoTIFFs, vectors,", "PDF, Excel, Word,", "run_summary.json"], cmd="deliverables/"),
+        ],
+        sides=[dict(to=5, wide=True, title="Box over 6 million cells", lines=["Terrain is skipped and the", "report says so"])]),
+    "flow-case-fire": dict(
+        alt="Burn severity: pick a pre-fire and a post-fire date, compute NBR for each, subtract to get dNBR, class it with the USGS thresholds, measure areas over valid pixels, write the maps and reports",
+        steps=[
+            dict(title="Two dates", lines=["Before and after,", "same season if", "you can"], cmd="--date-before/after"),
+            dict(title="NBR twice", lines=["(NIR - SWIR2) over", "(NIR + SWIR2), cloud", "pixels left empty"], cmd="nir, swir2"),
+            dict(title="Subtract", lines=["dNBR is NBR before", "minus NBR after"], cmd="dnbr.tif"),
+            dict(title="Classes", lines=["Unburned below 0.10,", "low, moderate, high", "at 0.27 and 0.66"], cmd="severity_class.tif"),
+            dict(title="Measure", lines=["Areas and shares over", "valid pixels only"], cmd="burned_area_ha"),
+            dict(title="Deliver", lines=["Maps, polygons,", "PDF, Excel, Word"], cmd="deliverables/"),
+        ],
+        sides=[dict(to=2, wide=True, title="Cloud or smoke", lines=["Cloud pixels are not dry;", "check the valid share"])]),
+    "flow-case-drainage": dict(
+        alt="Drainage analysis: download a Copernicus 30 m elevation model, fill depressions with Priority-Flood, route water D8, accumulate flow, mark streams above a catchment threshold and number them by Strahler order, compute height above the nearest drainage",
+        steps=[
+            dict(title="Elevation", lines=["Copernicus 30 m", "surface model for", "the box"], cmd="dem_source"),
+            dict(title="Fill", lines=["Priority-Flood: sinks", "filled, flats resolved"], cmd="cells_filled"),
+            dict(title="Route", lines=["Each cell drains to", "its steepest downhill", "neighbour (D8)"], cmd="flow direction"),
+            dict(title="Accumulate", lines=["Draining area through", "every cell, in km²"], cmd="flow_accumulation"),
+            dict(title="Streams", lines=["Cells above the", "threshold, numbered", "by Strahler order"], cmd="stream_threshold_km2"),
+            dict(title="HAND", lines=["Height of each cell", "above the stream it", "drains into"], cmd="hand_m.tif"),
+        ],
+        sides=[dict(to=4, wide=True, title="Edge of the box", lines=["Areas are cut at the edge, so", "border streams read short"])]),
+    "flow-case-water": dict(
+        alt="Water quality indicators: one cloud-masked Sentinel-2 scene, water mask from NDWI above zero, NDCI and red reflectance inside the water, terciles of NDCI, report with the valid share",
+        steps=[
+            dict(title="One scene", lines=["Sentinel-2 L2A for", "the month, cloud", "pixels left empty"], cmd="--date 2024-06"),
+            dict(title="Water", lines=["NDWI (green, NIR)", "above zero"], cmd="pct_water"),
+            dict(title="Indicators", lines=["NDCI and red", "reflectance, water", "pixels only"], cmd="water_quality.tif"),
+            dict(title="Terciles", lines=["Lower, middle, upper", "third of NDCI in", "this water"], cmd="ndci_zones"),
+            dict(title="Report", lines=["Valid share and", "relative-indicator", "warning"], cmd="valid_fraction"),
+        ],
+        sides=[dict(to=3, wide=True, title="Red or red-edge at zero", lines=["NDCI is undefined there and", "the pixel drops out"])]),
 }
 
 
@@ -497,6 +540,19 @@ STACKS: dict[str, dict] = {
 }
 
 TREES: dict[str, dict] = {
+    "tree-case-london": dict(
+        alt="One box in central London, five questions: land cover and habitat mix come from the WorldCover 2021 map; buildings and roads are published datasets; vegetation change compares two Sentinel-2 dates",
+        root=_q("One box,", "-0.15 51.47 -0.10 51.52", kids=[
+            ("what is on the ground?", _q("Which map?", kids=[
+                ("classes", _leaf("land_cover", "WorldCover 2021")),
+                ("how mixed", _leaf("biodiversity_hotspot", "Shannon index")),
+            ])),
+            ("what is built?", _q("Which dataset?", kids=[
+                ("buildings", _leaf("building_footprints", "Microsoft ML")),
+                ("roads", _leaf("road_network", "OpenStreetMap")),
+            ])),
+            ("what changed?", _leaf("crop_health", "NDVI, May to Aug 2024")),
+        ])),
     "tree-ai-ready": dict(
         alt="Which AI-ready gate to use: a raw scene folder goes to prepare_for_ai; clipped optical data to prepare_optical_for_ai; clipped radar to prepare_sar_for_ai",
         root=_q("A scene folder, or an", "un-clipped raster?", kids=[

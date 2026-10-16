@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/EOCoreINT/pygeovision/main/icon/pygeovision_logo.png" alt="PyGeoVision logo" width="320">
-
 # PyGeoVision
 
 **From "I need imagery of this place" to a finished map, mask or dataset — search, preprocess, model and assess in one package.**

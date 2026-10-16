@@ -1368,6 +1368,274 @@
   },
   "title": "Landslide Detection (trained network)"
  },
+ "mine_rehabilitation": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel mine_rehabilitation --bbox -0.15 51.47 -0.10 51.52 -o ./out/mine_rehabilitation --dates '2020-06,2021-06,2022-06,2023-06,2024-06' --param site=path/to/site.geojson",
+  "console": "Running pipeline 'mine_rehabilitation'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/mine_rehabilitation\n\n\u2713 pipeline complete\n  Output: ./out/mine_rehabilitation/rehab_status.tif\n  Stats:\n    assessed_ha: 965.8299\n    classified_land_ha: 885.3441\n    area_ha_recovered: 321.9433\n    area_ha_recovering: 0.0000\n    area_ha_stalled: 321.9433\n    area_ha_bare: 112.6802\n    area_ha_declining: 128.7773\n    area_ha_water: 80.4858\n    recovered_fraction: 0.3636\n    recovering_fraction: 0.0000\n    stalled_fraction: 0.3636\n    bare_fraction: 0.1273\n    declining_fraction: 0.1455\n    recovered_but_declining_ha: 0.0000\n    mean_rri_latest: 0.5620\n    site_rri_first: 0.4596\n    site_rri_latest: 0.5058\n    site_trend_per_year: 0.0119\n    first_date: 2020-06\n    latest_date: 2024-06\n    dates_used: ['2020-06', '2021-06', '2022-06', '2023-06', '2024-06']\n    series: [{'date': '2020-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.682758092880249, 'site_ndvi_median': 0.313765287399292, 'site_rri_median': 0.45955559611320496, 'share_recovered': 0.14545454545454545}, {'date': '2021-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.665783166885376, 'site_ndvi_median': 0.32147908210754395, 'site_rri_median': 0.4828585088253021, 'share_recovered': 0.0030303030303030303}, {'date': '2022-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.6313149333000183, 'site_ndvi_median': 0.35422593355178833, 'site_rri_median': 0.5610922574996948, 'share_recovered': 0.0}, {'date': '2023-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.6823232173919678, 'site_ndvi_median': 0.3474727272987366, 'site_rri_median': 0.5092494487762451, 'share_recovered': 0.0703030303030303}, {'date': '2024-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.6652802228927612, 'site_ndvi_median': 0.3365275263786316, 'site_rri_median': 0.5058432817459106, 'share_recovered': 0.36363636363636365}]\n    series_used: [{'date': '2020-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.682758092880249, 'site_ndvi_median': 0.313765287399292, 'site_rri_median': 0.45955559611320496, 'share_recovered': 0.14545454545454545}, {'date': '2021-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.665783166885376, 'site_ndvi_median': 0.32147908210754395, 'site_rri_median': 0.4828585088253021, 'share_recovered': 0.0030303030303030303}, {'date': '2022-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.6313149333000183, 'site_ndvi_median': 0.35422593355178833, 'site_rri_median': 0.5610922574996948, 'share_recovered': 0.0}, {'date': '2023-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.6823232173919678, 'site_ndvi_median': 0.3474727272987366, 'site_rri_median': 0.5092494487762451, 'share_recovered': 0.0703030303030303}, {'date': '2024-06', 'usable': True, 'site_valid_fraction': 1.0, 'reference_pixels': 1500, 'reference_ndvi_median': 0.6652802228927612, 'site_ndvi_median': 0.3365275263786316, 'site_rri_median': 0.5058432817459106, 'share_recovered': 0.36363636363636365}]\n    n_dates_requested: 5\n    reference_pixels: 1500\n    reference_source: automatic: land outside the site and a 100 m margin whose median NDVI is >= 0.5\n    reference_overlap_removed_px: 0\n    season_warning: None\n    valid_fraction: 1.0000\n    timeseries_file: ./out/mine_rehabilitation/rehabilitation_timeseries.csv\n\n  Deliverables: ./out/mine_rehabilitation/deliverables\n    PDF report    mine_rehabilitation_report.pdf\n    Excel report  mine_rehabilitation_report.xlsx\n    Word report   mine_rehabilitation_report.docx\n    Map           maps/mine_rehabilitation_map.png\n    Map           maps/mine_rehabilitation_map_rri.png\n    Map           maps/mine_rehabilitation_map_trend.png\n    Map           maps/mine_rehabilitation_map_reference.png\n    Vectors gpkg  mine_rehabilitation.gpkg\n    Vectors geojson mine_rehabilitation_aoi.geojson, mine_rehabilitation_rehabilitation_status.geojson",
+  "files": [
+   "deliverables/maps/mine_rehabilitation_chart_series_used_site_rri_median.png",
+   "deliverables/maps/mine_rehabilitation_histogram.png",
+   "deliverables/maps/mine_rehabilitation_map.png",
+   "deliverables/maps/mine_rehabilitation_map_reference.png",
+   "deliverables/maps/mine_rehabilitation_map_rri.png",
+   "deliverables/maps/mine_rehabilitation_map_trend.png",
+   "deliverables/mine_rehabilitation_report.docx",
+   "deliverables/mine_rehabilitation_report.pdf",
+   "deliverables/mine_rehabilitation_report.xlsx",
+   "deliverables/vectors/geojson/mine_rehabilitation_aoi.geojson",
+   "deliverables/vectors/geojson/mine_rehabilitation_rehabilitation_status.geojson",
+   "deliverables/vectors/mine_rehabilitation.gpkg",
+   "recovery_index.tif",
+   "recovery_trend.tif",
+   "reference_mask.tif",
+   "rehab_status.tif",
+   "rehabilitation_timeseries.csv",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 965.82999,
+      "name": "Outside the assessed area (or reference)",
+      "pixels": 1800,
+      "share": 0.5,
+      "value": 0
+     },
+     {
+      "area_ha": 321.82684,
+      "name": "Recovered (at or above the recovered level)",
+      "pixels": 600,
+      "share": 0.16661,
+      "value": 1
+     },
+     {
+      "area_ha": 321.94334,
+      "name": "Stalled (partial, not rising)",
+      "pixels": 600,
+      "share": 0.16667,
+      "value": 3
+     },
+     {
+      "area_ha": 112.72399,
+      "name": "Bare or sparse",
+      "pixels": 210,
+      "share": 0.05836,
+      "value": 4
+     },
+     {
+      "area_ha": 128.80995,
+      "name": "Declining (falling)",
+      "pixels": 240,
+      "share": 0.06668,
+      "value": 5
+     },
+     {
+      "area_ha": 80.52587,
+      "name": "Water (pit lake, pond)",
+      "pixels": 150,
+      "share": 0.04169,
+      "value": 6
+     }
+    ],
+    "file": "rehab_status.tif",
+    "key": "status",
+    "kind": "classes",
+    "title": "Rehabilitation status"
+   },
+   {
+    "file": "recovery_index.tif",
+    "key": "rri",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.90791,
+     "mean": 0.56198,
+     "median": 0.50544,
+     "min": 0.04593,
+     "valid_fraction": 0.45833
+    },
+    "title": "Recent relative recovery index (1 = as green as the reference)"
+   },
+   {
+    "file": "recovery_trend.tif",
+    "key": "trend",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.1833,
+     "mean": 0.03636,
+     "median": 0.00404,
+     "min": -0.17234,
+     "valid_fraction": 0.45833
+    },
+    "title": "Change in RRI per year"
+   },
+   {
+    "classes": [
+     {
+      "area_ha": 1126.80166,
+      "name": "Not reference",
+      "pixels": 2100,
+      "share": 0.58333,
+      "value": 0
+     },
+     {
+      "area_ha": 804.85833,
+      "name": "Reference",
+      "pixels": 1500,
+      "share": 0.41667,
+      "value": 1
+     }
+    ],
+    "file": "reference_mask.tif",
+    "key": "reference",
+    "kind": "classes",
+    "title": "Reference pixels used"
+   }
+  ],
+  "period": "2020-06 to 2024-06",
+  "stats": {
+   "area_ha_bare": 112.68016,
+   "area_ha_declining": 128.77733,
+   "area_ha_recovered": 321.94331,
+   "area_ha_recovering": 0.0,
+   "area_ha_stalled": 321.94331,
+   "area_ha_water": 80.48583,
+   "assessed_ha": 965.82994,
+   "bare_fraction": 0.12727,
+   "classified_land_ha": 885.34411,
+   "dates_left_out": {},
+   "dates_used": [
+    "2020-06",
+    "2021-06",
+    "2022-06",
+    "2023-06",
+    "2024-06"
+   ],
+   "declining_fraction": 0.14545,
+   "first_date": "2020-06",
+   "latest_date": "2024-06",
+   "mean_rri_latest": 0.56198,
+   "n_dates_requested": 5,
+   "recovered_but_declining_ha": 0.0,
+   "recovered_fraction": 0.36364,
+   "recovering_fraction": 0.0,
+   "reference_overlap_removed_px": 0,
+   "reference_pixels": 1500,
+   "reference_source": "automatic: land outside the site and a 100 m margin whose median NDVI is >= 0.5",
+   "season_warning": null,
+   "series": [
+    {
+     "date": "2020-06",
+     "reference_ndvi_median": 0.68276,
+     "reference_pixels": 1500,
+     "share_recovered": 0.14545,
+     "site_ndvi_median": 0.31377,
+     "site_rri_median": 0.45956,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    },
+    {
+     "date": "2021-06",
+     "reference_ndvi_median": 0.66578,
+     "reference_pixels": 1500,
+     "share_recovered": 0.00303,
+     "site_ndvi_median": 0.32148,
+     "site_rri_median": 0.48286,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    },
+    {
+     "date": "2022-06",
+     "reference_ndvi_median": 0.63131,
+     "reference_pixels": 1500,
+     "share_recovered": 0.0,
+     "site_ndvi_median": 0.35423,
+     "site_rri_median": 0.56109,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    },
+    {
+     "date": "2023-06",
+     "reference_ndvi_median": 0.68232,
+     "reference_pixels": 1500,
+     "share_recovered": 0.0703,
+     "site_ndvi_median": 0.34747,
+     "site_rri_median": 0.50925,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    },
+    {
+     "date": "2024-06",
+     "reference_ndvi_median": 0.66528,
+     "reference_pixels": 1500,
+     "share_recovered": 0.36364,
+     "site_ndvi_median": 0.33653,
+     "site_rri_median": 0.50584,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    }
+   ],
+   "series_used": [
+    {
+     "date": "2020-06",
+     "reference_ndvi_median": 0.68276,
+     "reference_pixels": 1500,
+     "share_recovered": 0.14545,
+     "site_ndvi_median": 0.31377,
+     "site_rri_median": 0.45956,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    },
+    {
+     "date": "2021-06",
+     "reference_ndvi_median": 0.66578,
+     "reference_pixels": 1500,
+     "share_recovered": 0.00303,
+     "site_ndvi_median": 0.32148,
+     "site_rri_median": 0.48286,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    },
+    {
+     "date": "2022-06",
+     "reference_ndvi_median": 0.63131,
+     "reference_pixels": 1500,
+     "share_recovered": 0.0,
+     "site_ndvi_median": 0.35423,
+     "site_rri_median": 0.56109,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    },
+    {
+     "date": "2023-06",
+     "reference_ndvi_median": 0.68232,
+     "reference_pixels": 1500,
+     "share_recovered": 0.0703,
+     "site_ndvi_median": 0.34747,
+     "site_rri_median": 0.50925,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    },
+    {
+     "date": "2024-06",
+     "reference_ndvi_median": 0.66528,
+     "reference_pixels": 1500,
+     "share_recovered": 0.36364,
+     "site_ndvi_median": 0.33653,
+     "site_rri_median": 0.50584,
+     "site_valid_fraction": 1.0,
+     "usable": true
+    }
+   ],
+   "site_rri_first": 0.45956,
+   "site_rri_latest": 0.50584,
+   "site_trend_per_year": 0.01189,
+   "stalled_fraction": 0.36364,
+   "timeseries_file": "rehabilitation_timeseries.csv",
+   "valid_fraction": 1.0
+  },
+  "title": "Mine Closure and Rehabilitation (greenness against an undisturbed reference)"
+ },
  "multisensor_flood_mapping": {
   "aoi_area_km2": 19.3166,
   "command": "pygeovision channel multisensor_flood_mapping --bbox -0.15 51.47 -0.10 51.52 -o ./out/multisensor_flood_mapping --date-before 2024-05-01/2024-05-31 --date-after 2024-06-10/2024-06-20",

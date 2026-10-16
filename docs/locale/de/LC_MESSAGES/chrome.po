@@ -58,6 +58,9 @@ msgstr "Vertrauen, Überwachung, Bereitstellung"
 msgid "Advanced tools"
 msgstr "Erweiterte Werkzeuge"
 
+msgid "Case studies"
+msgstr "Fallstudien"
+
 msgid "Examples"
 msgstr "Beispiele"
 

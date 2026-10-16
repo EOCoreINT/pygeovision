@@ -5,7 +5,7 @@ convert them → copy them somewhere*, written once in a YAML file or built in P
 schedule. It is for **keeping a folder or bucket of imagery up to date** — for example "every Monday, fetch last week's
 clear Sentinel-2 scenes over Accra, reproject them and put them in our S3 bucket".
 
-It is not how the 40 analysis pipelines work (those are [pipelines](../pipelines/index.md) in the other sense: a
+It is not how the 41 analysis pipelines work (those are [pipelines](../pipelines/index.md) in the other sense: a
 named analysis with a report). A data pipeline moves and prepares files; it does not compute flood extent or NDVI. The
 two combine well: a data pipeline keeps the archive current, and analysis pipelines or your own code read from it.
 

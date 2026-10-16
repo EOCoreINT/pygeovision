@@ -58,6 +58,9 @@ msgstr "可信、监控与部署"
 msgid "Advanced tools"
 msgstr "高级工具"
 
+msgid "Case studies"
+msgstr "案例研究"
+
 msgid "Examples"
 msgstr "示例"
 

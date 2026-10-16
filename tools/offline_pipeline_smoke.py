@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run all 40 pipelines through the real ``pygeovision channel`` CLI -- without network access.
+"""Run all 41 pipelines through the real ``pygeovision channel`` CLI -- without network access.
 
 Only the things that need the internet are replaced:
 
@@ -17,7 +17,7 @@ vectors, PDF/Word/Excel reports), which each run must leave behind. The seven pi
 *wiring* checkpoint (a randomly initialised network of the right shape), so they prove the plumbing works;
 their output is meaningless and must never be read as a result.
 
-    python tools/offline_pipeline_smoke.py                    # all 40
+    python tools/offline_pipeline_smoke.py                    # all 41
     python tools/offline_pipeline_smoke.py water_bodies flood_mapping
     python tools/offline_pipeline_smoke.py --commands         # print the equivalent real-data commands
     python tools/offline_pipeline_smoke.py --keep out_dir     # keep the produced files
@@ -41,6 +41,8 @@ PAIR = ["--date-before", "2024-05", "--date-after", "2024-08"]
 
 # name -> extra CLI arguments. A ("ckpt", architecture, num_classes, in_channels) tuple stands for a
 # --checkpoint argument: here a generated wiring checkpoint, with real data your own trained weights.
+# A ("polygon", parameter, (west, east)) tuple stands for --param parameter=<polygon file>: here a rectangle covering that
+# share of the box's width, with real data your own file.
 SPECS: dict[str, list] = {
     "archaeological_site": [],
     "biodiversity_hotspot": [],
@@ -50,6 +52,7 @@ SPECS: dict[str, list] = {
     "evapotranspiration": ["--date", "2022"],
     "forest_change": ["--date-before", "2015", "--date-after", "2020"],
     "landcover_change": ["--date-before", "2018", "--date-after", "2023"],
+    "mine_rehabilitation": ["--dates", "2020-06,2021-06,2022-06,2023-06,2024-06", ("polygon", "site", (0.0, 0.5))],
     "landslide_detection": PAIR + [("ckpt", "siamese_unet", 2, 3)],
     "road_extraction": ["--date", "2024-06", ("ckpt", "unet_resnet50", 2, 3)],
     "road_network": [],
@@ -89,9 +92,59 @@ def real_command(name: str) -> str:
     """The command for real data (you supply the bbox/dates and, where needed, your checkpoint)."""
     parts = ["pygeovision", "channel", name, *BBOX_ARGS, "-o", f"./out/{name}"]
     for e in SPECS[name]:
-        parts += (["--checkpoint", "path/to/your_trained.pth"] if isinstance(e, tuple)
-                  else [f"'{e}'" if " " in e or "," in e else e])
+        if isinstance(e, tuple):
+            parts += (["--checkpoint", "path/to/your_trained.pth"] if e[0] == "ckpt"
+                      else ["--param", f"{e[1]}=path/to/{e[1]}.geojson"])
+        else:
+            parts.append(f"'{e}'" if " " in e or "," in e else e)
     return " ".join(parts)
+
+
+def cli_args(name: str, tmp: pathlib.Path) -> list[str]:
+    """The arguments of ``name`` with its stand-ins (wiring checkpoint, polygon file) written under ``tmp``."""
+    args: list[str] = []
+    for e in SPECS[name]:
+        if not isinstance(e, tuple):
+            args.append(e)
+        elif e[0] == "ckpt":
+            _, model, classes, bands = e
+            args += ["--checkpoint", wiring_checkpoint(tmp, model, classes, bands, name)]
+        else:
+            _, param, (lo, hi) = e
+            import geopandas as gpd
+            from shapely.geometry import box
+            w, s_, east, n = (float(v) for v in BBOX_ARGS[1:5])
+            path = tmp / f"{name}_{param}.geojson"
+            gpd.GeoDataFrame({"id": [1]}, geometry=[box(w + (east - w) * lo, s_, w + (east - w) * hi, n)],
+                             crs="EPSG:4326").to_file(path, driver="GeoJSON")
+            args += ["--param", f"{param}={path}"]
+    return args
+
+
+def mine_scene(rng, year: int):
+    """green, red, nir, swir1 of a mine site (west half) beside forest (east), for the rehabilitation example.
+
+    The site is revegetating in its north (RRI rising by 0.16 a year from 0.3), stalled in the middle (0.5), going backwards
+    in a strip below it (0.9 falling by 0.15 a year), bare in the south, with a pit lake at the bottom; a haul road separates it from the forest, whose greenness moves with the year.
+    """
+    import numpy as np
+    n = 60
+    forest = 0.66 + 0.03 * np.sin(year * 2.1)
+    ndvi = np.full((n, n), forest, "float32")
+    ndvi[:, 30:35] = 0.2                                                    # haul road
+    k = year - 2020
+    ndvi[0:20, :30] = (0.3 + 0.16 * k) * forest
+    ndvi[20:40, :30] = 0.5 * forest
+    ndvi[40:48, :30] = (0.9 - 0.15 * k) * forest
+    ndvi[48:55, :30] = 0.1 * forest
+    ndvi[55:, :30] = -0.2                                                   # pit lake
+    ndvi += rng.normal(0, 0.015, ndvi.shape).astype("float32")
+    red = np.full((n, n), 0.08, "float32")
+    nir = (red * (1 + ndvi) / (1 - ndvi)).astype("float32")
+    green = np.full((n, n), 0.1, "float32")
+    swir = np.full((n, n), 0.3, "float32")
+    green[55:, :30], swir[55:, :30] = 0.3, 0.1
+    return np.stack([green, red, nir, swir])
 
 
 def install_offline_patches(tmp: pathlib.Path):
@@ -108,7 +161,11 @@ def install_offline_patches(tmp: pathlib.Path):
 
     def fake_single(self, bbox, date, output_dir, **kw):
         n = len(kw.get("bands") or []) or 4
-        arr = np.clip(rng.normal(0.25, 0.1, (n, 60, 60)), 0.02, 0.9).astype("float32")
+        if tuple(kw.get("bands") or ()) == ("green", "red", "nir", "swir1"):
+            # its own generator, so adding this scene does not reshuffle the noise every other pipeline's example gets
+            arr = mine_scene(np.random.default_rng(int(str(date)[:4])), int(str(date)[:4]))
+        else:
+            arr = np.clip(rng.normal(0.25, 0.1, (n, 60, 60)), 0.02, 0.9).astype("float32")
         if tuple(kw.get("bands") or ()) == ("thermal",):
             # Landsat Collection 2 ST_B10 digital numbers: K = DN x 0.00341802 + 149. A 30 deg C scene with a warm
             # block, so the example output shows plausible temperatures instead of the reflectance noise above.
@@ -328,12 +385,7 @@ def main(argv=None) -> int:
     runner, failed = CliRunner(), []
     for name in names:
         cmd = ["channel", name, *BBOX_ARGS, "-o", str(tmp / "out" / name)]
-        for e in SPECS[name]:
-            if isinstance(e, tuple):
-                _, model, classes, bands = e
-                cmd += ["--checkpoint", wiring_checkpoint(tmp, model, classes, bands, name)]
-            else:
-                cmd.append(e)
+        cmd += cli_args(name, tmp)
         res = runner.invoke(cli, cmd)
         problem = res.exit_code != 0
         detail = ""

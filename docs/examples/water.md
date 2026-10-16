@@ -131,7 +131,7 @@ channel; it is a **terrain** statement, not a flood prediction. The drainage den
 
 ## Case study: the 2023 Volta floods
 
-`case_studies/ghana_volta_flood/` in the repository is a complete project, outside the 40 pipelines, that maps the 2023
+`case_studies/ghana_volta_flood/` in the repository is a complete project, outside the 41 pipelines, that maps the 2023
 Akosombo-spillage floods in the Lower Volta: Sentinel-2 epochs → spectral "teacher" labels → block-split chips → fine-tuned Prithvi-EO
 → noisy-student round → wall-to-wall maps → **independent accuracy sample** → district exposure → report.
 

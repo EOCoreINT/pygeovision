@@ -1,7 +1,7 @@
 # Quickstart
 
 Ten minutes from an empty environment to a finished map, a table of figures and a report. You will install the
-package, check that it works, run one of the 40 pipelines, look at what it wrote, and then run the same thing from
+package, check that it works, run one of the 41 pipelines, look at what it wrote, and then run the same thing from
 Python. Everything here uses open data and needs no account.
 
 ## 1. Install and check
@@ -35,7 +35,7 @@ pygeovision channel list
 ```
 
 ```text
-40 PyGeoVision pipelines (33 ready, 7 need your trained weights):
+41 PyGeoVision pipelines (34 ready, 7 need your trained weights):
 
   crop_health                ready         NDVI drop between two dates (vegetation stress / loss anomaly)
   flood_mapping              ready         Flooded area = MNDWI water on the flood date minus permanent water from a dry reference
@@ -47,7 +47,7 @@ pygeovision channel list
 
 *ready* pipelines compute their answer from real imagery, a DEM, radar or a published map. *needs_weights* pipelines
 run a network you trained and stop with a clear message if you do not pass `--checkpoint`
-([Core concepts](concepts.md)). The command lists all 40.
+([Core concepts](concepts.md)). The command lists all 41.
 
 ## 3. Run your first pipeline
 

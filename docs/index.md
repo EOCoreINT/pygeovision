@@ -181,6 +181,13 @@ Grad-CAM, SHAP and uncertainty; drift, alerts and performance watching.
 ONNX and Jetson at the edge; SageMaker, Azure ML and Vertex AI in the cloud.
 :::
 
+:::{grid-item-card} Case studies
+:link: case-studies/index
+:link-type: doc
+
+Eight real runs, read closely: floods, a wildfire, streams, water quality and central London.
+:::
+
 :::{grid-item-card} Examples by domain
 :link: examples/index
 :link-type: doc
@@ -238,6 +245,7 @@ The sidebar has one group for each topic below, so you can see every page of a s
 | **Object-based analysis** | Segment, describe, classify and assess imagery object by object, on real scenes. |
 | **Models, Labelling, Training, Inference, Experiments** | The machine-learning workflow, one group per stage. |
 | **Explainability, Monitoring, Reporting, Deployment** | Trust, watch, report and ship a model. |
+| **Case studies** | Read eight real reports closely: what each number means, what the run can and cannot support, and what to change. |
 | **Examples** | Follow end-to-end workflows by domain. |
 | **CLI reference, Python API, Reference** | Look up every command, every package, the settings, exceptions and known issues. |
 | **Project** | Read the changelog and roadmap, and learn how to contribute. |
@@ -559,6 +567,22 @@ deployment/cloud
 deployment/sagemaker
 deployment/azure
 deployment/vertex
+```
+
+```{toctree}
+:maxdepth: 1
+:caption: Case studies
+:hidden:
+
+case-studies/index
+case-studies/flood-accra
+case-studies/flood-nepal
+case-studies/wildfire
+case-studies/drainage-tyrol
+case-studies/water-quality
+case-studies/london-landcover-habitat
+case-studies/london-buildings-roads
+case-studies/london-vegetation
 ```
 
 ```{toctree}

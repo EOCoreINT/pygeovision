@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 305" role="img" aria-label="Multisensor flood mapping: choose a dry reference window and a flood window, compare Sentinel-1 radar, compute Sentinel-2 MNDWI, class each pixel by what each sensor says, remove ground high above the nearest drainage, write the maps and reports"><title>Multisensor flood mapping: choose a dry reference window and a flood window, compare Sentinel-1 radar, compute Sentinel-2 MNDWI, class each pixel by what each sensor says, remove ground high above the nearest drainage, write the maps and reports</title>
+  <style>
+    :root{--card:#ffffff;--line:#d7dbe0;--title:#1c1e21;--sub:#5a5c63;--pill:#eef3f8;--pillt:#1b4f72;--flow:#1b6a9c;--soft:#f6f8fa;--shadow:rgba(16,24,40,.10)}
+    @media (prefers-color-scheme:dark){:root{--card:#242526;--line:#3a3b3d;--title:#e8e8e8;--sub:#b0b3b8;--pill:#2f3a44;--pillt:#a9d6ee;--flow:#6cc4dd;--soft:#1d1e1f;--shadow:rgba(0,0,0,.45)}}
+    text{font-family:Ubuntu,"Segoe UI",system-ui,sans-serif}
+    .card{fill:var(--card);stroke:var(--line);stroke-width:1.2;filter:drop-shadow(0 2px 3px var(--shadow))}
+    .side{fill:var(--soft);stroke:var(--flow);stroke-width:1.3;stroke-dasharray:5 4}
+    .t{font-weight:600;font-size:14px;fill:var(--title)}
+    .s{font-size:11.5px;fill:var(--sub)}
+    .n{font-weight:700;font-size:12px;fill:#fff}
+    .pill{fill:var(--pill)}
+    .cmd{font-family:"Ubuntu Mono",ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;fill:var(--pillt)}
+    .arrow{stroke:var(--flow);stroke-width:2;fill:none;stroke-dasharray:6 6;animation:dash 1.1s linear infinite}
+    .head{fill:var(--flow)}
+    .step{animation:rise .6s ease-out both}
+    .q{fill:var(--card);stroke:var(--line);stroke-width:1.2;filter:drop-shadow(0 2px 3px var(--shadow))}
+    .leaf{fill:var(--pill);stroke:var(--flow);stroke-width:1.2}
+    .qa{fill:#1b6a9c}
+    .mono{font-family:"Ubuntu Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;fill:var(--pillt);font-weight:600}
+    .lab{font-size:10.5px;font-weight:700;fill:var(--flow)}
+    .labbg{fill:var(--card);stroke:var(--flow);stroke-width:1}
+    .band{fill:var(--card);stroke:var(--line);stroke-width:1.2;filter:drop-shadow(0 2px 3px var(--shadow))}
+    .bt{font-weight:700;font-size:15px;fill:#fff}
+    .bs{font-size:11.5px;fill:rgba(255,255,255,.86)}
+    .quote{font-size:12px;font-style:italic;fill:var(--sub)}
+    .a0{fill:#1b6a9c}.a1{fill:#2386b0}.a2{fill:#1f9bb0}.a3{fill:#23a58e}.a4{fill:#3aa66b}.a5{fill:#6aa84f}
+    @keyframes dash{to{stroke-dashoffset:-12}}
+    @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    @media (prefers-reduced-motion:reduce){.arrow{animation:none}.step{animation:none}}
+  </style>
+<g class="step" style="animation-delay:0.00s">
+<rect class="card" x="18.0" y="18" width="142.3" height="163" rx="12"/>
+<circle class="a0" cx="89.2" cy="42" r="13"/>
+<text class="n" x="89.2" y="46.2" text-anchor="middle">1</text>
+<text class="t" x="89.2" y="84" text-anchor="middle">Two windows</text>
+<text class="s" x="89.2" y="104" text-anchor="middle">A dry reference and</text>
+<text class="s" x="89.2" y="119" text-anchor="middle">a flood window, as</text>
+<text class="s" x="89.2" y="134" text-anchor="middle">date ranges</text>
+<rect class="pill" x="26.0" y="153" width="126.3" height="20" rx="10"/>
+<text class="cmd" x="89.2" y="167" text-anchor="middle">--date-before/after</text>
+</g>
+<path class="arrow" d="M163.3 42 H183.3"/><path class="head" d="M184.3 37 L191.3 42 L184.3 47 Z"/>
+<g class="step" style="animation-delay:0.12s">
+<rect class="card" x="190.3" y="18" width="142.3" height="163" rx="12"/>
+<circle class="a1" cx="261.5" cy="42" r="13"/>
+<text class="n" x="261.5" y="46.2" text-anchor="middle">2</text>
+<text class="t" x="261.5" y="84" text-anchor="middle">Radar</text>
+<text class="s" x="261.5" y="104" text-anchor="middle">Sentinel-1 median in</text>
+<text class="s" x="261.5" y="119" text-anchor="middle">dB per window; water</text>
+<text class="s" x="261.5" y="134" text-anchor="middle">threshold calibrated</text>
+<rect class="pill" x="207.0" y="153" width="109.0" height="20" rx="10"/>
+<text class="cmd" x="261.5" y="167" text-anchor="middle">water_db=auto</text>
+</g>
+<path class="arrow" d="M335.7 42 H355.7"/><path class="head" d="M356.7 37 L363.7 42 L356.7 47 Z"/>
+<g class="step" style="animation-delay:0.24s">
+<rect class="card" x="362.7" y="18" width="142.3" height="163" rx="12"/>
+<circle class="a2" cx="433.8" cy="42" r="13"/>
+<text class="n" x="433.8" y="46.2" text-anchor="middle">3</text>
+<text class="t" x="433.8" y="84" text-anchor="middle">Optical</text>
+<text class="s" x="433.8" y="104" text-anchor="middle">Sentinel-2 MNDWI,</text>
+<text class="s" x="433.8" y="119" text-anchor="middle">cloud and shadow</text>
+<text class="s" x="433.8" y="134" text-anchor="middle">masked, never dry</text>
+<rect class="pill" x="372.3" y="153" width="123.0" height="20" rx="10"/>
+<text class="cmd" x="433.8" y="167" text-anchor="middle">mndwi_threshold</text>
+</g>
+<path class="arrow" d="M508.0 42 H528.0"/><path class="head" d="M529.0 37 L536.0 42 L529.0 47 Z"/>
+<g class="step" style="animation-delay:0.36s">
+<rect class="card" x="535.0" y="18" width="142.3" height="163" rx="12"/>
+<circle class="a3" cx="606.2" cy="42" r="13"/>
+<text class="n" x="606.2" y="46.2" text-anchor="middle">4</text>
+<text class="t" x="606.2" y="84" text-anchor="middle">Agree</text>
+<text class="s" x="606.2" y="104" text-anchor="middle">Both, radar only,</text>
+<text class="s" x="606.2" y="119" text-anchor="middle">optical only or</text>
+<text class="s" x="606.2" y="134" text-anchor="middle">disputed, per pixel</text>
+<rect class="pill" x="543.0" y="153" width="126.3" height="20" rx="10"/>
+<text class="cmd" x="606.2" y="167" text-anchor="middle">flood_extent.tif</text>
+</g>
+<path class="arrow" d="M680.3 42 H700.3"/><path class="head" d="M701.3 37 L708.3 42 L701.3 47 Z"/>
+<g class="step" style="animation-delay:0.48s">
+<rect class="card" x="707.3" y="18" width="142.3" height="163" rx="12"/>
+<circle class="a4" cx="778.5" cy="42" r="13"/>
+<text class="n" x="778.5" y="46.2" text-anchor="middle">5</text>
+<text class="t" x="778.5" y="84" text-anchor="middle">Terrain</text>
+<text class="s" x="778.5" y="104" text-anchor="middle">Drop floods more than</text>
+<text class="s" x="778.5" y="119" text-anchor="middle">15 m above the</text>
+<text class="s" x="778.5" y="134" text-anchor="middle">nearest drainage</text>
+<rect class="pill" x="724.0" y="153" width="109.0" height="20" rx="10"/>
+<text class="cmd" x="778.5" y="167" text-anchor="middle">max_hand_m=15</text>
+</g>
+<path class="arrow" d="M852.7 42 H872.7"/><path class="head" d="M873.7 37 L880.7 42 L873.7 47 Z"/>
+<g class="step" style="animation-delay:0.60s">
+<rect class="card" x="879.7" y="18" width="142.3" height="163" rx="12"/>
+<circle class="a5" cx="950.8" cy="42" r="13"/>
+<text class="n" x="950.8" y="46.2" text-anchor="middle">6</text>
+<text class="t" x="950.8" y="84" text-anchor="middle">Deliver</text>
+<text class="s" x="950.8" y="104" text-anchor="middle">GeoTIFFs, vectors,</text>
+<text class="s" x="950.8" y="119" text-anchor="middle">PDF, Excel, Word,</text>
+<text class="s" x="950.8" y="134" text-anchor="middle">run_summary.json</text>
+<rect class="pill" x="896.3" y="153" width="109.0" height="20" rx="10"/>
+<text class="cmd" x="950.8" y="167" text-anchor="middle">deliverables/</text>
+</g>
+<path class="arrow" d="M778.5 213 V187"/><path class="head" d="M773.5 188 L778.5 181 L783.5 188 Z"/>
+<g class="step" style="animation-delay:0.84s"><rect class="side" x="621.2" y="215" width="314.7" height="76" rx="12"/><text class="t" x="778.5" y="239" text-anchor="middle">Box over 6 million cells</text><text class="s" x="778.5" y="258" text-anchor="middle">Terrain is skipped and the</text><text class="s" x="778.5" y="273" text-anchor="middle">report says so</text></g>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 150" role="img" aria-label="Object-based image analysis: fetch, segment, describe, classify, assess">
+  <style>
+    .box{fill:#fff;stroke:#1b6a9c;stroke-width:1.6;rx:10}
+    .acc{stroke:#1fa37a}
+    .t{font:600 14px Ubuntu,system-ui,sans-serif;fill:#1c1e21}
+    .s{font:400 11.5px Ubuntu,system-ui,sans-serif;fill:#5a5c63}
+    .n{font:700 12px Ubuntu,system-ui,sans-serif;fill:#1b6a9c}
+    .flow{stroke:#1b6a9c;stroke-width:2;fill:none;stroke-dasharray:6 6;animation:dash 1.2s linear infinite}
+    @keyframes dash{to{stroke-dashoffset:-12}}
+    @media (prefers-color-scheme:dark){.box{fill:#242526;stroke:#6cc4dd}.acc{stroke:#4cd1a1}.t{fill:#e3e3e3}.s{fill:#b0b3b8}.n{fill:#6cc4dd}.flow{stroke:#6cc4dd}}
+    @media (prefers-reduced-motion:reduce){.flow{animation:none}}
+  </style>
+
+  <rect class="box" x="10" y="30" width="149" height="96"/><text class="n" x="22" y="50">1</text><text class="t" x="84" y="72" text-anchor="middle">Fetch</text>
+  <text class="s" x="84" y="90" text-anchor="middle">real scene,</text>
+  <text class="s" x="84" y="104" text-anchor="middle">cloud-masked</text>
+  <text class="s" x="84" y="118" text-anchor="middle">(obia fetch)</text>
+  <path class="flow" d="M159 78 H193"/>
+  <rect class="box" x="193" y="30" width="149" height="96"/><text class="n" x="205" y="50">2</text><text class="t" x="267" y="72" text-anchor="middle">Segment</text>
+  <text class="s" x="267" y="90" text-anchor="middle">pixels merge</text>
+  <text class="s" x="267" y="104" text-anchor="middle">into objects</text>
+  <text class="s" x="267" y="118" text-anchor="middle">(scale)</text>
+  <path class="flow" d="M342 78 H376"/>
+  <rect class="box" x="376" y="30" width="149" height="96"/><text class="n" x="388" y="50">3</text><text class="t" x="450" y="72" text-anchor="middle">Describe</text>
+  <text class="s" x="450" y="90" text-anchor="middle">50+ numbers</text>
+  <text class="s" x="450" y="104" text-anchor="middle">per object</text>
+  <text class="s" x="450" y="118" text-anchor="middle">(features)</text>
+  <path class="flow" d="M524 78 H558"/>
+  <rect class="box" x="558" y="30" width="149" height="96"/><text class="n" x="570" y="50">4</text><text class="t" x="633" y="72" text-anchor="middle">Classify</text>
+  <text class="s" x="633" y="90" text-anchor="middle">rules, fuzzy sets</text>
+  <text class="s" x="633" y="104" text-anchor="middle">or a few</text>
+  <text class="s" x="633" y="118" text-anchor="middle">samples</text>
+  <path class="flow" d="M707 78 H741"/>
+  <rect class="box acc" x="741" y="30" width="149" height="96"/><text class="n" x="753" y="50">5</text><text class="t" x="816" y="72" text-anchor="middle">Assess</text>
+  <text class="s" x="816" y="90" text-anchor="middle">reference data,</text>
+  <text class="s" x="816" y="104" text-anchor="middle">confusion matrix,</text>
+  <text class="s" x="816" y="118" text-anchor="middle">kappa</text>
+</svg>

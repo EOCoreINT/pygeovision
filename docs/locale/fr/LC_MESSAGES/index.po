@@ -16,6 +16,9 @@ msgstr "Premiers pas"
 msgid "Pipelines"
 msgstr "Pipelines"
 
+msgid "Case studies"
+msgstr "Études de cas"
+
 msgid "Examples"
 msgstr "Exemples"
 

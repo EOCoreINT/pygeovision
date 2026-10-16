@@ -58,6 +58,9 @@ msgstr "Confiança, monitoramento, implantação"
 msgid "Advanced tools"
 msgstr "Ferramentas avançadas"
 
+msgid "Case studies"
+msgstr "Estudos de caso"
+
 msgid "Examples"
 msgstr "Exemplos"
 

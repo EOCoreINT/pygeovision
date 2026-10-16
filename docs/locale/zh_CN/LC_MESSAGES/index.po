@@ -16,6 +16,9 @@ msgstr "快速入门"
 msgid "Pipelines"
 msgstr "流水线"
 
+msgid "Case studies"
+msgstr "案例研究"
+
 msgid "Examples"
 msgstr "示例"
 

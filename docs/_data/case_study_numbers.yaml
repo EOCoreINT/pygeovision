@@ -1,0 +1,168 @@
+# Numbers transcribed by hand from the PDF reports PyGeoVision wrote for the case-study pages (docs/case-studies/).
+# tests/test_case_studies.py checks that they are internally consistent (sums, shares, pixel areas) and that each page quotes them.
+# Nothing here was re-run: the reports are the source, and the page says so.
+
+flood_accra:
+  report: {pipeline: multisensor_flood_mapping, version: "2.1.8", generated: "2026-10-11 10:28 UTC"}
+  bbox: [-0.35, 5.45, 0.05, 5.75]
+  grid: {width: 2227, height: 1672, crs: "EPSG:32630", pixel_m: 20}
+  pixels: {not_flooded: 2233899, radar_optical: 105, radar_only: 473, optical_only: 1456, disputed: 86, reference_water: 1487525}
+  ha: {not_flooded: 89356.0, radar_optical: 4.2, radar_only: 18.9, optical_only: 58.2, disputed: 3.4, reference_water: 59501.0}
+  flooded_ha: 81.4
+  flooded_upper_ha: 84.8
+  land_ha: 89440.8
+  valid_ha: 148941.8
+  flooded_share_of_land_pct: 0.1
+  hand_removed_ha: 9.0
+  small_patch_removed_ha: 15.3
+  optical_clear_pct: 18.1
+  f1_reference: 0.99
+  water_db: -13.8
+  offset_db: -0.42
+  scenes: {radar_reference: 3, radar_flood: 2, optical_reference: 10, optical_flood: 6}
+  vector: {features: 331, ha: 84.6}
+
+flood_nepal:
+  report: {pipeline: multisensor_flood_mapping, version: "2.1.8", generated: "2026-10-11 10:02 UTC"}
+  bbox: [84.8, 27.7, 85.6, 28.3]
+  grid: {width: 3984, height: 3383, crs: "EPSG:32645", pixel_m: 20}
+  raster_extent_km2: 5391.15
+  pixels: {not_flooded: 13103644, radar_optical: 329, radar_only: 787, optical_only: 10177, disputed: 360, reference_water: 362575}
+  ha: {not_flooded: 524145.8, radar_optical: 13.2, radar_only: 31.5, optical_only: 407.1, disputed: 14.4, reference_water: 14503.0}
+  flooded_ha: 451.7
+  flooded_upper_ha: 466.1
+  valid_ha: 539114.9
+  hand_removed_ha: 0.0
+  small_patch_removed_ha: 127.8
+  optical_clear_pct: 19.8
+  water_db: -15.0
+  cells_million: 13.5
+  cell_limit_million: 6.0
+  scenes: {radar_reference: 2, radar_flood: 2, optical_reference: 10, optical_flood: 1}
+  vector: {features: 14023, ha: 14971.2}
+
+wildfire:
+  report: {pipeline: wildfire_severity, version: "2.1.8", generated: "2026-10-10 16:41 UTC"}
+  bbox: [-122.6, 39.7, -121.9, 40.2]
+  grid: {width: 6703, height: 4788, crs: "EPSG:4326"}
+  pixels: {unburned: 26003569, low: 2585986, moderate: 2052483, high: 149711}
+  ha: {unburned: 269163.4, low: 26781.0, moderate: 21257.5, high: 1550.4}
+  burned_ha_stat: 49568.1
+  burned_ha_vector: 49589.8
+  valid_ha: 318752.3
+  raster_ha: 332243.7
+  total_pixels: 32093964
+  valid_pixels: 30791749
+  mean_dnbr: -0.023
+  median_dnbr: -0.054
+  scenes: {before: "S2B_10TEK_20181020_1_L2A", after: "S2B_MSIL2A_20181206T185749_R113_T10TEK_20201008T080050"}
+
+drainage:
+  report: {pipeline: drainage_analysis, version: "2.1.8", generated: "2026-10-11 08:31 UTC"}
+  bbox: [11.3, 47.2, 11.4, 47.3]
+  grid: {width: 264, height: 379, crs: "EPSG:32632", pixel_m: 30}
+  pixels: {no_stream: 98202, order1: 917, order2: 654, order3: 283}
+  ha: {no_stream: 8838.2, order1: 82.5, order2: 58.9, order3: 25.5}
+  stream_km: 64.8
+  density: 0.72
+  aoi_km2: 84.16
+  grid_km2: 90.05
+  total_pixels: 100056
+  stream_cells: 1854
+  mean_hand_m: 220.1
+  median_hand_m: 123.3
+  hand_pct: {le5: 12.5, le10: 16.7, le15: 19.5}
+  hand_defined_pct: 93.2
+  cells_filled: 5801
+  deepest_fill_m: 30.3
+  largest_area_km2: 58.80
+
+water_quality:
+  report: {pipeline: water_quality, version: "2.1.8", generated: "2026-10-10 16:28 UTC"}
+  bbox: [-76.6, 38.8, -76.2, 39.2]
+  grid: {width: 3838, height: 3838, crs: "EPSG:4326"}
+  total_pixels: 14730244
+  valid_pct: 40.7
+  water_pct: 2.1
+  ndci_pixels: 66612
+  red_pixels: 127989
+  terciles_pixels: [22203, 22205, 22204]
+  terciles_ha: [232.1, 232.1, 232.2]
+  ndci_ha: 696.4
+  mean_ndci: 0.249
+  median_ndci: 0.217
+  mean_red: 0.013
+  ndci_p5: -1.0
+  ndci_p95: 1.0
+  red_median: 0.0
+  scene: "S2A_18SUJ_20240628_0_L2A"
+
+biodiversity:
+  report: {pipeline: biodiversity_hotspot, version: "2.1.9", generated: "2026-10-11 17:22 UTC"}
+  bbox: [-0.15, 51.47, -0.10, 51.52]
+  grid: {width: 347, height: 553, crs: "EPSG:4326"}
+  classes_px: {tree: 34566, grass: 3052, crop: 1, built: 141703, bare: 184, water: 12385}
+  total_pixels: 191891
+  regional_shannon: 0.782
+  regional_evenness: 0.437
+  mean_local_h: 0.446
+  max_local_h: 1.363
+  threshold_h: 0.835
+  hotspot_pct: 10.0
+  hotspot_ha: 193.2
+  window_px: 21
+  vector: {hotspot_features: 53, land_cover_features: 1776}
+
+land_cover:
+  report: {pipeline: land_cover, version: "2.1.8", generated: "2026-10-10 16:23 UTC"}
+  bbox: [-0.15, 51.47, -0.10, 51.52]
+  ha: {tree: 348.0, grass: 30.7, crop: 0.0, built: 1426.4, bare: 1.9, water: 124.7}
+  valid_ha: 1931.7
+  pct: {tree: 18.0, grass: 1.6, built: 73.8, bare: 0.1, water: 6.5}
+
+buildings:
+  report: {pipeline: building_footprints, version: "2.1.8", generated: "2026-10-11 07:55 UTC"}
+  bbox: [-0.15, 51.47, -0.10, 51.52]
+  aoi_km2: 19.32
+  count: 5898
+  footprint_ha: 648.0
+  coverage_pct: 33.5
+  per_km2: 305.3
+  mean_m2: 1098.7
+  median_m2: 359.8
+  with_height: 5515
+  mean_height_m: 10.53
+  cell_m: 100
+
+roads:
+  report: {pipeline: road_network, version: "2.1.8", generated: "2026-10-11 09:55 UTC"}
+  bbox: [-0.15, 51.47, -0.10, 51.52]
+  aoi_km2: 19.32
+  total_km: 1030.1
+  density: 53.32
+  ways: 28454
+  unnamed_pct: 49.9
+  groups_km: {local: 333.48, major: 92.11, other: 5.70, tracks_paths: 598.77}
+  highway_km: {footway: 493.39, residential: 151.29, service: 103.26, primary: 58.58, unclassified: 56.50, pedestrian: 56.01, cycleway: 31.73, trunk: 22.97, tertiary: 22.37, steps: 10.18, secondary: 8.73, path: 6.68, corridor: 5.46, primary_link: 1.23, track: 0.77, trunk_link: 0.57, raceway: 0.22, living_street: 0.04, secondary_link: 0.04, tertiary_link: 0.03, elevator: 0.02, bridleway: 0.01}
+  cell_m: 500
+  valid_cells: 75
+  mean_cell_density: 50.466
+
+crop_health:
+  report: {pipeline: crop_health, version: "2.2.0", generated: "2026-10-15 18:53 UTC"}
+  bbox: [-0.15, 51.47, -0.10, 51.52]
+  grid: {width: 421, height: 421, crs: "EPSG:4326"}
+  total_pixels: 177241
+  valid_pixels: 78301
+  flagged_pixels: 4528
+  flagged_ha: 49.6
+  not_flagged_ha: 807.5
+  valid_ha: 857.1
+  aoi_ha: 1940.1
+  valid_pct: 44.2
+  flagged_pct: 5.8
+  threshold: 0.20
+  ndvi_before: 0.287
+  ndvi_after: 0.249
+  mean_change: -0.038
+  median_change: -0.029

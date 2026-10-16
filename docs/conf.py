@@ -163,22 +163,57 @@ def setup(app):  # noqa: D103
     # other language into <outdir>/<lang>/, so the language switcher works without custom CI.
     # DOCS_SUBBUILD is set for those inner builds so they do not recurse.
     def _all_langs(app, exc):
+        import shutil
         import subprocess
         import tempfile
+        import time
+
+        from sphinx.util import logging as sphinx_logging
+
         if exc or app.builder.name != "html" or language != "en":
             return
         if os.environ.get("DOCS_SUBBUILD") or os.environ.get("DOCS_SKIP_OTHER_LANGS"):
             return
-        for code, _label in LANGUAGES:
-            if code == "en" or not (HERE / "locale" / code).is_dir():
-                continue
-            env = dict(os.environ, DOCS_LANG=code, DOCS_SUBBUILD="1")
-            with tempfile.TemporaryDirectory() as dt:
-                r = subprocess.run([sys.executable, "-m", "sphinx", "-b", "html", "-q", "-d", dt,
-                                    "-D", "language=" + code, str(app.srcdir),
-                                    os.path.join(str(app.outdir), code)], env=env)
-            if r.returncode:
-                print("WARNING: language build failed:", code)
+        log = sphinx_logging.getLogger(__name__)
+        out = Path(str(app.outdir))
+        codes = [c for c, _label in LANGUAGES if c != "en" and (HERE / "locale" / c).is_dir()]
+        jobs = max(1, int(os.environ.get("DOCS_JOBS", min(2, os.cpu_count() or 1))))
+        pending, running, results = list(codes), {}, {}
+        with tempfile.TemporaryDirectory() as scratch:
+            while pending or running:
+                while pending and len(running) < jobs:
+                    code = pending.pop(0)
+                    env = dict(os.environ, DOCS_LANG=code, DOCS_SUBBUILD="1")
+                    logfile = open(Path(scratch) / (code + ".log"), "w+")  # noqa: SIM115 - closed when the build ends
+                    proc = subprocess.Popen(
+                        [sys.executable, "-m", "sphinx", "-b", "html", "-q", "-d", str(Path(scratch) / ("doctrees-" + code)),
+                         "-D", "language=" + code, str(app.srcdir), str(out / code)],
+                        env=env, stdout=logfile, stderr=subprocess.STDOUT)
+                    running[code] = (proc, logfile)
+                for code, (proc, logfile) in list(running.items()):
+                    if proc.poll() is None:
+                        continue
+                    logfile.seek(0)
+                    results[code] = (proc.returncode, logfile.read())
+                    logfile.close()
+                    del running[code]
+                if running:
+                    time.sleep(1)
+
+        # A language build that stopped early leaves pages without the static files they load (pgv.js for the sidebar
+        # accordion, the stylesheet, the logo), which breaks the whole page. Report it, and fill in whatever is missing
+        # from the English build's copy so a language page never points at a file that is not there.
+        sys.path.insert(0, str(HERE / "tools"))
+        from langstatic import fill_missing_static
+
+        for code in codes:
+            rc, text = results[code]
+            if rc:
+                tail = "\n".join(text.strip().splitlines()[-15:])
+                log.warning("the %s language build failed (exit code %s):\n%s", code, rc, tail)
+            missing = fill_missing_static(out, code)
+            if missing:
+                log.warning("the %s build has no %s in _static", code, ", ".join(missing))
 
     app.connect("build-finished", _all_langs)
 

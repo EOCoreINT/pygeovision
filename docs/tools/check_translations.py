@@ -30,7 +30,7 @@ LOCALE = DOCS / "locale"
 LANGS = ["fr", "es", "pt", "de", "zh_CN", "ar"]
 CHROME_KEYS = [
     "Documentation", "Pipelines", "Tutorials", "Community", "Download", "Search", "Version:", "Home", "Language",
-    "Partly translated", "Getting started", "Data", "Examples", "Reference", "Project",
+    "Partly translated", "Getting started", "Data", "Examples", "Case studies", "Reference", "Project",
     # the section names used by the breadcrumb (docs/_templates/page.html) and the sidebar captions (index.md)
     "Segmentation", "Classification", "Object detection", "Change detection", "Foundation models", "Vision-language",
     "3D / LiDAR", "Super-resolution", "Time series", "Object-based analysis (OBIA)", "Models", "Labelling", "Training",

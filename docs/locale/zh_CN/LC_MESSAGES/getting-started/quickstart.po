@@ -1,0 +1,190 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PyGeoVision\n"
+"PO-Revision-Date: 2026-10-16 00:00+0000\n"
+"Last-Translator: PyGeoVision Contributors\n"
+"Language-Team: zh_CN\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Quickstart"
+msgstr "快速开始"
+
+msgid ""
+"Ten minutes from an empty environment to a finished map, a table of figures "
+"and a report. You will install the package, check that it works, run one of "
+"the 41 pipelines, look at what it wrote, and then run the same thing from "
+"Python. Everything here uses open data and needs no account."
+msgstr ""
+"十分钟内，从一个空环境到一张完成的地图、一份数据表和一份报告。您将安装软件包、检查它能否正常工作、运行 41 条流水线之一、查看它写出的内容，然后用 "
+"Python 再做一遍。这里的一切都使用开放数据，无需账号。"
+
+msgid "1. Install and check"
+msgstr "1\\. 安装并检查"
+
+msgid ""
+"`doctor` reports whether each component is available. A healthy install "
+"prints `7/7 components healthy`:"
+msgstr "`doctor` 会报告每个组件是否可用。健康的安装会打印 `7/7 components healthy`："
+
+msgid ""
+"A ✗ names the missing piece; see [Installation](installation.md) for which "
+"extra provides it. PyTorch is **not** needed for the pipelines in this "
+"quickstart."
+msgstr ""
+"✗ 表示缺少的部分；请参阅[安装](installation.md)了解哪个额外依赖提供它。本快速开始中的流水线**不需要** PyTorch。"
+
+msgid "2. See what is available"
+msgstr "2\\. 查看可用内容"
+
+msgid ""
+"*ready* pipelines compute their answer from real imagery, a DEM, radar or a "
+"published map. *needs_weights* pipelines run a network you trained and stop "
+"with a clear message if you do not pass `--checkpoint` ([Core "
+"concepts](concepts.md)). The command lists all 41."
+msgstr ""
+"*ready* 流水线根据真实影像、DEM、雷达或已发布的地图计算结果。*needs_weights* 流水线运行您自己训练的网络，如果不传入 "
+"`--checkpoint`，会给出明确的提示并停止（[核心概念](concepts.md)）。该命令会列出全部 41 条。"
+
+msgid "3. Run your first pipeline"
+msgstr "3\\. 运行第一条流水线"
+
+msgid ""
+"Surface water over part of London, June 2024. The box is `min_lon min_lat "
+"max_lon max_lat`, longitude first."
+msgstr "伦敦部分地区 2024 年 6 月的地表水。范围框写作 `min_lon min_lat max_lon max_lat`，经度在前。"
+
+msgid ""
+"PyGeoVision searches the open catalogues, picks the clearest scene(s) that "
+"cover the box, downloads only the bands needed (green and near-infrared plus"
+" the cloud layer), computes NDWI, thresholds it, and writes the results. The"
+" first run downloads imagery and takes a minute or more depending on your "
+"connection; the search itself is cached for an hour."
+msgstr ""
+"PyGeoVision 会检索开放目录，挑选覆盖该范围框的最清晰场景，仅下载所需波段（绿光和近红外，外加云层），计算 "
+"NDWI，设定阈值并写出结果。首次运行需要下载影像，视网络情况需要一分钟或更久；检索本身会缓存一小时。"
+
+msgid "**What you see:**"
+msgstr "**您看到的内容：**"
+
+msgid ""
+"The figures above come from the **synthetic scene used by the offline test "
+"harness**, to show the layout without publishing a run over a real place. "
+"Your numbers describe your scene."
+msgstr "上面的数字来自**离线测试环境使用的合成场景**，目的是展示输出的结构，而不公布某个真实地点的运行结果。您的数字描述的是您自己的场景。"
+
+msgid "4. Read the result"
+msgstr "4\\. 读取结果"
+
+msgid ""
+"Open `water_mask.tif` or `water_bodies.gpkg` in QGIS. In the statistics:"
+msgstr "在 QGIS 中打开 `water_mask.tif` 或 `water_bodies.gpkg`。统计数据中："
+
+msgid ""
+"`water_coverage` is the share of **valid** pixels classed as water (0.155 = "
+"15.5 %)."
+msgstr "`water_coverage` 是被分类为水体的**有效**像元所占比例（0.155 = 15.5 %）。"
+
+msgid ""
+"`valid_fraction` is the share of the box that was usable (not cloud, shadow "
+"or outside the image). **Check this first.** If it is low, the percentages "
+"describe only the visible part."
+msgstr ""
+"`valid_fraction` "
+"是范围框中可用部分（非云、非阴影、且在影像之内）所占比例。**请先检查它。**如果数值很低，百分比只描述了可见的那一部分。"
+
+msgid "`ndwi_threshold` is the cut-off actually used."
+msgstr "`ndwi_threshold` 是实际使用的阈值。"
+
+msgid ""
+"How to interpret each pipeline's numbers is on its page in the "
+"[catalogue](../pipelines/index.md); the general rules (255 means no data, "
+"areas are true areas) are in [Core concepts](concepts.md)."
+msgstr ""
+"如何解读每条流水线的数字，请看其在[目录](../pipelines/index.md)中的页面；通用规则（255 "
+"表示无数据，面积是真实面积）见[核心概念](concepts.md)。"
+
+msgid "5. The same thing in Python"
+msgstr "5\\. 用 Python 做同样的事"
+
+msgid ""
+"`result` is a `PipelineResult` ([Reading results](../pipelines/results.md))."
+" Pass `report=False` to skip the map and reports when you only want the "
+"rasters."
+msgstr ""
+"`result` 是一个 `PipelineResult`（[读取结果](../pipelines/results.md)）。如果只想要栅格，可传入 "
+"`report=False` 跳过地图和报告。"
+
+msgid "6. Try the other kinds of pipeline"
+msgstr "6\\. 试试其他类型的流水线"
+
+msgid ""
+"Not sure which one answers your question? [Choosing a "
+"pipeline](../pipelines/choosing.md) maps questions to pipelines."
+msgstr "不确定哪一条能回答您的问题？[选择流水线](../pipelines/choosing.md)把问题对应到流水线。"
+
+msgid "7. Work on files you already have"
+msgstr "7\\. 处理您已有的文件"
+
+msgid ""
+"You do not need the download machinery to use the analysis tools. For any "
+"raster on disk:"
+msgstr "使用分析工具并不需要下载功能。对于磁盘上的任何栅格："
+
+msgid ""
+"See the [Data guide](../data/index.md) for what each does and the pitfalls "
+"(scaling, nodata, units)."
+msgstr "请参阅[数据指南](../data/index.md)，了解各工具的作用和常见陷阱（缩放、无数据、单位）。"
+
+msgid "8. Re-run only the report"
+msgstr "8\\. 只重新生成报告"
+
+msgid ""
+"Changed your mind about class names or want another format? Rebuild without "
+"downloading anything:"
+msgstr "改变了对类别名称的想法，或想要另一种格式？无需下载任何内容即可重建："
+
+msgid "Where next"
+msgstr "下一步"
+
+msgid "Understand the conventions"
+msgstr "了解各项约定"
+
+msgid "[Core concepts](concepts.md)"
+msgstr "[核心概念](concepts.md)"
+
+msgid "Change providers, cache, logging"
+msgstr "更改数据提供方、缓存和日志"
+
+msgid "[Configuration](configuration.md)"
+msgstr "[配置](configuration.md)"
+
+msgid "A run failed or looks wrong"
+msgstr "运行失败或结果看起来不对"
+
+msgid "[Troubleshooting](troubleshooting.md)"
+msgstr "[故障排查](troubleshooting.md)"
+
+msgid "Find the right pipeline"
+msgstr "找到合适的流水线"
+
+msgid "[Choosing a pipeline](../pipelines/choosing.md)"
+msgstr "[选择流水线](../pipelines/choosing.md)"
+
+msgid "Use your own data and models"
+msgstr "使用您自己的数据和模型"
+
+msgid ""
+"[Data guide](../data/index.md), [Models](../models/index.md), "
+"[Training](../training/index.md)"
+msgstr ""
+"[数据指南](../data/index.md)、[模型](../models/index.md)、[训练](../training/index.md)"
+
+msgid "See complete workflows"
+msgstr "查看完整的工作流"
+
+msgid "[Examples](../examples/index.md)"
+msgstr "[示例](../examples/index.md)"

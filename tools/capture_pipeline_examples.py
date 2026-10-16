@@ -52,12 +52,7 @@ def main() -> int:
     for name in m.SPECS:
         out = work / "out" / name
         cmd = ["channel", name, *m.BBOX_ARGS, "-o", str(out)]
-        for e in m.SPECS[name]:
-            if isinstance(e, tuple):
-                _, model, classes, bands = e
-                cmd += ["--checkpoint", m.wiring_checkpoint(work, model, classes, bands, name)]
-            else:
-                cmd.append(e)
+        cmd += m.cli_args(name, work)
         r = runner.invoke(cli, cmd)
         if r.exit_code != 0:
             print("FAILED", name, r.output[-400:])

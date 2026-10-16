@@ -58,6 +58,9 @@ msgstr "الثقة والمراقبة والنشر"
 msgid "Advanced tools"
 msgstr "أدوات متقدمة"
 
+msgid "Case studies"
+msgstr "دراسات حالة"
+
 msgid "Examples"
 msgstr "أمثلة"
 
