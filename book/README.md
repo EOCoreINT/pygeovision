@@ -49,7 +49,7 @@ jupyter lab
 
 ## Version
 
-This book covers **PyGeoVision v2.1.9** (July 2026).
+This book covers **PyGeoVision v2.2.0** (July 2026).
 
 ---
 

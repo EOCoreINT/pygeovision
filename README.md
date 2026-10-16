@@ -1,6 +1,6 @@
 <div align="center">
 
-<!-- <img src="https://raw.githubusercontent.com/EOCoreINT/pygeovision/main/icon/pygeovision_logo.png" alt="PyGeoVision logo" width="320"> -->
+<img src="https://raw.githubusercontent.com/EOCoreINT/pygeovision/main/icon/pygeovision_logo.png" alt="PyGeoVision logo" width="320">
 
 # PyGeoVision
 
@@ -9,11 +9,10 @@
 [![PyPI](https://img.shields.io/pypi/v/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![Python](https://img.shields.io/pypi/pyversions/pygeovision.svg)](https://pypi.python.org/pypi/pygeovision)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22258220.svg)](https://doi.org/10.5281/zenodo.22258220)
-[![Providers](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://pygeofetch.readthedocs.io/en/latest/)
-[![Pipelines](https://img.shields.io/badge/Pipelines-40-22c55e?style=flat-square)](#-end-to-end-pipelines)
+[![Providers](https://img.shields.io/badge/PyGeoFetch-22_providers-f59e0b?style=flat-square)](https://appiahkubis14.github.io/pygeofetch-docs/)
+[![Pipelines](https://img.shields.io/badge/Pipelines-41-22c55e?style=flat-square)](#-end-to-end-pipelines)
 [![Models](https://img.shields.io/badge/Registered_architectures-77-a855f7?style=flat-square)](#-models-and-training)
-[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
+[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://appiahkubis14.github.io/pygeovision-docs/)
 
 [Features](#-features) · [Install](#-installation) · [Quick start](#-quick-start) · [CLI](#-command-line) · [Pipelines](#-end-to-end-pipelines) · [OBIA](#-object-based-image-analysis-obia) · [Status](#-project-status) · [Docs](#-documentation)
 
@@ -32,11 +31,11 @@ pipeline, a modelling framework and a pile of custom code. PyGeoVision puts thos
 package, so there are fewer joins in the chain for things to quietly break.
 
 - **One search/download interface across 22 providers** (Sentinel, Landsat, Planet, Maxar, Copernicus,
-  USGS and more) through [PyGeoFetch](https://pygeofetch.readthedocs.io/en/latest/), with credentials
+  USGS and more) through [PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/), with credentials
   stored once in the system keyring.
 - **Models that run inside the package** — segmentation, detection, change detection, classification and
   foundation-model embeddings — with no separate AI-platform account.
-- **40 pipelines** from a bounding box to a finished output — 33 run out of the box, 7 run a model you trained.
+- **41 pipelines** from a bounding box to a finished output — 34 run out of the box, 7 run a model you trained.
 - **A training stack** with fine-tuning, geospatial losses and tiled inference for full scenes.
 - **Object-based image analysis** — segmentation, object features, rule/fuzzy/supervised classification
   and object-level accuracy.
@@ -132,16 +131,16 @@ pygeovision doctor    # diagnose a broken setup
 `zoo`, `label`, `explain`, `monitor`, `edge`, `cloud`, `vlm`, `timeseries`, `validate`, `preprocess`,
 `indices`, `postprocess`, `benchmark`, `datasets`, `infer` and `obia`.
 
-[`CLI_TESTING_GUIDE.md`](CLI_TESTING_GUIDE.md) has a runnable example for every command, including all 40
+[`CLI_TESTING_GUIDE.md`](CLI_TESTING_GUIDE.md) has a runnable example for every command, including all 41
 pipelines, and says which ones need network access, credentials or your own trained weights.
 `python tools/verify_cli_guide.py` runs the offline examples on synthetic data.
 
 ## 🛰️ End-to-end pipelines
 
-The catalogue holds **40 pipelines**, all runnable from Python (`client.pipeline(name, ...)`) and from the CLI
+The catalogue holds **41 pipelines**, all runnable from Python (`client.pipeline(name, ...)`) and from the CLI
 (`pygeovision channel <name>`). `pygeovision channel list` shows each one and its kind:
 
-- **33 run out of the box.** Each is a documented index, terrain product, published reference map or published
+- **34 run out of the box.** Each is a documented index, terrain product, published reference map or published
   vector dataset, computed on valid pixels only (cloud- and shadow-masked pixels are nodata, never a class).
 - **7 need a model you trained** (`solar_detection`, `crop_monitoring`, `road_extraction`,
   `disaster_assessment`, `deforestation`, `urban_growth`, `landslide_detection`). PyGeoVision ships no weights
@@ -187,6 +186,7 @@ and `result.deliverables`.
 | `evapotranspiration` · `active_fire` | MODIS annual ET/PET (MOD16A3GF); MODIS active-fire detections (MOD14A1) |
 | `terrain_analysis` · `drainage_analysis` | Slope, aspect, hillshade, ruggedness; flow accumulation, streams (Strahler) and HAND from the Copernicus DEM |
 | `vegetation_anomaly` · `water_extent_timeseries` | NDVI z-score / VCI against earlier years; water area per date and water frequency |
+| `mine_rehabilitation` | Revegetation of a mine, quarry or tailings site against an undisturbed reference over several same-season years: recovered, recovering, stalled, bare, declining, water |
 | `solar_detection` · `crop_monitoring` · `road_extraction` | Segmentation with **your** checkpoint |
 | `disaster_assessment` · `deforestation` · `urban_growth` · `landslide_detection` | Bi-temporal change maps with **your** siamese checkpoint |
 
@@ -205,7 +205,7 @@ client.pipeline("building_footprints", bbox=bbox, output_dir="out", date="2024-0
 - **77 registered architectures** (`pygeovision models list`): SegFormer, Mask2Former, DETR/RT-DETR,
   ChangeFormer, ViT, SAM, CLIP, DINOv2, Prithvi, DOFA and more, plus a 14-model native hub
   (U-Net, DeepLabV3+, FCOS, RetinaNet, Siamese U-Net, …). 63 registry entries build real models; 14 are
-  explicit placeholders that raise a clear error — see [Choosing a model](docs/models/choosing-a-model.md).
+  explicit placeholders that raise a clear error — see [Choosing a model](docs/models/choosing.md).
 - **Fine-tuning:** start from a checkpoint, freeze the backbone, and train with geospatially aware
   augmentation; detection training reports real mAP.
 - **Losses:** Dice, Focal, Tversky, Boundary-aware, Lovász, Combo and a geospatial mixed loss; GIoU/DIoU/CIoU/SIoU
@@ -219,23 +219,23 @@ client.pipeline("building_footprints", bbox=bbox, output_dir="out", date="2024-0
 Analyse imagery as objects instead of pixels: segment, describe, classify, assess.
 
 ```python
+import pygeovision as pgv
 from pygeovision import obia
 
-scene = obia.make_demo_scene()                       # synthetic scene with known truth (offline)
-seg   = obia.segment(scene.raster, "multires", scale=20)
-feats = obia.extract_features(seg.labels, scene.raster,
-                              extra_layers=obia.spectral_layers(scene.raster))
+client = pgv.PyGeoVision()
+rd    = obia.fetch_scene(client, (-1.70, 6.18, -1.655, 6.225), "2024-01", "./download")  # real Sentinel-2, cloud-masked
+seg   = obia.segment(rd, "multires", scale=16)                       # cloud pixels become label 0, no object
+feats = obia.extract_features(seg.labels, rd, extra_layers=obia.spectral_layers(rd))
 rules = obia.RuleBasedClassifier([("water", "mean_ndwi > 0.3"),
-                                  ("bare_field", "mean_ndvi <= 0.55"),
-                                  ("cropland", "mean_ndvi > 0.55")])
+                                  ("vegetation", "mean_ndvi > 0.5")], default="other")
 result = rules.classify(feats)
 ```
 
 It includes six segmentation methods (including Baatz & Schäpe-style region merging with a scale parameter —
 *not* a clone of eCognition), spectral/shape/GLCM-texture/context features, rule-based, fuzzy and supervised
-classifiers, and object-level accuracy and segmentation-quality metrics. Try it with
-`pygeovision obia demo ./obia_demo`, work through the tutorial scripts in [`examples/obia/`](examples/obia),
-and see [docs/obia](docs/obia/index.md) for the guide and its limitations.
+classifiers, and object-level accuracy and segmentation-quality metrics. It runs on real data fetched with
+PyGeoVision's own search and download tools (`pygeovision obia fetch`, `client.obia`); see
+[docs/obia](docs/obia/index.md) for the guide and its limitations.
 
 ## 📌 Project status
 
@@ -260,7 +260,7 @@ Things worth knowing before you build on it:
 - **Some features download model weights on first use** (for example ImageNet or Hugging Face weights);
   fully offline environments need them cached beforehand.
 - **Removed from earlier versions:** the inference server, enterprise/RBAC layer, SAR/InSAR processing and the
-  planner agent are not part of the package. See the [roadmap](docs/reference/roadmap.md) for the history and
+  planner agent are not part of the package. See the [roadmap](docs/project/roadmap.md) for the history and
   the direct replacements.
 
 ## 🧪 Testing
@@ -271,12 +271,12 @@ pytest tests/
 ```
 
 With the full stack installed, the offline suite (`tests/test_live.py` excluded) runs about 1,300 tests, all of which
-pass without network access, GPU or pretrained weights. To exercise every CLI command and all 40 pipelines by hand,
+pass without network access, GPU or pretrained weights. To exercise every CLI command and all 41 pipelines by hand,
 follow [CLI_TESTING_GUIDE.md](CLI_TESTING_GUIDE.md).
 
 ## 📋 Documentation
 
-Full documentation is at **https://pygeovision.readthedocs.io/en/latest/**. To build it locally:
+Full documentation is at **https://appiahkubis14.github.io/pygeovision-docs/**. To build it locally:
 
 ```bash
 pip install -r docs/requirements.txt
@@ -285,7 +285,7 @@ sphinx-build -b html docs docs/_build/html
 
 ## 🤝 Contributing
 
-Contributions are welcome — see [docs/contributing.md](docs/contributing.md) to get started.
+Contributions are welcome — see [docs/project/contributing.md](docs/project/contributing.md) to get started.
 
 ## 📄 License
 
@@ -293,6 +293,6 @@ PyGeoVision is free and open-source software, released under the [MIT License](L
 
 ## Acknowledgements
 
-The satellite data layer is built on **[pygeofetch](https://pygeofetch.readthedocs.io/en/latest/)**,
+The satellite data layer is built on **[PyGeoFetch](https://appiahkubis14.github.io/pygeofetch-docs/)**,
 a universal satellite data pipeline that handles search, download, authentication, caching and pipeline
 orchestration. The modelling, training, labeling and OBIA layers are implemented inside PyGeoVision itself.

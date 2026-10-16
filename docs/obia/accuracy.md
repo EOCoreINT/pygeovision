@@ -35,39 +35,28 @@ report = obia.assess_classification(
     seg.labels,                  # the object-id raster that was classified
     reference_gdf,               # polygons or points with a class column
     "class",                     # that column's name
-    scene.raster.transform,
+    rd.transform,
     weights=None,                # or a Series, e.g. feats["area_px"]
+    crs=rd.crs,                  # reproject the reference to the image CRS
     min_coverage=None,           # see samples_from_geometries
 )
 print(report["overall_accuracy"], report["kappa"], report["n_objects"])
 ```
 
 ```console
-$ pygeovision obia assess-classification labels.tif classified.gpkg reference.gpkg --class-column class --count-objects
-  assessed 43 objects (unweighted)
-  overall accuracy: 0.791   kappa: 0.733
+$ pygeovision obia assess-classification labels.tif classified.gpkg reference_points.gpkg --class-column class --count-objects
+  assessed <n> objects (unweighted)
+  overall accuracy: <oa>   kappa: <k>
 
               producers_accuracy  users_accuracy     f1  reference_total  predicted_total
-  bare_field               1.000           0.786  0.880             11.0             14.0
-  building                 0.909           1.000  0.952             11.0             10.0
-  cropland                 0.538           1.000  0.700             13.0              7.0
-  forest                   1.000           0.400  0.571              4.0             10.0
-  road                     0.000             NaN    NaN              2.0              0.0
-  water                    1.000           1.000  1.000              2.0              2.0
-
+  <class>                  ...
   confusion (rows = reference, columns = predicted):
-              bare_field  building  cropland  forest  road  water
-  bare_field          11         0         0       0     0      0
-  building             1        10         0       0     0      0
-  cropland             0         0         7       6     0      0
-  forest               0         0         0       4     0      0
-  road                 2         0         0       0     0      0
-  water                0         0         0       0     0      2
+  ...
 ```
 
-(real output: five hand-written rules from [Classification](classification.md#rules-file-for-the-command-line) applied to demo
-scene B, which they were not tuned on. Note `road`: the rules have no road rule, so nothing is predicted as road,
-users_accuracy is `NaN` (nothing was claimed), and producer's accuracy is 0.)
+The command prints the counts, the overall figures, the per-class table and the confusion matrix. A class the rules never
+predict has `users_accuracy` `NaN` (nothing was claimed) and a producer's accuracy of 0: the table tells you which rule is
+missing.
 
 How it works: each object gets the class of the reference geometry that covers most of it
 ([`samples_from_geometries`](classification.md#getting-samples)); objects the reference does not
@@ -105,60 +94,35 @@ The returned dict:
 
 A class with no reference objects (row sum 0) gets `NaN` producer's accuracy rather than zero.
 
-### A complete example, on a scene the classifier never saw
-
-A random forest trained on demo scene A (seed 0), applied to a different scene B (seed 1), assessed against B's true
-classes ([how this was set up](tutorial.md#step-7-assess-honestly)):
+### How to read the report
 
 ```text
-overall accuracy 0.907   kappa 0.875   (43 objects)
+overall accuracy <oa>   kappa <k>   (<n> objects)
 
 confusion (rows = reference, columns = predicted)
-            bare_field  building  cropland  forest  road  water
-bare_field          11         0         0       0     0      0
-building             0        11         0       0     0      0
-cropland             0         0        13       0     0      0
-forest               0         0         2       2     0      0
-road                 0         1         0       0     1      0
-water                0         1         0       0     0      1
-
-            producers_accuracy  users_accuracy     f1
-bare_field               1.000           1.000  1.000
-building                 1.000           0.846  0.917
-cropland                 1.000           0.867  0.929
-forest                   0.500           1.000  0.667
-road                     0.500           1.000  0.667
-water                    0.500           1.000  0.667
+per_class: producers_accuracy  users_accuracy  f1  reference_total  predicted_total
 ```
 
-How to read it:
-
-- **Rows tell you what was missed.** Forest: 4 real forest objects, only 2 found (producer's 0.50); the other two became
-  cropland.
-- **Columns tell you what was wrongly claimed.** Building: 13 objects were called building, 11 are (user's 0.846); the
-  extra two are a road and a water object.
+- **Rows tell you what was missed.** A class with 8 reference objects of which 5 were found has a producer's accuracy of
+  0.63; the other three went to some other column of that row.
+- **Columns tell you what was wrongly claimed.** A class that was predicted 13 times with 11 right has a user's accuracy of
+  0.85; the two extras are in that column, in other rows.
 - The **diagonal** is what was right. Perfect accuracy is a diagonal matrix.
-- Rare classes drive the poor rows. The training scene had one water and two forest and road objects, so the model had little
-  to learn from. A single misclassified object moves a 2-object class by 50 points.
+- Rare classes drive the poor rows. With few reference objects a single mistake moves a class's accuracy by tens of points,
+  so quote `reference_total` beside every per-class figure.
 
 ### Count or area? `weights`
 
-The same classification, weighted by object area (pixels):
-
-```text
-unweighted: overall accuracy 0.907   kappa 0.875
-weighted:   overall accuracy 0.992   kappa 0.988
-```
-
-Both are right; they answer different questions.
+Pass `weights=feats["area_px"]` and every cell adds up *area* instead of counting objects. Both are right; they answer
+different questions.
 
 | Weighting | Answers | Use when |
 |---|---|---|
 | Count (default in Python) | "What share of *objects* is right?" | Objects are the unit of interest (count the buildings) |
 | Area (`weights=feats["area_px"]`; the CLI default `--weight-by-area`) | "What share of the *ground* is right?" | Area statistics matter (hectares of cropland) |
 
-Here the misses were small objects, so the area-weighted score is much higher. If you report only the larger number you
-hide the fact that a third of the forest objects were found wrongly. Report both, or the confusion matrix.
+When the misses are small objects the area-weighted score is higher than the object count; if you report only the larger
+number you hide how many objects were wrong. Report both, or the confusion matrix.
 
 ```{note}
 Python's `confusion_report` / `assess_classification` default to **counting objects**; the CLI command
@@ -177,15 +141,13 @@ rep = obia.pixel_report(code, reference_codes, result.class_names)
 reference (those pixels are ignored). Unclassified pixels inside the reference count as errors. The dict has the same
 keys as `confusion_report` plus `unclassified_pixels`.
 
-On scene B the pixel overall accuracy is **0.986** (kappa 0.979), close to the area-weighted object score of 0.992. They
-differ slightly because object-wise assessment gives each object the class of the reference polygon that covers most of
-it, whereas the pixel view counts every pixel.
+Pixel and object-wise figures differ a little even on the same map, because object-wise assessment gives each object the
+class of the reference polygon that covers most of it, whereas the pixel view counts every pixel.
 
 ```{warning}
-**The class order must match.** `result.class_names` is alphabetical (`bare_field, building, cropland, …`), while the demo
-scene lists classes as `water, forest, cropland, …`. Feeding the demo's own class raster to `pixel_report` without
-re-mapping gives an overall accuracy of **0.376** with no error message: every number is "valid", just meaningless. Build
-the reference codes from `result.class_names`:
+**The class order must match.** `result.class_names` is alphabetical (`bare_field, building, cropland, …`). If your reference
+raster numbers its classes in another order, feeding it to `pixel_report` as it is gives a wrong accuracy with no error
+message: every number is "valid", just meaningless. Build the reference codes from `result.class_names`:
 
     lut = np.zeros(len(ref_names) + 1, int)
     for i, name in enumerate(ref_names, start=1):
@@ -200,14 +162,11 @@ table, summary = obia.segmentation_quality(seg.labels, ref_labels)
 ```
 
 ```console
-$ pygeovision obia assess-segmentation labels.tif reference.gpkg --output per_object.csv
-  reference objects: 28   segments: 43
-  mean over-segmentation : 0.103   (0 = none)
-  mean under-segmentation: 0.086   (0 = none)
-  mean D                 : 0.120   (0 = perfect)
-  mean QR (Jaccard)      : 0.831   (1 = perfect)
-  ✓ → per_object.csv
+$ pygeovision obia assess-segmentation labels.tif reference_objects.gpkg --output per_object.csv
 ```
+
+It prints the number of reference objects and segments, the mean over- and under-segmentation, mean D and mean QR, and writes
+the per-object table to the CSV.
 
 `ref_labels` is an integer raster with one id per reference object and `0` elsewhere; make it from polygons with
 [`rasterize_geometries`](data-io.md#reference-polygons-to-a-raster-rasterize_geometries). The CLI does that for you and reprojects
@@ -229,26 +188,22 @@ The table has one row per reference object (`best_segment`, the three areas, the
 
 ### Reading the per-object table
 
-On scene B at scale 20:
-
 ```text
         best_segment  ref_area_px  seg_area_px  overlap_px  over_seg  under_seg      D     QR    AFI  n_parts
 ref_id
-1                 24       1817.0       1911.0      1807.0     0.006      0.054  0.039  0.941 -0.052        1
-3                 12       1211.0        687.0       687.0     0.433      0.000  0.306  0.567  0.433        2
-4                 28       1277.0       2465.0      1254.0     0.018      0.491  0.348  0.504 -0.930        2
-7                  3        889.0       2028.0       470.0     0.471      0.768  0.637  0.192 -1.281        1
 ```
 
-- **Object 1** is almost perfect: D 0.039.
-- **Object 3** is *over-segmented*: the best segment is entirely inside the reference (`under_seg` 0) but covers only 57 %
-  of it (`over_seg` 0.43); two segments make up the object.
-- **Object 4** is *under-segmented*: the segment holds the whole reference but is nearly twice as large (`under_seg`
-  0.49, AFI −0.93). The segment contains something else too.
-- **Object 7** is the worst, both ways (D 0.64): the best segment only half-overlaps and is larger than the reference.
+One row per reference object. Four patterns cover most rows:
 
-Sort by `D` to find the objects to look at: `table.sort_values("D", ascending=False).head()`. The mean hides the spread
-here: `mean_D` is 0.120 but `median_D` is **0.048**, because most objects are very good and a few are poor.
+- **D near 0** (over and under both small): the segment is the object.
+- **High `over_seg`, `under_seg` 0**: *over-segmented*. The best segment lies entirely inside the reference but covers only
+  part of it; several segments make up the object (`n_parts` > 1).
+- **`over_seg` near 0, high `under_seg`** (AFI strongly negative): *under-segmented*. The segment holds the whole reference but
+  is larger; it contains something else too.
+- **Both high**: the worst case; the best segment only half-overlaps and is larger than the reference.
+
+Sort by `D` to find the objects to look at: `table.sort_values("D", ascending=False).head()`. The mean can hide the spread
+when most objects are very good and a few are poor: `mean_D` is then well above `median_D`. Look at both.
 
 ### Two kinds of error, two remedies
 
@@ -266,31 +221,29 @@ Use [`scale_vs_reference`](scale.md#with-reference-objects-scale_vs_reference) t
 The most common way to publish an impressive and meaningless accuracy is to score a classifier on the samples it learned
 from. A supervised classifier can memorise its training objects; scoring those same objects only tests memory.
 
-Experiment on the demo scene. A random forest is trained on the 45 objects of scene A, with the reference classes as labels:
-
-| Assessed on | Overall accuracy | Kappa | What it tells you |
-|---|---:|---:|---|
-| **Scene A**, the training objects themselves | **1.000** | 1.000 | Only that the forest remembers its training data |
-| **Scene B**, a different scene | **0.907** | 0.875 | How it works on new data |
+A random forest fitted to labelled objects reproduces those labels almost perfectly when it is asked about them again. The
+score for those objects is then close to 1.0 whatever the quality of the labels or of the model; it only shows that the
+forest remembers its training data. The score on objects it has never seen is lower, and for rare classes much lower. The gap
+between the two is the cost of reporting the first number.
 
 The command line walks straight into it, because `obia classify --samples reference.gpkg` trains on the reference and
 `obia assess-classification` then checks against the same reference:
 
 ```console
 $ pygeovision obia classify scene.tif labels.tif --samples reference.gpkg --class-column class --output classified.gpkg
-  trained on 45 sample objects (6 classes)
+  trained on <n> sample objects (<k> classes)
   note: judge accuracy with reference data that was NOT used for training
 $ pygeovision obia assess-classification labels.tif classified.gpkg reference.gpkg
-  assessed 45 objects (area-weighted)
-  overall accuracy: 1.000   kappa: 1.000
+  overall accuracy: ~1.000 (it was trained on these objects)
 ```
 
-(real output.) The command prints the warning, and the perfect score is exactly what it warns about. For a held-out
-assessment, give the CLI reference polygons that are **different** from the `--samples` file (digitise a validation set
-separately), or use Python to train on one scene and predict another, as in the [tutorial](tutorial.md#step-7-assess-honestly).
+The command prints the warning, and the near-perfect score is exactly what it warns about. For a held-out assessment, give the
+CLI reference polygons that are **different** from the `--samples` file (digitise a validation set separately), or use Python
+and drop the validation objects from the training set, as in the [tutorial](tutorial.md#step-6-learn-from-weak-labels).
 
-The model is identical and so are the features. A difference of 0.093 in overall accuracy, and for some classes much
-more (forest, road and water are found only half the time on B), is the cost of reporting the first number.
+With weak labels (`--weak-labels`, a land-cover map used as training data) the trap has a second form: the training labels
+come from a map, and scoring against that map measures agreement with the map, not accuracy. `obia classify --weak-labels`
+reminds you of this; assess against your own reference points.
 
 Rules to keep your numbers honest:
 
@@ -302,10 +255,10 @@ Rules to keep your numbers honest:
    validation set turns into training data.
 4. **Cross-validation is a smoke test.** `ObjectClassifier.cross_validate` reuses samples from one image, so it is optimistic.
 5. **Rules are not exempt.** Thresholds read off the scene you then assess are fitted to that scene. The size-rule fix in
-   [Hierarchy and context](hierarchy-context.md#a-worked-example-slivers-on-field-edges) moved accuracy from 0.756 to 0.844 on
-   the scene it was designed on; treat that as an upper bound.
-6. **Say how many.** Report `n_objects` and the confusion matrix, not just one number. With 43 objects and a class of 2,
-   each object is 2.3 % of the total.
+   [Hierarchy and context](hierarchy-context.md#a-worked-example-slivers-on-field-edges) improves the scene it was designed on;
+   treat that improvement as an upper bound.
+6. **Say how many.** Report `n_objects` and the confusion matrix, not just one number. With 40 objects and a class of 2,
+   each object is 2.5 % of the total.
 
 ## What to do when…
 

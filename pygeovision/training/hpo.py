@@ -70,10 +70,9 @@ class OptunaHPO:
     ) -> dict[str, Any]:
         """Run HPO and return the best hyperparameters found.
 
-        search_space format:
-            "param_name": ("type", *args)
-            Types: float, float_log, int, int_log, categorical
-            Example: "lr": ("float_log", 1e-5, 1e-2)
+        The search space maps a parameter name to a tuple ``(type, *args)``,
+        where the type is one of ``float``, ``float_log``, ``int``, ``int_log``
+        or ``categorical``. For example ``{"lr": ("float_log", 1e-5, 1e-2)}``.
         """
         try:
             import optuna

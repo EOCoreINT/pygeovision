@@ -4,15 +4,6 @@ This section is for the moment the published methods are not enough: you have yo
 you want a network that predicts them. It takes you from a folder of labelled images to a checkpoint file that
 `pygeovision infer predict`, a pipeline's `--checkpoint`, or your own Python code can run.
 
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-data
-config
-losses
-advanced
-```
 
 | Page | Read it when |
 |---|---|
@@ -20,7 +11,7 @@ advanced
 | [Preparing training data](data.md) | You need to build the image and label chips, split them, and scale them correctly |
 | [The training configuration](config.md) | You want every `TrainingConfig` setting explained, with its default and what it really does |
 | [Loss functions and class imbalance](losses.md) | Your classes are rare, or the model predicts one class everywhere |
-| [Advanced training](advanced.md) | Mixed precision, resuming, staged fine-tuning, several GPUs, hyper-parameter search, experiment tracking, exporting |
+| [Advanced training](fine-tuning.md) | Mixed precision, resuming, staged fine-tuning, several GPUs, hyper-parameter search, experiment tracking, exporting |
 
 ## Why train at all
 
@@ -30,11 +21,12 @@ maps that *look* right and are not. The reward is a model for **your** classes, 
 
 ## The workflow in one picture
 
-```text
- 1 labels + imagery        2 chips                3 model              4 train             5 check            6 use
- (GeoTIFF pairs,    -->  (image/label   -->   get_model(...)   -->  GeoTrainer     -->  read the log,  -->  infer predict,
-  same grid)              tiles, split)        pretrained or        .fit(train, val)     look at maps       pipelines,
-                                               from scratch                                                    Python
+```{figure} ../_static/img/flow-training.svg
+:alt: Training workflow: labels and imagery, chips, model, train, check, use
+:width: 100%
+:class: pgv-figure
+
+The six steps; the numbered list below links to a page for each.
 ```
 
 1. **Get labelled data**: [Labeling](../labeling/index.md) shows how to make labels from OpenStreetMap, WorldCover,
@@ -149,7 +141,7 @@ runs/demo/
 
 `best.pth` and the `epoch_*` files hold the model weights, the epoch and the metrics. `last.pth` is about three times
 larger because it also carries the optimiser, scheduler and history, so a stopped run can continue
-([Advanced training](advanced.md#resuming-an-interrupted-run)).
+([Advanced training](resuming.md#resuming-an-interrupted-run)).
 
 ### What `fit` returns
 
@@ -245,10 +237,10 @@ about.
 | Situation | Suggested start |
 |---|---|
 | A few hundred labelled chips, RGB or RGB + NIR | `unet-r50` or `segformer-b2`, `pretrained=True`, `learning_rate=1e-4`, `max_epochs=50`, default augmentation |
-| Very few chips (under ~100) | `freeze_backbone=True` for the first run, then [staged fine-tuning](advanced.md#staged-fine-tuning) |
+| Very few chips (under ~100) | `freeze_backbone=True` for the first run, then [staged fine-tuning](fine-tuning.md#staged-fine-tuning) |
 | More than 4 bands | Same, with `in_channels=<your bands>`; the extra bands start untrained, so allow more epochs |
 | Rare target (under ~5% of pixels) | [A loss that handles imbalance](losses.md) |
-| Object detection | `task="detection"` with `faster-rcnn-r50`; see [Models by task](../models/tasks.md#object-detection) |
+| Object detection | `task="detection"` with `faster-rcnn-r50`; see [Models by task](../detection/index.md#object-detection) |
 
 ## What to do when…
 

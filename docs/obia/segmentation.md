@@ -25,7 +25,7 @@ rgb = seg.overlay(bands=(2, 1, 0))                          # uint8 preview with
 
 ```console
 $ pygeovision obia segment scene.tif --scale 20 --output-labels labels.tif --output-vector objects.gpkg
-  ✓ 45 objects (multires) → labels.tif
+  ✓ <n> objects (multires) → labels.tif
   ✓ Object polygons → objects.gpkg
 ```
 
@@ -69,25 +69,23 @@ Note that `scale` does **not** mean the same for `multires` and `felzenszwalb`. 
 threshold on a heterogeneity cost (a merge happens while its cost is below `scale²`). In `felzenszwalb` it prefers larger
 components. Do not copy a value from one to the other.
 
-### What the results look like
+### Comparing methods on your own image
 
-All six methods on the synthetic [demo scene](demo.md) (160 × 160 pixels, 28 true objects), scored against the true
-objects ([Accuracy](accuracy.md#segmentation-quality)). **Lower D is better.**
+No method wins everywhere, and a table of scores from someone else's scene would only tell you about that scene. To compare
+on yours, digitise 20-30 reference objects (polygons around things that should each be one object: a pit, a field, a roof) and
+score each method against them with `obia.segmentation_quality` ([Accuracy](accuracy.md#segmentation-quality)); lower D is
+better. `chessboard` is the baseline: if a method does not beat square tiles, its settings are wrong for the image.
 
-| Method and setting | Objects | Over-segmentation | Under-segmentation | D | Time |
-|---|---:|---:|---:|---:|---:|
-| `multires`, scale 20 | 45 | 0.079 | 0.095 | **0.109** | 0.65 s |
-| `felzenszwalb`, scale 100 | 376 | 0.225 | 0.151 | 0.247 | 0.06 s |
-| `watershed`, spacing 10 | 256 | 0.352 | 0.238 | 0.388 | 0.09 s |
-| `slic`, 200 segments | 159 | 0.486 | 0.251 | 0.488 | 0.08 s |
-| `quickshift`, max_dist 6 | 72 | 0.324 | 0.435 | 0.490 | 0.18 s |
-| `chessboard`, size 16 | 100 | 0.601 | 0.403 | 0.607 | 0.02 s |
-
-```{note}
-These are one synthetic scene with one setting each. The scene has crisp, flat-coloured objects, which suits region
-merging; real imagery is messier, and every other method has settings that would do better than the ones shown. Use the
-table to see what the numbers *look like*, not to rank the algorithms.
+```python
+ref_labels, _ = obia.rasterize_geometries(reference_polygons.to_crs(rd.crs), seg.labels.shape, rd.transform)
+for name, params in {"multires": dict(scale=16), "felzenszwalb": dict(scale=100), "slic": dict(n_segments=300),
+                     "chessboard": dict(size=16)}.items():
+    seg = obia.segment(rd, name, **params)
+    table, summary = obia.segmentation_quality(seg.labels, ref_labels)
+    print(name, seg.n_objects, round(summary["mean_D"], 3))
 ```
+
+Without reference objects, judge by eye: overlay the outlines on the image (`seg.overlay`) and look at the places that matter.
 
 ## `multires` in detail
 
@@ -97,7 +95,7 @@ the bands rises when two objects are merged) and a **shape** part (how much less
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `scale` | 30 | **The main knob.** Small = many small objects; large = few large ones. 10 → 176 objects, 20 → 45, 60 → 22 on the demo scene |
+| `scale` | 30 | **The main knob.** Small = many small objects; large = few large ones. The object count falls steeply as it rises; see the [scale diagnostics](scale.md) |
 | `color_weight` | 0.9 | Share of colour in the criterion, 0–1. `1.0` = colour only (objects can be ragged); lower values favour clean shapes |
 | `compactness_weight` | 0.5 | Within the shape part: 1 = compact blobs, 0 = smooth edges |
 | `band_weights` | equal | One weight per band. Raise the NIR weight to separate vegetation, for instance |
@@ -116,16 +114,10 @@ the boundaries will differ.
 
 ### Speed and size
 
-The merging is pure Python. Timings on the demo scene (4 bands, scale 20, default settings):
+The merging is pure Python. Run time grows with the number of pixels and with how many objects survive, so a busy,
+textured scene is slower than a flat one of the same size. Time a 250 × 250 crop first and scale up from there.
 
-| Image | Time | Objects |
-|---|---:|---:|
-| 160 × 160 | 0.7 s | 45 |
-| 320 × 320 | 2.7 s | 92 |
-| 480 × 480 | 5.8 s | 166 |
-
-Time grows roughly with the number of pixels. For scenes of tens of megapixels, cut tiles first, or use `slic`/`felzenszwalb`
-(a fraction of a second at these sizes).
+For scenes of tens of megapixels, cut tiles first, or use `slic`/`felzenszwalb`, which are several times faster.
 
 ## Several scales at once: `segment_levels`
 
@@ -136,7 +128,7 @@ fine, coarse = levels[10.0], levels[30.0]
 
 One merging run is paused at each scale, so every coarse object is an **exact union** of fine objects. That true hierarchy is
 what [super-object features](hierarchy-context.md) need. (Segmenting twice at different scales does not guarantee nesting.)
-The result is a dict `{scale: SegmentationResult}` in ascending order. On the demo scene: scale 10 → 176 objects, scale 30 → 38.
+The result is a dict `{scale: SegmentationResult}` in ascending order.
 
 ## Using objects from elsewhere: `from_labels`
 
@@ -160,6 +152,7 @@ features and classification.
 | Very slow | Large image, pixel start | Use `init="superpixels"` (the auto default over 10,000 px), tile the image, or `slic` |
 | `ValueError: unknown method` | Typo | Use one of the six names |
 | `ValueError … band names for N bands` | `band_names` count differs from bands | Pass one name per band |
+| Cloud holes (NaN) in the image | Masked pixels | Nothing: they get label 0 and no object. See [Real imagery](real-data.md) |
 | Output georeferencing missing | Input was a bare array | Pass `transform=` and `crs=`, or load with `load_raster` |
 | Different scales give different results on two images | Radiometry differs and `rescale=False` | Keep `rescale=True` |
 | Objects ignore a band you care about | All bands weigh equally | `band_weights=[…]` |

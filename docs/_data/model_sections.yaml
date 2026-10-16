@@ -1,0 +1,226 @@
+# Per-section text for the generated "Models" pages (tools/generate_model_pages.py).
+# Keys: the documentation section. Fields: out (page path), tasks (registry tasks), title, lead, io, choose (rows of
+# "situation -> model"), example (python), related.
+
+segmentation:
+  out: segmentation/models.md
+  tasks: [segmentation]
+  title: Segmentation models
+  lead: |
+    Every model on this page turns an image into a map: one class per pixel. They differ in how they look at context
+    (convolutions see locally and build up; transformers relate distant parts of the image), in how much data they need,
+    and in what they cost to train and to run.
+  io: |
+    A segmentation model takes a tensor `(batch, bands, H, W)` and returns scores `(batch, classes, H, W)` **at the input
+    resolution**. The class of each pixel is the `argmax` over the class axis. SAM and SAM 2 are different: they are
+    promptable wrappers that return masks of objects, with no class names.
+  choose:
+    - ["A reliable first model", "`unet-r50`"]
+    - ["Tight GPU memory or a quick experiment", "`segformer-b0` or `unet-efficientb4`"]
+    - ["More context and a few thousand chips or more", "`segformer-b2`"]
+    - ["Largest dataset, biggest GPU", "`upernet-swin-b` or `segformer-b5`"]
+    - ["Objects of very different sizes in one scene", "`deeplab-r50`"]
+    - ["Outlines of objects without class names (labelling help)", "`sam-vit-b` ([SAM](../foundation-models/sam.md))"]
+    - ["Few labels, multispectral data", "Prithvi-EO as an encoder ([Prithvi-EO](../foundation-models/prithvi.md))"]
+  example: |
+    import torch
+    from pygeovision.models import get_model
+
+    model = get_model("unet-r50", num_classes=3, in_channels=4, pretrained=False)
+    scores = model.eval()(torch.rand(2, 4, 64, 64))     # (2, 3, 64, 64)
+    labels = scores.argmax(dim=1)                       # (2, 64, 64), one class per pixel
+  related:
+    - "[Segmentation overview](index.md)"
+    - "[Train a segmentation model](train.md)"
+    - "[Predict with a segmentation model](predict.md)"
+    - "[Loss functions and class imbalance](../training/losses.md)"
+
+classification:
+  out: classification/models.md
+  tasks: [classification]
+  title: Classification models
+  lead: |
+    These models give **one label per image or chip**. They range from small convolutional networks that train in minutes
+    to large transformers pretrained on millions of images. For classification the choice of *starting weights* usually
+    matters more than the architecture.
+  io: |
+    A classifier takes `(batch, bands, H, W)` and returns scores `(batch, classes)`. ViT, Swin and DINOv2 are tied to the
+    chip size they were built for (pass `img_size=`); the convolutional models accept any size from about 32 pixels up.
+  choose:
+    - ["A first classifier", "`resnet50`"]
+    - ["Best accuracy with a modern CNN", "`convnext-b`"]
+    - ["Small dataset, small model", "`densenet121`"]
+    - ["Few labels per class", "`dinov2-b` with a frozen backbone, or [few-shot](few-shot.md)"]
+    - ["No labels at all (a first look)", "`clip-vit-b32` or `remoteclip-b32` ([zero-shot](predict.md))"]
+    - ["Large dataset and a strong GPU", "`swin-b` or `vit-l16`"]
+  example: |
+    import torch
+    from pygeovision.models import get_model
+
+    model = get_model("resnet50", num_classes=5, in_channels=4, pretrained=False)
+    scores = model.eval()(torch.rand(2, 4, 64, 64))     # (2, 5)
+    probabilities = scores.softmax(dim=1)
+  related:
+    - "[Classification overview](index.md)"
+    - "[Train a classifier](train.md)"
+    - "[Predict with a classifier](predict.md)"
+    - "[Few-shot classification](few-shot.md)"
+
+detection:
+  out: detection/models.md
+  tasks: [detection]
+  title: Detection models
+  lead: |
+    Detectors answer "what objects are here, and where?" with a box (and a class and a score) for each. Counting and
+    locating discrete things (buildings, vehicles, ships, tanks, solar panels) is a detection problem; mapping a continuous
+    surface (land cover) is not.
+  io: |
+    Two interfaces exist. **torchvision-style detectors** (`faster-rcnn-r50`, `mask-rcnn-r50`, `fcos-r50`, `centernet-r50`)
+    take a *list* of `(bands, H, W)` tensors and return a list with one dict per image holding `boxes`, `labels`, `scores`
+    (and `masks` for Mask R-CNN). **DETR-style detectors** (`detr-r50`, `detr-r101`, `rt-detr-l`) take a tensor
+    `(batch, bands, H, W)` and return an object with `logits` and `pred_boxes`.
+  choose:
+    - ["A reliable first detector", "`faster-rcnn-r50`"]
+    - ["Outlines as well as boxes", "`mask-rcnn-r50`"]
+    - ["Many small objects of one size", "`centernet-r50` or `fcos-r50`"]
+    - ["End-to-end, no post-processing, large dataset", "`detr-r50` or `rt-detr-l`"]
+    - ["Objects you have no labels for", "Grounding DINO (needs a network)"]
+  example: |
+    import torch
+    from pygeovision.models import get_model
+
+    model = get_model("faster-rcnn-r50", num_classes=2, in_channels=4, pretrained=False).eval()
+    with torch.no_grad():
+        out = model([torch.rand(4, 128, 128)])          # a list: one image in, one dict out
+    print(out[0].keys())                                # boxes, labels, scores
+  related:
+    - "[Detection overview](index.md)"
+    - "[Train a detector](train.md)"
+    - "[Predict with a detector](predict.md)"
+
+change-detection:
+  out: change-detection/models.md
+  tasks: [change_detection]
+  title: Change-detection models
+  lead: |
+    These networks take **two images of the same place** and return a map of what changed. They are siamese: both dates go
+    through the same encoder, so the network compares like with like. Every one of them needs training data (pairs of
+    images with a change mask); with none, use the method that needs no weights ([change-detection overview](index.md)).
+  io: |
+    `model(before, after)` takes two tensors `(batch, bands, H, W)` and returns `(batch, classes, H, W)`. The compact
+    `changeformer-mit-b0` also accepts the two dates stacked along the channel axis in one tensor.
+  choose:
+    - ["No labelled pairs", "`pygeovision ai change` (change vector analysis), or a pipeline"]
+    - ["A strong siamese model with a few hundred pairs", "`bit-r50`"]
+    - ["Small datasets that need steady training", "`dsamnet`"]
+    - ["The simplest model to train with `GeoTrainer`", "`changeformer-mit-b0`"]
+  example: |
+    import torch
+    from pygeovision.models import get_model
+
+    net = get_model("bit-r50", num_classes=2, in_channels=4, pretrained=False).eval()
+    change_scores = net(torch.rand(2, 4, 64, 64), torch.rand(2, 4, 64, 64))   # (2, 2, 64, 64)
+    change_map = change_scores.argmax(dim=1)
+  related:
+    - "[Change-detection overview](index.md)"
+    - "[Train a change-detection network](train.md)"
+    - "[Pipelines for change](../pipelines/catalog/change_detection.md)"
+
+lidar:
+  out: lidar/models.md
+  tasks: ["3d"]
+  title: Point-cloud networks
+  lead: |
+    These networks label **every point** of a LiDAR point cloud (ground, vegetation, building and so on). All six are
+    ports written for this package in plain PyTorch, so they run without any compiled extension. There are no pretrained
+    point-cloud weights: you train them on a labelled cloud.
+  io: |
+    Input `(batch, channels, points)` where the first three channels are x, y, z (and `in_channels` counts any extra
+    per-point features such as intensity); output `(batch, classes, points)`.
+  choose:
+    - ["A first baseline on small tiles", "`pointnet2-ssg`"]
+    - ["Large airborne tiles", "`randlanet`"]
+    - ["Fine geometry (poles, wires)", "`kpconv`"]
+    - ["Best accuracy per second", "`ptv3`"]
+  example: |
+    import torch
+    from pygeovision.models import get_model
+
+    net = get_model("pointnet2-ssg", num_classes=4, in_channels=3, pretrained=False).eval()
+    points = torch.rand(2, 3, 512)                      # (batch, xyz, points)
+    scores = net(points)                                # (2, 4, 512)
+    point_class = scores.argmax(dim=1)                  # (2, 512)
+  related:
+    - "[LiDAR overview](index.md)"
+    - "[Classify points](classify.md)"
+
+super-resolution:
+  out: super-resolution/models.md
+  tasks: [super_resolution]
+  title: Super-resolution models
+  lead: |
+    Super-resolution makes an image larger by predicting detail that the input does not contain. The result looks sharper;
+    it is not more accurate. One model is registered.
+  io: |
+    `model(x)` takes `(batch, bands, H, W)` and returns a dictionary; `["reconstruction"]` holds the 4-times-larger image
+    `(batch, bands, 4H, 4W)`.
+  choose:
+    - ["Sharper imagery for people to look at", "`swinir-m`"]
+    - ["Measurements of any kind", "None: do not super-resolve data you will measure"]
+  example: |
+    import torch
+    from pygeovision.models import get_model
+
+    model = get_model("swinir-m", in_channels=4, pretrained=False).eval()
+    x = torch.rand(1, 4, 32, 32)
+    with torch.no_grad():
+        y = model(x)["reconstruction"]                  # (1, 4, 128, 128)
+  related:
+    - "[Super-resolution overview](index.md)"
+
+vision-language:
+  out: vision-language/models.md
+  tasks: [vlm]
+  title: Vision-language models
+  lead: |
+    Vision-language models connect images and words: they describe an image, answer a question about it, or rank images
+    against a text query. They are not measuring instruments. Their answers are fluent and can be wrong, especially about
+    counts and small objects.
+  io: |
+    These registry entries are not "tensor in, scores out" networks. `get_model` returns a wrapper object: `CLIPGeo`
+    (zero-shot labels and search) or `MoondreamGeo` (captions and questions). See the pages in this section for the methods.
+  choose:
+    - ["Rank many tiles by a text description", "`openclip-b32` or `remoteclip-b32`"]
+    - ["A caption or a quick question about one tile", "`moondream2`"]
+  example: |
+    from pygeovision.models import get_model
+
+    clip = get_model("openclip-b32")                    # CLIPGeo wrapper; downloads weights on first use
+    # see the CLIP page for classify() and search()
+  related:
+    - "[Vision-language overview](index.md)"
+    - "[CLIP](clip.md)"
+    - "[Captions and questions](captions.md)"
+
+foundation-models:
+  out: foundation-models/models.md
+  tasks: [foundation]
+  title: Foundation-model registry
+  lead: |
+    Foundation models are large networks pretrained on huge image collections, used as a starting point so that your task
+    needs far fewer labels. This page lists the registry entries; the other pages in this section explain how to use each.
+  io: |
+    Foundation models are not "tensor in, scores out" networks with a task head. They produce **features** or
+    **embeddings**; you add a small head and train it on your labels. Several are loaded through dedicated wrappers.
+  choose:
+    - ["Multispectral, multi-date, few labels", "Prithvi-EO"]
+    - ["Any sensor, any bands", "DOFA"]
+    - ["Zero-shot text search on remote-sensing tiles", "RemoteCLIP"]
+    - ["Pixel embeddings from time series", "TESSERA"]
+    - ["Annual embeddings from Earth Engine", "AlphaEarth"]
+  example: |
+    from pygeovision.models import list_models
+
+    print(list_models(task="foundation"))
+  related:
+    - "[Foundation models overview](index.md)"

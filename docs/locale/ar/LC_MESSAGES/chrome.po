@@ -1,0 +1,131 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PyGeoVision\n"
+"PO-Revision-Date: 2026-10-16 00:00+0000\n"
+"Last-Translator: PyGeoVision Contributors\n"
+"Language-Team: ar\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Documentation"
+msgstr "التوثيق"
+
+msgid "Tutorials"
+msgstr "الدروس"
+
+msgid "Community"
+msgstr "المجتمع"
+
+msgid "Download"
+msgstr "تنزيل"
+
+msgid "Search"
+msgstr "بحث"
+
+msgid "Version:"
+msgstr "الإصدار:"
+
+msgid "Home"
+msgstr "الرئيسية"
+
+msgid "Language"
+msgstr "اللغة"
+
+msgid "Partly translated"
+msgstr "ترجمة جزئية: تظهر الصفحات غير المترجمة بالإنجليزية."
+
+msgid "Getting started"
+msgstr "البدء"
+
+msgid "Data"
+msgstr "البيانات"
+
+msgid "Pipelines"
+msgstr "خطوط المعالجة"
+
+msgid "Models and training"
+msgstr "النماذج والتدريب"
+
+msgid "Object-based analysis"
+msgstr "التحليل القائم على الكائنات"
+
+msgid "Trust, monitor, deploy"
+msgstr "الثقة والمراقبة والنشر"
+
+msgid "Advanced tools"
+msgstr "أدوات متقدمة"
+
+msgid "Examples"
+msgstr "أمثلة"
+
+msgid "Reference"
+msgstr "المرجع"
+
+msgid "Project"
+msgstr "المشروع"
+
+msgid "Segmentation"
+msgstr "تجزئة الصور"
+
+msgid "Classification"
+msgstr "التصنيف"
+
+msgid "Object detection"
+msgstr "اكتشاف الكائنات"
+
+msgid "Change detection"
+msgstr "اكتشاف التغيّر"
+
+msgid "Foundation models"
+msgstr "النماذج التأسيسية"
+
+msgid "Vision-language"
+msgstr "الرؤية واللغة"
+
+msgid "3D / LiDAR"
+msgstr "3D / LiDAR"
+
+msgid "Super-resolution"
+msgstr "الدقة الفائقة"
+
+msgid "Time series"
+msgstr "السلاسل الزمنية"
+
+msgid "Object-based analysis (OBIA)"
+msgstr "التحليل القائم على الكائنات (OBIA)"
+
+msgid "Models"
+msgstr "النماذج"
+
+msgid "Labelling"
+msgstr "وسم البيانات"
+
+msgid "Training"
+msgstr "التدريب"
+
+msgid "Inference"
+msgstr "الاستدلال"
+
+msgid "Experiments"
+msgstr "التجارب"
+
+msgid "Explainability"
+msgstr "القابلية للتفسير"
+
+msgid "Monitoring"
+msgstr "المراقبة"
+
+msgid "Reporting"
+msgstr "التقارير"
+
+msgid "Deployment"
+msgstr "النشر"
+
+msgid "CLI reference"
+msgstr "مرجع سطر الأوامر"
+
+msgid "Python API"
+msgstr "واجهة Python البرمجية"

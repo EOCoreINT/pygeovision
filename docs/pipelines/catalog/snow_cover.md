@@ -4,7 +4,7 @@
 
 *Snow/ice extent from NDSI > 0.4 on one date*
 
-**Topic:** Snow and ice · **Status:** Runs out of the box · **Tags:** `snow`, `ndsi`
+**Topic:** Climate, ice, terrain and ecology · **Status:** Runs out of the box · **Tags:** `snow`, `ndsi`
 
 ## The question it answers
 
@@ -80,6 +80,54 @@ Every pipeline also takes `--bbox` and `--output`; see [common options](../index
 ### Choosing dates and inputs
 
 A month with clear skies. Snow changes quickly during melt, so a month is a composite of the clearest scene, not an average.
+
+## Modify it
+
+Three levels, from least to most effort. Start at the first; most changes need nothing more.
+
+### 1. Change a setting
+
+Every argument in the table above is changed per run, with `--param NAME=VALUE` on the command line or `NAME=VALUE` in Python. The changes people make most with this pipeline:
+
+- **Another month.** `date` defaults to `2024-01`. Snow cover depends strongly on the date; compare the same month in different years.
+- **The cut-off is fixed.** Snow is NDSI > 0.4 (the MODIS MOD10 value); to change it see *Change the code* below. Cloud-masked pixels are nodata; read `valid_fraction`.
+- **Longer record.** Run several months and compare the areas in `run_summary.json`.
+
+After any change, read the **parameters** block of `run_summary.json`: it records the values that were used, so a result can always be traced to its settings.
+
+### 2. Change where the data comes from, and what is written
+
+- **Providers.** `providers=["planetary_computer"]` (CLI `--provider planetary_computer`) restricts the catalogues the pipeline searches; see [Providers](../../data/providers.md).
+- **Output.** `output_dir` (CLI `--output`) is the folder for the rasters, `run_summary.json` and `deliverables/`. Rebuild maps and reports from a finished run without re-downloading: [Rebuilding](../../reporting/rebuilding.md).
+- **Your own area.** A bounding box, or the true shape of an administrative area ([boundaries](../../data/boundaries.md)).
+
+### 3. Change the method (write a variant)
+
+The pipeline is the class `SnowCoverPipeline` in `pygeovision/ai/pipelines/domains.py`. To change its behaviour without editing the package, subclass it, give the subclass a new `name`, and override `run`. This changes the defaults of one run; the original is untouched:
+
+```python
+from pygeovision import PyGeoVision
+from pygeovision.ai.pipelines import pipeline_catalogue
+
+Base = pipeline_catalogue()["snow_cover"]
+
+
+class MySnowCover(Base):
+    name = "my_snow_cover"          # a new name, so files and reports do not clash with the original
+
+    def run(self, bbox, output_dir, **kwargs):
+        result = super().run(bbox, output_dir, **kwargs)
+        if result.success:
+            print("written:", result.output_path)      # post-process the output here
+        return result
+
+client = PyGeoVision()
+result = MySnowCover(client).run(bbox, "./variant")   # plus the same date arguments as in Run it
+```
+
+Calling `.run` on your class does not need any registration. To use it by name in `client.pipeline(...)`, register it in the process; to write a pipeline from scratch see [Write your own pipeline](../custom.md). The built-in `pygeovision channel` command runs only the built-in pipelines.
+
+To change the numbers of the method itself (a threshold written in the code, not exposed as an argument), read `SnowCoverPipeline.run` in `pygeovision/ai/pipelines/domains.py`; the *How it works* section above lists the steps in the order the code takes them. Whatever you change, compare the new run with the old one ([comparing runs](../results.md#comparing-runs)) and validate the result against reference data before you use it ([validation](../../data/validation.md)).
 
 ## What you get
 

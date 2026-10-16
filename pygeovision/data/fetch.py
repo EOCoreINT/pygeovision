@@ -760,7 +760,7 @@ class SatelliteFetcher:
                 ]
                 for p in active_providers:
                     args += ["--providers", p]
-                self._run_cli(args)
+                self._run_cli(args, timeout=max(60, int(timeout)) * max(2, len(active_providers)))
                 if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
                     results = self._parse_stac_geojson_file(tmp_path)
             except Exception as exc:
@@ -2497,8 +2497,12 @@ class SatelliteFetcher:
     # ── CLI-mode helpers ─────────────────────────────────────────────
     # ------------------------------------------------------------------
 
-    def _run_cli(self, args: list[str], capture: bool = True) -> Any:
-        """Run pygeofetch CLI command. Returns CompletedProcess."""
+    def _run_cli(self, args: list[str], capture: bool = True, timeout: float | None = None) -> Any:
+        """Run pygeofetch CLI command. Returns CompletedProcess.
+
+        ``timeout`` (seconds) bounds the call; ``subprocess.TimeoutExpired`` is raised when it is exceeded. The default
+        is no limit, which downloads need; a search must pass one, or an unreachable provider hangs the caller.
+        """
         import subprocess
         exe = _PYGEOFETCH_CLI_EXE or "pygeofetch"
         cmd = [exe] + args
@@ -2507,6 +2511,7 @@ class SatelliteFetcher:
             cmd,
             capture_output=capture,
             text=True,
+            timeout=timeout,
         )
 
     def _parse_stac_geojson_file(self, geojson_path: Path) -> list[SearchResult]:

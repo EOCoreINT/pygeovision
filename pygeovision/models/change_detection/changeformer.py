@@ -104,6 +104,7 @@ class ChangeFormer:
         """Detect changes between two co-registered GeoTIFFs.
 
         Handles common channel mismatches:
+
         - If the raster has more channels than in_channels, the first
           in_channels bands are selected.
         - If the raster has fewer channels, bands are repeated cyclically

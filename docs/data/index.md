@@ -63,24 +63,3 @@ Each arrow is described in detail on the pages above. Two design decisions shape
    calibration jump at a seam between two acquisitions.
 2. **Say how much you got.** The coverage actually achieved (`aoi_coverage_fraction`) and the share of clear pixels
    are recorded and attached to the result. A run that could only see 40 % of your box tells you so.
-
-```{toctree}
-:hidden:
-
-search-and-download
-providers
-authentication
-scene-selection
-radiometry
-indices
-reference-data
-footprints
-boundaries
-sar
-validation
-preprocessing
-postprocessing
-ai-ready
-texture
-yaml-pipelines
-```

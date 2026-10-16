@@ -101,11 +101,12 @@ def sar_to_hls_6ch(
     compatible with foundation models pre-trained on HLS data (Prithvi).
 
     Both arrays must be:
+
     - Shape: (1, H, W) or (H, W) — single spatial image
     - Values: normalised to [0, 1] (output of normalise_sar_for_ai()). Raw dB
-              values are **not** detected or converted: several mappings compute
-              ``1 - band``, which is meaningless for negative dB numbers. Only the
-              ``sentinel_6ch_db`` mapping is meant for dB input.
+      values are **not** detected or converted: several mappings compute
+      ``1 - band``, which is meaningless for negative dB numbers. Only the
+      ``sentinel_6ch_db`` mapping is meant for dB input.
 
     Available mappings
     ------------------
@@ -697,27 +698,21 @@ class SARPrithviAdapter:
     """
     Sentinel-1 SAR adapter for Prithvi foundation model flood detection.
 
-    Implements three operational modes:
+    Modes:
 
-    Mode 1: 'zero_shot'
-        Physics-guided channel mapping (sar_to_hls_6ch) + Prithvi's
-        pre-trained flood_mapping task head. No training required.
-        Expected performance: IoU ~0.55-0.65 for tropical flood events.
-        Use case: immediate deployment, no labelled local data available.
+    ``'zero_shot'``
+        Physics-guided channel mapping (``sar_to_hls_6ch``) followed by a **threshold on the mapped VH
+        channel** (below 0.35 on the [0, 1] scale = flood). It does not run Prithvi and needs no weights; the
+        result says so (``result["method"] == "vh_threshold"``). Its accuracy is that of a simple threshold and
+        has not been measured here.
 
-    Mode 2: 'spt' (Scattering Prompt Tuning)
-        Lightweight LoRA-style fine-tuning of the attention layers using
-        SAR-specific prompt tokens. Requires ~200 labelled SAR chips.
-        Expected performance: IoU ~0.68-0.75 after 10-20 epochs.
-        Use case: some local data available, compute is limited.
+    ``'spt'`` and ``'fine_tune'``
+        Not available in this class: they raise ``NotImplementedError``. Use
+        :class:`pygeovision.models.adapters.sar_prithvi.SARPrithviAdapter`, which drives TerraTorch
+        fine-tuning (``fine_tune()``), or train a head yourself. This class previously fell back to the
+        threshold without saying so under the name of the requested mode; that was removed.
 
-    Mode 3: 'fine_tune'
-        Full TerraTorch-style fine-tuning with Sen1Floods11 pre-training
-        then local domain adaptation. Requires Sen1Floods11 dataset +
-        local labelled data.
-        Expected performance: IoU ~0.80-0.92 (matching literature SOTA).
-        Reference: Jakubik et al. 2023, arXiv:2310.18660
-        Use case: operational deployment with sufficient training data.
+    :meth:`prepare_finetuning` still returns a configuration dictionary for such a run.
 
     The RDAnet-inspired SAR_DCE_DRN encoder (SAR_DCE class above) can
     be used as a preprocessing step in 'fine_tune' mode to learn
@@ -780,6 +775,7 @@ class SARPrithviAdapter:
             "success": True,
             "six_channel": six_ch,
             "mode": self.mode,
+            "method": "vh_threshold" if self.mode == "zero_shot" else self.mode,
             "warnings": val["warnings"] + (val["errors"] if not val["valid"] else []),
         }
 
@@ -803,34 +799,11 @@ class SARPrithviAdapter:
             result["prediction"]  = flood_mask
             result["probability"] = flood_prob.astype("float32")
 
-        elif self.mode in ("spt", "fine_tune"):
-            # Requires PyTorch and a trained/fine-tuned Prithvi model
-            try:
-                import torch
-
-                from pygeovision.models.foundation.prithvi import PrithviTasks
-
-                if self._model is None:
-                    self._model = PrithviTasks(
-                        task="flood_mapping",
-                        backbone="prithvi_eo_v2_600",
-                    )
-
-                x = torch.tensor(six_ch[np.newaxis]).float()  # (1, 6, H, W)
-                with torch.no_grad():
-                    pred = self._model.run(x.numpy())
-                result["prediction"]  = (pred > 0.5).astype("uint8")
-                result["probability"] = pred.astype("float32")
-
-            except Exception as e:
-                logger.warning(
-                    f"SARPrithviAdapter mode='{self.mode}' failed ({e}). "
-                    f"Falling back to zero_shot."
-                )
-                vh_norm = six_ch[0]
-                result["prediction"]  = (vh_norm < 0.35).astype("uint8")
-                result["probability"] = (1.0 - vh_norm).astype("float32")
-                result["warnings"].append(f"Fell back to zero_shot: {e}")
+        else:   # "spt" / "fine_tune"
+            raise NotImplementedError(
+                f"mode={self.mode!r} is not implemented in sar_channel_manager.SARPrithviAdapter. Use "
+                "pygeovision.models.adapters.sar_prithvi.SARPrithviAdapter (TerraTorch fine-tuning) or train a "
+                "head yourself; a threshold is not a substitute for a fine-tuned model.")
 
         return result
 
@@ -886,9 +859,9 @@ class SARPrithviAdapter:
                 "Use Sen1Floods11 hand-labelled chips only (4,831 chips) — avoid weakly-labelled",
             ],
             "upgrade_path": (
-                "After Sen1Floods11 pre-training, fine-tune for 10 epochs on local "
-                "Accra SAR stack with pseudo-labels from flood frequency map. "
-                "Expected: IoU 0.65 (zero-shot) → 0.80 (Sen1Floods11) → 0.88+ (Accra fine-tune)"
+                "After Sen1Floods11 pre-training, fine-tune for a few epochs on your own SAR stack "
+                "with pseudo-labels from a flood frequency map, and measure the result on events "
+                "the model has not seen."
             ),
         }
 
@@ -926,6 +899,7 @@ class SARDINOv3Adapter:
     general-purpose visual features through self-supervised DINO training.
 
     For SAR data, DINOv3 features are most useful for:
+
     1. Unsupervised clustering (flood-type discrimination)
     2. Anomaly detection (unusual backscatter patterns)
     3. Transfer learning when labelled data is very scarce (<50 chips)
@@ -945,6 +919,7 @@ class SARDINOv3Adapter:
         Analogous to R-G-B assignment for Sentinel-2 true colour.
 
     Reference:
+
     - Oquab et al. 2023, "DINOv2: Learning Robust Visual Features
       without Supervision", arXiv:2304.07193
     """

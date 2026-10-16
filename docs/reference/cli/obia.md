@@ -26,14 +26,14 @@ Usage: pygeovision obia [OPTIONS] COMMAND [ARGS]...
 
   Object-based image analysis — segment, describe, classify, assess.
 
-  Typical sequence:
-      pygeovision obia demo ./obia_demo
-      pygeovision obia segment ./obia_demo/scene.tif --scale 20 --output-labels labels.tif
-      pygeovision obia features ./obia_demo/scene.tif labels.tif --output features.csv
-      pygeovision obia classify ./obia_demo/scene.tif labels.tif \
-          --samples ./obia_demo/reference.gpkg --class-column class --output classified.gpkg
+  Typical sequence (real Sentinel-2 + ESA WorldCover for an area of a few km):
+      pygeovision obia fetch --bbox -1.70 6.18 -1.655 6.225 --date 2024-01 -o scene.tif --worldcover wc.tif
+      pygeovision obia segment scene.tif --scale 16 --output-labels labels.tif
+      pygeovision obia features scene.tif labels.tif --output features.csv --texture nir
+      pygeovision obia classify scene.tif labels.tif --weak-labels wc.tif \
+          --class-map "10=forest,40=farmland,50=built_up,60=mine_disturbed,80=water" --output classified.gpkg
       pygeovision obia assess-classification labels.tif classified.gpkg \
-          ./obia_demo/reference.gpkg --class-column class
+          reference_points.gpkg --class-column class
 
 Options:
   --help  Show this message and exit.
@@ -41,14 +41,34 @@ Options:
 Commands:
   assess-classification  Object-based accuracy of a classification against reference...
   assess-segmentation    Over-/under-segmentation of a label raster against reference objects.
-  classify               Classify objects from samples (supervised) or a YAML rule set.
-  demo                   Write a synthetic teaching scene with known reference data.
+  classify               Classify objects from samples (supervised), a land-cover map used...
   features               Compute the object feature table (spectral, shape, texture, context).
+  fetch                  Download a cloud-masked Sentinel-2 image (and optionally...
   scale                  Compare scale parameters (diagnostics; with --reference also...
   segment                Segment a raster into image objects.
 ```
 
 ### `pygeovision obia assess-classification`
+
+Object-based accuracy of a classification against reference polygons/points.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `LABELS_PATH` | text | yes |
+| `CLASSIFIED_PATH` | text | yes |
+| `REFERENCE_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--class-column` | text | `class` |  | Class column in the reference file. |
+| `--weight-by-area`, `--count-objects` | flag | `--weight-by-area` |  |  |
+| `--output` | text |  |  | Write the confusion matrix to CSV. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision obia assess-classification [OPTIONS] LABELS_PATH CLASSIFIED_PATH REFERENCE_PATH
@@ -62,8 +82,26 @@ Options:
   --output TEXT                   Write the confusion matrix to CSV.
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision obia assess-segmentation`
+
+Over-/under-segmentation of a label raster against reference objects.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `LABELS_PATH` | text | yes |
+| `REFERENCE_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  |  | Per-reference-object table as CSV. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision obia assess-segmentation [OPTIONS] LABELS_PATH REFERENCE_PATH
@@ -74,42 +112,82 @@ Options:
   --output TEXT  Per-reference-object table as CSV.
   --help         Show this message and exit.
 ```
+:::
 
 ### `pygeovision obia classify`
+
+Classify objects from samples (supervised), a land-cover map used as weak labels, or a YAML rule set.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+| `LABELS_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  | yes | Output vector file (.gpkg/.geojson). |
+| `--samples` | text |  |  | Vector file of training polygons/points (supervised). |
+| `--rules` | text |  |  | YAML rule file (rule-based): rules: [{class: water, when: 'mean_ndwi > 0.3'}]. |
+| `--weak-labels` | text |  |  | A land-cover raster on the image grid (e.g. WorldCover) to learn from (supervised). |
+| `--class-map` | text |  |  | With --weak-labels: raster code to class, e.g. '10=forest,40=farmland,80=water'. |
+| `--min-purity` | number | `0.7` |  | With --weak-labels: share of an object's pixels that must agree. |
+| `--class-column` | text | `class` |  |  |
+| `--method` | one of `rf` | `knn` | `svm` | `tree` | `rf` |  |  |
+| `--output-raster` | text |  |  | Also write classes as a GeoTIFF (codes in the class table). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision obia classify [OPTIONS] INPUT_PATH LABELS_PATH
 
-  Classify objects from samples (supervised) or a YAML rule set.
+  Classify objects from samples (supervised), a land-cover map used as weak labels, or a YAML
+  rule set.
+
+  Weak labels inherit the errors of the map they come from: use them to train, and judge the
+  result against reference data that is independent of the map.
 
 Options:
   --output TEXT               Output vector file (.gpkg/.geojson).  [required]
   --samples TEXT              Vector file of training polygons/points (supervised).
   --rules TEXT                YAML rule file (rule-based): rules: [{class: water, when:
                               'mean_ndwi > 0.3'}].
+  --weak-labels TEXT          A land-cover raster on the image grid (e.g. WorldCover) to learn
+                              from (supervised).
+  --class-map TEXT            With --weak-labels: raster code to class, e.g.
+                              '10=forest,40=farmland,80=water'.
+  --min-purity FLOAT          With --weak-labels: share of an object's pixels that must agree.
+                              [default: 0.7]
   --class-column TEXT         [default: class]
   --method [rf|knn|svm|tree]  [default: rf]
   --output-raster TEXT        Also write classes as a GeoTIFF (codes in the class table).
   --help                      Show this message and exit.
 ```
-
-### `pygeovision obia demo`
-
-```text
-Usage: pygeovision obia demo [OPTIONS] OUTPUT_DIR
-
-  Write a synthetic teaching scene with known reference data.
-
-  Creates scene.tif (blue, green, red, nir), reference.gpkg (reference objects with a 'class'
-  column) and reference_ids.tif (one id per reference object).
-
-Options:
-  --size INTEGER  Scene width/height in pixels.  [default: 160]
-  --seed INTEGER  Random seed (a different scene per seed).  [default: 0]
-  --help          Show this message and exit.
-```
+:::
 
 ### `pygeovision obia features`
+
+Compute the object feature table (spectral, shape, texture, context).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+| `LABELS_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  | yes | Output .csv, or a vector file (.gpkg/.geojson) to keep geometry. |
+| `--texture` | text |  |  | Band/layer name to compute GLCM texture for (repeatable). |
+| `--indices`, `--no-indices` | flag | `--indices` |  | Add NDVI/NDWI when bands allow. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision obia features [OPTIONS] INPUT_PATH LABELS_PATH
@@ -123,8 +201,81 @@ Options:
   --indices / --no-indices  Add NDVI/NDWI when bands allow.  [default: indices]
   --help                    Show this message and exit.
 ```
+:::
+
+### `pygeovision obia fetch`
+
+Download a cloud-masked Sentinel-2 image (and optionally WorldCover) for OBIA.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--bbox` | number |  | yes | Area of interest in degrees. Keep it to a few km: region merging is pure Python. |
+| `--date` | text |  | yes | A day, a month (2024-01) or START/END. |
+| `--output`, `-o` | text |  | yes | Output GeoTIFF (band names are written as descriptions). |
+| `--bands` | text | `blue,green,red,nir,swir1,swir2` |  |  |
+| `--cloud-max` | number | `30.0` |  | Scene-level cloud cover limit, percent. |
+| `--providers` | text |  |  | Comma-separated providers (default: the configured ones). |
+| `--worldcover` | text |  |  | Also write ESA WorldCover, on the image's grid, to this GeoTIFF. |
+| `--quiet` | flag | off |  | No progress output (by default each step reports what it is doing). |
+| `--heartbeat` | number | `10.0` |  | Seconds between 'still working' lines. |
+
+:::{dropdown} Full help text
+
+```text
+Usage: pygeovision obia fetch [OPTIONS]
+
+  Download a cloud-masked Sentinel-2 image (and optionally WorldCover) for OBIA.
+
+  Uses PyGeoVision's own search and download code, the same as the pipelines. Cloud and shadow
+  pixels are written as NaN and become label 0 (no data) in `obia segment`.
+
+  A scene is a few hundred MB and can take minutes. The command prints each stage, the search
+  and download messages, and a "still working" line every --heartbeat seconds with the megabytes
+  received, so a slow network can be told from a hang. Use --quiet to silence it.
+
+  Example:
+      pygeovision obia fetch --bbox -1.70 6.18 -1.655 6.225 --date 2024-01 -o scene.tif --worldcover wc.tif
+
+Options:
+  --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT
+                                  Area of interest in degrees. Keep it to a few km: region
+                                  merging is pure Python.  [required]
+  --date TEXT                     A day, a month (2024-01) or START/END.  [required]
+  -o, --output TEXT               Output GeoTIFF (band names are written as descriptions).
+                                  [required]
+  --bands TEXT                    [default: blue,green,red,nir,swir1,swir2]
+  --cloud-max FLOAT               Scene-level cloud cover limit, percent.  [default: 30.0]
+  --providers TEXT                Comma-separated providers (default: the configured ones).
+  --worldcover TEXT               Also write ESA WorldCover, on the image's grid, to this
+                                  GeoTIFF.
+  --quiet                         No progress output (by default each step reports what it is
+                                  doing).
+  --heartbeat FLOAT               Seconds between 'still working' lines.  [default: 10.0]
+  --help                          Show this message and exit.
+```
+:::
 
 ### `pygeovision obia scale`
+
+Compare scale parameters (diagnostics; with --reference also over/under-segmentation).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--scales` | text | `5,10,15,20,30,40,60,80` |  | Comma-separated scales. |
+| `--reference` | text |  |  | Reference object polygons: also report segmentation quality per scale. |
+| `--output` | text |  |  | Write the table to CSV. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision obia scale [OPTIONS] INPUT_PATH
@@ -137,8 +288,31 @@ Options:
   --output TEXT     Write the table to CSV.
   --help            Show this message and exit.
 ```
+:::
 
 ### `pygeovision obia segment`
+
+Segment a raster into image objects.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--method` | one of `multires` | `slic` | `felzenszwalb` | `quickshift` | `watershed` | `chessboard` | `multires` |  |  |
+| `--scale` | number |  |  | Scale parameter (multires; felzenszwalb). |
+| `--color-weight` | number | `0.9` |  | multires: weight of spectral vs shape criterion. |
+| `--compactness-weight` | number | `0.5` |  | multires: compactness vs smoothness. |
+| `--param` | text |  |  | Extra method parameter, key=value (repeatable). |
+| `--output-labels` | text |  | yes | Output GeoTIFF of object ids. |
+| `--output-vector` | text |  |  | Optional vector output (.gpkg/.geojson). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision obia segment [OPTIONS] INPUT_PATH
@@ -157,3 +331,4 @@ Options:
   --output-vector TEXT            Optional vector output (.gpkg/.geojson).
   --help                          Show this message and exit.
 ```
+:::

@@ -13,7 +13,7 @@ it chooses scenes, applies the radiometric corrections, runs the analysis and wr
 either alone. PyGeoVision's [Data guide](../data/index.md) shows where the boundary lies.
 
 **Do I need a GPU, or even PyTorch?**
-No for the 33 *ready* pipelines — indices, terrain, hydrology, radar thresholds and published reference maps run on a
+No for the 34 *ready* pipelines — indices, terrain, hydrology, radar thresholds and published reference maps run on a
 CPU and import no deep-learning library. Yes (practically) for training, and for the seven pipelines that run your
 trained network.
 
@@ -85,7 +85,7 @@ percentage ([Core concepts](concepts.md#nodata-masks-and-what-no-data-means)).
 **Is the result validated?**
 The pipelines apply published methods with documented thresholds. They do not validate the result *for your site*. For
 accuracy numbers, compare with reference data using [`postprocess accuracy`](../data/postprocessing.md) or the
-[benchmark tools](../benchmark/index.md). Treat unvalidated maps as screening products.
+[benchmark tools](../experiments/benchmark.md). Treat unvalidated maps as screening products.
 
 **Why does the flood map disagree with the news?**
 Flood maps from satellites show water *at the time of the pass*. Floods peak between passes, cloud hides the optical
@@ -98,7 +98,7 @@ and the multi-sensor pipeline page.
 [Choosing a model](../models/choosing.md) maps tasks to architectures and says what data each needs.
 
 **Can I fine-tune a foundation model such as Prithvi?**
-Yes; see [Foundation models](../models/foundation.md) and [Training](../training/index.md).
+Yes; see [Foundation models](../foundation-models/index.md) and [Training](../training/index.md).
 
 **Why does a `needs weights` pipeline fail before downloading anything?**
 So you do not wait for a download and then get a meaningless result. The check happens first.
@@ -109,7 +109,7 @@ So you do not wait for a download and then get a meaningless result. The check h
 3.10 and newer (tested on 3.13).
 
 **How do I report a bug or contribute?**
-[Contributing](../contributing.md). Include `pygeovision doctor` and the `-v` log.
+[Contributing](../project/contributing.md). Include `pygeovision doctor` and the `-v` log.
 
 **Is there a changelog?**
-[Changelog](../reference/changelog.md) and the [roadmap](../reference/roadmap.md).
+[Changelog](../project/changelog.md) and the [roadmap](../project/roadmap.md).

@@ -35,6 +35,23 @@ Commands:
 
 ### `pygeovision monitor drift`
 
+Detect data distribution drift.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `REFERENCE_DIR` | text | yes |
+| `CURRENT_DIR` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output`, `-o` | text | `./monitoring/drift_report.json` |  |  |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision monitor drift [OPTIONS] REFERENCE_DIR CURRENT_DIR
 
@@ -44,3 +61,4 @@ Options:
   -o, --output TEXT
   --help             Show this message and exit.
 ```
+:::

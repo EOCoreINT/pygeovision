@@ -977,6 +977,7 @@ def _number_list(text: str) -> list[float | int] | None:
 @click.option("--date-before", default=None, help="Earlier date (bi-temporal pipelines).")
 @click.option("--date-after", default=None, help="Later date (bi-temporal pipelines).")
 @click.option("--dates", default=None, help="Comma-separated dates (vegetation_indices).")
+
 @click.option("--model", default=None, help="Model name (pipelines that run a network).")
 @click.option("--checkpoint", default=None, type=click.Path(),
               help="Your trained .pth weights; required by every 'needs_weights' pipeline.")
@@ -999,9 +1000,12 @@ def _number_list(text: str) -> list[float | int] | None:
               help="Comma-separated names for the classes 0,1,2... of a network you trained "
                    "(labels the map, tables and vector attributes).")
 @click.option("--report-title", default=None, help="Replace the report title.")
+@click.option("--cloud-mask/--no-cloud-mask", "cloud_mask", default=True, show_default=True,
+              help="Apply a native brightness/spectral-flatness cloud mask to the imagery before running the pipeline. Use --no-cloud-mask if your imagery is already cloud-free or you want to see the pipeline's output on cloudy pixels.")
+
 def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, dates,
                  model, checkpoint, source, provider, params, no_report, report_formats,
-                 vector_formats, class_names, report_title):
+                 vector_formats, class_names, report_title, cloud_mask):
     """Run an end-to-end geospatial pipeline by name.
 
     Downloads imagery with PyGeoFetch, then computes an index, a terrain
@@ -1061,6 +1065,10 @@ def pipeline_cmd(pipeline_name, bbox, output, date, date_before, date_after, dat
         kwargs["dates"] = [d.strip() for d in dates.split(",") if d.strip()]
     if provider:
         kwargs["providers"] = list(provider)
+
+    if cloud_mask is not None:
+        kwargs["cloud_mask"] = cloud_mask
+
     for raw in params:
         key, value = _parse_param(raw)
         kwargs[key] = value
@@ -1957,8 +1965,6 @@ def main() -> None:
     cli(obj={})
 
 
-if __name__ == "__main__":
-    main()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2803,14 +2809,14 @@ def obia_grp():
     """Object-based image analysis — segment, describe, classify, assess.
 
     \b
-    Typical sequence:
-        pygeovision obia demo ./obia_demo
-        pygeovision obia segment ./obia_demo/scene.tif --scale 20 --output-labels labels.tif
-        pygeovision obia features ./obia_demo/scene.tif labels.tif --output features.csv
-        pygeovision obia classify ./obia_demo/scene.tif labels.tif \\
-            --samples ./obia_demo/reference.gpkg --class-column class --output classified.gpkg
+    Typical sequence (real Sentinel-2 + ESA WorldCover for an area of a few km):
+        pygeovision obia fetch --bbox -1.70 6.18 -1.655 6.225 --date 2024-01 -o scene.tif --worldcover wc.tif
+        pygeovision obia segment scene.tif --scale 16 --output-labels labels.tif
+        pygeovision obia features scene.tif labels.tif --output features.csv --texture nir
+        pygeovision obia classify scene.tif labels.tif --weak-labels wc.tif \\
+            --class-map "10=forest,40=farmland,50=built_up,60=mine_disturbed,80=water" --output classified.gpkg
         pygeovision obia assess-classification labels.tif classified.gpkg \\
-            ./obia_demo/reference.gpkg --class-column class
+            reference_points.gpkg --class-column class
     """
 
 
@@ -2836,27 +2842,53 @@ def _obia_read_labels(path):
         return src.read(1).astype("int64"), src.transform, src.crs
 
 
-@obia_grp.command("demo")
-@click.argument("output_dir")
-@click.option("--size", default=160, show_default=True, help="Scene width/height in pixels.")
-@click.option("--seed", default=0, show_default=True, help="Random seed (a different scene per seed).")
-def obia_demo(output_dir, size, seed):
-    """Write a synthetic teaching scene with known reference data.
+@obia_grp.command("fetch")
+@click.option("--bbox", nargs=4, type=float, required=True, metavar="MIN_LON MIN_LAT MAX_LON MAX_LAT",
+              help="Area of interest in degrees. Keep it to a few km: region merging is pure Python.")
+@click.option("--date", "date_str", required=True, help="A day, a month (2024-01) or START/END.")
+@click.option("--output", "-o", required=True, help="Output GeoTIFF (band names are written as descriptions).")
+@click.option("--bands", default="blue,green,red,nir,swir1,swir2", show_default=True)
+@click.option("--cloud-max", default=30.0, show_default=True, help="Scene-level cloud cover limit, percent.")
+@click.option("--providers", default=None, help="Comma-separated providers (default: the configured ones).")
+@click.option("--worldcover", default=None, help="Also write ESA WorldCover, on the image's grid, to this GeoTIFF.")
+@click.option("--quiet", is_flag=True, help="No progress output (by default each step reports what it is doing).")
+@click.option("--heartbeat", default=10.0, show_default=True, help="Seconds between 'still working' lines.")
+def obia_fetch(bbox, date_str, output, bands, cloud_max, providers, worldcover, quiet, heartbeat):
+    """Download a cloud-masked Sentinel-2 image (and optionally WorldCover) for OBIA.
 
-    Creates scene.tif (blue, green, red, nir), reference.gpkg (reference objects
-    with a 'class' column) and reference_ids.tif (one id per reference object).
+    Uses PyGeoVision's own search and download code, the same as the pipelines. Cloud and shadow
+    pixels are written as NaN and become label 0 (no data) in `obia segment`.
+
+    A scene is a few hundred MB and can take minutes. The command prints each stage, the search and
+    download messages, and a "still working" line every --heartbeat seconds with the megabytes received,
+    so a slow network can be told from a hang. Use --quiet to silence it.
+
+    \b
+    Example:
+        pygeovision obia fetch --bbox -1.70 6.18 -1.655 6.225 --date 2024-01 -o scene.tif --worldcover wc.tif
     """
     import os
 
-    from pygeovision.obia import make_demo_scene, save_raster
-    os.makedirs(output_dir, exist_ok=True)
-    sc = make_demo_scene(size, seed)
-    r = sc.raster
-    save_raster(os.path.join(output_dir, "scene.tif"), r.image, r.transform, r.crs, r.band_names)
-    save_raster(os.path.join(output_dir, "reference_ids.tif"), sc.ref_labels, r.transform, r.crs, dtype="int32")
-    sc.reference.to_file(os.path.join(output_dir, "reference.gpkg"), driver="GPKG")
-    click.echo(f"  ✓ Demo scene ({size}x{size}, seed {seed}) → {output_dir}")
-    click.echo(f"    classes: {', '.join(sc.class_names)}")
+    from pygeovision import PyGeoVision
+    from pygeovision.obia import fetch_scene, fetch_worldcover, save_raster, valid_mask
+    client = PyGeoVision()
+    kw = {"providers": [p.strip() for p in providers.split(",")]} if providers else {}
+    try:
+        rd = fetch_scene(client, tuple(bbox), date_str, os.path.join(os.path.dirname(os.path.abspath(output)), "download"),
+                         bands=[b.strip() for b in bands.split(",")], cloud_cover_max=cloud_max,
+                         verbose=not quiet, heartbeat=heartbeat, **kw)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+    save_raster(output, rd.image, rd.transform, rd.crs, rd.band_names)
+    nodata = 100.0 * (1.0 - float(valid_mask(rd).mean()))
+    click.echo(f"  ✓ {rd.image.shape[1]} x {rd.image.shape[2]} px, {len(rd.band_names)} bands, {rd.crs} → {output}")
+    click.echo(f"    no data (cloud/shadow): {nodata:.1f}% of the image")
+    if worldcover:
+        try:
+            _, path = fetch_worldcover(client, tuple(bbox), worldcover, like=rd, verbose=not quiet, heartbeat=heartbeat)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc))
+        click.echo(f"  ✓ WorldCover on the image grid → {path}")
 
 
 @obia_grp.command("segment")
@@ -2912,11 +2944,19 @@ def obia_features(input_path, labels_path, output, texture, indices):
 @click.option("--output", required=True, help="Output vector file (.gpkg/.geojson).")
 @click.option("--samples", default=None, help="Vector file of training polygons/points (supervised).")
 @click.option("--rules", default=None, help="YAML rule file (rule-based): rules: [{class: water, when: 'mean_ndwi > 0.3'}].")
+@click.option("--weak-labels", default=None, help="A land-cover raster on the image grid (e.g. WorldCover) to learn from (supervised).")
+@click.option("--class-map", default=None, help="With --weak-labels: raster code to class, e.g. '10=forest,40=farmland,80=water'.")
+@click.option("--min-purity", default=0.7, show_default=True, help="With --weak-labels: share of an object's pixels that must agree.")
 @click.option("--class-column", default="class", show_default=True)
 @click.option("--method", default="rf", show_default=True, type=click.Choice(["rf", "knn", "svm", "tree"]))
 @click.option("--output-raster", default=None, help="Also write classes as a GeoTIFF (codes in the class table).")
-def obia_classify(input_path, labels_path, output, samples, rules, class_column, method, output_raster):
-    """Classify objects from samples (supervised) or a YAML rule set."""
+def obia_classify(input_path, labels_path, output, samples, rules, weak_labels, class_map, min_purity, class_column, method,
+                  output_raster):
+    """Classify objects from samples (supervised), a land-cover map used as weak labels, or a YAML rule set.
+
+    Weak labels inherit the errors of the map they come from: use them to train, and judge the result
+    against reference data that is independent of the map.
+    """
     import geopandas as gpd
 
     from pygeovision.obia import (
@@ -2928,8 +2968,10 @@ def obia_classify(input_path, labels_path, output, samples, rules, class_column,
         save_raster,
         spectral_layers,
     )
-    if bool(samples) == bool(rules):
-        raise click.UsageError("give exactly one of --samples or --rules")
+    if sum(map(bool, (samples, rules, weak_labels))) != 1:
+        raise click.UsageError("give exactly one of --samples, --weak-labels or --rules")
+    if weak_labels and not class_map:
+        raise click.UsageError("--weak-labels needs --class-map, e.g. '10=forest,40=farmland'")
     rd = load_raster(input_path)
     lab, tr, crs = _obia_read_labels(labels_path)
     F = extract_features(lab, rd, extra_layers=spectral_layers(rd))
@@ -2948,18 +2990,36 @@ def obia_classify(input_path, labels_path, output, samples, rules, class_column,
         except ValueError as exc:
             raise click.ClickException(str(exc))
     else:
-        gdf = gpd.read_file(samples)
-        if crs is not None and gdf.crs is not None:
-            gdf = gdf.to_crs(crs)
-        s = samples_from_geometries(lab, gdf, class_column, tr)
+        if weak_labels:
+            import rasterio
+
+            from pygeovision.obia import samples_from_raster
+            try:
+                cmap = {int(k): v.strip() for k, v in (kv.split("=", 1) for kv in class_map.split(","))}
+            except ValueError:
+                raise click.UsageError(f"--class-map expects 'code=class,code=class', got {class_map!r}")
+            with rasterio.open(weak_labels) as src:
+                wl = src.read(1)
+            try:
+                s = samples_from_raster(lab, wl, cmap, min_purity=min_purity)["class"]
+            except ValueError as exc:
+                raise click.ClickException(str(exc))
+        else:
+            gdf = gpd.read_file(samples)
+            try:
+                s = samples_from_geometries(lab, gdf, class_column, tr, crs=crs)
+            except ValueError as exc:
+                raise click.ClickException(str(exc))
         if s.empty:
-            raise click.ClickException("no image object overlaps the sample geometries")
+            raise click.ClickException("no image object overlaps the sample geometries" if samples
+                                       else "no object reaches the purity threshold in the weak-label raster")
         try:
             res = ObjectClassifier(method).fit(F, s).predict(F)
         except ValueError as exc:
             raise click.ClickException(str(exc))
         click.echo(f"  trained on {len(s)} sample objects ({s.nunique()} classes)")
-        click.echo("  note: judge accuracy with reference data that was NOT used for training")
+        click.echo("  note: judge accuracy with reference data that was NOT used for training"
+                   + (" and is independent of the weak-label map" if weak_labels else ""))
     res.to_vector(lab, tr, crs).to_file(output)
     click.echo(f"  ✓ Classified {len(res.classes)} objects → {output}")
     click.echo("  " + res.summary().to_string().replace("\n", "\n  "))
@@ -3064,3 +3124,7 @@ def obia_assess_cls(labels_path, classified_path, reference_path, class_column, 
     if output:
         rep["confusion"].to_csv(output)
         click.echo(f"\n  ✓ → {output}")
+
+
+if __name__ == "__main__":   # keep at the end: every command group above must be registered first
+    main()

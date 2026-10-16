@@ -8,6 +8,14 @@ A drift report in a JSON file nobody opens protects nobody. `AlertManager` turns
 and sends each one to the channels you configure: the log by default, plus anything you register (a Slack message, an
 e-mail, a ticket).
 
+```{figure} ../_static/img/flow-alerts.svg
+:alt: From drift report to a person: check_drift_report turns a report into alerts with a severity; trigger stores each in history and calls the handler of every channel; handlers write a file, post to chat or send e-mail
+:width: 100%
+:class: pgv-figure
+
+The manager decides severity and routes; what a channel *does* is a function you supply.
+```
+
 ## How to use
 
 ```python
@@ -65,7 +73,67 @@ the alert silently. It now logs a warning:
 `channel 'email' has no handler (register_handler); alert not delivered there: hello`. The alert is still stored in `history`.
 There are no built-in e-mail or Slack senders: you supply the function.
 
-A handler that raises an exception propagates to the caller of `trigger`, so wrap network calls in your own `try/except`.
+A handler that raises an exception propagates to the caller of `trigger`, and the channels after it in the list are **skipped** (the alert is
+already in `history`). So wrap network calls in your own `try/except`, as the handlers below do.
+
+## Ready-made handlers you can copy
+
+These four are a documented example ({download}`alert_handlers.py <../_examples/monitoring/alert_handlers.py>`), not part of the package. They were
+run here with the real `AlertManager`: the JSON-lines file, the Slack post to a local HTTP server, e-mail through a stand-in SMTP object, and the
+once-only wrapper (`tests/test_docs_alert_handlers.py`). **Not run:** a real Slack workspace or mail server.
+
+```{literalinclude} ../_examples/monitoring/alert_handlers.py
+:language: python
+:caption: alert_handlers.py
+:linenos:
+```
+
+```python
+from pygeovision.monitoring import AlertManager
+from alert_handlers import jsonl_handler, slack_handler, email_handler, OnChange
+
+am = AlertManager(channels=["log", "file", "slack", "mail"])
+am.register_handler("file", jsonl_handler("monitoring/alerts.jsonl"))
+am.register_handler("slack", OnChange(slack_handler("https://hooks.slack.com/services/...")))
+am.register_handler("mail", email_handler("smtp.example.org", "pgv@example.org", ["team@example.org"], username="pgv", password=PASSWORD))
+```
+
+| Handler | What it does | Why it is written this way |
+|---|---|---|
+| `jsonl_handler(path)` | Appends one JSON object per line | Survives a restart (`history` does not). Values that are not JSON (NumPy numbers) are turned into text instead of failing |
+| `slack_handler(url, timeout=5)` | Posts `"CRITICAL: <message>"` to a Slack incoming webhook | A dead network or a bad URL is logged, not raised, so the other channels still run |
+| `email_handler(host, sender, recipients, ..., only=("critical",))` | Sends an e-mail for the severities you list | A mailbox of warnings is a mailbox nobody reads; the default is critical only |
+| `OnChange(handler)` | Wraps any handler so each distinct `(severity, message)` reaches it once until `reset()` | One drift report raises several alerts, so "same as last time" would fire every night as they alternate; remembering each key does not. The memory is in the process, so after a restart the first alert goes out again |
+
+Keep secrets (the webhook URL, the SMTP password) in environment variables or a secrets store, not in the script.
+
+## A nightly job, end to end
+
+```python
+import logging, sys
+from pygeovision.monitoring import AlertManager, DriftDetector
+from alert_handlers import jsonl_handler, slack_handler, OnChange
+
+am = AlertManager(channels=["log", "file", "slack"])
+am.register_handler("file", jsonl_handler("monitoring/alerts.jsonl"))
+am.register_handler("slack", OnChange(slack_handler(WEBHOOK)))
+
+det = DriftDetector(storage_dir="./monitoring/")
+report = det.check(todays_tifs, current_metrics=None)
+
+if report["incomplete"]:
+    am.trigger("critical", "Drift check could not run", {"errors": report["errors"]})
+    sys.exit(1)                                  # the scheduler sees the failure too
+am.check_drift_report(report)
+```
+
+Two details matter. The incomplete branch is **yours** to write (the manager sends nothing for an incomplete report). And `check_drift_report` hands the
+*whole report* to the performance alerts as `data`, so the entry in a file can be large; if that is a problem, trigger your own shorter alerts from the fields you need.
+
+## Severity
+
+`trigger` accepts any text as the severity. The `log` channel understands three: `info`, `warning` and `critical` (anything else is logged as a warning). Your own handlers
+can use any scheme (`page` for pager-worthy, say), but keep one: a handler like `email_handler` compares the text exactly.
 
 ## What to do when…
 
@@ -76,8 +144,11 @@ A handler that raises an exception propagates to the caller of `trigger`, so wra
 | `channel 'x' has no handler` warning | Channel named but not registered | `register_handler("x", fn)` |
 | Handler failure stops later channels | An exception in a handler | Catch exceptions inside the handler |
 | `history` empty after a restart | It is in memory | Write alerts to your own store in a handler |
-| Too many alerts | Every check above the threshold alerts | Alert on a change of state yourself, or raise `recent_n`/thresholds |
+| Too many alerts | Every check above the threshold alerts | Wrap the handler in `OnChange`, or raise the thresholds |
+| Later channels never fire | An earlier handler raised | Catch exceptions inside handlers (the examples do) |
+| The file has no alerts after a restart you did not expect | `history` is in memory only | Use `jsonl_handler` |
 
-```{seealso}
-[Data drift](drift.md) · [Performance tracking](performance.md)
-```
+## Related
+
+- [Monitoring overview](index.md), [Data drift](drift.md), [Performance tracking](performance.md), [Site tracking](site-tracking.md)
+- [`pygeovision.monitoring` in the Python API](../reference/api/monitoring.md)

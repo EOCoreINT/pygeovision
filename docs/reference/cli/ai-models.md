@@ -39,6 +39,17 @@ Commands:
 
 ### `pygeovision ai-models cache`
 
+Manage AI model checkpoint cache.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--clear` | flag | off |  |  |
+| `--model` | text |  |  |  |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision ai-models cache [OPTIONS]
 
@@ -49,8 +60,19 @@ Options:
   --model TEXT
   --help        Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai-models info`
+
+Show details for a specific model.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `MODEL_NAME` | text | yes |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai-models info [OPTIONS] MODEL_NAME
@@ -60,8 +82,20 @@ Usage: pygeovision ai-models info [OPTIONS] MODEL_NAME
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai-models list`
+
+List the 14 models of the legacy AI-engine registry.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--task` | one of `segmentation` | `detection` | `classification` | `change_detection` | `super_resolution` |  |  |  |
+| `--pretrained-only` | flag | off |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai-models list [OPTIONS]
@@ -73,3 +107,4 @@ Options:
   --pretrained-only
   --help                          Show this message and exit.
 ```
+:::

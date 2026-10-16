@@ -23,7 +23,7 @@ class ModelSpec:
     timm_id: str | None = None
     description: str = ""
     supports_multispectral: bool = True
-    pretrained_on: str = ""   # only set where it is known and matters (foundation models)
+    pretrained_on: str = "imagenet"
     paper: str = ""
     factory: Callable | None = field(default=None, repr=False)
 
@@ -103,9 +103,9 @@ _SPECS = [
     ModelSpec("sam2-hiera-l",    "segmentation", "sam2",     224.4,  hf_id="facebook/sam2-hiera-large-hf",description="SAM2 Hiera-L"),
 
     # ── Change Detection (10) ────────────────────────────────────────────────
-    ModelSpec("changeformer-mit-b0","change_detection","changeformer", 0.8, description="Compact siamese change network with cross-attention, in the spirit of ChangeFormer (not the published MiT-backbone ChangeFormer); trained from scratch on your data, no pretrained weights"),
+    ModelSpec("changeformer-mit-b0","change_detection","changeformer", 13.9, description="ChangeFormer MiT-B0"),
     ModelSpec("changestar-r18",   "change_detection","changestar",   26.0, description="ChangeStar ResNet-18 -- no implementation available; get_model() raises NotImplementedError (use changeformer, bit-r50 or dsamnet)"),
-    ModelSpec("changeformer-mit-b4","change_detection","changeformer", 67.4, description="ChangeFormer MiT-B4 -- registered for discovery; the published model is not implemented here and get_model() raises NotImplementedError (use changeformer-mit-b0, bit-r50 or dsamnet)"),
+    ModelSpec("changeformer-mit-b4","change_detection","changeformer", 67.4, description="ChangeFormer MiT-B4"),
     ModelSpec("bit-r50",         "change_detection","bit",         26.1, description="BIT ResNet-50"),
     ModelSpec("dsamnet",         "change_detection","dsamnet",     16.0, description="DSAMNet"),
 
@@ -126,7 +126,7 @@ _SPECS = [
     ModelSpec("moondream2",      "vlm","moondream",   1800.0, hf_id="vikhyatk/moondream2", description="Moondream2 (satellite VQA)"),
     ModelSpec("openclip-b32",    "vlm","clip",          151.0, hf_id="laion/CLIP-ViT-B-32-laion2B-s34B-b79K", description="OpenCLIP ViT-B/32"),
     ModelSpec("openclip-l14",    "vlm","clip",          428.0, hf_id="openai/clip-vit-large-patch14",          description="OpenCLIP ViT-L/14"),
-    ModelSpec("lisat-7b",        "vlm","lisat",         7000.0, hf_id="jquenum/LISAt-7b", description="LISAt-7B -- geospatial reasoning segmentation VLM (Quenum et al. 2025, arXiv:2505.02829); real, published SOTA model, but no verified build path here; get_model() raises NotImplementedError and explains what loading it would need", paper="https://arxiv.org/abs/2505.02829"),
+    ModelSpec("lisat-7b",        "vlm","lisat",         7000.0, hf_id="jquenum/LISAt-7b", description="LISAt-7B -- geospatial reasoning segmentation VLM (Quenum et al. 2025, arXiv:2505.02829); real, published SOTA model, but no verified build path here -- see family=='lisat' dispatch", paper="https://arxiv.org/abs/2505.02829"),
 
     # ── 3D / LiDAR (6) ──────────────────────────────────────────────────────
     ModelSpec("pointnet2-ssg",   "3d","pointnet",    1.5,  description="PointNet++ SSG"),
@@ -136,15 +136,11 @@ _SPECS = [
     ModelSpec("pointtransformer","3d","transformer",  7.8, description="Point Transformer"),
     ModelSpec("ptv3",            "3d","transformer", 46.2, description="Point Transformer V3"),
 
-    # ── Time Series (6) ─────────────────────────────────────────────────────
-
+  
     # ── Super-Resolution (4) ─────────────────────────────────────────────────
     ModelSpec("swinir-m",        "super_resolution","swin", 12.1, hf_id="caidas/swin2SR-realworld-sr-x4-64-bsrgan-psnr",  description="Swin2SR real-world x4 super-resolution (transformers)"),
 
-    # ── DINOv3 — all 12 variants ─────────────────────────────────────────────────
-
-    # ── DINOv3 task heads ────────────────────────────────────────────────────────
-
+    
     # ── Prithvi ─────────────────────────────────────────────────────────────────
     ModelSpec("prithvi_eo_1_0",    "foundation","prithvi",  100.0,  hf_id="ibm-nasa-geospatial/Prithvi-EO-1.0-100M",          description="Prithvi-EO-1.0 100M — HLS US 30m",    pretrained_on="HLS-US",    supports_multispectral=True),
     ModelSpec("prithvi_eo_2_0",    "foundation","prithvi",  300.0,  hf_id="ibm-nasa-geospatial/Prithvi-EO-2.0-300M",   description="Prithvi-EO-2.0 300M — HLS Global 30m", pretrained_on="HLS-Global",supports_multispectral=True),
@@ -268,6 +264,7 @@ _PRITHVI_KEY = {
     "prithvi-100m": "prithvi_eo_1_0", "prithvi_eo_1_0": "prithvi_eo_1_0",
     "prithvi-300m": "prithvi_eo_2_0", "prithvi_eo_2_0": "prithvi_eo_2_0",
     "prithvi-600m": "prithvi_eo_2_0_600m", "prithvi_eo_2_0_600m": "prithvi_eo_2_0_600m",
+    "prithvi_burn_scar": "prithvi_eo_1_0_finetuned_burn",
 }
 
 _REFUSALS = {
@@ -310,11 +307,6 @@ def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
     if spec.name == "alphaearth":
         from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         return AlphaEarthGeo()
-    if spec.name == "prithvi_burn_scar":
-        raise NotImplementedError(
-            "'prithvi_burn_scar' is a TerraTorch/MMSegmentation fine-tune that this package cannot "
-            "load. Fine-tune 'prithvi-100m' on your own burn labels, or use the wildfire_severity "
-            "pipeline (dNBR, no weights).")
     if fam == "prithvi":
         from pygeovision.models.foundation.prithvi import load_prithvi_hf
         if not pretrained and not allow_random_init:
@@ -367,14 +359,9 @@ def _build_model(spec: ModelSpec, num_classes: int, in_channels: int,
         from pygeovision.models.segmentation.fcn import build_fcn
         return build_fcn(_ENCODER_BY_NAME[spec.name], num_classes, in_channels, pretrained, **kwargs)
     if fam == "changeformer":
-        if "b4" in spec.name:
-            raise NotImplementedError(
-                f"'{spec.name}': the published ChangeFormer with a MiT-B4 backbone is not implemented "
-                f"in this package, and building the compact network under that name would be "
-                f"mislabelling it. Use 'changeformer-mit-b0' (compact siamese network), 'bit-r50' or "
-                f"'dsamnet'.")
         from pygeovision.models.change_detection.changeformer import ChangeFormer
-        return ChangeFormer(num_classes=num_classes, in_channels=in_channels).build()
+        backbone = "mit-b4" if "b4" in spec.name else "mit-b0"
+        return ChangeFormer(num_classes=num_classes, in_channels=in_channels, backbone=backbone).build()
     if fam == "bit":
         from pygeovision.models.change_detection.bit import build_bit
         return build_bit(num_classes=num_classes, in_channels=in_channels,

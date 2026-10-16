@@ -1,4 +1,299 @@
+/* PyGeoVision docs theme. Same chrome as the pygeofetch docs: Ubuntu font, sticky top navbar, 297px sidebar with an
+   accordion, breadcrumb and version badge, large headings, cream admonitions, narrow right-hand table of contents. */
+@import url("https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap");
+
+html { font-size: 100%; scroll-padding-top: 76px; }
+body {
+  --font-stack: Ubuntu, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-stack--headings: var(--font-stack);
+  --font-stack--monospace: "Ubuntu Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-size--normal: 100%;
+  --font-size--small: 90%;
+  --font-size--small--2: 85%;
+  --font-size--small--3: 80%;
+  --font-size--small--4: 70%;
+  --code-font-size: 95%;
+  --admonition-font-size: 1rem;
+  --sidebar-item-font-size: 1.02rem;
+  --toc-font-size: 0.82rem;
+  --toc-item-spacing-vertical: 0.42rem;
+  --sidebar-item-spacing-vertical: 0.5rem;
+  --sidebar-item-spacing-horizontal: 1.1rem;
+  --header-height: 60px;
+  --pgv-nav-h: 60px;
+  font-size: 1rem; line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  --color-brand-primary: #1b6a9c;
+  --color-brand-content: #1b6a9c;
+  --color-brand-visited: #1b6a9c;
+  --color-foreground-primary: #1c1e21;
+  --color-sidebar-background: #fff;
+  --color-sidebar-background-border: #dadde1;
+  --color-sidebar-link-text: #1c1e21;
+  --color-sidebar-link-text--top-level: #1c1e21;
+  --color-sidebar-item-background--hover: rgba(0,0,0,.05);
+  --color-toc-item-text: #3b3d42;
+  --color-link-underline: transparent;
+  --color-link-underline--hover: currentColor;
+  --color-inline-code-background: rgba(0,0,0,.06);
+  --color-table-header-background: transparent;
+  --color-admonition-background: #fffbea;
+  --pgv-bar: #fff; --pgv-line: #e4e6ea; --pgv-chip: #ebedf0;
+}
+body[data-theme="dark"] {
+  --color-brand-primary: #6cc4dd; --color-brand-content: #6cc4dd; --color-brand-visited: #6cc4dd;
+  --color-foreground-primary: #e3e3e3;
+  --color-background-primary: #1b1b1d; --color-background-secondary: #242526;
+  --color-sidebar-background: #1b1b1d; --color-sidebar-background-border: #3a3b3d;
+  --color-sidebar-link-text: #e3e3e3; --color-sidebar-link-text--top-level: #e3e3e3;
+  --color-sidebar-item-background--hover: rgba(255,255,255,.08);
+  --color-toc-item-text: #c9cacc;
+  --color-inline-code-background: rgba(255,255,255,.1);
+  --color-admonition-background: #2b2618;
+  --pgv-bar: #242526; --pgv-line: #3a3b3d; --pgv-chip: #3a3b3d;
+}
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --color-brand-primary: #6cc4dd; --color-brand-content: #6cc4dd; --color-brand-visited: #6cc4dd;
+    --color-foreground-primary: #e3e3e3;
+    --color-background-primary: #1b1b1d; --color-background-secondary: #242526;
+    --color-sidebar-background: #1b1b1d; --color-sidebar-background-border: #3a3b3d;
+    --color-sidebar-link-text: #e3e3e3; --color-sidebar-link-text--top-level: #e3e3e3;
+    --color-sidebar-item-background--hover: rgba(255,255,255,.08);
+    --color-toc-item-text: #c9cacc;
+    --color-inline-code-background: rgba(255,255,255,.1);
+    --color-admonition-background: #2b2618;
+    --pgv-bar: #242526; --pgv-line: #3a3b3d; --pgv-chip: #3a3b3d;
+  }
+}
+
+/* ---------- Top navbar ---------- */
+.announcement { background: var(--pgv-bar); color: var(--color-foreground-primary); padding: 0; height: var(--pgv-nav-h);
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100; border-bottom: 1px solid var(--pgv-line); box-shadow: 0 1px 2px rgba(0,0,0,.1); overflow: visible; }
+.announcement-content { padding: 0; margin: 0; width: 100%; max-width: none; text-align: left; height: 100%; }
+.pgv-navbar { display: flex; align-items: center; height: var(--pgv-nav-h); padding: 0 1rem; gap: 1.5rem; font-size: 1rem; }
+.pgv-brand { display: flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.1rem; color: inherit; text-decoration: none; }
+.pgv-logo { width: 32px; height: 32px; }
+.pgv-links { display: flex; gap: 1.5rem; }
+.pgv-links a { color: inherit; font-weight: 500; text-decoration: none; padding: .4rem 0; }
+.pgv-links a:hover, .pgv-links a.active { color: var(--color-brand-primary); }
+.pgv-right { margin-left: auto; display: flex; align-items: center; gap: 1rem; }
+.pgv-icon { color: inherit; background: none; border: 0; cursor: pointer; display: inline-flex; padding: .25rem; }
+.pgv-icon svg { height: 24px; width: 24px; }
+.pgv-navbar .theme-toggle svg { stroke: currentColor; }
+.pgv-search { display: flex; align-items: center; gap: .5rem; border: 1px solid var(--pgv-line); border-radius: 8px; padding: .35rem .6rem; min-width: 12rem; color: var(--color-brand-primary); }
+.pgv-search input[name="q"] { border: 0; outline: 0; background: transparent; color: inherit; font: inherit; flex: 1; width: 6rem; }
+.pgv-search input::placeholder { color: var(--color-brand-primary); opacity: .85; }
+.pgv-search kbd { background: var(--pgv-chip); border-radius: 4px; padding: 0 .4rem; font: inherit; font-size: .82rem; color: var(--color-brand-primary); box-shadow: none; border: 0; }
+@media (max-width: 70em) { .pgv-links { display: none; } .pgv-search kbd { display: none; } .pgv-search { min-width: 0; } }
+
+/* ---------- Layout ---------- */
+.page { max-width: none; }
+.main { min-width: 0; }
+.sidebar-drawer { border-right: 1px solid var(--pgv-line); }
+@media (min-width: 67em) {
+  .sidebar-drawer { width: 297px; flex: none; }
+  .sidebar-container { width: 297px; }
+  .sidebar-sticky, .toc-sticky { top: var(--pgv-nav-h); height: calc(100vh - var(--pgv-nav-h)); }
+}
+@media (min-width: 82em) {
+  .toc-drawer { width: 15rem; flex: none; }
+  .toc-sticky { width: 15rem; }
+  .toc-tree { border-left: 1px solid var(--pgv-line); margin-left: .5rem; padding-top: .3rem; }
+}
+.content { min-width: 0; width: auto; max-width: 82rem; margin: 0 auto; padding: 1.25rem 2.25rem 3rem; }
+@media (max-width: 82em) { .content { padding: 1rem 1.25rem 2.5rem; } }
+@media (min-width: 120em) { .content { max-width: 90rem; } }
+
+/* ---------- Sidebar ---------- */
+.pgv-version-row { padding: 1rem 1.1rem .9rem; border-bottom: 1px solid var(--pgv-line); font-size: 1.05rem; display: flex; gap: .9rem; align-items: baseline; }
+.pgv-version-label { font-weight: 700; text-decoration: underline; }
+.pgv-version-value svg { margin-left: .4rem; }
+.sidebar-tree { margin-top: .5rem; }
+.sidebar-tree .reference { border-radius: 6px; padding-top: .45rem; padding-bottom: .45rem; line-height: 1.35; }
+.sidebar-tree .current-page > .reference { color: var(--color-brand-primary); font-weight: 500; background: transparent; }
+.sidebar-tree .caption, .sidebar-tree .caption-text { font-size: .74rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--color-foreground-muted); }
+.sidebar-tree label { color: var(--color-foreground-secondary); }
+
+/* ---------- Content ---------- */
+.pgv-crumbs { display: flex; align-items: center; gap: .55rem; font-size: .82rem; margin: .5rem 0 1rem; color: var(--color-foreground-secondary); flex-wrap: wrap; }
+.pgv-crumbs a { color: inherit; display: inline-flex; padding: .2rem .35rem; }
+.pgv-sep { opacity: .7; }
+.pgv-crumb { padding: .2rem .6rem; border-radius: 1rem; }
+.pgv-current { background: var(--pgv-chip); color: var(--color-brand-primary); }
+.pgv-version { display: inline-block; font-size: .72rem; font-weight: 700; background: var(--pgv-chip); border-radius: 4px; padding: .05rem .4rem; margin-bottom: .25rem; }
+h1, h2, h3, h4, h5 { font-weight: 700; letter-spacing: 0; line-height: 1.25; }
+article h1 { font-size: 3rem; margin: 0 0 1.4rem; }
+article h2 { font-size: 2rem; margin: 2rem 0 1rem; padding: 0; border: 0; }
+article h3 { font-size: 1.5rem; margin: 1.6rem 0 .8rem; }
+article h4 { font-size: 1.2rem; }
+a { text-decoration: none; }
+article a:hover { text-decoration: underline; }
+article ul > li::marker { color: var(--color-foreground-primary); }
+
+.admonition { background: var(--color-admonition-background); border: 0; border-left: 5px solid var(--color-admonition-title); border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.1); padding: .9rem 1.2rem; }
+.admonition > .admonition-title { background: transparent; text-transform: uppercase; font-size: .9rem; font-weight: 700; padding: 0 0 .3rem; margin: 0; }
+.admonition > .admonition-title::before { display: none; }
+.admonition.note, .admonition.important { --color-admonition-title: #54c7ec; }
+.admonition.warning, .admonition.caution { --color-admonition-title: #e6a700; }
+.admonition.tip, .admonition.hint { --color-admonition-title: #009400; }
+.admonition.danger, .admonition.error, .admonition.attention { --color-admonition-title: #e13238; }
+.admonition > p { margin: .3rem 0; }
+
+article table.docutils { width: 100%; display: table; border-collapse: collapse; font-size: .95em; }
+article table.docutils th, article table.docutils td { vertical-align: top; padding: .6rem .9rem; border: 1px solid var(--pgv-line); }
+article table.docutils tr:nth-child(2n) td { background: rgba(0,0,0,.03); }
+code.literal { border: 1px solid rgba(0,0,0,.1); border-radius: 4px; padding: .1rem .35rem; }
+div[class*="highlight"] { border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+.sd-card { border: 1px solid var(--pgv-line); border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+.sd-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.14); }
+
+/* ---------- Right table of contents ---------- */
+.toc-tree { font-size: .82rem; }
+.toc-tree a { padding: .15rem 0; }
+.toc-tree li.scroll-current > .reference { color: var(--color-brand-primary); font-weight: 400; }
+footer { border-top: 1px solid var(--pgv-line); }
+
+/* ---------- Fixes ---------- */
+.announcement-content, .announcement-content a { color: var(--color-foreground-primary); }
+.pgv-navbar .pgv-links a:hover, .pgv-navbar .pgv-links a.active { color: var(--color-brand-primary); }
+.pgv-navbar .pgv-brand, .pgv-navbar .pgv-icon { color: var(--color-foreground-primary); }
+.pgv-search, .pgv-search input, .pgv-search kbd { color: var(--color-brand-primary) !important; }
+.admonition > p.admonition-title, .admonition > .admonition-title {
+  background: transparent !important; padding: 0 0 .25rem 0 !important; margin: 0 !important; color: var(--color-foreground-primary);
+}
+.content-icon-container .theme-toggle-container { display: none; }
+
+/* ---------- Fixed navbar at every width ---------- */
+.page { padding-top: var(--pgv-nav-h); }
+.mobile-header { display: none !important; }
+.pgv-burger { display: none; cursor: pointer; color: var(--color-foreground-primary); }
+@media (max-width: 67em) { .pgv-burger:not(.pgv-toc-btn) { display: inline-flex; } }
+@media (max-width: 82em) { .pgv-toc-btn { display: inline-flex; } }
+@media (max-width: 67em) {
+  .sidebar-drawer { top: var(--pgv-nav-h); height: calc(100vh - var(--pgv-nav-h)); z-index: 90; }
+  .toc-drawer { top: var(--pgv-nav-h); z-index: 90; }
+}
+.sidebar-overlay, .toc-overlay { top: var(--pgv-nav-h); }
+
+/* ---------- Sidebar accordion ---------- */
+.sidebar-tree .pgv-group { border-bottom: 1px solid var(--pgv-line); }
+.sidebar-tree p.caption { position: relative; margin: 0; padding: .7rem 2.2rem .7rem 1.1rem; cursor: pointer; user-select: none; }
+.sidebar-tree p.caption:hover { background: var(--color-sidebar-item-background--hover); }
+.sidebar-tree p.caption::after {
+  content: ""; position: absolute; right: 1.1rem; top: 50%; width: .5rem; height: .5rem;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: translateY(-70%) rotate(-45deg); transition: transform .15s ease;
+}
+.sidebar-tree .pgv-open > p.caption::after { transform: translateY(-40%) rotate(45deg); }
+.sidebar-tree .pgv-group > ul { display: none; margin-bottom: .4rem; }
+.sidebar-tree .pgv-open > ul { display: block; }
+.sidebar-tree .pgv-open > p.caption { color: var(--color-foreground-primary); }
+@media (max-width: 67em) { .sidebar-drawer { overflow: hidden; } .sidebar-container { height: 100%; overflow-y: auto; } }
+
+/* ---------- Figures ---------- */
+article figure { margin: 1.6rem 0; padding: .75rem; border: 1px solid var(--pgv-line); border-radius: 10px; background: var(--color-background-primary); box-shadow: 0 1px 3px rgba(0,0,0,.08); text-align: center; }
+article figure img { max-width: 100%; height: auto; border-radius: 6px; }
+article figure figcaption { font-size: .88rem; color: var(--color-foreground-secondary); margin-top: .6rem; text-align: left; line-height: 1.5; }
+article figure figcaption .caption-number { font-weight: 700; }
+article figure.pgv-wide { margin-left: -2rem; margin-right: -2rem; }
+.pgv-tag { display: inline-block; font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .05rem .45rem; border-radius: 4px; margin-right: .4rem; vertical-align: middle; }
+.pgv-tag.real { background: #e6f4ea; color: #1e7a3c; }
+.pgv-tag.synthetic { background: #fff3d6; color: #8a5a00; }
+body[data-theme="dark"] .pgv-tag.real { background: #17321f; color: #7bd89a; }
+body[data-theme="dark"] .pgv-tag.synthetic { background: #3a2f12; color: #f0c35a; }
+.pgv-lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.82); display: flex; align-items: center; justify-content: center; cursor: zoom-out; animation: pgv-fade .18s ease; }
+.pgv-lightbox img { max-width: 94vw; max-height: 92vh; border-radius: 6px; background: #fff; }
+
+/* ---------- Motion (subtle) ---------- */
+@keyframes pgv-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pgv-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+article { animation: pgv-fade .35s ease both; }
+.pgv-reveal { opacity: 0; transform: translateY(10px); transition: opacity .5s ease, transform .5s ease; }
+.pgv-reveal.pgv-in { opacity: 1; transform: none; }
+.sd-card { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.sd-card:hover { transform: translateY(-3px); border-color: var(--color-brand-primary); }
+.sidebar-tree .reference, .toc-tree a { transition: color .15s ease, background-color .15s ease; }
+.pgv-hero { border-radius: 12px; padding: 1.2rem 1rem .6rem; margin: 1.2rem 0 1.6rem; border: 1px solid var(--pgv-line); background: linear-gradient(135deg, rgba(27,106,156,.07), rgba(31,163,122,.07)); }
+.pgv-hero img { width: 100%; height: auto; display: block; }
+.pgv-hero p { margin: 0; }
+@media (prefers-reduced-motion: reduce) {
+  article, .pgv-reveal { animation: none; transition: none; opacity: 1; transform: none; }
+  .sd-card, .sd-card:hover { transition: none; transform: none; }
+}
+
+/* --- language switcher --- */
+.pgv-lang{position:relative}
+.pgv-lang-btn{background:none;border:0;cursor:pointer;color:inherit;display:inline-flex;align-items:center;padding:4px}
+.pgv-lang-menu{display:none;position:absolute;right:0;top:100%;margin:6px 0 0;padding:6px;list-style:none;min-width:11rem;background:var(--color-background-primary);border:1px solid var(--color-background-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:100}
+.pgv-lang:hover .pgv-lang-menu,.pgv-lang:focus-within .pgv-lang-menu{display:block}
+.pgv-lang-menu a{display:block;padding:7px 12px;border-radius:5px;color:var(--color-foreground-primary);text-decoration:none;font-size:.95rem}
+.pgv-lang-menu a:hover{background:var(--color-background-hover)}
+.pgv-lang-menu a.current{font-weight:700;color:var(--color-brand-primary)}
+.pgv-partial{display:inline-block;margin-left:.6rem;font-size:.78rem;opacity:.75}
+html[lang^="ar"] article{direction:rtl;text-align:right}
+html[lang^="ar"] article pre,html[lang^="ar"] article code,html[lang^="ar"] article table,html[lang^="ar"] article .highlight{direction:ltr;text-align:left}
+
+/* ======================================================================================================================
+   PyGeoVision additions
+   ==================================================================================================================== */
+
+/* --- Scripts that Ubuntu does not cover: fall back to the platform's best face --- */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Sans+Arabic:wght@400;500;700&display=swap");
+html[lang^="zh"] body { --font-stack: Ubuntu, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; --font-stack--headings: var(--font-stack); }
+html[lang^="ar"] body { --font-stack: "Noto Sans Arabic", Ubuntu, "Segoe UI", Tahoma, system-ui, sans-serif; --font-stack--headings: var(--font-stack); }
+html[lang^="zh"] article h1, html[lang^="zh"] article h2 { letter-spacing: 0; }
+
+/* --- Kept from the previous PyGeoVision theme --- */
 .sd-card { margin-bottom: 1rem; }
 table.docutils td, table.docutils th { vertical-align: top; }
 code.literal { font-size: 0.92em; }
 .output-block { border-left: 3px solid var(--color-brand-primary); padding-left: 0.8rem; }
+
+/* --- Reading progress bar and back-to-top --- */
+.pgv-progress { position: fixed; top: var(--pgv-nav-h); left: 0; height: 3px; width: 0; z-index: 99; background: linear-gradient(90deg, #1b6a9c, #1fa37a); transition: width .1s linear; }
+.pgv-top { position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 80; width: 2.6rem; height: 2.6rem; border-radius: 50%; border: 1px solid var(--pgv-line);
+  background: var(--pgv-bar); color: var(--color-brand-primary); cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  display: flex; align-items: center; justify-content: center; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+.pgv-top.pgv-show { opacity: 1; transform: none; pointer-events: auto; }
+.pgv-top:hover { border-color: var(--color-brand-primary); }
+
+/* --- Landing page --- */
+.pgv-stats { margin: 1.4rem 0 1.8rem; }
+.sd-card.pgv-stat { border: 1px solid var(--pgv-line); border-radius: 10px; padding: .75rem .9rem; background: var(--color-background-primary); box-shadow: 0 1px 2px rgba(0,0,0,.08); transition: transform .2s ease, border-color .2s ease; }
+.pgv-stat:hover { transform: translateY(-2px); border-color: var(--color-brand-primary); }
+.pgv-stat .pgv-stat-n { font-size: 2.1rem; line-height: 1.1; color: var(--color-brand-primary); padding: 0; }
+.pgv-stat .sd-card-body { font-size: .88rem; color: var(--color-foreground-secondary); padding: .25rem 0 0; }
+.pgv-stat p { margin: 0; }
+.pgv-lead { font-size: 1.25rem; line-height: 1.5; color: var(--color-foreground-secondary); margin: -.4rem 0 1.2rem; }
+
+/* --- Badges used on pipeline and tool pages --- */
+.pgv-badge { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .05rem .5rem; border-radius: 4px; vertical-align: middle; margin-right: .3rem; }
+.pgv-badge.ready { background: #e6f4ea; color: #1e7a3c; }
+.pgv-badge.weights { background: #fff3d6; color: #8a5a00; }
+.pgv-badge.network { background: #e3f0fb; color: #1b5f8c; }
+body[data-theme="dark"] .pgv-badge.ready { background: #17321f; color: #7bd89a; }
+body[data-theme="dark"] .pgv-badge.weights { background: #3a2f12; color: #f0c35a; }
+body[data-theme="dark"] .pgv-badge.network { background: #14283a; color: #8ccbf2; }
+
+/* --- Small refinements --- */
+:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 2px; border-radius: 3px; }
+.headerlink { transition: opacity .15s ease; }
+article kbd { border: 1px solid var(--pgv-line); border-bottom-width: 2px; border-radius: 4px; padding: 0 .35rem; font-size: .85em; background: var(--pgv-chip); }
+.sd-card-title { font-weight: 700; }
+.pgv-lang-menu a[lang] { white-space: nowrap; }
+.pgv-partial { display: inline-block; margin-left: .6rem; padding: .05rem .5rem; border-radius: 4px; background: var(--pgv-chip); font-size: .78rem; opacity: .9; }
+@media (max-width: 40em) { article h1 { font-size: 2.2rem; } article h2 { font-size: 1.6rem; } .pgv-brand span { display: none; } .pgv-search { min-width: 0; } .pgv-search input[name="q"] { width: 4rem; } }
+@media print {
+  .announcement, .sidebar-drawer, .toc-drawer, .pgv-progress, .pgv-top, .pgv-crumbs { display: none !important; }
+  .page { padding-top: 0 !important; } .content { max-width: none; padding: 0; }
+  .pgv-reveal { opacity: 1 !important; transform: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { .pgv-progress, .pgv-top, .pgv-stat { transition: none; } }
+
+/* Flow figures (tools/make_flow_figures.py): full width, soft frame, caption in the muted colour. */
+figure.pgv-figure { margin: 1.4rem 0; padding: .9rem .6rem .5rem; border: 1px solid var(--pgv-line); border-radius: 12px;
+  background: var(--color-background-secondary); }
+figure.pgv-figure img { display: block; width: 100%; height: auto; margin: 0 auto; }
+figure.pgv-figure figcaption { text-align: center; color: var(--color-foreground-muted); font-size: .9rem; margin-top: .4rem; }
+figure.pgv-figure figcaption p { margin: 0; }

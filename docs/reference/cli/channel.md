@@ -2,7 +2,7 @@
 
 # `pygeovision channel`
 
-Run any of the **40 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
+Run any of the **41 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
 a map, tables and a report. This is the main entry point for end users; every pipeline has its own page in the
 [pipeline catalogue](../../pipelines/catalog/index.md).
 
@@ -34,6 +34,37 @@ pygeovision channel water_bodies --bbox -0.15 51.47 -0.10 51.52 --date 2024-06 -
 ## Commands
 
 ### `pygeovision channel`
+
+Run an end-to-end geospatial pipeline by name.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `PIPELINE_NAME` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--bbox` | number |  |  |  |
+| `--output`, `-o` | text | `./pipeline_output` |  |  |
+| `--date` | text |  |  | YYYY-MM acquisition date (single-date pipelines). |
+| `--date-before` | text |  |  | Earlier date (bi-temporal pipelines). |
+| `--date-after` | text |  |  | Later date (bi-temporal pipelines). |
+| `--dates` | text |  |  | Comma-separated dates (vegetation_indices). |
+| `--model` | text |  |  | Model name (pipelines that run a network). |
+| `--checkpoint` | path |  |  | Your trained .pth weights; required by every 'needs_weights' pipeline. |
+| `--source` | text |  |  | Data source override (land_cover: worldcover \| dynamic_world). |
+| `--provider` | text |  |  | Restrict search to this provider (repeatable, e.g. --provider planetary_computer). An unrecognised name is rejected by the search layer itself, not validated here. |
+| `--param` | text |  |  | Any other pipeline argument, e.g. --param anomaly_threshold=0.2 --param dem_type=cop30 (repeatable). Values are read as JSON when possible, and 5,10,15 is a list of numbers. |
+| `--no-report` | flag | off |  | Skip the map, vector layers and reports (also: PYGEOVISION_REPORT=0). |
+| `--report-formats` | text | `pdf,xlsx,docx` |  | Report formats: any of pdf, xlsx (Excel), docx (Word); 'none' for no reports. |
+| `--vector-formats` | text | `gpkg,geojson` |  | Vector formats: any of gpkg, geojson, shp, kml; 'none' for no vector files. |
+| `--class-names` | text |  |  | Comma-separated names for the classes 0,1,2... of a network you trained (labels the map, tables and vector attributes). |
+| `--report-title` | text |  |  | Replace the report title. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision channel [OPTIONS] PIPELINE_NAME
@@ -91,3 +122,4 @@ Options:
   --report-title TEXT             Replace the report title.
   --help                          Show this message and exit.
 ```
+:::

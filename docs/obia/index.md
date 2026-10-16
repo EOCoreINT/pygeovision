@@ -21,6 +21,13 @@ elongated, bright and touches a road". What you give up: OBIA does not learn fea
 segmentation or a poor choice of features caps the result, and it is slower and fiddlier than a trained network on very
 large scenes.
 
+```{figure} ../_static/img/obia-flow.svg
+:alt: Object-based image analysis in five stages: fetch, segment, describe, classify, assess
+:width: 100%
+
+The object-based workflow, from a real scene to an assessed map.
+```
+
 ## The pieces
 
 | Step | What it does | Page | CLI |
@@ -32,51 +39,46 @@ large scenes.
 | Use hierarchy and neighbours | Coarse/fine levels, "next to a road", "contains buildings" | [Hierarchy and context](hierarchy-context.md) | (Python) |
 | Assess | Segmentation quality (over/under), confusion matrix, kappa | [Accuracy assessment](accuracy.md) | `obia assess-segmentation`, `obia assess-classification` |
 | Move data | Read/write rasters, objects to polygons, SAM masks as objects, plots | [Data in and out](data-io.md) | |
-| Teaching scene | A synthetic scene with exact ground truth | [The demo scene](demo.md) | `obia demo` |
+| Get real imagery | Search, download, cloud-mask and mosaic a Sentinel-2 scene; WorldCover and OSM polygons for labels | [Real imagery](real-data.md) | `obia fetch` |
 
-A complete walk-through with real output is the [OBIA tutorial](tutorial.md).
+A complete walk-through, from the download to the exported map, is the [OBIA tutorial](tutorial.md).
 
 ## Five minutes
 
+OBIA in PyGeoVision works on real imagery only. There is no built-in sample scene: the data comes from the same search and
+download tools as every pipeline, and needs a network (Planetary Computer and AWS Earth Search need no credentials).
+
 ```python
+import pygeovision as pgv
 from pygeovision import obia
 
-scene = obia.make_demo_scene()                                   # synthetic: bands blue, green, red, nir
-seg = obia.segment(scene.raster, "multires", scale=20)           # 45 objects
-feats = obia.extract_features(seg.labels, scene.raster, extra_layers=obia.spectral_layers(scene.raster))
+client = pgv.PyGeoVision()
+BBOX = (-1.70, 6.18, -1.655, 6.225)                                   # lon/lat, about 5 km x 5 km
+rd = obia.fetch_scene(client, BBOX, "2024-01", "./download",          # cloud-masked Sentinel-2, NaN under cloud
+                      bands=("blue", "green", "red", "nir"))
+seg = obia.segment(rd, "multires", scale=16)                          # cloud pixels become label 0
+feats = obia.extract_features(seg.labels, rd, extra_layers=obia.spectral_layers(rd))
 rules = obia.RuleBasedClassifier([
-    ("water", "mean_ndwi > 0.3"),
-    ("cropland", "mean_ndvi > 0.55"),
-    ("bare_field", "brightness > 90"),
-])
+    ("water", "mean_ndwi > 0.2"),
+    ("forest", "mean_ndvi > 0.7"),
+    ("farmland", "mean_ndvi > 0.45"),
+], default="unclassified")
 result = rules.classify(feats)
 print(result.summary(feats["area_m2"]))
-report = obia.assess_classification(result, seg.labels, scene.reference, "class", scene.raster.transform)
-print(report["overall_accuracy"], report["kappa"])
 ```
 
-```text
-              n_objects     area  area_share
-class
-bare_field           26  47208.0    0.461016
-cropland             14  47868.0    0.467461
-unclassified          4   1552.0    0.015156
-water                 1   5772.0    0.056367
-0.578 0.41          # overall accuracy, kappa (45 objects assessed)
-```
-
-Three rules cannot describe six classes, so forest, buildings and roads are wrong and the accuracy is poor (0.58). That is
-the point of starting small: the confusion matrix tells you which rule to write next. The [tutorial](tutorial.md) goes
-from here to 0.79 with rules and 0.91 with a trained classifier, and explains each number.
+Read the thresholds off your own feature table ([Tutorial, step 4](tutorial.md#step-4-describe-the-objects)); the numbers
+above are placeholders. To report an accuracy you need reference points or polygons that were digitised independently of the
+classifier: `obia.assess_classification(result, seg.labels, reference, "class", rd.transform, crs=rd.crs)`.
 
 or the same on files from the command line:
 
 ```console
-$ pygeovision obia demo ./obia_demo
-$ pygeovision obia segment ./obia_demo/scene.tif --scale 20 --output-labels labels.tif
-$ pygeovision obia features ./obia_demo/scene.tif labels.tif --output features.csv
-$ pygeovision obia classify ./obia_demo/scene.tif labels.tif --rules rules.yaml --output classified.gpkg
-$ pygeovision obia assess-classification labels.tif classified.gpkg ./obia_demo/reference.gpkg
+$ pygeovision obia fetch --bbox -1.70 6.18 -1.655 6.225 --date 2024-01 -o scene.tif --worldcover wc.tif
+$ pygeovision obia segment scene.tif --scale 16 --output-labels labels.tif
+$ pygeovision obia features scene.tif labels.tif --output features.csv
+$ pygeovision obia classify scene.tif labels.tif --rules rules.yaml --output classified.gpkg
+$ pygeovision obia assess-classification labels.tif classified.gpkg reference_points.gpkg
 ```
 
 ## Requirements
@@ -114,18 +116,3 @@ gets `b1, b2, b3, b4`, and then `spectral_layers` finds no `red`, `nir` or `gree
 - Rule strings are evaluated with `pandas.DataFrame.eval`. Treat a rules file as **code**, not as untrusted input.
 - Accuracy is only as honest as your reference data. Read [Accuracy assessment](accuracy.md), especially the section on
   why scoring a classifier on its own training samples says nothing.
-
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-tutorial
-demo
-segmentation
-scale
-features
-classification
-hierarchy-context
-accuracy
-data-io
-```

@@ -100,7 +100,7 @@ python tools/verify_install.py        # lists every file that is missing or diff
 
 ---
 
-## 3. The 40 pipelines (`pygeovision channel`)
+## 3. The 41 pipelines (`pygeovision channel`)
 
 `channel <name>` downloads imagery with pygeofetch and then computes an index, a terrain product, a reference
 map, or runs *your* network. `channel list` shows each one and whether it runs out of the box (`ready`) or
@@ -108,13 +108,13 @@ needs your trained weights (`needs_weights`).
 
 ```bash
 # [offline]
-pygeovision channel list                                       # 40 pipelines (33 ready, 7 need your weights)
+pygeovision channel list                                       # 41 pipelines (34 ready, 7 need your weights)
 expect_fail pygeovision channel not_a_pipeline --bbox 0 0 1 1  # unknown name: exit 2 with the reason
 expect_fail pygeovision channel road_extraction --bbox -0.15 51.47 -0.10 51.52 --date 2024-06
                                                                # needs_weights without --checkpoint: refuses
 ```
 
-### 3.1 Test all 40 at once, offline
+### 3.1 Test all 41 at once, offline
 
 `tools/offline_pipeline_smoke.py` runs every pipeline through the **real CLI** with only the three network
 calls replaced (scene download, OpenTopography DEM, WorldCover tile) by synthetic data. Parsing, validation,
@@ -122,13 +122,13 @@ band maths, nodata handling, the strict checkpoint load, file writing and statis
 
 ```bash
 # [offline]
-python tools/offline_pipeline_smoke.py                       # all 40; exit 0 only if all succeed
+python tools/offline_pipeline_smoke.py                       # all 41; exit 0 only if all succeed
 python tools/offline_pipeline_smoke.py water_bodies flood_mapping   # just some
 python tools/offline_pipeline_smoke.py --commands            # print the real-data command for each
 ```
 
-Expect: 40 lines starting `OK` (each also states how many reports, maps and vector files it produced), then
-`40/40 pipelines succeeded`. The smoke run fails a pipeline whose run did not leave a map, a GeoPackage and the PDF,
+Expect: 41 lines starting `OK` (each also states how many reports, maps and vector files it produced), then
+`41/41 pipelines succeeded`. The smoke run fails a pipeline whose run did not leave a map, a GeoPackage and the PDF,
 Word and Excel reports.
 
 ### 3.1.1 What every run produces: map, vectors and a report
@@ -453,43 +453,54 @@ open in QGIS.
 
 ## 9. Object-based image analysis (`pygeovision obia`)
 
+OBIA works on **real imagery**: `obia fetch` downloads a cloud-masked Sentinel-2 image (and optionally ESA WorldCover on the same
+grid) with PyGeoVision's own search and download code, and everything after it runs on that file. Keep the area to a few
+kilometres: the region merging is pure Python. A scene is a few hundred MB, so `obia fetch` prints its progress: each stage, the
+search and download messages, and a "still working, N s elapsed, X MB received" line every `--heartbeat` seconds (10 by default).
+"Nothing new for N s" in that line means a slow or stalled network, not a frozen shell; `--quiet` turns the output off.
+
 ```bash
-# [offline]
-pygeovision obia demo $O/obia_demo --size 160 --seed 0      # writes scene.tif, reference.gpkg, reference_ids.tif
+# [network]
+# a 5 km x 5 km window around Obuasi, Ghana; cloud and shadow pixels are NaN and become label 0 (no data)
+pygeovision obia fetch --bbox -1.70 6.18 -1.655 6.225 --date 2024-01 -o $O/scene.tif --worldcover $O/wc.tif
 
 # segment (multires | slic | felzenszwalb | quickshift | watershed | chessboard)
-pygeovision obia segment $O/obia_demo/scene.tif --method multires --scale 20 \
-    --output-labels $O/seg.tif --output-vector $O/seg.gpkg
-pygeovision obia segment $O/obia_demo/scene.tif --method slic --param n_segments=150 --output-labels $O/slic.tif
+pygeovision obia segment $O/scene.tif --method multires --scale 16 --output-labels $O/seg.tif --output-vector $O/seg.gpkg
+pygeovision obia segment $O/scene.tif --method slic --param n_segments=400 --output-labels $O/slic.tif
 
-# scale selection diagnostics, and segmentation quality against reference objects
-pygeovision obia scale $O/obia_demo/scene.tif --scales 10,20,40 --reference $O/obia_demo/reference.gpkg --output $O/scale.csv
-pygeovision obia assess-segmentation $O/seg.tif $O/obia_demo/reference.gpkg --output $O/segassess.csv
+# scale selection diagnostics (no reference objects needed)
+pygeovision obia scale $O/scene.tif --scales 8,12,16,20,30 --output $O/scale.csv
 
 # object features (spectral, shape, texture, context)
-pygeovision obia features $O/obia_demo/scene.tif $O/seg.tif --output $O/features.csv --texture nir
-pygeovision obia features $O/obia_demo/scene.tif $O/seg.tif --output $O/features.gpkg   # keeps geometry
+pygeovision obia features $O/scene.tif $O/seg.tif --output $O/features.csv --texture nir
+pygeovision obia features $O/scene.tif $O/seg.tif --output $O/features.gpkg   # keeps geometry
 
-# classify: supervised from sample polygons ...
-pygeovision obia classify $O/obia_demo/scene.tif $O/seg.tif --samples $O/obia_demo/reference.gpkg \
-    --class-column class --method rf --output $O/classified.gpkg --output-raster $O/classified_obia.tif
-# ... or rule-based from YAML
+# classify: from WorldCover used as WEAK labels (codes: 10 trees, 30 grass, 40 crops, 50 built-up, 60 bare, 80 water) ...
+pygeovision obia classify $O/scene.tif $O/seg.tif --weak-labels $O/wc.tif \
+    --class-map "10=forest,30=farmland,40=farmland,50=built_up,60=mine_disturbed,80=water" --min-purity 0.7 \
+    --method rf --output $O/classified.gpkg --output-raster $O/classified_obia.tif
+# ... or from polygons you digitised (any CRS), or rule-based from YAML
+pygeovision obia classify $O/scene.tif $O/seg.tif --samples my_training_polygons.gpkg --class-column class \
+    --output $O/classified_poly.gpkg
 cat > $O/rules.yaml <<'EOF'
 rules:
   - {class: water,      when: "mean_ndwi > 0.3"}
-  - {class: vegetation, when: "mean_ndvi > 0.4"}
-  - {class: other,      when: "mean_ndvi <= 0.4"}
+  - {class: vegetation, when: "mean_ndvi > 0.5"}
+  - {class: other,      when: "mean_ndvi <= 0.5"}
 EOF
-pygeovision obia classify $O/obia_demo/scene.tif $O/seg.tif --rules $O/rules.yaml --output $O/rule_classified.gpkg
+pygeovision obia classify $O/scene.tif $O/seg.tif --rules $O/rules.yaml --output $O/rule_classified.gpkg
 
-# accuracy of a classification against reference objects (needs the classified VECTOR; CSV output)
-pygeovision obia assess-classification $O/seg.tif $O/classified.gpkg $O/obia_demo/reference.gpkg \
+# accuracy needs reference data that is independent of the weak labels and of training:
+# points or polygons that you digitised on high-resolution imagery (needs the classified VECTOR; CSV output)
+pygeovision obia assess-classification $O/seg.tif $O/classified.gpkg my_reference_points.gpkg \
     --class-column class --weight-by-area --output $O/confusion.csv
+pygeovision obia assess-segmentation $O/seg.tif my_reference_objects.gpkg --output $O/segassess.csv
 ```
 
-Expect: `assess-classification` prints overall accuracy / kappa. **The demo trains and evaluates on the same
-objects, so a near-perfect score here proves the pipeline runs, not that the classifier generalises** — for
-a real accuracy figure hold out reference objects the classifier never saw.
+Expect: `fetch` reports the image size and the share of no-data pixels; `classify --weak-labels` prints how many objects it
+trained on. **A score computed against WorldCover is agreement with WorldCover, not accuracy**, and the objects you
+assess must not be training samples. The OBIA commands themselves are covered offline by `tests/test_obia_cli.py`, which
+uses small hand-built rasters; this section needs a network because it runs on real imagery.
 
 ---
 
@@ -773,7 +784,7 @@ expect_fail pygeovision datasets download BigEarthNet        # prints the page t
 ## 18. YAML pipelines (`pygeovision pipeline`)
 
 A second, simpler pipeline system: a YAML file of steps (`search`, `download`, `infer`, `export`) with
-dependencies. Unlike the 40 `channel` pipelines it is a scaffold you fill in. Every step does its work or
+dependencies. Unlike the 41 `channel` pipelines it is a scaffold you fill in. Every step does its work or
 fails — an empty search, a failed download, a missing checkpoint or an unsupported action makes the run exit
 `1` rather than report success.
 
@@ -833,7 +844,7 @@ described in its section).
 | ☐ | `pygeovision benchmark datasets` | ● | — |  |
 | ☐ | `pygeovision benchmark models` | ● | — |  |
 | ☐ | `pygeovision benchmark tasks` | ● | — |  |
-| ☐ | `pygeovision channel` | ● | — | 33 ready + 7 needs-weights pipelines: all 40 run offline via tools/offline_pipeline_smoke.py; real data needs network |
+| ☐ | `pygeovision channel` | ● | — | 34 ready + 7 needs-weights pipelines: all 41 run offline via tools/offline_pipeline_smoke.py; real data needs network |
 | ☐ | `pygeovision cloud deploy-aws` | ◐ | cloud | cloud account (offline: clean failure) |
 | ☐ | `pygeovision cloud deploy-gcp` | ◐ | cloud | cloud account (offline: clean failure) |
 | ☐ | `pygeovision data auth add` | ● | — |  |
@@ -874,13 +885,13 @@ described in its section).
 | ☐ | `pygeovision models list` | ● | — |  |
 | ☐ | `pygeovision models summary` | ● | — |  |
 | ☐ | `pygeovision monitor drift` | ● | — |  |
-| ☐ | `pygeovision obia assess-classification` | ● | — |  |
-| ☐ | `pygeovision obia assess-segmentation` | ● | — |  |
-| ☐ | `pygeovision obia classify` | ● | — |  |
-| ☐ | `pygeovision obia demo` | ● | — |  |
-| ☐ | `pygeovision obia features` | ● | — |  |
-| ☐ | `pygeovision obia scale` | ● | — |  |
-| ☐ | `pygeovision obia segment` | ● | — |  |
+| ☐ | `pygeovision obia assess-classification` | ○ | network | needs a real scene and your own reference points; offline: tests/test_obia_cli.py |
+| ☐ | `pygeovision obia assess-segmentation` | ○ | network | needs a real scene and your own reference objects; offline: tests/test_obia_cli.py |
+| ☐ | `pygeovision obia classify` | ○ | network | needs a real scene from obia fetch; offline: tests/test_obia_cli.py |
+| ☐ | `pygeovision obia features` | ○ | network | needs a real scene from obia fetch; offline: tests/test_obia_cli.py |
+| ☐ | `pygeovision obia fetch` | ○ | network | network (Sentinel-2 / WorldCover); the OBIA commands run on that real scene. Offline: tests/test_obia_cli.py |
+| ☐ | `pygeovision obia scale` | ○ | network | needs a real scene from obia fetch; offline: tests/test_obia_cli.py |
+| ☐ | `pygeovision obia segment` | ○ | network | needs a real scene from obia fetch; offline: tests/test_obia_cli.py |
 | ☐ | `pygeovision pipeline list-templates` | ● | — |  |
 | ☐ | `pygeovision pipeline run` | ● | network | dry-run and refusals offline; a real run needs network + your checkpoint |
 | ☐ | `pygeovision postprocess accuracy` | ● | — |  |
@@ -947,8 +958,8 @@ described in its section).
 
 The `# [offline]` blocks were extracted from this file and executed in order, in an empty directory, against
 the data from `tools/make_test_data.py` with network access blocked: every command that should succeed exited
-`0`, every `expect_fail` command exited non-zero. The 40 pipelines were additionally run with
-`tools/offline_pipeline_smoke.py` (40/40, including the map, GeoPackage and PDF/Word/Excel check). The repository test suite also passes offline. **No `# [network]`,
+`0`, every `expect_fail` command exited non-zero. The 41 pipelines were additionally run with
+`tools/offline_pipeline_smoke.py` (41/41, including the map, GeoPackage and PDF/Word/Excel check). The repository test suite also passes offline. **No `# [network]`,
 `# [credentials]`, `# [weights]` or `# [cloud]` block was executed successfully** (there is no network, no
 trained or pretrained weights, no GPU and no cloud account in the environment where this was written); for the
 ones that were attempted offline the section describes how they fail. Treat the first run of each on your own

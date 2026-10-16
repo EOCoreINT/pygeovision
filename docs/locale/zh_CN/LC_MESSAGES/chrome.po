@@ -1,0 +1,131 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PyGeoVision\n"
+"PO-Revision-Date: 2026-10-16 00:00+0000\n"
+"Last-Translator: PyGeoVision Contributors\n"
+"Language-Team: zh_CN\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Documentation"
+msgstr "文档"
+
+msgid "Tutorials"
+msgstr "教程"
+
+msgid "Community"
+msgstr "社区"
+
+msgid "Download"
+msgstr "下载"
+
+msgid "Search"
+msgstr "搜索"
+
+msgid "Version:"
+msgstr "版本："
+
+msgid "Home"
+msgstr "首页"
+
+msgid "Language"
+msgstr "语言"
+
+msgid "Partly translated"
+msgstr "部分已翻译：未翻译的页面以英文显示。"
+
+msgid "Getting started"
+msgstr "快速入门"
+
+msgid "Data"
+msgstr "数据"
+
+msgid "Pipelines"
+msgstr "流水线"
+
+msgid "Models and training"
+msgstr "模型与训练"
+
+msgid "Object-based analysis"
+msgstr "面向对象分析"
+
+msgid "Trust, monitor, deploy"
+msgstr "可信、监控与部署"
+
+msgid "Advanced tools"
+msgstr "高级工具"
+
+msgid "Examples"
+msgstr "示例"
+
+msgid "Reference"
+msgstr "参考"
+
+msgid "Project"
+msgstr "项目"
+
+msgid "Segmentation"
+msgstr "图像分割"
+
+msgid "Classification"
+msgstr "分类"
+
+msgid "Object detection"
+msgstr "目标检测"
+
+msgid "Change detection"
+msgstr "变化检测"
+
+msgid "Foundation models"
+msgstr "基础模型"
+
+msgid "Vision-language"
+msgstr "视觉-语言"
+
+msgid "3D / LiDAR"
+msgstr "3D / LiDAR"
+
+msgid "Super-resolution"
+msgstr "超分辨率"
+
+msgid "Time series"
+msgstr "时间序列"
+
+msgid "Object-based analysis (OBIA)"
+msgstr "面向对象分析（OBIA）"
+
+msgid "Models"
+msgstr "模型"
+
+msgid "Labelling"
+msgstr "标注"
+
+msgid "Training"
+msgstr "训练"
+
+msgid "Inference"
+msgstr "推理"
+
+msgid "Experiments"
+msgstr "实验"
+
+msgid "Explainability"
+msgstr "可解释性"
+
+msgid "Monitoring"
+msgstr "监控"
+
+msgid "Reporting"
+msgstr "报告"
+
+msgid "Deployment"
+msgstr "部署"
+
+msgid "CLI reference"
+msgstr "命令行参考"
+
+msgid "Python API"
+msgstr "Python API"

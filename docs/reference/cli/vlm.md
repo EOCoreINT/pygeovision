@@ -3,7 +3,7 @@
 # `pygeovision vlm`
 
 Vision-language models: caption an image, ask a question about it, or search a folder with a text query.
-Guide: [Vision-language models](../../advanced/vlm.md).
+Guide: [Vision-language models](../../vision-language/index.md).
 
 ## When to use it
 
@@ -38,6 +38,22 @@ Commands:
 
 ### `pygeovision vlm caption`
 
+Generate a natural language caption for a satellite image (Moondream2, downloaded on first use).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `IMAGE_PATH` | path | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--bands` | text |  |  | File bands shown to the model as R,G,B, e.g. 3,2,1 for a B2,B3,B4,B8 Sentinel-2 file (default: the first three). |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision vlm caption [OPTIONS] IMAGE_PATH
 
@@ -49,8 +65,26 @@ Options:
                 file (default: the first three).
   --help        Show this message and exit.
 ```
+:::
 
 ### `pygeovision vlm query`
+
+Answer a question about a satellite image (Moondream2, downloaded on first use).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `IMAGE_PATH` | path | yes |
+| `QUESTION` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--bands` | text |  |  | File bands shown to the model as R,G,B, e.g. 3,2,1 for a B2,B3,B4,B8 Sentinel-2 file (default: the first three). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision vlm query [OPTIONS] IMAGE_PATH QUESTION
@@ -62,8 +96,28 @@ Options:
                 file (default: the first three).
   --help        Show this message and exit.
 ```
+:::
 
 ### `pygeovision vlm search`
+
+Rank the images in IMAGE_DIR against a text query (every image is embedded on every call).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `QUERY` | text | yes |
+| `IMAGE_DIR` | path | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--top-k` | integer | `5` |  |  |
+| `--model` | text | `openclip-b32` |  | CLIP model: openclip-b32, openclip-l14, clip-vit-b32, remoteclip-b32, remoteclip-l14, georsclip. |
+| `--bands` | text |  |  | File bands shown to the model as R,G,B, e.g. 3,2,1 for a B2,B3,B4,B8 Sentinel-2 file (default: the first three). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision vlm search [OPTIONS] QUERY IMAGE_DIR
@@ -78,3 +132,4 @@ Options:
                    Sentinel-2 file (default: the first three).
   --help           Show this message and exit.
 ```
+:::

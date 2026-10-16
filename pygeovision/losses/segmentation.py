@@ -98,8 +98,9 @@ class FocalLoss:
 
     Forces the model to focus on hard, misclassified pixels.
     Particularly effective for:
-        - Dense building detection (hard positives at boundaries)
-        - Small objects (ships, cars)
+
+    - Dense building detection (hard positives at boundaries)
+    - Small objects (ships, cars)
 
     Example::
 

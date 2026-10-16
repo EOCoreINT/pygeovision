@@ -290,6 +290,9 @@ class BasePipeline(ABC):
             expanded_bands.extend(("SCL", "QA_PIXEL"))
         expanded_bands = list(dict.fromkeys(expanded_bands))  # dedupe, preserve order
 
+        logger.info("_download_scene_files: downloading %s (%s, %d asset code(s) requested) -> %s",
+                    getattr(result, "id", "?"), getattr(result, "provider", "?"), len(expanded_bands),
+                    output_dir / subdir_name)
         downloads = self.pgv.download(
             [result], output_dir=output_dir / subdir_name,
             parallel=1, post_process=pp, verify_checksum=False,
@@ -297,6 +300,8 @@ class BasePipeline(ABC):
             **({"resume": False, "overwrite": True} if fresh else {}),
         )
         if not (downloads and downloads[0].success):
+            logger.warning("_download_scene_files: download of %s failed (%s).", getattr(result, "id", "?"),
+                           (getattr(downloads[0], "error", None) if downloads else None) or "no result returned")
             return None
         return downloads[0]
 
@@ -731,8 +736,17 @@ class BasePipeline(ABC):
             if _skip_keys:
                 results = [r for r in results if self._scene_key(r) not in _skip_keys]
             if not results:
+                logger.warning(
+                    "_search_and_download: the search found no scene for bbox=%s, %s to %s, cloud cover <= %s%%, "
+                    "collections=%s, providers=%s. Check the network and credentials, or widen the dates / cloud limit.",
+                    bbox, start, end, cloud_cover_max, collections or ["sentinel-2-l2a"], providers or "default")
+                if not _skip_keys:
+                    self._explain_empty_search(bbox, start, end, collections, providers, cloud_cover_max)
                 return None
             candidates = self._dedupe_scenes(results)
+            logger.info("_search_and_download: %d listing(s) -> %d distinct scene(s); clearest: %s (cloud cover %s%%).",
+                        len(results), len(candidates), getattr(candidates[0], "id", "?"),
+                        getattr(candidates[0], "cloud_cover", "?"))
 
             from shapely.geometry import box as _shapely_box
             top_result = candidates[0]
@@ -867,6 +881,34 @@ class BasePipeline(ABC):
         except Exception as exc:
             logger.error("_search_and_download failed: %s", exc)
         return None
+
+    def _explain_empty_search(self, bbox, start, end, collections, providers, cloud_cover_max) -> None:
+        """An empty result is often the cloud limit, not a missing archive: look again without it and say which.
+
+        Providers return their scenes and the cloud limit then drops the cloudy ones, so a rainy-season month can show
+        "54 scenes found" and "0 results". One more search without the limit tells the user the clearest cloud cover
+        that exists, which is the number to set ``cloud_cover_max`` above.
+        """
+        if cloud_cover_max is None or cloud_cover_max >= 100:
+            return
+        try:
+            probe = self.pgv.search(
+                bbox=bbox, date_range=(start, end), collections=collections or ["sentinel-2-l2a"], providers=providers,
+                cloud_cover_max=100, max_results=self._SEARCH_POOL, sort_by="cloud_cover", sort_order="asc",
+                use_cache=False)
+        except Exception as exc:  # noqa: BLE001 - advisory only
+            logger.debug("_explain_empty_search: probe failed: %s", exc)
+            return
+        ccs = [c for c in (getattr(r, "cloud_cover", None) for r in probe or []) if c is not None]
+        if ccs:
+            logger.warning(
+                "_search_and_download: the cloud limit is the reason. %d scene(s) exist for this area and window, but the "
+                "clearest has %.0f%% scene cloud cover and the limit is %s%%. Raise cloud_cover_max to at least %d "
+                "(clouds are still masked pixel by pixel), or choose a clearer season (West Africa: December to February).",
+                len(probe), min(ccs), cloud_cover_max, int(min(ccs)) + 1)
+        elif probe:
+            logger.warning("_search_and_download: %d scene(s) exist for this area and window, but none reports a cloud "
+                           "cover, so the cloud limit removed them. Raise cloud_cover_max or set it to 100.", len(probe))
 
     #: Below this share of clear pixels over the AOI another scene is tried.
     _MIN_CLEAR_FRACTION = 0.05

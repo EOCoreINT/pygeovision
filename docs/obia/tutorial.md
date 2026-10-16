@@ -1,333 +1,229 @@
-# OBIA tutorial: from image to honest accuracy
+# OBIA tutorial: from a real image to honest accuracy
 
-This walk-through takes the [synthetic demo scene](demo.md) from raw bands to a classified, assessed map, and shows what each
-step does, what number it produces and what to do when it goes wrong. Every output is real and reproducible: the script
-at the end runs in under a minute on a laptop with no downloads.
+This walk-through takes a **real Sentinel-2 image**, downloaded with PyGeoVision's own search and download tools, from raw
+bands to a classified map, and says at each step what the step does, what to look at and what to do when it goes wrong.
+
+It deliberately quotes **no result numbers**. They depend on your area, date and clouds, and a number from someone else's
+scene would only be something to match. What the page gives you instead is the order of work, the checks that catch the usual
+mistakes, and the points where a flattering score appears by accident.
 
 You will:
 
-1. make two scenes, one to build with and one to judge with
-2. segment into objects and measure how good the objects are
-3. choose the scale from evidence
+1. get the data
+2. segment into objects and look at them
+3. choose the scale
 4. describe the objects with features
-5. classify with hand-written rules, and improve them from the confusion matrix
-6. train a classifier from samples
-7. assess honestly on the second scene
+5. classify with hand-written rules
+6. train a classifier from weak labels
+7. assess honestly
 8. add context
 9. export for a GIS
 10. do the same from the command line
 
-Requirements: `pip install pygeovision` with the OBIA dependencies ([overview](index.md#requirements)).
+Requirements: `pip install pygeovision` with the OBIA dependencies ([overview](index.md#requirements)), a network, and the
+credentials of the satellite provider you use (Planetary Computer and AWS Earth Search need none). The full script is at the end.
 
-## Step 1: Make two scenes
+## Step 1: Get the data
 
 ```python
-import pandas as pd
+import pygeovision as pgv
 from pygeovision import obia
 
-A = obia.make_demo_scene(seed=0)          # build everything here
-B = obia.make_demo_scene(seed=1)          # judge everything here
-print(A.raster.image.shape, len(A.reference))
+client = pgv.PyGeoVision()
+BBOX = (-1.70, 6.18, -1.655, 6.225)                    # lon/lat, about 5 km x 5 km around Obuasi, Ghana
+rd = obia.fetch_scene(client, BBOX, "2024-01", "./download", bands=("blue", "green", "red", "nir"))
+wc, _ = obia.fetch_worldcover(client, BBOX, "./download/worldcover.tif", like=rd)
+valid = obia.valid_mask(rd)
+print(rd.image.shape, f"{100 * (1 - valid.mean()):.1f}% no data")
 ```
 
-```text
-(4, 160, 160) 28
-```
+`fetch_scene` uses the same search, download, cloud-mask and mosaic code as every pipeline. Pixels hidden by cloud or shadow
+come back **NaN in every band**; OBIA treats them as no data. `fetch_worldcover` returns ESA WorldCover on the image's own grid.
+Details and failure modes: [Real imagery](real-data.md).
 
-Scene A has 4 bands (blue, green, red, nir) of 160 × 160 pixels and 28 true objects. Scene B has the same kinds of
-things in a different layout. We will **never look at B until step 7.** If you adjust anything after looking at B, B stops
-being a test.
+Keep the area to a few kilometres. The region merging is pure Python: a 5 km window at 10 m (500 × 500 pixels) takes well under
+a minute, a full Sentinel-2 tile does not finish in reasonable time. For larger areas tile the image or use `slic` / `felzenszwalb`.
 
-## Step 2: Segment, and measure the objects
+What you will not have is a **reference**: points or polygons that someone digitised on high-resolution imagery. WorldCover is
+a model's output, not the truth. Plan to make a reference of a few dozen points per class (an afternoon in QGIS over Google
+or Maxar imagery); without it nothing below can be called an accuracy.
+
+## Step 2: Segment, and look at the objects
 
 ```python
-seg = obia.segment(A.raster, "multires", scale=20)
-print(seg.n_objects)                                   # 45
-quality, summary = obia.segmentation_quality(seg.labels, A.ref_labels)
-print(round(summary["mean_over_seg"], 3), round(summary["mean_under_seg"], 3), round(summary["mean_D"], 3))
+seg = obia.segment(rd, "multires", scale=16)
+assert ((seg.labels == 0) == ~valid).all()             # label 0 is exactly the cloud/shadow pixels
+print(seg.n_objects)
+import matplotlib.pyplot as plt
+plt.imshow(seg.overlay((2, 1, 0))); plt.show()          # red, green, blue with object outlines
 ```
 
-```text
-45
-0.079 0.095 0.109
-```
+Look at the picture. Objects should follow fields, pits, roofs, ponds. If one object covers a pit and the forest next to it,
+the scale is too large; if a field is cut into dozens of pieces, too small. No score replaces this look
+([Segmentation](segmentation.md)).
 
-45 objects for 28 true ones. The two error measures say how the objects fall short: 0.079 over-segmentation
-(true objects are split a little) and 0.095 under-segmentation (some segments run over into neighbours). `D`, the single
-combined score, is 0.109 (0 is perfect). The *median* D is 0.017, so most objects are almost exact and a few are poor. See
-[Segmentation quality](accuracy.md#segmentation-quality).
+If you have digitised reference *objects* (20–30 polygons drawn around things that should each be one object), you can measure
+the segmentation instead of judging it by eye: [Segmentation quality](accuracy.md#segmentation-quality).
 
-In real work you do not have `A.ref_labels`; digitise 20–30 objects for this purpose, it is the best hour you can spend.
-
-## Step 3: Choose the scale from evidence
+## Step 3: Choose the scale
 
 ```python
-table = obia.scale_vs_reference(A.raster, [5, 10, 15, 20, 30, 40, 60, 80], A.ref_labels)
-print(table.round(3))
-print(table["mean_D"].idxmin())
+print(obia.scale_diagnostics(rd, [8, 12, 16, 20, 30]).round(2))
 ```
 
-```text
-       n_objects  mean_over_seg  mean_under_seg  mean_D  mean_QR
-scale
-5.0          895          0.655           0.010   0.464    0.340
-10.0         176          0.349           0.054   0.273    0.616
-15.0           66          0.136           0.062   0.129    0.819
-20.0          45          0.079           0.095   0.109    0.845
-30.0          38          0.076           0.155   0.149    0.788
-40.0          29          0.057           0.261   0.211    0.702
-60.0          22          0.051           0.403   0.306    0.567
-80.0          20          0.050           0.439   0.331    0.531
-20.0
-```
-
-Small scales split things (895 objects, over-segmentation 0.655), large scales merge them (under-segmentation 0.439 at 80).
-`D` is lowest at **20**, where the two errors cross. That is the scale we used. The reference-free
-`scale_diagnostics` suggests 40 for the same scene, which is too coarse: use it only when you have no reference, and look at
-the objects either way ([Choosing a scale](scale.md)).
+`scale_diagnostics` needs no reference. It reports the object count and the local variance at each scale, and marks scales
+where the *rate of change* peaks as candidates. It is a **heuristic**: it nominates scales to look at, it does not pick the
+right one. Segment at two or three candidates and compare the overlays. With reference objects,
+`obia.scale_vs_reference` measures over- and under-segmentation per scale and is the better guide ([Choosing a scale](scale.md)).
 
 ## Step 4: Describe the objects
 
 ```python
-layers = obia.spectral_layers(A.raster)                       # adds ndvi and ndwi
-feats = obia.extract_features(seg.labels, A.raster, extra_layers=layers)
-truth = obia.samples_from_geometries(seg.labels, A.reference, "class", A.raster.transform)
-cols = ["area_px", "compactness", "elongation", "mean_ndvi", "std_nir", "brightness"]
-print(feats[cols].groupby(truth).median().round(2))
+feats = obia.extract_features(seg.labels, rd, extra_layers=obia.spectral_layers(rd),
+                              texture_layers=["nir"], transform=rd.transform)
+CLASS_MAP = {10: "forest", 30: "farmland", 40: "farmland", 50: "built_up", 80: "water"}   # WorldCover codes
+weak = obia.samples_from_raster(seg.labels, wc, CLASS_MAP, min_purity=0.7)["class"]
+cols = ["area_px", "compactness", "elongation", "mean_ndvi", "mean_ndwi", "std_nir", "brightness"]
+print(feats.loc[weak.index, cols].groupby(weak).median().round(2))
 ```
 
-```text
-            area_px  compactness  elongation  mean_ndvi  std_nir  brightness
-class
-bare_field    158.0         0.33        2.03      -0.02     5.00      113.43
-building       62.0         0.67        1.51      -0.08     6.25      120.50
-cropland      172.0         0.35        1.68       0.60     5.40       82.40
-forest       1559.0         0.53        1.40       0.69    13.91       54.53
-road          309.5         0.15       19.82      -0.07     6.14       97.39
-water        1443.0         0.46        2.23      -0.44     2.84       41.15
-```
+`feats` has one row per object and about fifty columns: spectral statistics per band and index, shape, texture and context.
+The table groups the objects by their WorldCover class and shows the median of a few columns. This is your rulebook; read it
+the way a rule-writer would:
 
-This table is your rulebook. `feats` has 45 rows and 52 columns; the class medians show where each class sits. Read it the
-way a rule-writer would:
+- Which class is the only one with high NDWI? That is water; its threshold is a gap in the table.
+- Which classes have similar NDVI but different `std_nir` or `compactness`? That is where shape and texture earn their keep.
+- Which classes overlap on everything? No rule will separate them; you need more information or a different class scheme.
 
-- **water** is the only class with negative NDVI and very low brightness.
-- **forest** and **cropland** both have high NDVI (0.69 vs 0.60) but forest is far more variable (`std_nir` 13.9 vs 5.4).
-- **building** and **bare_field** are spectrally alike (brightness 120 vs 113) but buildings are small and compact (62 px,
-  0.67 vs 158 px, 0.33).
-- **road** stands out by its elongation (19.8).
-
-Using the ground truth to build this table is fair here, because it is scene A. On your own data you would build it from
-your training samples.
+Two cautions. The classes are *WorldCover's*, so the table shows what WorldCover's labels look like in your image, errors
+included. And objects whose pixels are mostly a class you left out of `CLASS_MAP` (shrub, wetland, ...) are not in the table at
+all (`min_purity` leaves them out, see [Real imagery](real-data.md#weak-labels-from-a-map-samples_from_raster)).
 
 ## Step 5: Classify with rules
 
 ```python
 rules = obia.RuleBasedClassifier([
-    ("water",      "mean_ndwi > 0.3"),
-    ("forest",     "mean_ndvi > 0.4 and std_nir > 8"),
-    ("cropland",   "mean_ndvi > 0.55"),
-    ("building",   "compactness > 0.55 and area_px < 400"),
-    ("bare_field", "brightness > 90"),
-])
-result = rules.classify(feats)
-report = obia.assess_classification(result, seg.labels, A.reference, "class", A.raster.transform)
-print(round(report["overall_accuracy"], 3), round(report["kappa"], 3), report["n_objects"])
-print(report["confusion"].astype(int))
+    ("water",    "mean_ndwi > 0.2"),
+    ("forest",   "mean_ndvi > 0.7"),
+    ("farmland", "mean_ndvi > 0.45"),
+    ("built_up", "compactness > 0.5"),
+], default="unclassified")
+rule_result = rules.classify(feats)
+print(rule_result.classes.value_counts())
 ```
 
-```text
-0.711 0.627 45
-              bare_field  building  cropland  forest  road  unclassified  water
-bare_field            13         0         0       0     0             0      0
-building               2         8         0       0     0             0      0
-cropland               0         0         8       8     0             1      0
-forest                 0         0         0       2     0             0      0
-road                   2         0         0       0     0             0      0
-unclassified           0         0         0       0     0             0      0
-water                  0         0         0       0     0             0      1
-```
+Rules run in order and the first match wins. The thresholds above are placeholders: **read yours off the Step 4 table**. Write
+the most distinctive class first (water), the catch-all last, and use `default=` for what nothing matched. If objects land in
+`unclassified`, that is information: look at them.
 
-Rules go in order and the first match wins. 0.711 is a start, and **the confusion matrix is the to-do list**:
+Rules are transparent, need no samples and can be explained to a regulator. Their thresholds are fitted to the scene you read
+them from, so treat their score as an optimistic one until it is measured on data they were not tuned on.
 
-| Error | Count | Why (look at the objects) | Fix |
-|---|---:|---|---|
-| cropland called forest | 8 | They are tiny (20–117 px) slivers across field edges; mixed pixels inflate `std_nir` | Require `area_px > 300` for forest |
-| road called bare field | 2 | There is no road rule | Add `elongation > 8` before the building and bare-field rules |
-| building called bare field | 2 | Their `compactness` (0.28 and 0.50) is just under the 0.55 threshold | Leave (see below) |
-
-Print the offending rows to be sure you are reading it correctly:
+## Step 6: Learn from weak labels
 
 ```python
-wrong = feats.join(truth.rename("truth")).assign(predicted=result.classes)
-wrong = wrong[wrong.truth != wrong.predicted]
-print(wrong[["truth", "predicted", "area_px", "std_nir", "elongation"]].round(1).head(6))
-```
+ref = None                                             # your independent reference points, if you have them
+import geopandas as gpd
+# ref = gpd.read_file("reference_points.gpkg")         # a 'class' column; any CRS
 
-```text
-           truth     predicted  area_px  std_nir  elongation
-obj_id
-5       cropland        forest     25.0     17.7         1.0
-10      cropland        forest     79.0     16.5         2.9
-12      cropland        forest     24.0     15.2         1.3
-16      building    bare_field     55.0     13.7         1.4
-17      cropland        forest     27.0     29.0         1.7
-18          road    bare_field    208.0      8.6        13.1
-```
-
-Apply the two fixes:
-
-```python
-rules2 = obia.RuleBasedClassifier([
-    ("water",      "mean_ndwi > 0.3"),
-    ("forest",     "mean_ndvi > 0.4 and std_nir > 8 and area_px > 300"),
-    ("cropland",   "mean_ndvi > 0.55"),
-    ("road",       "elongation > 8"),
-    ("building",   "compactness > 0.55 and area_px < 400"),
-    ("bare_field", "brightness > 90"),
-])
-```
-
-Accuracy on A rises from 0.711 to **0.844** (kappa 0.793). And now the warning: **that number is not trustworthy.**
-We read the errors on A and wrote rules that remove them; A is now part of the rule-writing. Step 7 tests whether the
-improvement is real.
-
-Why not fix everything? Chasing the last error means tuning to one object. The two buildings called bare field differ by a
-few pixels from the buildings you got right; a rule for them would fit scene A and probably hurt elsewhere.
-
-## Step 6: Learn from samples
-
-```python
-clf = obia.ObjectClassifier("rf", random_state=0).fit(feats, truth)
+ref_objs = (obia.samples_from_geometries(seg.labels, ref, "class", rd.transform, crs=rd.crs).index
+            if ref is not None else [])
+train = weak.drop(index=ref_objs, errors="ignore")      # objects you will test on are NOT training samples
+clf = obia.ObjectClassifier("rf", random_state=0, class_weight="balanced").fit(feats, train)
+result = clf.predict(feats)
 print(clf.feature_importances_.head(5).round(3))
 ```
 
-```text
-mean_nir      0.129
-mean_ndwi     0.080
-mean_ndvi     0.064
-brightness    0.063
-mean_blue     0.051
-dtype: float64
-```
+The forest learns from the WorldCover-labelled objects, so it also learns WorldCover's mistakes. `class_weight="balanced"` stops a
+rare class (say, mine ground) from being drowned by a common one. `feature_importances_` shows what it leans on; it is a ranking,
+not a measure of accuracy.
 
-A random forest trained on the 45 reference objects: 17 cropland, 13 bare field, 10 building, and only 2 forest, 2 road and 1
-water. The feature importances show it leaning on near-infrared and the water and vegetation indices, which agrees with
-the rulebook of step 4. (`feature_importances_` is an importance ranking over the features, not a measure of accuracy.)
-
-Now the trap. Predict the same objects and assess them:
-
-```python
-trained = obia.assess_classification(clf.predict(feats), seg.labels, A.reference, "class", A.raster.transform)
-print(trained["overall_accuracy"])          # 1.0
-```
-
-**Perfect, and meaningless**: the forest memorised those 45 objects. See [the training data trap](accuracy.md#the-training-data-trap).
+**The trap.** If you predict the training objects and score them, you will get a very high number. The forest has seen those
+objects; the score measures memory. See [the training data trap](accuracy.md#the-training-data-trap). The line that drops
+`ref_objs` from `train` is there so the objects you assess in Step 7 were never trained on.
 
 ## Step 7: Assess honestly
 
-Scene B has different objects. Segment it *the same way* and extract the same features. Nothing is retuned.
+There are two different questions, and only one of them is accuracy.
+
+**Agreement with the weak labels, on blocks the model did not train on.** Objects next to each other look alike, so a random
+train/test split flatters the model. Hold out whole map blocks instead:
 
 ```python
-segB = obia.segment(B.raster, "multires", scale=20)
-featsB = obia.extract_features(segB.labels, B.raster, extra_layers=obia.spectral_layers(B.raster))
-
-def score(res):
-    x = obia.assess_classification(res, segB.labels, B.reference, "class", B.raster.transform)
-    w = obia.assess_classification(res, segB.labels, B.reference, "class", B.raster.transform,
-                                   weights=featsB["area_px"])
-    return x["overall_accuracy"], x["kappa"], w["overall_accuracy"]
-
-print(score(rules.classify(featsB)))
-print(score(rules2.classify(featsB)))
-print(score(clf.predict(featsB)))
+from sklearn.model_selection import GroupKFold
+import pandas as pd
+H, W = seg.labels.shape
+blocks = (feats["centroid_row"] // (H / 3)).astype(int) * 3 + (feats["centroid_col"] // (W / 3)).astype(int)
+pooled = pd.Series(index=weak.index, dtype=object)
+for tr, te in GroupKFold(3).split(weak.index, groups=blocks.loc[weak.index]):
+    m = obia.ObjectClassifier("rf", random_state=0, class_weight="balanced").fit(feats, weak.iloc[tr])
+    pooled.loc[weak.index[te]] = m.predict(feats).classes.loc[weak.index[te]]
+held = obia.confusion_report(weak, pooled)
+print(held["overall_accuracy"], held["n_objects"])
 ```
 
-Results, 43 objects assessed:
+This says how well the model reproduces WorldCover in places it has not seen. It does **not** say how well it maps the ground:
+where WorldCover is wrong, a correct prediction counts as a miss and a copied error counts as a hit. Expect it to vary a lot
+between folds when one class (the mine, say) sits in one block.
 
-| Method | Trained/tuned on | Accuracy on **A** | Accuracy on **B** | Kappa on B | Area-weighted on B |
-|---|---|---:|---:|---:|---:|
-| Rules, first version (5) | looked at nothing | 0.711 | **0.791** | 0.733 | 0.962 |
-| Rules, after step 5 fixes (6) | A's errors | 0.844 | **0.860** | 0.817 | 0.987 |
-| Random forest | A's 45 objects | 1.000 | **0.907** | 0.875 | 0.992 |
-| Decision tree | A's 45 objects | | 0.791 | 0.720 | 0.692 |
-| k-nearest neighbours | A's 45 objects | | 0.814 | 0.747 | 0.837 |
-| Support vector machine | A's 45 objects | | 0.860 | 0.816 | 0.814 |
+**Accuracy: against an independent reference.**
 
-(`tree` and `forest` use `random_state=0`; `knn` and `svm` are untuned.)
+```python
+for name, res in {"rules": rule_result, "random forest": result}.items():
+    a = obia.assess_classification(res, seg.labels, ref, "class", rd.transform, crs=rd.crs)
+    print(name, a["overall_accuracy"], a["kappa"], a["n_objects"])
+    print(a["per_class"].round(3))
+```
 
-What this tells you:
-
-- **The honest number is the B column.** The forest's A figure (1.000) was memory; its B figure (0.907) is skill.
-- **The rule improvement transferred**: 0.791 → 0.860 on B, a scene those fixes were not designed on. The slivers and the
-  missing road rule are general problems, not quirks of one scene. That is the kind of fix worth keeping.
-- **The random forest is best here**, but only by 0.047 over the improved rules: **two objects out of 43**. With so few
-  objects, do not read much into the ranking among the top three. The decision tree's area-weighted figure (0.692) shows
-  it made mistakes on large objects, which hurts more than count suggests.
-- **Count and area disagree** by a lot for rules (0.791 vs 0.962): the errors are small objects. Report both.
-- **Rare classes still fail.** The forest finds only 2 of 4 forest, 1 of 2 road and 1 of 2 water objects on B
-  ([confusion matrix](classification.md#the-honest-comparison)). One training object per class cannot teach it.
-  More samples of rare classes are worth more than a cleverer algorithm.
-- **Kappa is lower than accuracy** in every row because it discounts agreement expected by chance.
+Only objects a reference point falls in are assessed, so **always report `n_objects`**. Read the per-class table, not just the
+overall figure: a classifier can be good overall and useless for the one class you care about. Report the confusion matrix too.
+The rules' thresholds were read from this same scene, so their score is optimistic; the forest's `ref_objs` were held out of its
+training, so its score is the fairer one.
 
 ```{important}
-Even this is a single pair of scenes with 43 objects. Run it with other seeds and expect the order of the middle
-methods to change. The robust conclusion is the *gap between A and B* for anything fitted to A.
+No reference points, no accuracy. The map is still useful for looking at, but quote it as a classification, not as having been validated.
 ```
 
 ## Step 8: Add context (optional)
 
-Some errors are about neighbours rather than the object itself. [Hierarchy and context](hierarchy-context.md)
-shows a second pass that gives leftover small objects the class they mostly touch (`class_context`), and what that is worth
-on this scene: about one more correct object in 45. Add it when a specific mistake calls for it.
+Some errors are about neighbours rather than the object itself. [Hierarchy and context](hierarchy-context.md) shows a second
+pass that gives leftover small objects the class they mostly touch (`class_context`). Add it when a specific mistake calls for it.
 
 ## Step 9: Export for a GIS
 
 ```python
-final = clf.predict(featsB)
-gdf = final.to_vector(segB.labels, B.raster.transform, B.raster.crs,
-                      features=featsB[["area_m2", "mean_ndvi"]])
+gdf = result.to_vector(seg.labels, rd.transform, rd.crs, features=feats[["area_m2", "mean_ndvi"]])
 gdf.to_file("classified.gpkg", driver="GPKG")
-obia.save_raster("classes.tif", final.to_raster(segB.labels), B.raster.transform, B.raster.crs)
-print(final.summary(featsB["area_m2"]).round(3))
+obia.save_raster("classes.tif", result.to_raster(seg.labels), rd.transform, rd.crs, dtype="uint8")
+print(result.codes())                                  # raster code per class; 0 = no data / unclassified
+print(result.summary(feats["area_m2"]).round(3))       # objects and area (m2) per class
 ```
 
-```text
-            n_objects     area  area_share
-class
-bare_field         11  40228.0       0.393
-building           13   3088.0       0.030
-cropland           15  39200.0       0.383
-forest              2  11824.0       0.115
-road                1   2388.0       0.023
-water               1   5672.0       0.055
-```
+`classified.gpkg` has one polygon per object with `obj_id`, `class`, `stability`, a `score_<class>` column per class and the
+features you attached. Colour it by `stability` in QGIS to see where the classifier hesitated. Areas are in square metres
+because the image is in a projected CRS. The cloud area is not in any object: report it next to the class areas.
 
-`classified.gpkg` has one polygon per object with columns `obj_id`, `class`, `stability`, a `score_<class>` column per
-class, and the features you attached. Open it in QGIS and colour by `class`, or by `stability` to see where the
-classifier hesitated. `classes.tif` is a `uint8` raster with codes `1…K` in the order of `final.class_names` (alphabetical
-here), `0` = unclassified. `area` is in square metres because the scene is in a projected CRS (UTM).
-
-This map is **not validated by this export**; the numbers in step 7 are its accuracy statement. Quote them with the map,
-and the date and scene they apply to.
+Adding up mapped hectares is a *map summary*, not an area estimate. Classification errors do not cancel in a total, and small
+classes suffer most. For a number you will publish, estimate area from an independent stratified sample with error adjustment
+(Olofsson et al., 2014, *Remote Sensing of Environment* 148).
 
 ## Step 10: The same on the command line
 
 ```console
-$ pygeovision obia demo ./A --seed 0
-$ pygeovision obia segment A/scene.tif --scale 20 --output-labels A_labels.tif
-  ✓ 45 objects (multires) → A_labels.tif
-$ pygeovision obia classify A/scene.tif A_labels.tif --rules rules.yaml --output A_rules.gpkg
-$ pygeovision obia assess-classification A_labels.tif A_rules.gpkg A/reference.gpkg --count-objects
+$ pygeovision obia fetch --bbox -1.70 6.18 -1.655 6.225 --date 2024-01 -o scene.tif --worldcover wc.tif
+$ pygeovision obia segment scene.tif --scale 16 --output-labels labels.tif
+$ pygeovision obia classify scene.tif labels.tif --weak-labels wc.tif \
+      --class-map "10=forest,30=farmland,40=farmland,50=built_up,80=water" --output classified.gpkg
+$ pygeovision obia assess-classification labels.tif classified.gpkg reference_points.gpkg --class-column class
 ```
 
-with `rules.yaml` as in [Classification](classification.md#rules-file-for-the-command-line). The command line trains on
-samples and assesses against references in the same image. To hold data out, as in step 7, either keep the training and
-validation geometries in two separate files, or use Python.
+`classify` prints how many objects it trained on and reminds you that the score needs an independent reference. The command line
+assesses against the same objects it can see; to hold reference objects out of training as in Step 6, use Python.
 
 ## The whole script
 
-Everything above in one file ({download}`download <_examples/obia_tutorial.py>`). It prints the numbers quoted on this
-page and writes `classified.gpkg` and `classes.tif` into the current folder.
+Steps 1-9 in one file ({download}`download <_examples/obia_tutorial.py>`). It needs a network, and it only reports an accuracy
+if you provide `reference_points.gpkg`.
 
 ```{literalinclude} _examples/obia_tutorial.py
 :language: python
@@ -337,24 +233,26 @@ page and writes `classified.gpkg` and `classes.tif` into the current folder.
 
 | Step | Lesson |
 |---|---|
-| 2–3 | Measure the segmentation before classifying; choose `scale` from evidence, not habit |
-| 4 | A per-class feature table tells you which rules can work |
-| 5 | The confusion matrix is a to-do list; look at the wrong objects, not only the counts |
-| 6–7 | The same model scores 1.000 on its training objects and 0.907 on a new scene |
-| 7 | Fixes that remove general problems transfer; fixes that chase single objects do not |
-| 7 | Report count- and area-based scores, the confusion matrix, and how many objects |
+| 1 | Real imagery has holes: cloud pixels are no data, not objects |
+| 2-3 | Look at the objects; the scale diagnostics only nominate candidates |
+| 4 | A per-class feature table tells you which rules can work; weak labels carry their source's errors |
+| 6 | Keep the objects you will test on out of training |
+| 7 | Agreement with a map is not accuracy; accuracy needs an independent reference, and its `n_objects` |
+| 9 | Mapped hectares are a summary, not an area estimate |
 
 ## What to do when…
 
 | You see | Cause | Do this |
 |---|---|---|
-| Numbers differ slightly from this page | Different package or library version | Small shifts are normal; large ones are not. Check `seg.n_objects` is 45 first |
+| `RuntimeError: no usable Sentinel-2 scene` | No network, no credentials, or no clear scene for that month. The message ends with the reasons the download code logged | Read them; check the network; widen the date (`"2023-12/2024-02"`) or raise `cloud_cover_max` |
+| The cell prints nothing for a long time | It does not: it prints a "still working, N s elapsed, X MB received" line every 10 s. If it really is silent, `verbose=False` was passed | Look for "nothing new for N s": that is a slow or stalled network, not a frozen kernel |
 | `ImportError` for scikit-image or similar | Optional dependency missing | `pip install scikit-image scikit-learn scipy geopandas rasterio` |
 | `ValueError: cannot evaluate rule 'x'` | Column name typo, or unnamed bands | [Classification: what to do](classification.md#what-to-do-when) |
-| Your rule scores differ between A and B | Overfit to A, or just a different layout | Compare with the table in step 7 |
-| Segmentation is slower than expected | Pure Python merging | [Speed and size](segmentation.md#speed-and-size) |
+| `ValueError: ... lie outside the image` | The reference is in another CRS or another place | Pass `crs=rd.crs`; check the coordinates |
+| Segmentation is slower than expected | Pure Python merging on a large area | [Speed and size](segmentation.md#speed-and-size) |
+| Very high accuracy | You scored training objects, or the reference came from the weak-label map | Step 6 and Step 7 |
 
 ```{seealso}
-[Segmentation](segmentation.md) · [Choosing a scale](scale.md) · [Features](features.md) ·
+[Real imagery](real-data.md) · [Segmentation](segmentation.md) · [Choosing a scale](scale.md) · [Features](features.md) ·
 [Classification](classification.md) · [Hierarchy and context](hierarchy-context.md) · [Accuracy](accuracy.md)
 ```

@@ -8,7 +8,7 @@ ai:
     Commands that work directly on files you already have, without the search-and-download step of a pipeline:
     rule-based water and building masks, segmentation or detection with your trained weights, bi-temporal change,
     a quick cloud mask, training-chip export and tiled inference. The full guide is
-    [Direct native inference](../../cli/direct-inference.md).
+    [Direct native inference](../../inference/cli.md).
   when: |
     Use `ai` when the imagery is already on disk and you want one answer from it. Use [`channel`](channel.md) when you want
     PyGeoVision to find the imagery, run the whole analysis and write the report.
@@ -38,7 +38,7 @@ benchmark:
   intro: |
     Helpers for choosing **which datasets and models to benchmark** for a task, from the catalogue metadata.
     They do not run a benchmark: scoring a model is done in Python with `ModelEvaluator`
-    ([Benchmarking](../../benchmark/index.md)).
+    ([Benchmarking](../../experiments/benchmark.md)).
   when: Use it at the start of a study to shortlist test datasets and candidate models.
   expect: |
     `datasets` and `models` print ranked tables (with a note if nothing matches, e.g. no model for the task has pretrained
@@ -49,7 +49,7 @@ benchmark:
 
 channel:
   intro: |
-    Run any of the **40 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
+    Run any of the **41 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
     a map, tables and a report. This is the main entry point for end users; every pipeline has its own page in the
     [pipeline catalogue](../../pipelines/catalog/index.md).
   when: |
@@ -71,7 +71,7 @@ channel:
 cloud:
   intro: |
     Deploy an ONNX model as a hosted endpoint on **AWS SageMaker** or **Google Vertex AI**. (Azure ML is available from
-    Python only: `AzureDeployer`.) See [Cloud deployment](../../edge-cloud/cloud.md).
+    Python only: `AzureDeployer`.) See [Cloud deployment](../../deployment/cloud.md).
   when: Use it to serve a trained model to other applications over HTTP.
   expect: A summary with the endpoint name and status. Cloud endpoints **cost money while they exist**; delete them when finished.
   watch: |
@@ -120,7 +120,7 @@ doctor:
 edge:
   intro: |
     Export a registry model to **ONNX** and benchmark ONNX Runtime speed. Jetson/TensorRT conversion is Python only
-    (`JetsonConverter`). See [Edge deployment](../../edge-cloud/edge.md).
+    (`JetsonConverter`). See [Edge deployment](../../deployment/edge.md).
   when: Use it to run a trained model without PyTorch, or to measure its speed on a target machine.
   expect: |
     `export-onnx` writes the `.onnx` file and prints its size; `benchmark-onnx` prints median and p95 latency and the
@@ -128,7 +128,7 @@ edge:
   watch: |
     * The export has a **fixed spatial size** unless you pass `--dynamic-size`; ONNX Runtime then refuses other sizes.
     * Compare the exported model's output with the original on real chips before trusting it
-      ([how](../../edge-cloud/edge.md#check-the-export)).
+      ([how](../../deployment/edge.md#check-the-export)).
     * A CUDA/TensorRT request on a machine without them falls back to the CPU with a warning.
 
 explain:
@@ -274,7 +274,7 @@ status:
 timeseries:
   intro: |
     A spectral index through a stack of dated images: one mean per image, a linear trend and anomaly flags.
-    Guide: [Time series](../../advanced/timeseries.md).
+    Guide: [Time series](../../timeseries/index.md).
   when: Use it to follow a field, catchment or lake through a season or years.
   expect: |
     `analyze` prints one line per image (index mean and valid-pixel share) and a trend line with R² and p-value;
@@ -298,7 +298,7 @@ validate:
 vlm:
   intro: |
     Vision-language models: caption an image, ask a question about it, or search a folder with a text query.
-    Guide: [Vision-language models](../../advanced/vlm.md).
+    Guide: [Vision-language models](../../vision-language/index.md).
   when: Use it to triage large collections ("which tiles show flooding?") and to get a first description of an image.
   expect: |
     `caption` and `query` print text; `search` prints the top results as `score  path`. Failures (no network, missing file, bad

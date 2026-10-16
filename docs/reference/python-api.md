@@ -1,8 +1,8 @@
 # Python API
 
 Everything the command line does is available from Python, and some things (training, custom models, the advanced tools) are
-**only** available there. This page maps the `PyGeoVision` client to the pages that explain each part, and then gives the signatures
-and docstrings of the main classes, rendered from the source.
+**only** available there. This page maps the `PyGeoVision` client to the guide pages that explain each part. The **signatures and docstrings of every
+public class and function** are on the pages listed under [The API pages](#the-api-pages), one per area of the package.
 
 ```python
 import pygeovision as pgv
@@ -24,7 +24,7 @@ Both reach the same code. The client's proxies add a few shortcuts (for example 
 | Attribute / method | What it is | Explained in |
 |---|---|---|
 | `client.search(…)`, `client.download(…)`, `client.data.*` | Find and fetch imagery from the 22 providers | [Data](../data/index.md) |
-| `client.pipeline(name, bbox=…, …)` | Run one of the 40 pipelines; returns a `PipelineResult` | [Pipelines](../pipelines/index.md), [results](../pipelines/results.md) |
+| `client.pipeline(name, bbox=…, …)` | Run one of the 41 pipelines; returns a `PipelineResult` | [Pipelines](../pipelines/index.md), [results](../pipelines/results.md) |
 | `client.create_pipeline`, `client.run_pipeline_yaml` | Your own data → AI workflow in YAML | [YAML pipelines](../pipelines/yaml-workflows.md) |
 | `client.validator` | `DataValidator`: check a raster before a model sees it | [Validation](../data/validation.md) |
 | `client.preprocess` | `Preprocessor`: stack, clip, mosaic, mask, normalise, resample | [Preprocessing](../data/preprocessing.md) |
@@ -32,133 +32,44 @@ Both reach the same code. The client's proxies add a few shortcuts (for example 
 | `client.postprocess` | `PostProcessor`: vectorise, sieve, smooth, zonal stats, accuracy, export | [Post-processing](../data/postprocessing.md) |
 | `client.labeling` | OSM, buildings, WorldCover, Dynamic World, SAM, foundation labelers; quality; active learning | [Labeling](../labeling/index.md) |
 | `client.losses` | Segmentation and detection losses | [Losses](../training/losses.md) |
-| `client.segmentation`, `.detection`, `.change`, `.classification` | Run a model on a file you already have | [Direct inference](../cli/direct-inference.md) |
+| `client.segmentation`, `.detection`, `.change`, `.classification` | Run a model on a file you already have | [Inference](../inference/index.md) |
 | `client.inference` | Tiled, batch, streaming and ensemble inference | [Inference](../inference/index.md) |
 | `client.xai` | Grad-CAM, uncertainty, SHAP, attention | [Explainability](../explainability/index.md) |
 | `client.monitoring` | Drift, performance tracking, alerts | [Monitoring](../monitoring/index.md) |
-| `client.edge`, `client.cloud` | ONNX / Jetson, AWS / Azure / GCP | [Edge and cloud](../edge-cloud/index.md) |
-| `client.few_shot`, `.multitask`, `.automl`, `.vlm`, `.timeseries`, `.pointcloud` | The advanced tools | [Advanced](../advanced/index.md) |
+| `client.edge`, `client.cloud` | ONNX / Jetson, AWS / Azure / GCP | [Edge and cloud](../deployment/index.md) |
+| `client.few_shot`, `.multitask`, `.automl`, `.vlm`, `.timeseries`, `.pointcloud` | The advanced tools | [Few-shot](../classification/few-shot.md), [AutoML](../experiments/automl.md) |
 | `client.status()`, `client.doctor()` | What is installed and what works | [Installation](../getting-started/installation.md) |
 | `pgv.model_zoo`, `pgv.dataset_registry` | Metadata catalogues | [Models](../models/catalog.md), [Datasets](../datasets/index.md) |
 
 Objects not on the client: the trainer (`pygeovision.training`), the model registry (`pygeovision.models.get_model`),
 object-based analysis (`pygeovision.obia`), the benchmark evaluator (`pygeovision.benchmark`) and the report builder (`pygeovision.reporting`).
 
-## The client
+## The API pages
 
-```{eval-rst}
-.. autoclass:: pygeovision.PyGeoVision
-   :members: search, download, pipeline, add_credentials, boundary, select_covering_scenes, list_providers, test_provider, clear_cache, cache_stats, status, doctor, prepare_for_ai, create_pipeline, run_pipeline_yaml
-   :no-index:
+Each page below is generated from the source code (`tools/generate_api_docs.py`): a table of what the module defines, and then the
+signature and docstring of each class and method. A test fails when a public name is missing from every page, so this list cannot
+quietly fall behind the package.
+
+```{include} api/_index_table.md
 ```
 
-## Pipelines
+## How to read a signature
 
-```{eval-rst}
-.. autoclass:: pygeovision.ai.pipelines.PipelineResult
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.ai.pipelines.BasePipeline
-   :members: run, description, name, kind
-   :no-index:
-
-.. autoclass:: pygeovision.ai.pipelines.ModelWeightsRequired
-   :no-index:
+```python
+GeoTrainer(model, config, *, callbacks=None, device=None)
 ```
 
-## Models and training
-
-```{eval-rst}
-.. autofunction:: pygeovision.models.get_model
-   :no-index:
-
-.. autofunction:: pygeovision.models.list_models
-   :no-index:
-
-.. autoclass:: pygeovision.training.TrainingConfig
-   :no-index:
-
-.. autoclass:: pygeovision.training.GeoTrainer
-   :members: fit
-   :no-index:
-```
-
-The meaning of every `TrainingConfig` field is in [The training configuration](../training/config.md).
-
-## Inference
-
-```{eval-rst}
-.. autoclass:: pygeovision.inference.TiledInference
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.inference.BatchInferenceEngine
-   :members:
-   :no-index:
-```
-
-## Data preparation and post-processing
-
-```{eval-rst}
-.. autoclass:: pygeovision.data.validator.DataValidator
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.preprocess.Preprocessor
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.data.indices.SpectralIndices
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.data.postprocess.PostProcessor
-   :members:
-   :no-index:
-```
-
-## Explainability and monitoring
-
-```{eval-rst}
-.. autoclass:: pygeovision.explainability.GradCAM
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.explainability.UncertaintyEstimator
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.monitoring.DriftDetector
-   :members:
-   :no-index:
-```
-
-## Advanced tools
-
-```{eval-rst}
-.. autoclass:: pygeovision.advanced.automl.GeoAutoML
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.advanced.few_shot.FewShotLearner
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.advanced.multitask.MultiTaskLearner
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.advanced.timeseries.GeoTimeSeries
-   :members:
-   :no-index:
-
-.. autoclass:: pygeovision.advanced.pointcloud.PointCloudProcessor
-   :members:
-   :no-index:
-```
+- Arguments before the `*` are positional or by name; those after it are by name only.
+- `x=None` means the argument is optional and `None` selects the default behaviour described in its docstring.
+- A method listed with `->` returns that type. `PipelineResult` and `BenchmarkResult` are dataclass-style records; read their fields
+  by attribute.
+- Names starting with an underscore are private and may change without notice. The client's layer classes
+  (`_SegmentationClientProxy` and the like) are the one exception: they are private *names* for public *attributes* (`client.segmentation`),
+  so they are documented under [The client](api/client.md).
 
 ## Duplicate classes by design
 
-Several concepts exist twice (trainer, tiled inference, drift detector, labelers). The classes above are the ones the **command line** uses.
-The other implementation, and why it is kept, is described in [Architecture](../architecture.md#systems-that-exist-twice).
+Several concepts exist twice (trainer, tiled inference, drift detector, labelers). The pages above for [training](api/training.md),
+[inference](api/inference.md) and [monitoring](api/monitoring.md) are the classes the **command line** uses; the other implementation
+is on [the legacy engine page](api/engine.md). Why it is kept is described in
+[Architecture](../architecture.md#systems-that-exist-twice).

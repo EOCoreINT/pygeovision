@@ -38,6 +38,16 @@ Commands:
 
 ### `pygeovision zoo info`
 
+Show full metadata for a model.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `NAME` | text | yes |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision zoo info [OPTIONS] NAME
 
@@ -46,8 +56,22 @@ Usage: pygeovision zoo info [OPTIONS] NAME
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision zoo list`
+
+List models from the AI Model Zoo.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--task` | text |  |  | Filter by task (segmentation, detection, …). |
+| `--tag` | text |  |  | Filter by tag (transformer, real_time, sar, …). |
+| `--max-params` | number |  |  | Max parameters in millions. |
+| `--hf-only` | flag | off |  | Only models with HuggingFace weights. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision zoo list [OPTIONS]
@@ -61,8 +85,19 @@ Options:
   --hf-only           Only models with HuggingFace weights.
   --help              Show this message and exit.
 ```
+:::
 
 ### `pygeovision zoo search`
+
+Search the model zoo by name, architecture, or tag.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `QUERY` | text | yes |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision zoo search [OPTIONS] QUERY
@@ -72,8 +107,13 @@ Usage: pygeovision zoo search [OPTIONS] QUERY
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision zoo stats`
+
+Show model zoo statistics.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision zoo stats [OPTIONS]
@@ -83,8 +123,25 @@ Usage: pygeovision zoo stats [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision zoo top`
+
+Show the top-N models for a task.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `TASK` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--n` | integer | `5` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision zoo top [OPTIONS] TASK
@@ -98,3 +155,4 @@ Options:
   --n INTEGER  [default: 5]
   --help       Show this message and exit.
 ```
+:::

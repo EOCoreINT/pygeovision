@@ -22,6 +22,10 @@ It checks that components **import**, not that every optional extra (ONNX Runtim
 
 ### `pygeovision doctor`
 
+Diagnose PyGeoVision installation and all component connectivity.
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision doctor [OPTIONS]
 
@@ -30,3 +34,4 @@ Usage: pygeovision doctor [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::

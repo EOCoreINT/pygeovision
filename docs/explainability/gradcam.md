@@ -18,7 +18,7 @@ from pygeovision.explainability import GradCAM
 
 cam = GradCAM(model, target_layer="enc2.0")             # a convolution layer, by its name in model.named_modules()
 saliency = cam.explain(chip, class_idx=0)               # chip: tensor/array (C, H, W) or (1, C, H, W)
-print(saliency.shape, saliency.min(), saliency.max())   # (160, 160) 0.0 1.0
+print(saliency.shape, saliency.min(), saliency.max())   # (H, W) of the chip, scaled to 0.0 ... 1.0
 cam.visualise("scene.tif", saliency, "gradcam_water.png")
 ```
 
@@ -52,7 +52,7 @@ the chip, come from?", not "why is this one pixel water?".
 
 ```python
 res = cam.batch_explain("scene.tif", "scene_gradcam.tif", class_idx=0, chip_size=512, overlap=64)
-print(res)      # {'success': True, 'output_path': 'scene_gradcam.tif', 'image_size': (160, 160), 'n_chips': 4}
+print(res)      # {'success': True, 'output_path': 'scene_gradcam.tif', 'image_size': (rows, cols), 'n_chips': ...}
 ```
 
 Tiles the GeoTIFF into chips, explains each, and averages overlaps into a one-band float32 GeoTIFF with the same
@@ -74,11 +74,9 @@ cam.visualise("scene.tif", saliency, "gradcam.png", alpha=0.6, colormap="jet")
 Writes a three-panel PNG: the input (first three bands, stretched; one band is shown grey), the map, and an overlay. The
 image is read only for display; it should show the area that was explained.
 
-![GradCAM for the class water on demo scene B](../_static/img/explain_gradcam_water.png)
-
-*GradCAM (layer `enc2.0`) for class **water** on demo scene B. 78 % of the saliency sits on the lake, which covers 5.6 %
-of the scene. The road (grey strip) also gets some, because it is dark and flat like water. The forest ellipses get
-almost none.*
+Open the result next to the image and ask the one question that matters: is the heat where a person would look? A good check
+is a class with an unmistakable object in the scene (a lake for "water"): measure the share of the saliency that falls on
+those pixels and compare it with the share of the scene they cover. If they are about the same, the map is uninformative.
 
 ## Choosing the target layer
 
@@ -91,24 +89,24 @@ This choice changes the answer more than any other setting.
 | An early layer | Fine detail, but it reflects edges and textures rather than classes | To check low-level cues |
 | A deep encoder layer (low resolution) | Blobby map, correct region | Classification networks (e.g. `layer4` of a ResNet) |
 
-The numbers below are from the example model: the share of saliency mass that falls on true water pixels, which cover
-5.6 % of the scene (so 5.6 % is what an uninformative map would give).
+To compare layers (and GradCAM against GradCAM++) objectively, use a class whose pixels you know, for example water from a
+reference mask `ref_water`:
 
-| Target layer | GradCAM | GradCAM++ |
-|---|---:|---:|
-| `head` (final 1×1 classifier; the default) | 1.00 | 0.00 |
-| `enc2.0` (last feature convolution) | 0.78 | 0.15 |
-| `enc1.0` (first convolution) | 1.00 | 0.00 |
+```python
+for layer in ["enc1.0", "enc2.0", "head"]:
+    sal = GradCAM(model, target_layer=layer).explain(chip, class_idx=water_idx)
+    share_on_water = float(sal[ref_water].sum() / sal.sum())      # compare with ref_water.mean()
+    print(layer, round(share_on_water, 2), "uninformative would be", round(float(ref_water.mean()), 2))
+```
 
-Read it carefully:
+Read the result carefully:
 
-- With the default layer the GradCAM figure is 1.00 because the map **is** the water logit. A perfect score here is not
-  evidence of anything.
-- **GradCAM++ is not a better GradCAM.** On this segmentation model it put almost no mass on the water. GradCAM++ was
-  designed for classification scores; with a score summed over a whole chip its weighting behaves differently. Where the
-  two disagree, test each against something you know (as above) before trusting either.
-- Only the middle row is informative, and it comes from a model with three convolution layers. On your model, try several
-  layers and look at the maps.
+- With the final classifier layer the share is high almost by construction, because the map **is** the class logit map. A
+  high score there is not evidence of anything.
+- **GradCAM++ is not a better GradCAM.** It was designed for classification scores; with a score summed over a whole chip its
+  weighting behaves differently, and on a segmentation model it can put much less mass on the object. Where the two disagree,
+  test each against something you know before trusting either.
+- Only an intermediate feature layer is informative. On your model, try several layers and look at the maps.
 
 For torchvision models the last block of the backbone is the usual choice (`"layer4.2.conv3"` for a ResNet-50), for
 U-Net-like models the last decoder convolution before the head.
@@ -147,7 +145,7 @@ Open the result in QGIS over the scene, set a pseudo-colour ramp 0–1 and 50 % 
 - **A saliency map shows sensitivity, not reasoning.** It says where changing the input changes the score, not what the
   model concluded.
 - **Sharp maps are not necessarily right.** A map can look convincing and be unrelated to the decision. Always check
-  against objects you know (the water example above is such a check).
+  against objects you know (the share-on-water check above is one).
 - **Resolution is limited by the layer.** A layer at 1/16 of the input resolution yields a blob roughly 16 pixels wide.
 - **Models with transformers** have no convolution to explain; use [attention maps](attention.md) (and note that attention
   is not importance either).

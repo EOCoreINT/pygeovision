@@ -24,9 +24,11 @@ for how easily a flattering number appears when it is neglected.
 :linenos:
 ```
 
-{download}`Download benchmark_demo.py <_examples/benchmark_demo.py>`. It trains two small networks on one
-[OBIA demo scene](../obia/demo.md), scores them on a *different* scene, and adds an untrained network, a model that
-outputs at quarter resolution, and one that crashes. It runs offline in a few seconds on a CPU.
+{download}`Download benchmark_demo.py <_examples/benchmark_demo.py>`. It downloads a real Sentinel-2 scene and ESA WorldCover with
+PyGeoVision's own tools ([Real imagery](../obia/real-data.md)), trains two small networks on the west of the scene, scores
+them on the east, which they never saw, and adds an untrained network, a model that outputs at quarter resolution, and one
+that crashes. It needs a network; the training itself takes seconds on a CPU. WorldCover is a model's output, not ground truth,
+so the scores say how well a network reproduces WorldCover on new ground.
 
 ### The pieces
 
@@ -53,46 +55,42 @@ Things the evaluator does for you:
 
 - **Coarse outputs are enlarged.** If the model returns a smaller map than the mask (SegFormer-style quarter-resolution
   decoders), the logits are bilinearly resized to the mask size before the argmax. In the example, `quarter-res` is scored
-  rather than discarded, and loses 0.05 mIoU to the blur, which is the honest price of the coarse output.
+  rather than discarded, and typically loses some mIoU to the blur, which is the honest price of the coarse output.
 - **Label 255 is ignored** (`ignore_index=255`), so padded or unlabelled pixels do not count. The evaluator does not
   expose another value; remap your labels if you use a different convention.
 - **Labels are expected to start at 0.** A mask with class ids `1..N` and `num_classes=N` fails with a class-index error
-  (note the `- 1` in the example when reading `class_raster`).
+  (the example remaps WorldCover codes to ids `0..4` and sets everything else to 255).
 - **GPU timing is synchronised**, so the latency is the forward pass and not just the kernel launch.
 
 ## Expected output
 
-The example's leaderboard (real run):
+The example prints a leaderboard in this layout (the numbers depend on your scene, so none are quoted here):
 
 ```text
 ══════════════════════════════════════════════════════════════════════════════════════════
-  Leaderboard: demo-B | Task: segmentation
+  Leaderboard: east-of-scene | Task: segmentation
 ══════════════════════════════════════════════════════════════════════════════════════════
   #   Model                              mIoU       F1      Acc   ms/img
   ──────────────────────────────────────────────────────────────────────
-  1   net-16                           0.6289   0.7121   0.8558      0.1
-  2   quarter-res                      0.5769   0.6678   0.8409      0.1
-  3   net-4                            0.0544   0.0820   0.3265      0.1
-  4   untrained                        0.0047   0.0092   0.0241      0.1
+  1   net-16                              ...
+  2   quarter-res                         ...
+  3   net-4                               ...
+  4   untrained                           ...
   FAILED  broken                         RuntimeError: CUDA out of memory (simulated)
 ══════════════════════════════════════════════════════════════════════════════════════════
 ```
 
-and the per-class IoU of the winner:
-
-```text
-{'iou_class_0': 0.923, 'iou_class_1': 0.717, 'iou_class_2': 0.846, 'iou_class_3': 0.722, 'iou_class_4': 0.0, 'iou_class_5': 0.566}
-```
+followed by the per-class IoU of the winner (`{'iou_class_0': ..., ...}`), a saved leaderboard and a `results.json`.
 
 Read it like this:
 
-- **`net-16` wins with mIoU 0.629, but class 4 (`building`) has IoU 0.0.** The model never predicts the small buildings
-  correctly; the average hides it. Always look at `per_class_iou`, not only the mean.
-- **`net-4` has 33 % accuracy but an mIoU of 0.05.** Accuracy rewards getting the big classes right; mIoU punishes every
+- **Look at `per_class_iou`, not only the mean.** A model can win on mIoU while a small class (say `built_up`) has IoU 0.0;
+  the average hides it.
+- **Accuracy and mIoU disagree on imbalanced classes.** Accuracy rewards getting the big classes right; mIoU punishes every
   missed class. Pick the metric that matches the cost of your errors.
-- **`untrained` scores 0.005.** That is your floor. If your trained model is not clearly above it, something is wrong with the
-  training, not the test.
-- **`ms/img` of 0.1** is a toy network on a CPU for 32 × 32 chips. See [latency](#latency-is-indicative-only).
+- **`untrained` is your floor.** If a trained model is not clearly above it, something is wrong with the training, not the
+  test.
+- **`ms/img` for a toy network on a CPU** says nothing about your real model. See [latency](#latency-is-indicative-only).
 - **`broken` is listed as `FAILED`, not as 0.** The result's `error` holds the reason; its metric fields are meaningless.
 
 ### `BenchmarkResult` fields
@@ -115,8 +113,7 @@ Read it like this:
 ### Absent classes
 
 If a class occurs in neither the targets nor the predictions, it is left out of `mean_iou` and `mean_f1`. A class that is
-absent from the labels but still **predicted** does count, with IoU 0: on the example data, relabelling class 5 as class 0
-changes the net-16 mIoU from 0.6289 to 0.4945, because the model still predicts class 5 and every such pixel is an error.
+absent from the labels but still **predicted** does count, with IoU 0: every pixel predicted as that class is an error.
 Averaging a class that is empty everywhere as "0" would only lower every score for no reason, so that does not happen.
 
 ### Failures are recorded, not scored
@@ -156,7 +153,7 @@ from pygeovision.benchmark import Leaderboard
 
 board = Leaderboard("leaderboard.json")      # loads the file when it exists
 board.add(result)                             # replaces an earlier entry for the same model + dataset + split
-board.print(task="segmentation", dataset="demo-B")
+board.print(task="segmentation", dataset="east-of-scene")
 rows = board.get(task="segmentation")        # list of dicts, best primary_metric first
 board.export_csv("leaderboard.csv")
 ```
@@ -167,10 +164,10 @@ board.export_csv("leaderboard.csv")
 ════════════════════════════════════════════════════════════════════════════════
   #   Model                          Dataset                 Primary     mIoU
   ───────────────────────────────────────────────────────────────────────────
-  1   net-16                         demo-B                   0.6289   0.6289
-  2   quarter-res                    demo-B                   0.5769   0.5769
-  3   net-4                          demo-B                   0.0544   0.0544
-  4   untrained                      demo-B                   0.0047   0.0047
+  1   net-16                         east-of-scene              ...      ...
+  2   quarter-res                    east-of-scene              ...      ...
+  3   net-4                          east-of-scene              ...      ...
+  4   untrained                      east-of-scene              ...      ...
 ════════════════════════════════════════════════════════════════════════════════
 ```
 

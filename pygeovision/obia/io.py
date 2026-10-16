@@ -69,21 +69,50 @@ def as_raster_data(image, band_names=None, transform=None, crs=None) -> RasterDa
     return RasterData(arr, names, transform, crs)
 
 
+def valid_mask(raster) -> np.ndarray:
+    """Boolean ``(rows, cols)`` mask of pixels that hold data.
+
+    A pixel is invalid when any band is NaN or infinite (what cloud and shadow masking leaves behind), or when every band
+    equals the raster's declared ``nodata`` value. ``raster`` is a :class:`RasterData` or a ``(bands, rows, cols)`` array.
+    """
+    if isinstance(raster, RasterData):
+        arr, nodata = raster.image, raster.nodata
+    else:
+        arr, nodata = np.asarray(raster), None
+        if arr.ndim == 2:
+            arr = arr[None]
+    ok = np.isfinite(arr).all(axis=0)
+    if nodata is not None and np.isfinite(nodata):
+        ok &= ~(arr == nodata).all(axis=0)
+    return ok
+
+
 def rescale_bands(image: np.ndarray, low: float = 2.0, high: float = 98.0) -> np.ndarray:
     """Stretch every band to 0-255 using percentile clipping.
 
     Segmentation parameters such as the multiresolution *scale* only mean
     the same thing across images if the radiometry is on a common range,
-    so the segmenters call this by default.
+    so the segmenters call this by default. The percentiles are taken over the
+    finite pixels of each band, and pixels that are not finite stay NaN.
     """
     out = np.empty(image.shape, dtype=np.float64)
     for b in range(image.shape[0]):
-        lo, hi = np.percentile(image[b], [low, high])
+        x = image[b].astype(np.float64)
+        ok = np.isfinite(x)
+        if not ok.any():
+            out[b] = np.nan
+            continue
+        lo, hi = np.percentile(x[ok], [low, high])
         if hi <= lo:
-            out[b] = 0.0
+            out[b] = np.where(ok, 0.0, np.nan)
         else:
-            out[b] = np.clip((image[b] - lo) / (hi - lo), 0, 1) * 255.0
+            out[b] = np.where(ok, np.clip((x - lo) / (hi - lo), 0, 1) * 255.0, np.nan)
     return out
+
+
+def to_uint8(rgb: np.ndarray) -> np.ndarray:
+    """Rescaled display bands (NaN allowed) -> uint8, with invalid pixels shown as black."""
+    return np.nan_to_num(rgb, nan=0.0).astype(np.uint8)
 
 
 def save_raster(path: str, array: np.ndarray, transform=None, crs=None,

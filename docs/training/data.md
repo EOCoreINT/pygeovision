@@ -254,7 +254,7 @@ class DiskChips(torch.utils.data.Dataset):
 
 For detection the dataset returns `(image, {"boxes": FloatTensor[N, 4] in pixels (x1, y1, x2, y2), "labels":
 LongTensor[N]})` with class numbers **starting at 1** (0 is the background of the detector); see
-[Models by task](../models/tasks.md#object-detection).
+[Models by task](../detection/index.md#object-detection).
 
 ## `make_geo_loaders`
 

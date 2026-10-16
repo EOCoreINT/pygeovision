@@ -34,6 +34,27 @@ Commands:
 
 ### `pygeovision explain gradcam`
 
+Generate GradCAM saliency map.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `IMAGE_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--model`, `-m` | text |  | yes |  |
+| `--output`, `-o` | text |  |  |  |
+| `--class-idx`, `-c` | integer | `1` |  |  |
+| `--checkpoint` | path |  |  | Your trained weights for --model (strict load). Saliency of an untrained model is noise. |
+| `--classes` | integer | `2` |  |  |
+| `--in-channels` | integer |  |  | Default: the image's band count. |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision explain gradcam [OPTIONS] IMAGE_PATH
 
@@ -49,3 +70,4 @@ Options:
   --in-channels INTEGER    Default: the image's band count.
   --help                   Show this message and exit.
 ```
+:::

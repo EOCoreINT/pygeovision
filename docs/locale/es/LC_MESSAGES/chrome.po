@@ -1,0 +1,131 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PyGeoVision\n"
+"PO-Revision-Date: 2026-10-16 00:00+0000\n"
+"Last-Translator: PyGeoVision Contributors\n"
+"Language-Team: es\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Documentation"
+msgstr "Documentación"
+
+msgid "Tutorials"
+msgstr "Tutoriales"
+
+msgid "Community"
+msgstr "Comunidad"
+
+msgid "Download"
+msgstr "Descargar"
+
+msgid "Search"
+msgstr "Buscar"
+
+msgid "Version:"
+msgstr "Versión:"
+
+msgid "Home"
+msgstr "Inicio"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Partly translated"
+msgstr "Traducción parcial: las páginas sin traducir se muestran en inglés."
+
+msgid "Getting started"
+msgstr "Primeros pasos"
+
+msgid "Data"
+msgstr "Datos"
+
+msgid "Pipelines"
+msgstr "Pipelines"
+
+msgid "Models and training"
+msgstr "Modelos y entrenamiento"
+
+msgid "Object-based analysis"
+msgstr "Análisis orientado a objetos"
+
+msgid "Trust, monitor, deploy"
+msgstr "Confianza, monitorización, despliegue"
+
+msgid "Advanced tools"
+msgstr "Herramientas avanzadas"
+
+msgid "Examples"
+msgstr "Ejemplos"
+
+msgid "Reference"
+msgstr "Referencia"
+
+msgid "Project"
+msgstr "Proyecto"
+
+msgid "Segmentation"
+msgstr "Segmentación"
+
+msgid "Classification"
+msgstr "Clasificación"
+
+msgid "Object detection"
+msgstr "Detección de objetos"
+
+msgid "Change detection"
+msgstr "Detección de cambios"
+
+msgid "Foundation models"
+msgstr "Modelos fundacionales"
+
+msgid "Vision-language"
+msgstr "Visión y lenguaje"
+
+msgid "3D / LiDAR"
+msgstr "3D / LiDAR"
+
+msgid "Super-resolution"
+msgstr "Superresolución"
+
+msgid "Time series"
+msgstr "Series temporales"
+
+msgid "Object-based analysis (OBIA)"
+msgstr "Análisis basado en objetos (OBIA)"
+
+msgid "Models"
+msgstr "Modelos"
+
+msgid "Labelling"
+msgstr "Etiquetado"
+
+msgid "Training"
+msgstr "Entrenamiento"
+
+msgid "Inference"
+msgstr "Inferencia"
+
+msgid "Experiments"
+msgstr "Experimentos"
+
+msgid "Explainability"
+msgstr "Explicabilidad"
+
+msgid "Monitoring"
+msgstr "Monitorización"
+
+msgid "Reporting"
+msgstr "Informes"
+
+msgid "Deployment"
+msgstr "Despliegue"
+
+msgid "CLI reference"
+msgstr "Referencia de la CLI"
+
+msgid "Python API"
+msgstr "API de Python"

@@ -4,23 +4,13 @@ A *model* in PyGeoVision is a neural-network architecture you can build, train, 
 This section explains what the package gives you, what it deliberately does **not** give you, and how to choose and use
 a model from first command to saved checkpoint.
 
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-registry
-choosing
-tasks
-foundation
-catalog
-```
 
 | Page | Read it when |
 |---|---|
 | [How the registries relate](registry.md) | A model name works in one command and not in another, or you want to add your own model |
 | [Choosing a model](choosing.md) | You know your task and data and need to pick an architecture |
 | [Models by task](tasks.md) | You want the input and output of each kind of model, with a working example |
-| [Foundation models](foundation.md) | You want Prithvi, DOFA, DINOv3, CLIP, SAM or satellite embeddings, or to use radar with an optical foundation model |
+| [Foundation models](../foundation-models/index.md) | You want Prithvi, DOFA, DINOv3, CLIP, SAM or satellite embeddings, or to use radar with an optical foundation model |
 | [Model catalogue](catalog.md) | You want the full list: every name, size, weight source and whether it builds |
 
 ## The most important thing to know
@@ -37,7 +27,7 @@ Ghana" only after it has been *trained* on labelled examples of that task. The p
 - refuses to run an untrained network and call the output a result. Commands that need your model stop with a message
   that tells you what to supply.
 
-This is why seven of the [40 pipelines](../pipelines/index.md) need `--checkpoint`, and why the other 33 use
+This is why seven of the [41 pipelines](../pipelines/index.md) need `--checkpoint`, and why the other 34 use
 published methods (indices, thresholds, reference maps) that need no training at all. If you only want a flood map or a
 burn-severity map, you do not need this section.
 
@@ -51,14 +41,12 @@ loading fails.
 
 ## Where models come from
 
-```text
-   public pretrained weights            your labelled chips
-   (ImageNet, ADE20K, HLS, ...)          (GeoTIFF image + label pairs)
-              \                                /
-               v                              v
-        get_model(name, pretrained=True)   GeoTrainer.fit(...)   --->  best.pth (your checkpoint)
-                                                                           |
-                  pygeovision infer predict / channel ... --checkpoint <---+
+```{figure} ../_static/img/flow-model-sources.svg
+:alt: Where models come from: public weights and your labelled chips lead to a checkpoint you can use
+:width: 100%
+:class: pgv-figure
+
+Pretrained weights are a starting point; your chips make the checkpoint yours.
 ```
 
 1. **Pick an architecture** from the [catalogue](catalog.md) with `pygeovision models list`.

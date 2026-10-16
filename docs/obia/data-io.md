@@ -1,7 +1,7 @@
 # Data in and out
 
 **Functions:** `obia.load_raster`, `obia.save_raster`, `obia.RasterData`, `obia.labels_to_gdf`, `obia.rasterize_geometries`,
-`obia.from_labels`, `obia.samples_from_geometries`, and the plot helpers in `pygeovision.obia.viz`
+`obia.from_labels`, `obia.samples_from_geometries`, `obia.valid_mask`, and the plot helpers in `pygeovision.obia.viz`
 
 ## Why
 
@@ -61,15 +61,10 @@ A 2-D array becomes one band; anything else but 3-D raises `ValueError`.
 
 ### No-data and NaN
 
-`obia` has no mask support. Rather than silently produce garbage, segmentation **refuses** images with NaN:
-
-```text
-ValueError: unmasked NaN values in image are not supported
-```
-
-What to do: fill the gaps (`np.nan_to_num(img, nan=0)`), and expect that the filled area becomes its own object or objects.
-Setting 10 × 10 pixels to 0 on the demo scene produced one extra block (47 objects instead of 45). Afterwards, drop those
-objects from the feature table (for example `feats.query("mean_nir > 0")`) or give them a "nodata" class with a rule.
+Pixels that are NaN or infinite in any band, or equal to the raster's `nodata` in every band, are **no data**. Segmentation gives
+them label 0 and builds no object over them; features and the scale tools leave them out
+([Real imagery](real-data.md#no-data-pixels)). `obia.valid_mask(raster)` returns the mask. An image with no valid pixel raises
+`ValueError: the image has no valid pixels`. Do not fill gaps with zeros: a filled patch becomes an object of its own.
 
 ### Rescaling: `rescale_bands`
 
@@ -156,7 +151,9 @@ samples = obia.samples_from_geometries(seg.labels, ref_gdf, "class", raster.tran
 
 Returns a Series (class by object id) in which each object takes the class of the reference geometry covering most of it.
 It is the bridge from digitised reference data to training samples and to accuracy assessment. Details, the point
-behaviour and `min_coverage` are in [Classification → Getting samples](classification.md#getting-samples).
+behaviour and `min_coverage` are in [Classification → Getting samples](classification.md#getting-samples). Pass `crs=raster.crs` when the
+reference is in another coordinate system. Land-cover *maps* as training data, cloud holes and downloading a scene are in
+[Real imagery](real-data.md).
 
 ## Objects from somewhere else: `from_labels`
 
@@ -226,5 +223,5 @@ weights outside `[0, 1]`. Most people never need it; use `segment`, `segment_lev
 | Figure shows odd colours | Wrong `bands` indices | They are zero-based indices into the file's band order |
 
 ```{seealso}
-[Segmentation](segmentation.md) · [Classification](classification.md) · [Accuracy](accuracy.md) · [Demo scene](demo.md)
+[Segmentation](segmentation.md) · [Classification](classification.md) · [Accuracy](accuracy.md)
 ```

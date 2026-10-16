@@ -56,7 +56,7 @@ def leaf_commands() -> list[str]:
 
 # Commands whose single entry in the CLI tree covers variants that are not all runnable offline.
 NOTES = {
-    "channel": "33 ready + 7 needs-weights pipelines: all 40 run offline via tools/offline_pipeline_smoke.py; real data needs network",
+    "channel": "34 ready + 7 needs-weights pipelines: all 41 run offline via tools/offline_pipeline_smoke.py; real data needs network",
     "report": "rebuilds PDF/Word/Excel, maps and vectors from a saved run; runs offline on the smoke-test outputs",
     "ai segment": "water, custom offline; buildings, sam need network + weights",
     "ai detect": "generic/ships/cars need `ultralytics` + a YOLO download; custom refusal offline",
@@ -67,6 +67,13 @@ NOTES = {
     "data pipeline run": "network (search step); structure/refusals offline",
     "data pipeline history": "after a run; needs network for a run that finds scenes",
     "label osm": "network (Overpass API)",
+    "obia fetch": "network (Sentinel-2 / WorldCover); the OBIA commands run on that real scene. Offline: tests/test_obia_cli.py",
+    "obia segment": "needs a real scene from obia fetch; offline: tests/test_obia_cli.py",
+    "obia scale": "needs a real scene from obia fetch; offline: tests/test_obia_cli.py",
+    "obia features": "needs a real scene from obia fetch; offline: tests/test_obia_cli.py",
+    "obia classify": "needs a real scene from obia fetch; offline: tests/test_obia_cli.py",
+    "obia assess-segmentation": "needs a real scene and your own reference objects; offline: tests/test_obia_cli.py",
+    "obia assess-classification": "needs a real scene and your own reference points; offline: tests/test_obia_cli.py",
     "vlm caption": "Hugging Face download", "vlm query": "Hugging Face download", "vlm search": "Hugging Face download",
     "cloud deploy-aws": "cloud account (offline: clean failure)", "cloud deploy-gcp": "cloud account (offline: clean failure)",
     "models download": "no-weights entry offline; Hugging Face entries need network",

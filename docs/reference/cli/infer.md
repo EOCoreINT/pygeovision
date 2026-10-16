@@ -37,6 +37,30 @@ Commands:
 
 ### `pygeovision infer batch`
 
+Run batch inference on a directory of GeoTIFFs with your trained model.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_DIR` | path | yes |
+| `OUTPUT_DIR` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--model`, `-m` | text | `unet_resnet50` |  | Registry model name. |
+| `--checkpoint` | path |  | yes | Your trained weights for --model (state dict from GeoTrainer). |
+| `--classes`, `-c` | integer | `2` |  |  |
+| `--in-channels` | integer |  |  | Bands the model was trained on (default: the first input file's). |
+| `--workers`, `-w` | integer | `2` |  |  |
+| `--pattern` | text | `*.tif` |  |  |
+| `--overwrite` | flag | off |  | Predict again even if the output file already exists (default: skip those files). |
+| `--normalise`, `--no-normalise` | flag | `--normalise` |  | Stretch every band to its own 2-98 percentile range before the model sees it. Use --no-normalise if the model was trained on values that were already scaled (for example reflectance 0-1), otherwise the prediction is made on differently scaled data and can be wrong. |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision infer batch [OPTIONS] INPUT_DIR OUTPUT_DIR
 
@@ -60,8 +84,34 @@ Options:
                                 can be wrong.  [default: normalise]
   --help                        Show this message and exit.
 ```
+:::
 
 ### `pygeovision infer predict`
+
+Run tiled inference on a GeoTIFF with your trained model.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `IMAGE_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--model`, `-m` | text | `unet_resnet50` |  | Registry model name. |
+| `--checkpoint` | path |  | yes | Your trained weights for --model (state dict from GeoTrainer). |
+| `--output`, `-o` | text |  |  |  |
+| `--classes`, `-c` | integer | `2` |  |  |
+| `--in-channels` | integer |  |  | Bands the model was trained on (default: the input's). |
+| `--chip-size` | integer | `512` |  |  |
+| `--overlap` | integer | `64` |  |  |
+| `--blend` | one of `gaussian` | `linear` | `constant` | `gaussian` |  |  |
+| `--device` | text |  |  | cuda\|cpu\|mps |
+| `--normalise`, `--no-normalise` | flag | `--normalise` |  | Stretch every band to its own 2-98 percentile range before the model sees it. Use --no-normalise if the model was trained on values that were already scaled (for example reflectance 0-1), otherwise the prediction is made on differently scaled data and can be wrong. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision infer predict [OPTIONS] IMAGE_PATH
@@ -87,3 +137,4 @@ Options:
                                   and can be wrong.  [default: normalise]
   --help                          Show this message and exit.
 ```
+:::

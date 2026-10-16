@@ -12,6 +12,7 @@ the arguments shown there are checked against the code.
 | [Urban](urban.md) | Where are the buildings and roads? How fast does the city grow? Where is it hottest? | `building_footprints`, `road_network`, `urban_expansion`, `urban_heat_island`, `urban_growth`\* |
 | [Water and floods](water.md) | Where is the water, and how did it change? Which ground flooded, and how sure are we? | `water_bodies`, `water_extent_timeseries`, `surface_water_dynamics`, the three flood pipelines, `drainage_analysis` |
 | [Disaster response](disaster.md) | What changed after the event? How badly was it burned or flooded? | `change_detection`, `flood_mapping` family, `wildfire_severity`, `active_fire`, `disaster_assessment`\*, `landslide_detection`\* |
+| [Mining](mining.md) | Is the disturbed ground of a mine or quarry coming back, where is it stuck, and is a decline real? | `mine_rehabilitation`, with `vegetation_anomaly`, `water_extent_timeseries`, `landcover_change` to explain it |
 | [Climate and cryosphere](climate.md) | Is the glacier shrinking? Where is snow? What are surface temperatures and evapotranspiration doing? | `glacier_monitoring`, `snow_cover`, `land_surface_temperature`, `evapotranspiration`, `surface_water_dynamics`, `coastal_monitoring` |
 
 \* needs a network **you** trained; the pipeline refuses to start without `--checkpoint`. See
@@ -37,15 +38,3 @@ honesty: its plumbing and statistics are tested on synthetic data and its real-i
 4. **255 and NaN are "unknown", not "none".** Never read them as dry, unburned or unchanged.
 5. **A pipeline gives a screening result, not a measurement.** Validate a figure you will publish against your own
    reference points ([`postprocess accuracy`](../reference/cli/postprocess.md), [OBIA accuracy](../obia/accuracy.md)).
-
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-agriculture
-forestry
-urban
-water
-disaster
-climate
-```

@@ -226,7 +226,7 @@ b.recommended_for_paper("change_detection")   # names, years, sizes and links as
 **What it is and is not:**
 
 - It records *names, split ratios, a seed and a metric name*. It does **not** download data, make the splits or run a model.
-  You apply the 60/20/20 split yourself (with the `seed`) and score with [`ModelEvaluator`](../benchmark/index.md).
+  You apply the 60/20/20 split yourself (with the `seed`) and score with [`ModelEvaluator`](../experiments/benchmark.md).
   `BenchmarkConfig` raises `ValueError` if the ratios do not have `train`/`val`/`test` keys that sum to 1.
 - `primary_metric` is a *label per task*: `mean_iou` (segmentation), `mAP50` (detection), `accuracy` (classification, VQA),
   `mean_f1` (multi-label), `iou_change` (change detection), `rmse` (regression), `mae` (prediction),
@@ -271,6 +271,6 @@ To search the *satellite imagery* archives (Sentinel, Landsat, ...) rather than 
 | `ValueError: split_ratios must have train/val/test keys ...` | Ratios do not add up to 1 | Fix the ratios |
 
 ```{seealso}
-[Benchmarking](../benchmark/index.md) · [Model registry](../models/registry.md) · [Training data](../training/data.md) ·
+[Benchmarking](../experiments/benchmark.md) · [Model registry](../models/registry.md) · [Training data](../training/data.md) ·
 [Search and download imagery](../data/search-and-download.md)
 ```

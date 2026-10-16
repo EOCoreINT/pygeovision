@@ -118,7 +118,7 @@ measures **habitat heterogeneity**, a widely used proxy; it is not a species cou
 
 ## 5. Canopy height from LiDAR (if you have a point cloud)
 
-The [point-cloud tool](../advanced/pointcloud.md) makes a canopy height model from a `.las`/`.laz` file:
+The [point-cloud tool](../lidar/index.md) makes a canopy height model from a `.las`/`.laz` file:
 `PointCloudProcessor().canopy_height_model(...)` (see its page for the call). Exclude noise classes (the default) — in the page's test, leaving
 them in turned a 19 m canopy maximum into 298 m. There is no pretrained LiDAR classifier in the package.
 

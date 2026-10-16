@@ -49,15 +49,15 @@ pip install "pygeovision[all]"         # everything except cloud and edge deploy
 | `monitoring` | `scipy`, `matplotlib`, `requests` | [drift detection](../monitoring/index.md) |
 | `geo3d` | `laspy`, `scipy`, `pandas` | LiDAR / point-cloud products |
 | `serve` | `fastapi`, `uvicorn`, `onnxruntime`, `onnxsim`, `websockets` | serve models |
-| `edge` | `onnx`, `onnxruntime`, `onnxsim` | [export to ONNX](../edge-cloud/edge.md) |
-| `cloud` | `boto3`, `sagemaker`, Azure ML, Vertex AI | [deploy to a cloud endpoint](../edge-cloud/cloud.md) |
+| `edge` | `onnx`, `onnxruntime`, `onnxsim` | [export to ONNX](../deployment/edge.md) |
+| `cloud` | `boto3`, `sagemaker`, Azure ML, Vertex AI | [deploy to a cloud endpoint](../deployment/cloud.md) |
 | `enterprise` | `cryptography`, `passlib`, `python-jose`, `sqlalchemy` | authentication and audit components |
 | `docs` | Sphinx, MyST, Furo | build this documentation |
 | `dev` | `pytest`, `ruff`, `mypy`, `black`, `pre-commit` | develop PyGeoVision itself |
 
 ```{tip}
 Install the geo stack and the report extra first (`pip install "pygeovision[geo,report]"`). That is all that is
-needed to run all 33 *ready* pipelines and to receive their maps and reports. Add `train` only when you have a
+needed to run all 34 *ready* pipelines and to receive their maps and reports. Add `train` only when you have a
 network of your own to train or run.
 ```
 
@@ -141,7 +141,7 @@ print(client.doctor())          # diagnostics of the data layer
 
 ## Try it without a network
 
-The repository ships an offline test that runs **all 40 pipelines** through the real command-line interface on
+The repository ships an offline test that runs **all 41 pipelines** through the real command-line interface on
 small synthetic rasters, and checks that each one writes its rasters, a map, vector files and the PDF, Word and
 Excel reports:
 
@@ -152,7 +152,7 @@ python tools/offline_pipeline_smoke.py
 ```text
 OK  active_fire                3 reports, 2 map(s), 3 vector file(s)
 …
-40/40 pipelines succeeded
+41/41 pipelines succeeded
 ```
 
 It is the quickest way to confirm that your environment can produce every deliverable before you spend time

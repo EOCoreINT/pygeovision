@@ -108,5 +108,5 @@ than the model has.
 | Model and input on different devices | Old default was CPU | The default is now the model's own device |
 
 ```{seealso}
-[GradCAM](gradcam.md) · [Foundation models](../models/foundation.md)
+[GradCAM](gradcam.md) · [Foundation models](../foundation-models/index.md)
 ```

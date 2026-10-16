@@ -1,84 +1,91 @@
-"""OBIA tutorial: every step of docs/obia/tutorial.md in one runnable file.
+"""OBIA tutorial: the steps of docs/obia/tutorial.md in one file, on real data.
 
-Run:  python obia_tutorial.py      (about a minute, no downloads)
+Needs a network and the provider credentials PyGeoVision already uses (Sentinel-2 via the pipelines' download code,
+ESA WorldCover via client.labeling). Run:  python obia_tutorial.py
+
+Optional input: reference_points.gpkg, points with a 'class' column (forest, farmland, built_up, water) that YOU digitised
+on high-resolution imagery. Without it the script stops before any accuracy figure, on purpose.
 Writes classified.gpkg and classes.tif in the current folder.
 """
-import warnings; warnings.filterwarnings("ignore")
+import warnings
+from pathlib import Path
+
 import pandas as pd
+
+warnings.filterwarnings("ignore")
+import pygeovision as pgv
 from pygeovision import obia
 
-# Step 1
-A = obia.make_demo_scene(seed=0)          # build everything here
-B = obia.make_demo_scene(seed=1)          # judge everything here
-print(A.raster.image.shape, len(A.reference))
+BBOX = (-1.70, 6.18, -1.655, 6.225)         # about 5 km x 5 km: the region merging is pure Python
+DATE = "2024-01"                           # a dry month; cloud pixels come back as NaN
+CLASS_MAP = {10: "forest", 30: "farmland", 40: "farmland", 50: "built_up", 80: "water"}   # ESA WorldCover codes
 
-# Step 2
-seg = obia.segment(A.raster, "multires", scale=20)
-print(seg.n_objects)
-quality, summary = obia.segmentation_quality(seg.labels, A.ref_labels)
-print(round(summary["mean_over_seg"],3), round(summary["mean_under_seg"],3), round(summary["mean_D"],3))
+# Step 1: real data, through PyGeoVision's own search and download
+client = pgv.PyGeoVision()
+rd = obia.fetch_scene(client, BBOX, DATE, "./download", bands=("blue", "green", "red", "nir"))
+wc, _ = obia.fetch_worldcover(client, BBOX, "./download/worldcover.tif", like=rd)
+valid = obia.valid_mask(rd)
+print(rd.image.shape, f"{100 * (1 - valid.mean()):.1f}% no data")
 
-# Step 3
-table = obia.scale_vs_reference(A.raster, [5, 10, 15, 20, 30, 40, 60, 80], A.ref_labels)
-print(table.round(3)); print(table["mean_D"].idxmin())
+# Step 2: segment; cloud and shadow pixels get label 0 and belong to no object
+seg = obia.segment(rd, "multires", scale=16)
+assert ((seg.labels == 0) == ~valid).all()
+print(seg.n_objects, "objects")
 
-# Step 4
-layers = obia.spectral_layers(A.raster)
-feats = obia.extract_features(seg.labels, A.raster, extra_layers=layers)
-truth = obia.samples_from_geometries(seg.labels, A.reference, "class", A.raster.transform)
-print(feats[["area_px","compactness","elongation","mean_ndvi","std_nir","brightness"]].groupby(truth).median().round(2))
+# Step 3: scale evidence without reference objects (candidates only: look at the objects too)
+print(obia.scale_diagnostics(rd, [8, 12, 16, 20, 30]).round(2))
 
-# Step 5
+# Step 4: describe the objects, then see what the weak-label classes look like
+feats = obia.extract_features(seg.labels, rd, extra_layers=obia.spectral_layers(rd), texture_layers=["nir"],
+                              transform=rd.transform)
+weak = obia.samples_from_raster(seg.labels, wc, CLASS_MAP, min_purity=0.7)["class"]
+cols = ["area_px", "compactness", "elongation", "mean_ndvi", "mean_ndwi", "std_nir", "brightness"]
+print(feats.loc[weak.index, cols].groupby(weak).median().round(2))
+
+# Step 5: rules written from that table (thresholds are YOURS to read off the table, these are placeholders)
 rules = obia.RuleBasedClassifier([
-    ("water", "mean_ndwi > 0.3"),
-    ("forest", "mean_ndvi > 0.4 and std_nir > 8"),
-    ("cropland", "mean_ndvi > 0.55"),
-    ("building", "compactness > 0.55 and area_px < 400"),
-    ("bare_field", "brightness > 90"),
-])
-result = rules.classify(feats)
-report = obia.assess_classification(result, seg.labels, A.reference, "class", A.raster.transform)
-print(round(report["overall_accuracy"],3), round(report["kappa"],3), report["n_objects"])
-print(report["confusion"].astype(int))
-wrong = feats.join(truth.rename("truth")).assign(predicted=result.classes)
-wrong = wrong[wrong.truth != wrong.predicted]
-print(wrong[["truth","predicted","area_px","std_nir","elongation"]].round(1).head(12))
+    ("water", "mean_ndwi > 0.2"),
+    ("forest", "mean_ndvi > 0.7"),
+    ("farmland", "mean_ndvi > 0.45"),
+    ("built_up", "compactness > 0.5"),
+], default="unclassified")
+rule_result = rules.classify(feats)
 
-rules2 = obia.RuleBasedClassifier([
-    ("water", "mean_ndwi > 0.3"),
-    ("forest", "mean_ndvi > 0.4 and std_nir > 8 and area_px > 300"),
-    ("cropland", "mean_ndvi > 0.55"),
-    ("road", "elongation > 8"),
-    ("building", "compactness > 0.55 and area_px < 400"),
-    ("bare_field", "brightness > 90"),
-])
-report2 = obia.assess_classification(rules2.classify(feats), seg.labels, A.reference, "class", A.raster.transform)
-print(round(report2["overall_accuracy"],3), round(report2["kappa"],3))
-
-# Step 6
-clf = obia.ObjectClassifier("rf", random_state=0).fit(feats, truth)
+# Step 6: learn from the weak labels, but keep the objects of your reference points OUT of training
+ref = None
+if Path("reference_points.gpkg").exists():
+    import geopandas as gpd
+    ref = gpd.read_file("reference_points.gpkg")
+ref_objs = (obia.samples_from_geometries(seg.labels, ref, "class", rd.transform, crs=rd.crs).index
+            if ref is not None else pd.Index([]))
+train = weak.drop(index=ref_objs, errors="ignore")
+clf = obia.ObjectClassifier("rf", random_state=0, class_weight="balanced").fit(feats, train)
+result = clf.predict(feats)
 print(clf.feature_importances_.head(5).round(3))
-trained = obia.assess_classification(clf.predict(feats), seg.labels, A.reference, "class", A.raster.transform)
-print("trap", trained["overall_accuracy"])
 
-# Step 7
-segB = obia.segment(B.raster, "multires", scale=20)
-featsB = obia.extract_features(segB.labels, B.raster, extra_layers=obia.spectral_layers(B.raster))
-def score(res):
-    x = obia.assess_classification(res, segB.labels, B.reference, "class", B.raster.transform)
-    w = obia.assess_classification(res, segB.labels, B.reference, "class", B.raster.transform, weights=featsB["area_px"])
-    return round(x["overall_accuracy"],3), round(x["kappa"],3), round(w["overall_accuracy"],3), x["n_objects"]
-print("rules ", score(rules.classify(featsB)))
-print("rules2", score(rules2.classify(featsB)))
-print("rf    ", score(clf.predict(featsB)))
-for m in ("tree","knn","svm"):
-    print(m, score(obia.ObjectClassifier(m, **({"random_state":0} if m=="tree" else {})).fit(feats, truth).predict(featsB)))
+# Step 7: spatial hold-out against the weak labels (agreement with the weak labels, NOT accuracy) ...
+from sklearn.model_selection import GroupKFold
+H, W = seg.labels.shape
+blocks = (feats["centroid_row"] // (H / 3)).astype(int) * 3 + (feats["centroid_col"] // (W / 3)).astype(int)
+pooled = pd.Series(index=weak.index, dtype=object)
+for tr, te in GroupKFold(3).split(weak.index, groups=blocks.loc[weak.index]):
+    m = obia.ObjectClassifier("rf", random_state=0, class_weight="balanced").fit(feats, weak.iloc[tr])
+    pooled.loc[weak.index[te]] = m.predict(feats).classes.loc[weak.index[te]]
+held = obia.confusion_report(weak, pooled)
+print("agreement with the weak labels on held-out blocks:", round(held["overall_accuracy"], 3), "on", held["n_objects"], "objects")
 
-# Step 9
-import os
-d = '.'
-final = clf.predict(featsB)
-gdf = final.to_vector(segB.labels, B.raster.transform, B.raster.crs, features=featsB[["area_m2","mean_ndvi"]])
-gdf.to_file(os.path.join(d,"classified.gpkg"), driver="GPKG")
-obia.save_raster(os.path.join(d,"classes.tif"), final.to_raster(segB.labels), B.raster.transform, B.raster.crs)
-print(gdf.columns.tolist()); print(final.summary(featsB["area_m2"]).round(3))
+# ... and accuracy proper, only if you have independent reference points
+if ref is None:
+    print("no reference_points.gpkg: no accuracy reported")
+else:
+    for name, res in {"rules": rule_result, "random forest": result}.items():
+        a = obia.assess_classification(res, seg.labels, ref, "class", rd.transform, crs=rd.crs)
+        print(name, round(a["overall_accuracy"], 3), round(a["kappa"], 3), "on", a["n_objects"], "objects")
+
+# Step 8-9: export for a GIS
+gdf = result.to_vector(seg.labels, rd.transform, rd.crs, features=feats[["area_m2", "mean_ndvi"]])
+gdf.to_file("classified.gpkg", driver="GPKG")
+codes = result.codes()
+obia.save_raster("classes.tif", result.to_raster(seg.labels), rd.transform, rd.crs, dtype="uint8")
+print("class codes in classes.tif:", codes)
+print(result.summary(feats["area_m2"]).round(3))

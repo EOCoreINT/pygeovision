@@ -157,39 +157,44 @@ class BatchInferenceEngine:
         output_dir: str,
         gpu_ids: list[int] | None = None,
     ) -> dict[str, Any]:
-        """Distribute inference across multiple GPUs (B6)."""
+        """Distribute the given files across GPUs (B6).
+
+        With two or more GPUs the files are dealt out round-robin, one worker thread per GPU. With one GPU or none, the *same files* are
+        predicted one after the other on the engine's own device (it never widens the job to the files' whole folder).
+
+        Returns:
+            ``{"succeeded": [paths], "failed": [paths]}``.
+        """
         try:
             import torch
             n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
         except ImportError:
             n_gpus = 0
 
-        if n_gpus <= 1:
-            return self.run_directory(
-                Path(input_files[0]).parent, output_dir
-            )
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        gpu_ids = gpu_ids or list(range(n_gpus))
-        # Split files across GPUs
-        splits = [input_files[i::len(gpu_ids)] for i in range(len(gpu_ids))]
-
-        def _gpu_worker(files, gpu_id):
+        def _infer_files(files, device):
+            from pygeovision.inference.tiled import TiledInference
             results = {"succeeded": [], "failed": []}
             for f in files:
                 out = Path(output_dir) / Path(f).name
-                from pygeovision.inference.tiled import TiledInference
-                inf = TiledInference(self.model, device=f"cuda:{gpu_id}",
-                                      chip_size=self.chip_size, num_classes=self.num_classes)
+                inf = TiledInference(self.model, device=device, chip_size=self.chip_size,
+                                     overlap=self.overlap, num_classes=self.num_classes,
+                                     half_precision=self.half_precision)
                 r = inf.infer(f, str(out), normalise=self.normalise)
                 (results["succeeded"] if r.get("success") else results["failed"]).append(f)
             return results
 
-        all_results = {"succeeded": [], "failed": []}
+        if n_gpus <= 1:
+            return _infer_files(list(input_files), self.device)
+
+        gpu_ids = gpu_ids or list(range(n_gpus))
+        splits = [list(input_files)[i::len(gpu_ids)] for i in range(len(gpu_ids))]
+        all_results: dict[str, Any] = {"succeeded": [], "failed": []}
         with ThreadPoolExecutor(max_workers=len(gpu_ids)) as pool:
-            futures = {pool.submit(_gpu_worker, splits[i], gpu_ids[i]): i for i in range(len(gpu_ids))}
+            futures = {pool.submit(_infer_files, splits[i], f"cuda:{gpu_ids[i]}"): i for i in range(len(gpu_ids))}
             for fut in as_completed(futures):
                 r = fut.result()
                 all_results["succeeded"].extend(r["succeeded"])
                 all_results["failed"].extend(r["failed"])
-
         return all_results

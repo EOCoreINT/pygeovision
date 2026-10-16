@@ -81,12 +81,13 @@ class DataValidator:
 
     Every raster passes through here before entering a foundation model,
     ChangeFormer, or any other AI pipeline. The validator:
-      - Checks dtype (must be float32)
-      - Checks value range (no Inf, no all-NaN bands)
-      - Checks spatial metadata (CRS, valid pixel size, non-zero extent)
-      - Checks band count against model expectations
-      - Auto-repairs dtype and NaN fill
-      - Returns a float32 numpy array (C, H, W) ready for inference
+
+    - Checks dtype (must be float32)
+    - Checks value range (no Inf, no all-NaN bands)
+    - Checks spatial metadata (CRS, valid pixel size, non-zero extent)
+    - Checks band count against model expectations
+    - Auto-repairs dtype and NaN fill
+    - Returns a float32 numpy array (C, H, W) ready for inference
 
     Usage::
 
@@ -454,16 +455,14 @@ class EOPipeline:
 
         Args:
             n: Number of scenes to keep.
-            strategy: How to choose which n to keep —
-                "best": lowest cloud cover first (optical quality);
-                    scenes with no cloud_cover (e.g. SAR) sort last.
-                "newest": most recent acquisition date first.
-                "oldest": least recent acquisition date first.
-                "score": highest search relevance score first, if the
-                    provider returned one; falls back to "best" for
-                    scenes with no score.
-                anything else (or unrecognised): keep search-result
-                    order as-is — the previous, honest default behaviour.
+            strategy: How to choose which n to keep. ``"best"``: lowest cloud
+                cover first (optical quality); scenes with no cloud_cover (e.g.
+                SAR) sort last. ``"newest"``: most recent acquisition date
+                first. ``"oldest"``: least recent acquisition date first.
+                ``"score"``: highest search relevance score first, if the
+                provider returned one; falls back to ``"best"`` for scenes with
+                no score. Anything else keeps the search-result order as-is,
+                the previous, honest default behaviour.
         """
         scenes = self._scenes
         if strategy == "best":

@@ -98,21 +98,26 @@ see [Hierarchy and context](hierarchy-context.md).
 
 ## What the features look like by class
 
-Median over the objects of each true class on the demo scene (scale 20). This is what the classifier "sees":
+The useful first look at any scene is a table of feature medians per class. With weak labels from WorldCover
+([Real imagery](real-data.md#weak-labels-from-a-map-samples_from_raster)):
 
-| Class | `area_px` | `compactness` | `elongation` | `mean_nir` | `std_nir` | `mean_ndvi` | `glcm_contrast_nir` |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| water | 1443 | 0.46 | 2.2 | 14 | 2.8 | −0.44 | 0.00 |
-| forest | 1559 | 0.53 | 1.4 | 129 | **13.9** | 0.69 | **2.21** |
-| cropland | 172 | 0.35 | 1.7 | **169** | 5.4 | 0.60 | 0.38 |
-| bare_field | 158 | 0.33 | 2.0 | 127 | 5.0 | −0.02 | 0.44 |
-| building | 62 | **0.67** | 1.5 | 117 | 6.3 | −0.08 | 0.52 |
-| road | 310 | **0.15** | **19.8** | 90 | 6.1 | −0.07 | 0.50 |
+```python
+weak = obia.samples_from_raster(seg.labels, wc, CLASS_MAP, min_purity=0.7)["class"]
+cols = ["area_px", "compactness", "elongation", "mean_nir", "std_nir", "mean_ndvi", "glcm_contrast_nir"]
+print(feats.loc[weak.index, cols].groupby(weak).median().round(2))
+```
 
-Read the bold cells. Forest and cropland have similar NDVI, but forest is far more variable (`std_nir`, `glcm_contrast_nir`).
-Bare fields and buildings are close spectrally (NIR 127 vs 117), but buildings are compact and small. Roads are
-spectrally unremarkable but have an elongation of about 20. That is the case for object features: **shape and texture
-separate what colour alone cannot**.
+This is what the classifier "sees", for your scene. Read it for gaps:
+
+- Classes with similar NDVI but different `std_nir` or `glcm_contrast_nir` (forest against farmland is the usual pair) are
+  separable by texture, not by colour.
+- Classes close in colour but different in `area_px` and `compactness` (buildings against bare ground) are separable by
+  shape.
+- Thin things (roads) show up as a very high `elongation` and a low `compactness`.
+- A class that overlaps another on every column cannot be separated by any rule built on these features.
+
+The rows are WorldCover's classes, errors included, so the table describes what WorldCover's labels look like in your image,
+not the ground. That is the case for object features: **shape and texture separate what colour alone cannot**.
 
 ## Performance
 

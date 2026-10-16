@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .io import rescale_bands
+from .io import rescale_bands, to_uint8
 
 _PALETTE = ["#1f77b4", "#2ca02c", "#98df8a", "#d2b48c", "#d62728", "#7f7f7f",
             "#9467bd", "#ff7f0e", "#17becf", "#bcbd22"]
@@ -45,7 +45,7 @@ def show_classes(result, labels, raster=None, bands=(0, 1, 2), colors: dict | No
     else:
         fig, axes = ax.figure, np.atleast_1d(ax)
     if raster is not None and len(axes) > 1:
-        axes[0].imshow(np.moveaxis(rescale_bands(raster.image[list(bands)]).astype(np.uint8), 0, -1))
+        axes[0].imshow(np.moveaxis(to_uint8(rescale_bands(raster.image[list(bands)])), 0, -1))
         axes[0].set_title("image"); axes[0].axis("off")
     a = axes[-1]
     a.imshow(code, cmap=cmap, vmin=0, vmax=len(names), interpolation="nearest")

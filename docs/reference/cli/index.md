@@ -41,34 +41,3 @@ There are **25 command groups** and **92 commands**.
 | [`validate`](validate.md) | Validate satellite data before model inference. | 2 |
 | [`vlm`](vlm.md) | Vision-Language Models — caption, query, search imagery. | 3 |
 | [`zoo`](zoo.md) | Browse the AI Model Zoo, a metadata catalogue of about 96 architectures (it describes models; it does not build them). | 5 |
-
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-ai
-ai-models
-benchmark
-channel
-cloud
-data
-datasets
-doctor
-edge
-explain
-indices
-infer
-label
-models
-monitor
-obia
-pipeline
-postprocess
-preprocess
-report
-status
-timeseries
-validate
-vlm
-zoo
-```

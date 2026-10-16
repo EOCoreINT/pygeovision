@@ -214,6 +214,7 @@ class SARDINOv3Adapter:
         weights_path: str | None = None,
         pseudo_rgb_arrangement: str = "vv_vh_ratio",
         device: str = "cpu",
+        allow_mock: bool = False,
     ) -> None:
         if mode not in ("zero_shot", "self_supervised", "supervised"):
             raise ValueError("mode must be 'zero_shot', 'self_supervised', or 'supervised'")
@@ -228,6 +229,9 @@ class SARDINOv3Adapter:
         self.weights_path = weights_path
         self.pseudo_rgb_arrangement = pseudo_rgb_arrangement
         self.device = device
+        #: When the backbone cannot be loaded, ``extract_features`` raises unless this is True, in which case it
+        #: returns all-zero arrays of the right shape and sets ``result["is_mock"] = True`` (for plumbing tests only).
+        self.allow_mock = allow_mock
         self._model = None
         self.embed_dim = self.MODEL_SIZES[model_size]["embed_dim"]
 
@@ -315,8 +319,15 @@ class SARDINOv3Adapter:
             except Exception as exc:
                 logger.error("DINOv3 feature extraction failed: %s", exc)
         else:
-            # Return a mock embedding (correct shape, zeros) so downstream
+            if not self.allow_mock:
+                raise RuntimeError(
+                    "The DINO backbone could not be loaded (no network, or torch.hub could not fetch "
+                    f"facebookresearch/dinov2 {self.model_size}), so there are no real features to return. "
+                    "Fix the download, pass weights_path=, or construct the adapter with allow_mock=True to get "
+                    "all-zero placeholder arrays for plumbing tests (flagged result['is_mock'] = True).")
+            # Placeholder embedding (correct shape, zeros) so downstream
             # code can be validated without a real model installed
+            result["is_mock"] = True
             h, w = preprocessed.shape[1], preprocessed.shape[2]
             result["cls_token"] = np.zeros(self.embed_dim, dtype=np.float32)
             result["patch_features"] = np.zeros(

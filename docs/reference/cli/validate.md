@@ -40,6 +40,22 @@ Commands:
 
 ### `pygeovision validate for-inference`
 
+Validate and auto-fix data for a specific model type.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--model-type` | one of `segmentation` | `detection` | `change_detection` | `classification` | `foundation` | `regression` | `segmentation` |  |  |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision validate for-inference [OPTIONS] INPUT_PATH
 
@@ -53,8 +69,30 @@ Options:
                                   [default: segmentation]
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision validate run`
+
+Validate a GeoTIFF — check nulls, dtype, CRS, bounds, outliers.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--required-bands` | integer |  |  | Minimum number of bands required. |
+| `--value-range` | text |  |  | Expected value range, e.g. '0,10000'. |
+| `--target-crs` | text |  |  | Expected CRS, e.g. EPSG:4326. |
+| `--report` | text |  |  | Save HTML/JSON report to this path. |
+| `--report-fmt` | one of `html` | `json` | `html` |  |  |
+| `--mode` | one of `strict` | `fix` | `warn` | `fix` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision validate run [OPTIONS] INPUT_PATH
@@ -75,3 +113,4 @@ Options:
   --mode [strict|fix|warn]  [default: fix]
   --help                    Show this message and exit.
 ```
+:::

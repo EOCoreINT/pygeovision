@@ -1,0 +1,207 @@
+# Hand-written "Modify it" advice for every pipeline page (tools/generate_pipeline_pages.py reads it).
+# One list of bullets per pipeline: the changes people actually make, in terms of this pipeline's own arguments.
+
+active_fire:
+  - "**Stricter or looser detections.** `min_confidence=high` keeps only the strongest detections; `low` adds doubtful ones. Compare `fire_days.tif` for both before choosing."
+  - "**A custom period.** Use `date_before` / `date_after` (`YYYY-MM-DD`) instead of `date` to cover a fire season rather than a month. Always read `observed_days.tif` next to `fire_days.tif`."
+  - "**A smaller or larger area.** The pixel is 1 km, so a box under about 20 km across has only a few hundred pixels; widen the box or use `wildfire_severity` for the scar."
+
+archaeological_site:
+  - "**Features of a different size.** `smoothing_radius_px` defines the regional trend that is removed; set it to a few times the size (in pixels) of what you look for. Too small erases the features, too large leaves the terrain in."
+  - "**A different elevation model.** `dem_type` takes `srtm90`, `srtm1arc`, `cop30`, `cop90`, `nasadem`, `alos` or `gedtm30`; a finer model shows smaller earthworks."
+  - "**Candidates, not finds.** The output ranks places worth a field visit; keep your own notes of which you checked."
+
+biodiversity_hotspot:
+  - "**Coarser or finer pattern.** `window_px` is the side of the moving window in 10 m pixels (21 = 210 m). Larger windows give smoother, coarser maps."
+  - "**A different cut-off.** `hotspot_percentile=95` keeps only the top 5% of cells; `80` keeps the top fifth."
+  - "**It is a proxy.** The index measures spectral diversity, not species counts; compare with field data before using the word *biodiversity*."
+
+building_footprints:
+  - "**Another source.** `source=microsoft | google | osm` switches the dataset; `google` also takes `min_confidence` to drop weak detections."
+  - "**Your own network.** Give `checkpoint=` (and `model`, `bands`, `num_classes`) to segment Sentinel-2 yourself instead of reading a dataset. At 10 m this finds built-up patches, not single houses."
+  - "**Coarser summary grid.** `cell_m` sets the size of the count and density cells."
+
+change_detection:
+  - "**Fewer false alarms.** Raise `min_magnitude`: the threshold is `max(Otsu, min_magnitude)`, so it stops Otsu from splitting sensor noise on an unchanged scene."
+  - "**Use a trained network.** `method=\"model\"` with `checkpoint=` and `model=` runs your siamese network; set `bands` and `num_classes` to match training."
+  - "**Fewer bands.** `bands` defaults to all six reflectance bands; restrict it (for example red and near-infrared) to ignore bands that behave differently between your dates."
+
+coastal_monitoring:
+  - "**Wet sand and turbid water.** `mndwi_threshold` above 0 is stricter (less water); below 0 includes more turbid water. Check a few shorelines on a basemap after changing it."
+  - "**Compare the same tide.** The pipeline cannot correct for tide. Pick dates at similar tide levels or treat the shoreline change as indicative."
+  - "**More scenes.** Raise `cloud_cover_max` if no scene qualifies, and inspect `valid_fraction`."
+
+crop_health:
+  - "**Only severe losses.** `anomaly_threshold` is the minimum NDVI drop that is flagged; raise it to see only the worst fields."
+  - "**Compare the same season.** Choose `date_before` and `date_after` at the same growth stage in different years, or the difference is phenology, not stress."
+  - "**Another index.** For a time series or other indices use `vegetation_indices`; for a long baseline use `vegetation_anomaly`."
+
+crop_monitoring:
+  - "**Your classes.** `crop_classes` lists the names you trained on; the network has one more output than names (class 0 is background). Keep the order identical to training."
+  - "**Your architecture and bands.** `model` (default `segformer_b2`), `bands` and `num_classes` must match the checkpoint, or loading fails with a size mismatch."
+  - "**Fewer seams.** Raise `overlap` (Gaussian-blended) or lower `tile_size` when memory is tight."
+
+deforestation:
+  - "**Your weights.** `checkpoint=` is required; `model` defaults to `changeformer`, `num_classes` to 3. The class meanings are yours; this pipeline does not know them."
+  - "**Years instead of months.** `date_before=\"2020\"` means July of that year; `baseline_year` and `analysis_year` are aliases."
+  - "**No weights?** Use `forest_change`, which reads the published tree-cover product and needs none."
+
+disaster_assessment:
+  - "**Your damage classes.** `num_classes` is the number of damage levels you trained on (default 4); `disaster_type` is only a label in the report."
+  - "**Event dates.** Use `date_before` and `date_after` (aliases `pre_date`, `post_date`) as close to the event as clear imagery allows."
+  - "**No weights?** For floods use `flood_mapping`, `sar_flood_mapping` or `multisensor_flood_mapping`."
+
+drainage_analysis:
+  - "**What counts as a stream.** `stream_threshold_km2` is the catchment area that makes a channel (default 1 km²). It is your choice; a larger value gives a sparser network."
+  - "**Heights above drainage.** `hand_thresholds_m` lists the heights for which the share of area is reported (default 5, 10, 15)."
+  - "**A bigger box.** `max_cells` guards memory; use `resolution_m` to coarsen instead of raising it. Finer than the DEM is only interpolation."
+
+evapotranspiration:
+  - "**Another year.** `date` is the year (required); a month like `2022-06` is read as its year."
+  - "**Monthly detail.** The product is annual; for monthly vegetation water use see `vegetation_indices` and `land_surface_temperature`."
+  - "**A larger area.** Large boxes are coarsened automatically; check the recorded resolution in `run_summary.json`."
+
+flood_mapping:
+  - "**Shadows and wet soil.** Raise `mndwi_threshold` to 0.1–0.2 to cut false water; lower it to catch turbid water."
+  - "**More imagery.** Raise `cloud_cover_max` when no scene qualifies, and read `valid_fraction`: below about 0.6 the result is partial."
+  - "**Cloudy event.** Use `sar_flood_mapping`, or `multisensor_flood_mapping` to combine radar, optical and terrain."
+
+forest_change:
+  - "**Forest definition.** `include_open_forest=True` also counts canopy 10–90% (the FAO definition); the default counts only above 90%."
+  - "**Resolution.** `resolution_m` is the output grid (native 25 m); very large boxes are coarsened and the run records it."
+  - "**Years are limited** to 2015–2020 by the product; for later years use `landcover_change` or train a model for `deforestation`."
+
+glacier_monitoring:
+  - "**Compare the same season.** Use the end of the melt season for both dates (September in the northern hemisphere); snow cover of a different season looks like glacier change."
+  - "**Longer record.** Run the pipeline for several date pairs and compare the areas in `run_summary.json`."
+  - "**Check the outlines.** Debris-covered ice is spectrally similar to rock and is missed."
+
+land_cover:
+  - "**Another source.** `source=\"worldcover\"` (2021 map, `date` ignored), `\"dynamic_world\"` (monthly; needs Earth Engine) or a model name with `checkpoint=` for your own network."
+  - "**Your own network.** Set `num_classes`, `bands`, `tile_size` and `overlap` to match training."
+  - "**Change over time.** Use `landcover_change`; do not compare two runs of the static WorldCover map."
+
+land_surface_temperature:
+  - "**Hot spots.** Give `threshold_c` (degrees above the scene mean) to add a hot-spot layer; omit it for temperature only."
+  - "**Another month.** `date` defaults to `2024-07`; pick the warmest, clearest month for heat studies."
+  - "**It is surface temperature,** not air temperature; do not compare with weather-station readings."
+
+landcover_change:
+  - "**Remove noise.** `min_change_ha=0.5` to `1` removes most classifier noise by dropping small changed patches."
+  - "**Resolution.** `resolution_m` defaults to the native 10 m and is coarsened for very large boxes."
+  - "**Years** are limited to 2017–2023 by the product."
+
+landslide_detection:
+  - "**Your weights.** `checkpoint=` (required), `model` (default `siamese_unet`), `bands` (must match training) and `num_classes` (default 2)."
+  - "**Event dates.** `date_before` and `date_after` should bracket the event with as little other change as possible."
+  - "**Terrain context.** Combine with `terrain_analysis` slopes to remove detections on flat ground."
+
+mine_rehabilitation:
+  - "**Your site and reference.** `site` and `reference` are polygon files; give one or both. Without a reference, an automatic reference is chosen from land with median NDVI above `reference_min_ndvi` (lower it for savanna or dry woodland)."
+  - "**Class thresholds.** `recovered_rri` (default 0.8), `bare_rri` (0.4) and `trend_threshold` (0.03 per year) are working thresholds, not regulatory criteria. Change them and record your values."
+  - "**How much data per pixel.** `min_observations` (at least 3), `recent_dates` and `min_valid_fraction` control which dates and pixels count."
+
+multisensor_flood_mapping:
+  - "**Radar thresholds.** `water_db=\"auto\"` calibrates on optical water; give a number or `otsu` to override. `change_db` (default 3) is how much darker than the reference a flooded pixel must be."
+  - "**Terrain filter.** `max_hand_m` (default 15) removes flooding on high ground; `None` or 0 turns it off, as does `use_terrain=False`."
+  - "**Leave a sensor out.** `use_optical=False` gives radar plus terrain only; a single day usually has no radar pass, so give a window of one to two weeks."
+
+road_extraction:
+  - "**Your weights.** `checkpoint=` is required; `model` defaults to `unet_resnet50`, `bands` to red, green, blue."
+  - "**Fewer seams.** Raise `overlap`; lower `tile_size` for memory."
+  - "**No weights?** `road_network` reads OpenStreetMap roads and needs none."
+
+road_network:
+  - "**Density grid.** `cell_m` is the cell size of the density raster (default 500 m); larger cells smooth the pattern."
+  - "**Which roads.** `exclude` lists `highway` values left out (proposed, construction, razed, abandoned, planned, platform by default)."
+  - "**Quality.** The data is OpenStreetMap: completeness varies by country; read the statistics as a lower bound."
+
+sar_flood_mapping:
+  - "**Polarisation.** `polarization=\"vv\"` (default) is best for open water; `vh` suits flooded vegetation less well but is less affected by wind."
+  - "**Thresholds.** `water_db` defaults to -15 for VV and -20 for VH; `otsu` selects a histogram threshold of the flood image. `change_db` (default 3) is the darkening needed relative to the reference."
+  - "**Noise.** Keep `speckle_filter` on; raise `min_patch_ha` to drop small patches."
+
+snow_cover:
+  - "**Another month.** `date` defaults to `2024-01`. Snow cover depends strongly on the date; compare the same month in different years."
+  - "**The cut-off is fixed.** Snow is NDSI > 0.4 (the MODIS MOD10 value); to change it see *Change the code* below. Cloud-masked pixels are nodata; read `valid_fraction`."
+  - "**Longer record.** Run several months and compare the areas in `run_summary.json`."
+
+solar_detection:
+  - "**Your weights.** `checkpoint=` is required; `model` defaults to `unet_efficientnet_b4`, `tile_size` to 256 and `overlap` to 32."
+  - "**Strict cloud limit.** `cloud_cover_max` defaults to 5% because panels are small; raise it only if no scene qualifies."
+  - "**Resolution.** At 10 m only large arrays are visible; for rooftop panels you need much finer imagery than this pipeline downloads."
+
+solar_potential:
+  - "**Another day or time.** `date` (`YYYY-MM-DD`; only the day of year is used) and `hour` (solar time, 12 is when the sun is highest, not clock time)."
+  - "**Another elevation model.** `dem_type` (`srtm1arc` by default)."
+  - "**It is clear-sky potential:** shading by terrain only, with no cloud, trees or buildings."
+
+surface_water_dynamics:
+  - "**Resolution.** `resolution_m` defaults to the native 30 m and is coarsened automatically for very large boxes."
+  - "**Interpretation.** The layers are occurrence, seasonality and transitions over a long record; for a flood on a given date use a flood pipeline."
+  - "**A smaller area** gives a clearer picture of individual lakes."
+
+terrain_analysis:
+  - "**Slope classes.** `slope_thresholds_deg` lists the slopes for which the area share above is reported (default 5, 15, 30)."
+  - "**Hillshade light.** `sun_azimuth_deg` (default 315) and `sun_elevation_deg` (default 45)."
+  - "**DEM source.** `dem_source` is `copernicus`, `copernicus_aws` or `opentopography` (needs a key); `dem_type` and `resolution_m` set the product and grid."
+
+urban_expansion:
+  - "**Years** `date_before` and `date_after` between 2017 and 2023; the product is annual."
+  - "**Resolution.** `resolution_m` defaults to 10 m and is coarsened automatically for very large boxes."
+  - "**Your own definition of urban.** Use `landcover_change` to see all class transitions, not only built-up."
+
+urban_growth:
+  - "**Your weights.** `checkpoint=` is required; `model` defaults to `siamese_unet`, `num_classes` to 2, `bands` to red, green, blue."
+  - "**Years.** `date_before=\"2000\"` means June of that year; `start_year` and `end_year` are aliases."
+  - "**No weights?** `urban_expansion` uses a published annual product and needs none."
+
+urban_heat_island:
+  - "**What counts as hot.** `threshold_c` is the number of degrees above the scene mean (default 2)."
+  - "**Month.** Use the warmest, clearest month (`date`, default `2024-07`)."
+  - "**Surface temperature,** not air temperature; compare with land cover to see what drives the heat."
+
+vegetation_anomaly:
+  - "**Baseline length.** `baseline_years` is a number of previous years (default 5) or a list such as `2019,2020,2021`; at least 3 must produce a usable image."
+  - "**Cloud.** `cloud_cover_max` defaults to 30."
+  - "**The target month** `date` is required; compare the same month with the baseline."
+
+vegetation_indices:
+  - "**Dates.** `dates` is a list of months or dates; dates without usable imagery are skipped and listed."
+  - "**More dates, more detail.** Monthly dates over a growing season show the vegetation curve; avoid mixing seasons."
+  - "**Anomalies.** For a comparison with a baseline use `vegetation_anomaly`."
+
+volcano_monitoring:
+  - "**Threshold.** `threshold_c` is how many degrees above the scene mean count as an anomaly (default 20)."
+  - "**Month.** `date` defaults to `2024-07`; run several months to see changes in activity."
+  - "**Limits of the sensor.** Landsat's 100 m thermal band saturates over active lava; use the result for persistent warm ground, not for eruption detection."
+
+water_bodies:
+  - "**Method.** `method=\"ndwi\"` (index threshold) or `\"model\"` (your network, with `checkpoint=`, `model`, `bands`, `num_classes`)."
+  - "**Threshold.** `ndwi_threshold` defaults to 0.3 (conservative); lower values include turbid and shallow water, 0 is McFeeters' original value."
+  - "**Cloud.** `cloud_cover_max` defaults to 10."
+
+water_extent_timeseries:
+  - "**Dates.** `dates` (required) is a list of months or dates."
+  - "**Which dates count.** `min_valid_fraction` (default 0.8) leaves poorly observed dates out of the frequency map; `min_observations` (default 2) is the least number of clear observations per pixel."
+  - "**Threshold.** `mndwi_threshold` (default 0) and `cloud_cover_max` (default 30)."
+
+water_quality:
+  - "**Month.** `date` defaults to `2024-06`; use the same month in different years to compare."
+  - "**Relative indicators.** Band 1 is NDCI (relative chlorophyll-a) and band 2 is red reflectance (relative turbidity); neither is a concentration without local calibration with field samples."
+  - "**Cloud and glint** affect water more than land; read `valid_fraction`."
+
+wetland_mapping:
+  - "**Season.** `date` defaults to `2024-06`; use the wet season."
+  - "**Combine seasons.** Run wet and dry seasons and compare, since wetlands are defined by seasonal flooding."
+  - "**Thresholds in the code.** Water is MNDWI > 0 and vegetation is EVI > 0.1; to change them see *Change the code* below. The map shows wetlands that are wet on the acquisition date, not a legal delineation."
+
+wildfire_severity:
+  - "**Dates.** `date_before` shortly before the fire and `date_after` shortly after, in the same season where possible."
+  - "**Your own classes.** The classes use simplified USGS/MTBS thresholds (0.10, 0.27, 0.66). `dnbr.tif` is also written, so you can classify it with thresholds that suit your vegetation."
+  - "**Cloud and smoke.** Read `valid_fraction`; choose dates with clear skies."
+
+wind_farm_siting:
+  - "**Slope limit.** `max_slope_deg` (default 15) excludes steeper cells."
+  - "**Exposure.** `exposure_smoothing_px` (default 25) is the window of the regional mean subtracted to measure prominence."
+  - "**Exclusions.** `use_landcover=False` turns off the WorldCover exclusion; `dem_type` picks the elevation model. The result is a screening layer, not a site recommendation."

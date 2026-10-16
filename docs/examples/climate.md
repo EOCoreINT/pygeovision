@@ -67,7 +67,7 @@ inside a pixel.
 
 `vegetation_anomaly` (a month against the same month of earlier years, z-score and Vegetation Condition Index) is the drought-monitoring workflow;
 see [agriculture](agriculture.md#1-is-this-month-greener-or-browner-than-usual). For a single location or region over many dates, the
-[time-series tool](../advanced/timeseries.md) fits a trend with a p-value and, with `period=12`, takes the seasonal cycle out first so a
+[time-series tool](../timeseries/index.md) fits a trend with a p-value and, with `period=12`, takes the seasonal cycle out first so a
 regular seasonal drop is not flagged as an anomaly.
 
 ## 5. Where is the water or shoreline moving?
@@ -104,5 +104,5 @@ and hour is a snapshot. It needs an OpenTopography key for the DEM (`pygeovision
 
 1. State the quantity and the **conditions you hold constant** (season, tide, sensor, cloud-free).
 2. Use the same box, the same pipeline, the same parameters for every date (check `run_summary.json`).
-3. Collect at least five dates before you fit anything; the [time-series tool](../advanced/timeseries.md) refuses fewer than five for anomalies.
+3. Collect at least five dates before you fit anything; the [time-series tool](../timeseries/index.md) refuses fewer than five for anomalies.
 4. Report the p-value *and* the slope per year with its units, and say how much of the image was valid on each date.

@@ -38,6 +38,27 @@ Commands:
 
 ### `pygeovision label osm`
 
+Generate labels from OpenStreetMap (class values: buildings 1, roads 2, water 3, vegetation 4, agricultural 5, commercial 6, residential 7, solar_panels 8, parking 9, sports 10).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `LON_MIN LAT_MIN LON_MAX LAT_MAX` | number | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output`, `-o` | text | `./labels/osm.tif` |  | Label raster to write. |
+| `--categories`, `-c` | text | `['buildings', 'roads', 'water']` |  | Repeat for several: buildings roads water vegetation agricultural commercial residential solar_panels parking sports. |
+| `--reference` | path |  |  | Imagery raster: write the labels on its exact grid and CRS (recommended for training). |
+| `--resolution` | number | `10.0` |  | Pixel size in metres when there is no --reference. |
+| `--all-touched` | flag | off |  | Burn every pixel an area touches (keeps tiny buildings). |
+| `--vector`, `--no-vector` | flag | `--vector` |  | Also write the features as GeoJSON. |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision label osm [OPTIONS] LON_MIN LAT_MIN LON_MAX LAT_MAX
 
@@ -56,8 +77,27 @@ Options:
   --vector / --no-vector  Also write the features as GeoJSON.  [default: vector]
   --help                  Show this message and exit.
 ```
+:::
 
 ### `pygeovision label quality`
+
+Assess label quality (raster-only heuristics; not a measure of accuracy).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `LABEL_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--num-classes` | integer |  |  | Classes are 0..N-1. Default: inferred from the raster. |
+| `--check` | one of `class_balance` | `slivers` | `coverage` | `connectivity` | `boundaries` |  |  | Run only these checks (repeatable). Default: all except boundaries. |
+| `--html` | flag | off |  | Save HTML report |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision label quality [OPTIONS] LABEL_PATH
@@ -72,3 +112,4 @@ Options:
   --html                          Save HTML report
   --help                          Show this message and exit.
 ```
+:::

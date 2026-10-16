@@ -508,6 +508,25 @@ _GSW_CLASSES = _cd((0, "Never water", NO_CHANGE), (1, "Permanent", "#08306b"), (
 _STREAM_ORDER = _cd((0, "No stream", NO_CHANGE), (1, "Order 1", "#c6dbef"), (2, "Order 2", "#9ecae1"), (3, "Order 3", "#6baed6"),
                     (4, "Order 4", "#4292c6"), (5, "Order 5", "#2171b5"), (6, "Order 6", "#08519c"), (7, "Order 7", "#08306b"),
                     (8, "Order 8", "#041f4a"))
+def _h_mine_rehab(c):
+    s = c.s
+    out = [f"Of the {c.f('ha', s.get('classified_land_ha'))} of land that could be classed ({c.f('ha', s.get('assessed_ha'))} assessed in all), "
+           f"{c.f('frac', s.get('recovered_fraction'))} has reached the recovered level by {s.get('latest_date')}, {c.f('frac', s.get('recovering_fraction'))} is recovering, "
+           f"{c.f('frac', s.get('stalled_fraction'))} has stalled, {c.f('frac', s.get('declining_fraction'))} is declining and {c.f('frac', s.get('bare_fraction'))} is still bare or sparse.",
+           f"The site's median greenness was {c.num(s.get('site_rri_first'), 2)} of the reference on {s.get('first_date')} and {c.num(s.get('site_rri_latest'), 2)} "
+           f"on {s.get('latest_date')}; that series changes by {c.num(s.get('site_trend_per_year'), 3)} of the reference per year."]
+    if s.get("area_ha_water"):
+        out.append(f"{c.f('ha', s.get('area_ha_water'))} is open water (pit lake or pond) and is not counted as bare.")
+    if s.get("season_warning"):
+        out.append("Warning: " + s["season_warning"])
+    return out
+
+
+_REHAB_CLASSES = _cd((0, "Outside the assessed area (or reference)", NO_CHANGE), (1, "Recovered (at or above the recovered level)", "#1a9850"),
+                     (2, "Recovering (rising)", "#a6d96a"), (3, "Stalled (partial, not rising)", "#fee08b"),
+                     (4, "Bare or sparse", "#bf812d"), (5, "Declining (falling)", "#d73027"), (6, "Water (pit lake, pond)", "#4575b4"))
+
+
 _ANOMALY_CLASSES = _cd((0, "Much below normal (z <= -2)", "#8c510a"), (1, "Below normal (-2 < z <= -1)", "#d8b365"),
                        (2, "Near normal (|z| < 1)", NO_CHANGE), (3, "Above normal (1 <= z < 2)", "#5ab4ac"),
                        (4, "Much above normal (z >= 2)", "#01665e"))
@@ -523,6 +542,7 @@ R_FLOOD = "Barnes, R., Lehman, C. & Mulla, D. (2014). Priority-flood: an optimal
 R_D8 = "O'Callaghan, J.F. & Mark, D.M. (1984). The extraction of drainage networks from digital elevation data. Computer Vision, Graphics, and Image Processing 28(3), 323-344."
 R_STRAHLER = "Strahler, A.N. (1957). Quantitative analysis of watershed geomorphology. Transactions of the American Geophysical Union 38(6), 913-920."
 R_HAND = "Rennó, C.D. et al. (2008). HAND, a new terrain descriptor using SRTM-DEM: mapping terra-firme rainforest environments in Amazonia. Remote Sensing of Environment 112(9), 3469-3481."
+R_NDVI = "Tucker, C.J. (1979). Red and photographic infrared linear combinations for monitoring vegetation. Remote Sensing of Environment 8(2), 127-150."
 R_VCI = "Kogan, F.N. (1995). Application of vegetation index and brightness temperature for drought detection. Advances in Space Research 15(11), 91-100."
 R_MSFT = "Microsoft. Global ML Building Footprints (github.com/microsoft/GlobalMLBuildingFootprints), Open Data Commons Open Database License."
 R_GOOGLE = "Sirko, W. et al. (2021). Continental-scale building detection from high resolution satellite imagery. arXiv:2107.12283. (Google Open Buildings v3.)"
@@ -1233,6 +1253,45 @@ _NEW_SPECS: list[ReportSpec] = [
         charts=(ChartSpec("series", "Observed water area by date", "Water area (ha)", y="water_area_ha", x="date", kind="line"),
                 ChartSpec("series", "Water share of the observed pixels", "Share of observed pixels", y="water_fraction_of_valid", x="date",
                           kind="line", fmt="{:.1%}")),
+        multi_date=False),
+
+    ReportSpec(
+        "mine_rehabilitation", "Mine Closure and Rehabilitation (greenness against an undisturbed reference)",
+        "Is the disturbed ground of this site returning to vegetation, how far has it got, and where is it stuck or going backwards?",
+        ("NDVI and MNDWI are computed on each date from cloud-masked Sentinel-2 / Landsat scenes, all aligned to the grid of the first.",
+         "The relative recovery index (RRI) of a pixel is its NDVI divided by the median NDVI of the reference pixels on the same date, which divides out the season.",
+         "Each pixel gets the mean RRI of the most recent dates and the least-squares trend of its RRI against time, and is classed recovered, recovering, declining, bare or stalled by the thresholds shown with the run. Pixels that were water on at least half of their observations are a separate class.",
+         "Cloud is nodata. A pixel needs the minimum number of clear dates, and a date seen on too little of the site, or with too few reference pixels, is listed and left out."),
+        (Layer("status", "rehab_status.tif", "Rehabilitation status", "classes", classes=_REHAB_CLASSES, muted=(0,),
+               vector=VectorSpec("rehabilitation_status", skip=(0,)), primary=True),
+         Layer("rri", "recovery_index.tif", "Recent relative recovery index (1 = as green as the reference)", "continuous", cmap="RdYlGn", vmin=0, vmax=1.2,
+               label="RRI", optional=True),
+         Layer("trend", "recovery_trend.tif", "Change in RRI per year", "continuous", cmap="RdBu", vmin=-0.2, vmax=0.2, center=0.0,
+               label="RRI per year", optional=True),
+         Layer("reference", "reference_mask.tif", "Reference pixels used", "classes",
+               classes=_cd((0, "Not reference", NO_CHANGE), (1, "Reference", "#1a9850")), muted=(0,), optional=True)),
+        (Metric("assessed_ha", "Assessed area", "ha"), Metric("area_ha_recovered", "Recovered", "ha"), Metric("area_ha_recovering", "Recovering", "ha"),
+         Metric("area_ha_stalled", "Stalled", "ha"), Metric("area_ha_bare", "Bare or sparse", "ha"), Metric("area_ha_declining", "Declining", "ha"),
+         Metric("area_ha_water", "Open water", "ha"), Metric("recovered_but_declining_ha", "Recovered but falling", "ha"),
+         Metric("mean_rri_latest", "Mean RRI, latest dates", "num2"), Metric("site_trend_per_year", "Site trend (RRI per year)", "num3"),
+         Metric("reference_pixels", "Reference pixels", "int"), Metric("valid_fraction", "Valid share of the site", "frac")),
+        _h_mine_rehab,
+        reading=("RRI of 1 means as green as the reference on the same date; the recovered level is a threshold you set (0.8 by default), not a regulatory criterion.",
+                 "Read the site-level series (table and chart) before the per-pixel trend map: the series averages thousands of pixels, while a pixel's trend rests on a handful of noisy dates.",
+                 "A class raster this fine is speckled; sieve it before counting patches or reporting hectares by parcel."),
+        limitations=("Greenness is not ecosystem recovery. A weed cover or a monoculture counts as recovered; a woodland reference that is leafless in the dry season makes the ratio unstable.",
+                     "The result is only as good as the reference. It should be the ecosystem the closure plan aims for; an automatic reference is just persistently green land outside the site.",
+                     "Dates from different seasons are not comparable even after the reference ratio; use the same month in each year.",
+                     "The pipeline does not say when a site will meet its closure criteria and is not a compliance finding. Completion criteria are set by regulators and are normally field-based.",
+                     "Dust, wet soil and shadow on tailings and spoil can change NDVI independently of vegetation."),
+        references=(R_NDVI, R_MNDWI, R_S2),
+        tables=(TableSpec("series", "Site rehabilitation by date",
+                          (("date", "Date", "text"), ("usable", "Used", "bool"), ("site_valid_fraction", "Site observed", "frac"),
+                           ("reference_pixels", "Reference pixels", "int"), ("reference_ndvi_median", "Reference NDVI", "num2"),
+                           ("site_ndvi_median", "Site NDVI", "num2"), ("site_rri_median", "Site RRI (median)", "num2"),
+                           ("share_recovered", "Share recovered", "frac"), ("note", "Note", "text")), sheet="Timeseries"),),
+        charts=(ChartSpec("series_used", "Median relative recovery index of the site", "RRI (1 = as green as the reference)",
+                          y="site_rri_median", x="date", kind="line", fmt="{:.2f}"),),
         multi_date=False),
 
     ReportSpec(

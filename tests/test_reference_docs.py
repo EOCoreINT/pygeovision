@@ -192,6 +192,8 @@ def test_code_fences_are_balanced():
 def test_relative_links_point_at_existing_files():
     bad = []
     for p in _md_files():
+        if p.name == "_index_table.md":          # included by reference/python-api.md: its links are relative to that page
+            continue
         text = re.sub(r"```.*?```", "", p.read_text(), flags=re.S)
         for target in re.findall(r"\]\(([^)\s]+?\.md)(?:#[^)]*)?\)", text):
             if target.startswith(("http://", "https://")):
@@ -208,12 +210,87 @@ def test_counts_in_the_home_page_match_the_code():
     home = (DOCS / "index.md").read_text()
     kinds = pipeline_kinds()
     ready = sum(1 for k in kinds.values() if k == "ready")
-    assert f"**{len(kinds)} pipelines**" in home
-    assert f"{ready} run out of the box" in home
-    assert f"{len(kinds) - ready} run *your*" in home
+    # the landing page shows each figure as a tile: a card titled with the number, then its caption
+    assert f"{{grid-item-card}} {len(kinds)}\n" in home
+    assert f"pipelines: {ready} run out of the box, {len(kinds) - ready} run your trained network" in home
     n_groups = len(cli.commands)
     def leaves(cmd):
         return sum(leaves(c) for c in cmd.commands.values()) if hasattr(cmd, "commands") else 1
 
     n_cmds = sum(leaves(g) for g in cli.commands.values())
-    assert f"**{n_groups} CLI groups, {n_cmds} commands**" in home
+    assert f"{{grid-item-card}} {n_cmds}\n" in home
+    assert f"CLI commands in {n_groups} groups" in home
+
+
+# --------------------------------------------------------------------------- more generated pages and their completeness
+def test_model_pages_are_current():
+    r = _run_check("generate_model_pages.py")
+    assert r.returncode == 0, f"run: PYTHONPATH=. python tools/generate_model_pages.py\n{r.stdout}{r.stderr}"
+
+
+def test_python_api_pages_are_current():
+    r = _run_check("generate_api_docs.py")
+    assert r.returncode == 0, f"run: PYTHONPATH=. python tools/generate_api_docs.py\n{r.stdout}{r.stderr}"
+
+
+def test_flow_figures_are_current():
+    r = _run_check("make_flow_figures.py")
+    assert r.returncode == 0, f"run: PYTHONPATH=. python tools/make_flow_figures.py\n{r.stdout}{r.stderr}"
+
+
+def test_python_api_reference_covers_every_exported_class():
+    """Every CamelCase name a package lists in ``__all__`` must be documented on some Python API page."""
+    import ast
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    try:
+        import generate_api_docs as g
+    finally:
+        sys.path.pop(0)
+    documented = g.documented_names()
+    aliases = {"LabelStudioIntegration"}           # an alias of LabelStudioLabeler, which is documented
+    missing = []
+    for init in (ROOT / "pygeovision").rglob("__init__.py"):
+        names = g._all_of(ast.parse(init.read_text(encoding="utf-8")))
+        for n in names or []:
+            if n[:1].isupper() and not n.isupper() and n not in documented and n not in aliases:
+                missing.append(f"{'.'.join(init.parent.relative_to(ROOT).parts)}.{n}")
+    assert not missing, "exported but not in docs/_data/api_pages.yaml: " + ", ".join(sorted(missing))
+
+
+def test_every_redirect_points_at_a_page_that_exists_and_no_redirect_shadows_a_page():
+    text = (DOCS / "conf.py").read_text(encoding="utf-8")
+    start = text.index("_MOVED = {")
+    moved = eval(text[start + len("_MOVED = "): text.index("\n}\n", start) + 2])
+    for old, new in moved.items():
+        assert (DOCS / f"{new}.md").exists(), f"redirect {old} -> {new}: no such page"
+        assert not (DOCS / f"{old}.md").exists(), f"{old}.md exists, so its redirect would never be used"
+
+
+def test_every_page_is_in_a_sidebar_toctree_or_deliberately_excluded():
+    """A page that no toctree lists builds with a warning and is unreachable from the sidebar."""
+    listed = set()
+    for p in DOCS.rglob("*.md"):
+        if "_build" in p.parts:
+            continue
+        for block in re.findall(r"```\{toctree\}(.*?)```", p.read_text(encoding="utf-8"), flags=re.S):
+            for line in block.splitlines():
+                line = line.strip()
+                if line and not line.startswith(":") and "<" not in line:
+                    listed.add(line)
+    sidebar_text = "\n".join(p.read_text(encoding="utf-8") for p in DOCS.rglob("_sidebar.md"))
+    for line in sidebar_text.splitlines():
+        if line.strip() and not line.strip().startswith((":", "`")):
+            listed.add(line.strip())
+    conf = (DOCS / "conf.py").read_text(encoding="utf-8")
+    excluded = re.findall(r'"([^"]+)"', conf[conf.index("exclude_patterns"): conf.index("]", conf.index("exclude_patterns"))])
+    orphans = []
+    for p in DOCS.rglob("*.md"):
+        rel = p.relative_to(DOCS).as_posix()
+        doc = rel[:-3]
+        if rel.startswith(("_build", "locale", "_")) or "/_" in rel or rel == "index.md" or p.name == "README.md":
+            continue
+        if doc in listed or any(Path(rel).match(e) for e in excluded):
+            continue
+        orphans.append(rel)
+    assert not orphans, "pages not listed in any toctree: " + ", ".join(sorted(orphans)[:20])

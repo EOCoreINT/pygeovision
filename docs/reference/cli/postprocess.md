@@ -45,6 +45,23 @@ Commands:
 
 ### `pygeovision postprocess accuracy`
 
+Compute accuracy metrics vs a reference raster.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `PREDICTION_PATH` | text | yes |
+| `REFERENCE_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--class-names` | text |  |  | Comma-separated class names. |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision postprocess accuracy [OPTIONS] PREDICTION_PATH REFERENCE_PATH
 
@@ -57,8 +74,19 @@ Options:
   --class-names TEXT  Comma-separated class names.
   --help              Show this message and exit.
 ```
+:::
 
 ### `pygeovision postprocess class-stats`
+
+Print per-class pixel count and area statistics.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `PREDICTION_PATH` | text | yes |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision postprocess class-stats [OPTIONS] PREDICTION_PATH
@@ -71,8 +99,25 @@ Usage: pygeovision postprocess class-stats [OPTIONS] PREDICTION_PATH
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision postprocess cog`
+
+Convert a GeoTIFF to Cloud-Optimized GeoTIFF.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision postprocess cog [OPTIONS] INPUT_PATH
@@ -86,8 +131,26 @@ Options:
   --output TEXT
   --help         Show this message and exit.
 ```
+:::
 
 ### `pygeovision postprocess export`
+
+Export vector to GeoJSON, Shapefile, GeoPackage, or KML.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  | yes |  |
+| `--format` | one of `geojson` | `shp` | `gpkg` | `kml` | `geojson` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision postprocess export [OPTIONS] INPUT_PATH
@@ -103,8 +166,26 @@ Options:
                                   [default: geojson]
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision postprocess regularise`
+
+Regularise building footprints: snap near-axis-aligned edges to the building's dominant orientation.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  | yes |  |
+| `--min-area` | number | `10.0` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision postprocess regularise [OPTIONS] INPUT_PATH
@@ -120,8 +201,26 @@ Options:
   --min-area FLOAT  [default: 10.0]
   --help            Show this message and exit.
 ```
+:::
 
 ### `pygeovision postprocess sieve`
+
+Remove small patches from a classification raster.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--min-pixels` | integer | `10` |  |  |
+| `--output` | text |  |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision postprocess sieve [OPTIONS] INPUT_PATH
@@ -136,8 +235,26 @@ Options:
   --output TEXT
   --help                Show this message and exit.
 ```
+:::
 
 ### `pygeovision postprocess smooth`
+
+Smooth vector polygon boundaries.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  | yes |  |
+| `--tolerance` | number | `0.5` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision postprocess smooth [OPTIONS] INPUT_PATH
@@ -152,8 +269,29 @@ Options:
   --tolerance FLOAT  [default: 0.5]
   --help             Show this message and exit.
 ```
+:::
 
 ### `pygeovision postprocess vectorise`
+
+Vectorise a classification raster to GeoJSON polygons.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  | yes | Output GeoJSON path. |
+| `--target-class` | integer |  |  | Only vectorise this class. |
+| `--min-area` | number | `0.0` |  | Minimum polygon area in m². |
+| `--simplify` | number | `0.0` |  | Douglas-Peucker tolerance. |
+| `--validate` | flag | off |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision postprocess vectorise [OPTIONS] INPUT_PATH
@@ -171,8 +309,27 @@ Options:
   --validate
   --help                  Show this message and exit.
 ```
+:::
 
 ### `pygeovision postprocess zonal-stats`
+
+Compute per-zone raster statistics.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `RASTER_PATH` | text | yes |
+| `VECTOR_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  | yes |  |
+| `--stats` | text | `mean,std,min,max,count` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision postprocess zonal-stats [OPTIONS] RASTER_PATH VECTOR_PATH
@@ -187,3 +344,4 @@ Options:
   --stats TEXT   [default: mean,std,min,max,count]
   --help         Show this message and exit.
 ```
+:::

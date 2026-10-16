@@ -155,6 +155,63 @@ def _help(cmd: click.Command, path: list[str]) -> str:
     return f"Usage: {' '.join(path)}{usage_args}\n{rest}".rstrip()
 
 
+def _type_name(p: click.Parameter) -> str:
+    ty = p.type
+    if isinstance(ty, click.Choice):
+        return "one of " + " | ".join(f"`{c}`" for c in ty.choices)
+    if isinstance(ty, click.IntRange):
+        return "integer"
+    if isinstance(ty, click.FloatRange):
+        return "number"
+    if isinstance(ty, click.Path):
+        return "path"
+    if isinstance(ty, click.Tuple):
+        return "(" + ", ".join(getattr(x, "name", str(x)) for x in ty.types) + ")"
+    name = getattr(ty, "name", str(ty)).lower()
+    return {"text": "text", "integer": "integer", "float": "number", "boolean": "flag", "bool": "flag", "filename": "file"}.get(name, name)
+
+
+def _default(p: click.Parameter) -> str:
+    if getattr(p, "secondary_opts", None) and getattr(p, "is_flag", False):
+        return f"`{p.opts[0] if p.default else p.secondary_opts[0]}`"
+    d = p.default
+    if str(d) == "Sentinel.UNSET":                  # click >= 8.3: "no default was given"
+        d = False if getattr(p, "is_flag", False) else None
+    if d is None or d == () or d is False and not getattr(p, "is_flag", False):
+        return ""
+    if getattr(p, "is_flag", False) and d is False:
+        return "off"
+    if callable(d):
+        return "computed"
+    return f"`{d}`"
+
+
+def _esc(s: str) -> str:
+    return " ".join(str(s).replace("|", "\\|").split())
+
+
+def _param_tables(cmd: click.Command) -> str:
+    """Arguments and options of one command as tables, built from the click definition."""
+    args = [p for p in cmd.params if isinstance(p, click.Argument)]
+    opts = [p for p in cmd.params if isinstance(p, click.Option) and not getattr(p, "hidden", False) and p.name != "help"]
+    out = []
+    if args:
+        out.append("**Arguments**\n")
+        out.append("| Argument | Type | Required |\n|---|---|---|")
+        for a in args:
+            out.append(f"| `{a.human_readable_name}` | {_type_name(a)} | {'yes' if a.required else 'no'} |")
+        out.append("")
+    if opts:
+        out.append("**Options**\n")
+        out.append("| Option | Type | Default | Required | Meaning |\n|---|---|---|---|---|")
+        for o in opts:
+            flags = ", ".join(f"`{f}`" for f in [*o.opts, *o.secondary_opts])
+            ty = "flag" if o.is_flag else _type_name(o)
+            out.append(f"| {flags} | {ty} | {_default(o)} | {'yes' if o.required else ''} | {_esc(o.help or '')} |")
+        out.append("")
+    return "\n".join(out)
+
+
 def cli_pages() -> dict[str, str]:
     from pygeovision.cli.main import cli
 
@@ -197,7 +254,13 @@ def cli_pages() -> dict[str, str]:
             if not isinstance(cmd, click.Group):
                 n_here += 1
             L.append(f"{level} `{' '.join(path)}`\n")
-            L.append("```text\n" + _help(cmd, path) + "\n```\n")
+            short_help = (cmd.get_short_help_str(200) or "").strip()
+            if short_help:
+                L.append(short_help + "\n")
+            tables = _param_tables(cmd)
+            if tables:
+                L.append(tables)
+            L.append(":::{dropdown} Full help text\n\n```text\n" + _help(cmd, path) + "\n```\n:::\n")
         total += n_here or 1
         pages[f"{gname}.md"] = "\n".join(L)
         index_rows.append((gname, short, n_here or 1))
@@ -212,8 +275,10 @@ def cli_pages() -> dict[str, str]:
     for g, s, n in index_rows:
         idx.append(f"| [`{g}`]({g}.md) | {s} | {n} |")
     idx.append("")
-    idx.append("```{toctree}\n:hidden:\n:maxdepth: 1\n\n" + "\n".join(g for g, _, _ in index_rows) + "\n```\n")
     pages["index.md"] = "\n".join(idx)
+    # every group is listed directly in the sidebar (docs/index.md includes this file)
+    pages["_sidebar.md"] = (NOTICE + "\n```{toctree}\n:hidden:\n:maxdepth: 1\n:caption: CLI reference\n\nreference/cli/index\n"
+                            + "\n".join(f"reference/cli/{g}" for g, _, _ in index_rows) + "\n```\n")
     return pages
 
 

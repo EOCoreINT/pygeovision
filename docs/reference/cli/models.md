@@ -39,6 +39,22 @@ Commands:
 
 ### `pygeovision models download`
 
+Download pretrained weights for a model.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `NAME` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--cache-dir` | text |  |  | Local cache directory |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision models download [OPTIONS] NAME
 
@@ -48,8 +64,19 @@ Options:
   --cache-dir TEXT  Local cache directory
   --help            Show this message and exit.
 ```
+:::
 
 ### `pygeovision models info`
+
+Show detailed info for a model.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `NAME` | text | yes |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision models info [OPTIONS] NAME
@@ -59,8 +86,21 @@ Usage: pygeovision models info [OPTIONS] NAME
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision models list`
+
+List available model architectures.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--task`, `-t` | text |  |  | Filter by task (segmentation\|detection\|...) |
+| `--family`, `-f` | text |  |  | Filter by family (resnet\|vit\|unet\|...) |
+| `--max-params` | number |  |  | Maximum parameters (millions) |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision models list [OPTIONS]
@@ -73,8 +113,13 @@ Options:
   --max-params FLOAT  Maximum parameters (millions)
   --help              Show this message and exit.
 ```
+:::
 
 ### `pygeovision models summary`
+
+Show registry summary by task.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision models summary [OPTIONS]
@@ -84,3 +129,4 @@ Usage: pygeovision models summary [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::

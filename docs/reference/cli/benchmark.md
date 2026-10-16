@@ -4,7 +4,7 @@
 
 Helpers for choosing **which datasets and models to benchmark** for a task, from the catalogue metadata.
 They do not run a benchmark: scoring a model is done in Python with `ModelEvaluator`
-([Benchmarking](../../benchmark/index.md)).
+([Benchmarking](../../experiments/benchmark.md)).
 
 ## When to use it
 
@@ -38,6 +38,23 @@ Commands:
 
 ### `pygeovision benchmark datasets`
 
+List candidate benchmark datasets for a task, ranked by the EarthNets metadata heuristic.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `TASK` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--n` | integer | `5` |  | Number of top datasets to show. |
+| `--modality` | text |  |  | Only datasets of this modality (rgb, multispectral, sar, ...). |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision benchmark datasets [OPTIONS] TASK
 
@@ -53,8 +70,25 @@ Options:
   --modality TEXT  Only datasets of this modality (rgb, multispectral, sar, ...).
   --help           Show this message and exit.
 ```
+:::
 
 ### `pygeovision benchmark models`
+
+Show the top-N recommended models to benchmark for a task.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `TASK` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--n` | integer | `5` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision benchmark models [OPTIONS] TASK
@@ -65,8 +99,13 @@ Options:
   --n INTEGER  [default: 5]
   --help       Show this message and exit.
 ```
+:::
 
 ### `pygeovision benchmark tasks`
+
+List all available benchmark tasks.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision benchmark tasks [OPTIONS]
@@ -76,3 +115,4 @@ Usage: pygeovision benchmark tasks [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::

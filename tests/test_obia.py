@@ -16,6 +16,7 @@ from shapely.geometry import Point, box  # noqa: E402
 
 from pygeovision import obia  # noqa: E402
 from pygeovision.obia._adjacency import adjacency_dict, border_pairs, image_edge_lengths  # noqa: E402
+from tests.obia_testdata import CLASSES, block_scene  # noqa: E402
 
 
 # --------------------------------------------------------------------- adjacency
@@ -103,10 +104,10 @@ def test_unknown_method_and_from_labels_validation(two_halves):
 
 
 def test_vector_roundtrip_preserves_area():
-    sc = obia.make_demo_scene(96)
+    sc = block_scene(64)
     seg = obia.segment(sc.raster, "multires", scale=20)
     gdf = seg.to_vector()
-    assert len(gdf) == seg.n_objects
+    assert len(gdf) == seg.n_objects == 5
     assert gdf.geometry.area.sum() == pytest.approx(seg.labels.size * 4.0)   # 2 m pixels
     assert str(gdf.crs).endswith("32633")
 
@@ -276,38 +277,39 @@ def test_pixel_report_counts_unclassified_as_errors():
 
 
 # ----------------------------------------------------------------------- scale + demo
-def test_demo_scene_is_deterministic_and_well_formed():
-    a, b = obia.make_demo_scene(96, seed=3), obia.make_demo_scene(96, seed=3)
-    assert np.array_equal(a.raster.image, b.raster.image)
-    assert not np.array_equal(a.raster.image, obia.make_demo_scene(96, seed=4).raster.image)
-    assert a.raster.band_names == ["blue", "green", "red", "nir"]
-    assert set(a.reference["class"]) <= set(obia.CLASS_NAMES) and a.ref_labels.min() >= 1
+def test_block_scene_fixture_is_what_it_says():
+    sc = block_scene(64)
+    assert sc.raster.band_names == ["blue", "green", "red", "nir"] and sc.raster.image.shape == (4, 64, 64)
+    assert sorted(np.unique(sc.ref_labels)) == [1, 2, 3, 4, 5] and set(sc.reference["class"]) == set(CLASSES)
+    area = {c: int((sc.class_raster == i + 1).sum()) for i, c in enumerate(CLASSES)}
+    assert area == {"water": 1024, "cropland": 1024, "bare_field": 960, "forest": 1024, "building": 64}
     with pytest.raises(ValueError):
-        obia.make_demo_scene(50)
+        block_scene(30)
 
 
-def test_scale_tools_on_demo_scene():
-    sc = obia.make_demo_scene(112)
-    sweep = obia.scale_vs_reference(sc.raster, [5, 10, 20, 40, 80], sc.ref_labels)
+def test_scale_tools_on_flat_blocks():
+    sc = block_scene(64)
+    sweep = obia.scale_vs_reference(sc.raster, [2, 5, 10, 20, 40, 80], sc.ref_labels)
     assert sweep["n_objects"].is_monotonic_decreasing
     assert sweep["mean_over_seg"].iloc[0] > sweep["mean_over_seg"].iloc[-1]     # fewer fragments
     assert sweep["mean_under_seg"].iloc[0] < sweep["mean_under_seg"].iloc[-1]   # more merging errors
-    assert sweep["mean_D"].idxmin() in (10.0, 20.0, 40.0)                       # best is in the middle
+    # by construction the five rectangles are flat, so a mid scale reproduces them exactly ...
+    assert sweep.loc[20.0, "n_objects"] == 5 and sweep.loc[20.0, "mean_D"] == pytest.approx(0.0, abs=1e-9)
+    # ... and a huge scale merges the small building into the field around it (under-segmentation appears)
+    assert sweep.loc[80.0, "mean_under_seg"] > 0 and sweep.loc[80.0, "n_objects"] < 5
     diag = obia.scale_diagnostics(sc.raster, [5, 10, 15, 20, 30])
     assert list(diag.columns) == ["n_objects", "lv", "roc_lv", "candidate"]
     with pytest.raises(ValueError):
         obia.scale_diagnostics(sc.raster, [5, 10])
 
 
-def test_full_workflow_beats_chance_by_a_wide_margin():
-    sc = obia.make_demo_scene(128)
+def test_rule_workflow_is_exact_on_flat_blocks():
+    sc = block_scene(64)
     seg = obia.segment(sc.raster, "multires", scale=20)
     F = obia.extract_features(seg.labels, sc.raster, extra_layers=obia.spectral_layers(sc.raster))
     rb = obia.RuleBasedClassifier([
-        ("water", "mean_ndwi > 0.3"), ("road", "elongation > 6 and brightness < 110"),
-        ("building", "area_px < 400 and compactness > 0.5 and mean_ndvi <= 0.55"),
-        ("forest", "mean_ndvi > 0.55 and std_nir > 9 and area_px > 500"),
-        ("cropland", "mean_ndvi > 0.55"), ("bare_field", "mean_ndvi <= 0.55")])
+        ("water", "mean_ndwi > 0.4"), ("building", "area_px < 100"),
+        ("forest", "std_nir > 5"), ("cropland", "mean_ndvi > 0.5"), ("bare_field", "mean_ndvi <= 0.5")])
     rep = obia.assess_classification(rb.classify(F), seg.labels, sc.reference, "class",
                                      sc.raster.transform, weights=F["area_px"])
-    assert rep["overall_accuracy"] > 0.85          # measured 0.91-0.99 across seeds; 1/6 would be chance
+    assert rep["overall_accuracy"] == pytest.approx(1.0) and rep["n_objects"] == 5

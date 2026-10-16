@@ -3,7 +3,7 @@
 # `pygeovision cloud`
 
 Deploy an ONNX model as a hosted endpoint on **AWS SageMaker** or **Google Vertex AI**. (Azure ML is available from
-Python only: `AzureDeployer`.) See [Cloud deployment](../../edge-cloud/cloud.md).
+Python only: `AzureDeployer`.) See [Cloud deployment](../../deployment/cloud.md).
 
 ## When to use it
 
@@ -36,6 +36,24 @@ Commands:
 
 ### `pygeovision cloud deploy-aws`
 
+Deploy model to AWS SageMaker.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `MODEL_PATH` | text | yes |
+| `ENDPOINT_NAME` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--region` | text | `us-east-1` |  |  |
+| `--instance` | text | `ml.g4dn.xlarge` |  |  |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision cloud deploy-aws [OPTIONS] MODEL_PATH ENDPOINT_NAME
 
@@ -46,8 +64,27 @@ Options:
   --instance TEXT  [default: ml.g4dn.xlarge]
   --help           Show this message and exit.
 ```
+:::
 
 ### `pygeovision cloud deploy-gcp`
+
+Deploy model to GCP Vertex AI.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `MODEL_PATH` | text | yes |
+| `ENDPOINT_NAME` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--project` | text |  | yes |  |
+| `--region` | text | `us-central1` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision cloud deploy-gcp [OPTIONS] MODEL_PATH ENDPOINT_NAME
@@ -59,3 +96,4 @@ Options:
   --region TEXT
   --help          Show this message and exit.
 ```
+:::

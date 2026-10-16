@@ -127,6 +127,14 @@ def load_dofa_hf(model_name: str = "dofa_base_patch16_224",
     if factory_fn is None:
         raise ValueError(f"'{model_name}' is not a real torchgeo DOFA factory function.")
 
+    if not spec["has_real_pretrained_weights"] and not allow_random_init:
+        raise RuntimeError(
+            f"No pretrained weights are published for '{model_name}' (only "
+            f"'dofa_base_patch16_224' and 'dofa_large_patch16_224' have them). Refusing to "
+            f"return a randomly-initialized model that would look like a successful load. "
+            f"Pass allow_random_init=True for an architecture-only model (development/testing)."
+        )
+
     weights = None
     if spec["has_real_pretrained_weights"]:
         weights_enum_name = {
@@ -143,6 +151,8 @@ def load_dofa_hf(model_name: str = "dofa_base_patch16_224",
         import torch
         model = factory_fn(weights=weights)
         model = model.to(device).eval()
+        if weights is None:                          # only reachable with allow_random_init=True
+            model._pygeovision_is_random_init = True
         logger.info(
             "DOFA loaded: %s (%dM params, real pretrained weights=%s)",
             model_name, spec["params_m"], weights is not None,

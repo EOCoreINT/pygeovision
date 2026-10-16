@@ -113,6 +113,12 @@ class ModelCheckpoint(Callback):
 
             torch.save(state, str(ckpt_path))
 
+            # last.pth is a copy of *this* epoch, so it must be made before the pruning below, which may
+            # delete this very file when the epoch scored worse than the k best so far.
+            if self.save_last:
+                import shutil
+                shutil.copy(str(ckpt_path), str(self.dirpath / "last.pth"))
+
             # Track top-k
             self._best_k.append((value, str(ckpt_path)))
             reverse = (self.mode == "max")
@@ -125,10 +131,6 @@ class ModelCheckpoint(Callback):
                 except Exception: pass
 
             self.best_model_path = self._best_k[0][1]
-
-            if self.save_last:
-                import shutil
-                shutil.copy(str(ckpt_path), str(self.dirpath / "last.pth"))
 
 
 class LearningRateMonitor(Callback):

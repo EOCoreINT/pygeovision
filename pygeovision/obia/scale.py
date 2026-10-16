@@ -19,28 +19,29 @@ import numpy as np
 import pandas as pd
 
 from .accuracy import segmentation_quality
-from .io import as_raster_data, rescale_bands
+from .io import as_raster_data
 from .merging import RegionMerger
-from .segmentation import _slic
+from .segmentation import _prepare, _relabel, _slic
 
 
 def _merger(image, rescale, color_weight, compactness_weight, init, init_segments, band_weights,
             band_names=None, transform=None, crs=None):
     rd = as_raster_data(image, band_names, transform, crs)
-    img = rescale_bands(rd.image) if rescale else rd.image.astype(np.float64)
+    img, valid = _prepare(rd, rescale)
     H, W = img.shape[1:]
     if init == "auto":
         init = "pixels" if H * W <= 10_000 else "superpixels"
     init_labels = (np.arange(H * W).reshape(H, W) if init == "pixels"
                    else _slic(img, init_segments or max(H * W // 16, 50), 0.1, 0.0))
-    return img, RegionMerger(img, init_labels, color_weight, compactness_weight, band_weights)
+    return img, valid, RegionMerger(img, init_labels, color_weight, compactness_weight, band_weights)
 
 
 def _local_variance(img: np.ndarray, labels: np.ndarray) -> float:
-    """Mean over objects and bands of the within-object standard deviation."""
+    """Mean over objects and bands of the within-object standard deviation (label 0 = no data, ignored)."""
     flat = labels.ravel()
     n = np.bincount(flat).astype(float)
     ok = n > 0
+    ok[0] = False
     lvs = []
     for b in range(img.shape[0]):
         v = img[b].ravel()
@@ -61,12 +62,12 @@ def scale_diagnostics(image, scales, *, rescale=True, color_weight=0.9, compactn
     scales = sorted(float(s) for s in scales)
     if len(scales) < 3:
         raise ValueError("give at least 3 scales")
-    img, m = _merger(image, rescale, color_weight, compactness_weight, init, init_segments,
-                     band_weights, **kw)
+    img, valid, m = _merger(image, rescale, color_weight, compactness_weight, init, init_segments,
+                            band_weights, **kw)
     rows = []
     for s in scales:
         m.run(s)
-        lab = m.labels()
+        lab = _relabel(m.labels(), valid)
         rows.append({"scale": s, "n_objects": int(lab.max()), "lv": _local_variance(img, lab)})
     df = pd.DataFrame(rows).set_index("scale")
     df["roc_lv"] = df["lv"].pct_change() * 100.0
@@ -89,12 +90,12 @@ def scale_vs_reference(image, scales, reference_labels, *, rescale=True, color_w
     these reference objects.
     """
     scales = sorted(float(s) for s in scales)
-    _, m = _merger(image, rescale, color_weight, compactness_weight, init, init_segments,
-                   band_weights, **kw)
+    _, valid, m = _merger(image, rescale, color_weight, compactness_weight, init, init_segments,
+                          band_weights, **kw)
     rows = []
     for s in scales:
         m.run(s)
-        lab = m.labels()
+        lab = _relabel(m.labels(), valid)
         _, summ = segmentation_quality(lab, reference_labels)
         rows.append({"scale": s, "n_objects": int(lab.max()),
                      "mean_over_seg": summ["mean_over_seg"], "mean_under_seg": summ["mean_under_seg"],

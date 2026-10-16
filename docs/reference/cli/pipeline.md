@@ -34,6 +34,10 @@ Commands:
 
 ### `pygeovision pipeline list-templates`
 
+List available YAML pipeline templates.
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision pipeline list-templates [OPTIONS]
 
@@ -42,8 +46,26 @@ Usage: pygeovision pipeline list-templates [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision pipeline run`
+
+Run a YAML pipeline (steps: search, download, infer, export).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `YAML_PATH` | path | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--dry-run` | flag | off |  | Check the step graph without running anything. |
+| `--set` | text |  |  | Override a step parameter (value parsed as JSON, else a string); repeatable. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision pipeline run [OPTIONS] YAML_PATH
@@ -60,3 +82,4 @@ Options:
                           repeatable.
   --help                  Show this message and exit.
 ```
+:::

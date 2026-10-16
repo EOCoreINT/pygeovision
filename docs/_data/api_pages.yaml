@@ -1,0 +1,265 @@
+# The Python API reference: one page per area. tools/generate_api_docs.py turns this into docs/reference/api/*.md.
+# Per page: title, summary (one line, shown in the index), intro (hand-written text above the generated part),
+# explained_in (links to the guide pages), modules (dotted names; "pkg.*" means every public module of the package;
+# {module, names} documents exactly those names, which is how the private client proxies are included).
+# Public classes and functions are found by reading the source (no imports), so the page lists exactly what is in the code.
+
+- slug: client
+  title: The client
+  summary: "`PyGeoVision` and the layers on it (`client.labeling`, `client.xai`, `client.segmentation`, ...)"
+  intro: |
+    `PyGeoVision()` is the one object most scripts need. It searches and downloads imagery, runs the 41 pipelines, and
+    carries a *layer* for each area of the package as an attribute. Layers load their heavy dependencies only when you first
+    use them. Each layer is documented below under the name of the class that implements it.
+  explained_in:
+    - "[Python API overview](../python-api.md)"
+    - "[Core concepts](../../getting-started/concepts.md)"
+    - "[Quickstart](../../getting-started/quickstart.md)"
+  modules:
+    - module: pygeovision
+      names: [PyGeoVision, _LabelingClientProxy, _ObiaClientProxy, _LossesClientProxy, _InferenceClientProxy,
+              _XAIClientProxy, _MonitoringClientProxy, _EdgeClientProxy, _CloudClientProxy, _FewShotClientProxy,
+              _MultiTaskClientProxy, _AutoMLClientProxy, _VLMClientProxy, _TimeSeriesClientProxy,
+              _PointCloudClientProxy, _SegmentationClientProxy, _DetectionClientProxy,
+              _ChangeDetectionClientProxy, _ClassificationClientProxy]
+
+- slug: core
+  title: Configuration and exceptions
+  summary: "`PyGeoVisionConfig` and every exception class"
+  intro: |
+    Settings are read from environment variables and a configuration file; errors derive from one base class so a single
+    `except PyGeoVisionError` catches everything the package raises on purpose.
+  explained_in:
+    - "[Configuration reference](../config.md)"
+    - "[Exceptions reference](../exceptions.md)"
+  modules: [pygeovision.core.config, pygeovision.core.exceptions]
+
+- slug: pipelines
+  title: Pipelines
+  summary: "`BasePipeline`, `PipelineResult` and the class behind each of the 41 pipelines"
+  intro: |
+    A pipeline is a class with a `run(bbox, output_dir, **arguments)` method that returns a `PipelineResult`. The registry
+    helpers `get_pipeline`, `list_pipelines`, `pipeline_kinds` and `pipeline_catalogue` look them up by name. Each concrete
+    class below is the code behind one catalogue page; the `run` signature lists the arguments and their defaults.
+  explained_in:
+    - "[Pipelines](../../pipelines/index.md)"
+    - "[The catalogue](../../pipelines/catalog/index.md)"
+    - "[Reading results](../../pipelines/results.md)"
+    - "[Write your own pipeline](../../pipelines/custom.md)"
+  modules:
+    - pygeovision.ai.pipelines
+    - pygeovision.ai.pipelines.domains
+    - pygeovision.ai.pipelines.reference_products
+    - pygeovision.ai.pipelines.vector_products
+    - pygeovision.ai.pipelines.terrain
+    - pygeovision.ai.pipelines.timeseries
+    - pygeovision.ai.pipelines.sar_flood
+    - pygeovision.ai.pipelines.multisensor_flood
+
+- slug: workflows
+  title: YAML workflows and scheduling
+  summary: "`Pipeline`, steps, the YAML parser, the orchestrator and the scheduler"
+  intro: |
+    Workflows chain search, download, inference and export steps, from a YAML file or in Python, and can be scheduled. They are
+    separate from the built-in pipelines above.
+  explained_in:
+    - "[YAML workflows](../../pipelines/yaml-workflows.md)"
+  modules: [pygeovision.pipelines, pygeovision.pipelines.steps, pygeovision.pipelines.yaml_parser, pygeovision.pipelines.orchestrator, pygeovision.pipelines.scheduler, pygeovision.data.pipeline]
+
+- slug: data-access
+  title: Data access
+  summary: "Search, download, providers, boundaries, footprints and reference products"
+  intro: |
+    The data layer finds scenes and downloads only what is needed, through pygeofetch. These are the functions and classes the
+    client and the pipelines use.
+  explained_in:
+    - "[Data guide](../../data/index.md)"
+    - "[Search and download](../../data/search-and-download.md)"
+    - "[Providers](../../data/providers.md)"
+  modules: [pygeovision.data, pygeovision.data.acquire, pygeovision.data.fetch, pygeovision.data.providers, pygeovision.data.boundary, pygeovision.data.footprints, pygeovision.data.reference, pygeovision.data.pgf_bridge]
+
+- slug: data-prepare
+  title: Data preparation and post-processing
+  summary: "Pre-processing, indices, radiometry, texture, validation, AI-ready stacks and post-processing"
+  intro: |
+    Everything between a downloaded scene and a model input, and between a model output and a map you can publish.
+  explained_in:
+    - "[Preprocessing](../../data/preprocessing.md)"
+    - "[Spectral indices](../../data/indices.md)"
+    - "[Radiometry](../../data/radiometry.md)"
+    - "[Post-processing](../../data/postprocessing.md)"
+    - "[Validation](../../data/validation.md)"
+  modules: [pygeovision.preprocess, pygeovision.preprocess.core, pygeovision.data.indices, pygeovision.data.radiometric, pygeovision.data.texture, pygeovision.data.validator, pygeovision.data.ai_prep, pygeovision.data.postprocess]
+
+- slug: datasets
+  title: Dataset catalogue
+  summary: "`DatasetRegistry`, loaders, analysis and the benchmark datasets"
+  intro: |
+    A catalogue of public datasets with loaders. It describes datasets; it does not ship them.
+  explained_in:
+    - "[Dataset catalogue](../../datasets/index.md)"
+  modules: [pygeovision.datasets, pygeovision.datasets.registry, pygeovision.datasets.loader, pygeovision.datasets.analysis, pygeovision.datasets.benchmark]
+
+- slug: models
+  title: Models and registry
+  summary: "`get_model`, `list_models`, the model registry, base classes, embeddings and weight downloads"
+  intro: |
+    `get_model(name, num_classes, in_channels, pretrained)` builds any registered architecture. The registry records which
+    task and family each name belongs to; the builder pages in this group document the code behind each family.
+  explained_in:
+    - "[Models](../../models/index.md)"
+    - "[How the registries relate](../../models/registry.md)"
+    - "[Model catalogue](../../models/catalog.md)"
+  modules: [pygeovision.models, pygeovision.models.registry, pygeovision.models.base, pygeovision.models.embeddings, pygeovision.models.weights.downloader]
+
+- slug: builders-segmentation
+  title: Segmentation model builders
+  summary: "U-Net, DeepLab, PSPNet, FCN, SegFormer and SAM"
+  explained_in:
+    - "[Segmentation models](../../segmentation/models.md)"
+  modules: [pygeovision.models.segmentation.unet, pygeovision.models.segmentation.deeplab, pygeovision.models.segmentation.pspnet, pygeovision.models.segmentation.fcn, pygeovision.models.segmentation.segformer, pygeovision.models.segmentation.sam]
+
+- slug: builders-classification
+  title: Classification model builders
+  summary: "ResNet, DenseNet, EfficientNet, ConvNeXt, Swin, ViT and DINOv3"
+  explained_in:
+    - "[Classification models](../../classification/models.md)"
+  modules: [pygeovision.models.classification.resnet, pygeovision.models.classification.densenet, pygeovision.models.classification.efficientnet, pygeovision.models.classification.convnext, pygeovision.models.classification.swin, pygeovision.models.classification.vit, pygeovision.models.classification.dinov3]
+
+- slug: builders-detection
+  title: Detection model builders
+  summary: "Faster R-CNN, Mask R-CNN, FCOS, CenterNet, DETR, RetinaNet and YOLO"
+  explained_in:
+    - "[Detection models](../../detection/models.md)"
+  modules: [pygeovision.models.detection.fasterrcnn, pygeovision.models.detection.maskrcnn, pygeovision.models.detection.fcos, pygeovision.models.detection.centernet, pygeovision.models.detection.detr, pygeovision.models.detection.retinanet, pygeovision.models.detection.yolo]
+
+- slug: builders-change-detection
+  title: Change-detection model builders
+  summary: "BIT, DSAMNet and the compact ChangeFormer"
+  explained_in:
+    - "[Change-detection models](../../change-detection/models.md)"
+  modules: [pygeovision.models.change_detection.bit, pygeovision.models.change_detection.dsamnet, pygeovision.models.change_detection.changeformer]
+
+- slug: builders-foundation
+  title: Foundation-model builders
+  summary: "Prithvi-EO, DOFA, DINOv3, TESSERA, AlphaEarth and the SAR adapters"
+  explained_in:
+    - "[Foundation models](../../foundation-models/index.md)"
+  modules: [pygeovision.models.foundation.prithvi, pygeovision.models.foundation.dofa, pygeovision.models.foundation.dinov3, pygeovision.models.foundation.tessera, pygeovision.models.foundation.alphaearth_geo, pygeovision.models.adapters.sar_channel_manager, pygeovision.models.adapters.sar_dinov3, pygeovision.models.adapters.sar_prithvi]
+
+- slug: builders-vlm
+  title: Vision-language builders
+  summary: "`CLIPGeo`, `MoondreamGeo` and `GeoImageRetrieval`"
+  explained_in:
+    - "[Vision-language](../../vision-language/index.md)"
+  modules: [pygeovision.models.vlm.clip, pygeovision.models.vlm.moondream, pygeovision.advanced.vlm.clip_geo, pygeovision.advanced.vlm.moondream_geo, pygeovision.advanced.vlm.retrieval]
+
+- slug: builders-3d
+  title: Point-cloud model builders
+  summary: "PointNet++, RandLA-Net, KPConv and Point Transformer V3"
+  explained_in:
+    - "[Point-cloud networks](../../lidar/models.md)"
+  modules: [pygeovision.models._3d.pointnet, pygeovision.models._3d.randlanet, pygeovision.models._3d.kpconv, pygeovision.models._3d.pointtransformer]
+
+- slug: training
+  title: Training
+  summary: "`GeoTrainer`, `TrainingConfig`, datasets, metrics, optimisers, callbacks, tracking and search"
+  intro: |
+    `GeoTrainer(model, TrainingConfig(...)).fit(train, val)` is the training loop. The other classes supply the data, the
+    metrics, the optimiser and scheduler, checkpoints, distributed training, tracking and hyper-parameter search.
+  explained_in:
+    - "[Training a model](../../training/index.md)"
+    - "[The training configuration](../../training/config.md)"
+    - "[Experiments](../../experiments/index.md)"
+  modules: [pygeovision.training, pygeovision.training.trainer, pygeovision.training.data, pygeovision.training.metrics, pygeovision.training.optimizer, pygeovision.training.callbacks, pygeovision.training.checkpoint, pygeovision.training.distributed, pygeovision.training.mixed_precision, pygeovision.training.experiment, pygeovision.training.hpo]
+
+- slug: losses
+  title: Loss functions
+  summary: "Segmentation, detection and class-balance losses"
+  explained_in:
+    - "[Loss functions and class imbalance](../../training/losses.md)"
+  modules: [pygeovision.losses, pygeovision.losses.segmentation, pygeovision.losses.detection, pygeovision.losses.class_balance]
+
+- slug: inference
+  title: Inference
+  summary: "`TiledInference`, batch and streaming engines, ensembles, post-processing and vectorisation"
+  intro: |
+    Inference runs a trained model over a scene in overlapping tiles and blends the result. Two engines exist; the page on the
+    [other inference engine](../../inference/engine.md) explains why.
+  explained_in:
+    - "[Inference](../../inference/index.md)"
+    - "[Tiles, overlap and seams](../../inference/tiles.md)"
+  modules: [pygeovision.inference, pygeovision.inference.tiled, pygeovision.inference.batch, pygeovision.inference.stream, pygeovision.ai.inference.tiled_inference, pygeovision.ai.inference.ensemble, pygeovision.ai.inference.postprocessing, pygeovision.ai.inference.validation, pygeovision.ai.inference.vectorization]
+
+- slug: labeling
+  title: Labelling
+  summary: "OSM, building, land-cover, SAM and foundation labelers; quality and active learning"
+  explained_in:
+    - "[Labelling](../../labeling/index.md)"
+  modules: [pygeovision.labeling, pygeovision.labeling.osm, pygeovision.labeling.buildings, pygeovision.labeling.landcover, pygeovision.labeling.sam_auto, pygeovision.labeling.foundation, pygeovision.labeling.pipeline, pygeovision.labeling.quality, pygeovision.labeling.active, pygeovision.labeling.relabel]
+
+- slug: obia
+  title: Object-based image analysis
+  summary: "Segmentation, scale, features, classification, accuracy, merging, vectors and input/output"
+  explained_in:
+    - "[OBIA guide](../../obia/index.md)"
+  modules: [pygeovision.obia, pygeovision.obia.io, pygeovision.obia.scene, pygeovision.obia.segmentation, pygeovision.obia.merging, pygeovision.obia.scale, pygeovision.obia.features, pygeovision.obia.classify, pygeovision.obia.accuracy, pygeovision.obia.vector, pygeovision.obia.viz]
+
+- slug: explainability
+  title: Explainability
+  summary: "Grad-CAM, uncertainty, SHAP and attention maps"
+  explained_in:
+    - "[Explainability](../../explainability/index.md)"
+  modules: [pygeovision.explainability, pygeovision.explainability.gradcam, pygeovision.explainability.uncertainty, pygeovision.explainability.shap_geo, pygeovision.explainability.attention]
+
+- slug: monitoring
+  title: Monitoring
+  summary: "Drift detection, performance tracking, alerts and site tracking"
+  explained_in:
+    - "[Monitoring](../../monitoring/index.md)"
+  modules: [pygeovision.monitoring, pygeovision.monitoring.drift, pygeovision.monitoring.tracker, pygeovision.monitoring.alerts, pygeovision.monitoring.site_tracker]
+
+- slug: benchmark
+  title: Benchmarking
+  summary: "`ModelEvaluator`, `BenchmarkResult` and `Leaderboard`"
+  explained_in:
+    - "[Experiments: benchmarking](../../experiments/benchmark.md)"
+    - "[The leaderboard](../../experiments/leaderboard.md)"
+  modules: [pygeovision.benchmark, pygeovision.benchmark.evaluator, pygeovision.benchmark.leaderboard]
+
+- slug: reporting
+  title: Reporting
+  summary: "Report model, specifications, maps, vectors and the PDF, Word and Excel writers"
+  explained_in:
+    - "[Reporting](../../reporting/index.md)"
+  modules: [pygeovision.reporting, pygeovision.reporting.build, pygeovision.reporting.model, pygeovision.reporting.specs, pygeovision.reporting.maps, pygeovision.reporting.vectors, pygeovision.reporting.pdf, pygeovision.reporting.docx_report, pygeovision.reporting.xlsx_report, pygeovision.reporting.fmt, pygeovision.reporting.palettes, pygeovision.reporting.geo]
+
+- slug: deployment
+  title: Deployment
+  summary: "ONNX Runtime, Jetson/TensorRT and the AWS, Azure and GCP deployers"
+  explained_in:
+    - "[Deployment](../../deployment/index.md)"
+  modules: [pygeovision.edge, pygeovision.edge.onnx_rt, pygeovision.edge.jetson, pygeovision.cloud, pygeovision.cloud.deploy]
+
+- slug: advanced
+  title: Few-shot, AutoML, multi-task, time series and point clouds
+  summary: "`FewShotLearner`, `GeoAutoML`, `MultiTaskLearner`, `GeoTimeSeries`, `PointCloudProcessor`"
+  explained_in:
+    - "[Few-shot](../../classification/few-shot.md)"
+    - "[AutoML](../../experiments/automl.md)"
+    - "[Multi-task](../../training/multitask.md)"
+    - "[Time series](../../timeseries/index.md)"
+    - "[Point clouds](../../lidar/index.md)"
+  modules: [pygeovision.advanced, pygeovision.advanced.few_shot, pygeovision.advanced.automl, pygeovision.advanced.multitask, pygeovision.advanced.timeseries, pygeovision.advanced.pointcloud]
+
+- slug: engine
+  title: The legacy engine (pygeovision.ai)
+  summary: "The first implementation: engine, data, labeling, architectures, hub, zoo and trainer"
+  intro: |
+    `pygeovision.ai` is the first implementation, kept because the command line and some pipelines still use parts of it.
+    New code should prefer the packages on the other pages. [Architecture](../../architecture.md#systems-that-exist-twice)
+    explains which concepts exist twice and why.
+  explained_in:
+    - "[Architecture](../../architecture.md)"
+    - "[How the registries relate](../../models/registry.md)"
+  modules: [pygeovision.ai.engine, pygeovision.ai.labeling, pygeovision.ai.models.hub, pygeovision.ai.models.registry, pygeovision.ai.models.zoo, pygeovision.ai.models.architectures.segmentation, pygeovision.ai.models.architectures.classification, pygeovision.ai.models.architectures.detection, pygeovision.ai.models.architectures.change_detection, pygeovision.ai.models.architectures.super_resolution, pygeovision.ai.training.trainer, pygeovision.ai.training.callbacks, pygeovision.ai.training.distributed, pygeovision.ai.training.export, pygeovision.ai.training.losses, pygeovision.ai.training.metrics, pygeovision.ai.data.augmentations, pygeovision.ai.data.dataloader, pygeovision.ai.data.dataset, pygeovision.ai.data.preprocessing, pygeovision.ai.data.sampler, pygeovision.ai.data.tiling, pygeovision.ai.labeling.base_labeler, pygeovision.ai.labeling.dynamic_world, pygeovision.ai.labeling.esa_worldcover, pygeovision.ai.labeling.foundation_labeler, pygeovision.ai.labeling.google_buildings, pygeovision.ai.labeling.label_studio, pygeovision.ai.labeling.microsoft_buildings, pygeovision.ai.labeling.osm_labeler, pygeovision.ai.labeling.sam_labeler]

@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from .io import RasterData, as_raster_data, rescale_bands
+from .io import RasterData, as_raster_data, rescale_bands, to_uint8, valid_mask
 from .merging import RegionMerger
 
 METHODS = ("multires", "slic", "felzenszwalb", "quickshift", "watershed", "chessboard")
@@ -39,6 +39,7 @@ class SegmentationResult:
     method: str
     params: dict = field(default_factory=dict)
     raster: RasterData | None = None
+    valid: np.ndarray | None = None      # pixels that held data; label 0 marks the others (cloud, nodata)
 
     @property
     def n_objects(self) -> int:
@@ -60,13 +61,13 @@ class SegmentationResult:
     def boundaries(self) -> np.ndarray:
         """Boolean mask of pixels lying on an object boundary."""
         from skimage.segmentation import find_boundaries
-        return find_boundaries(self.labels, mode="inner")
+        return find_boundaries(self.labels, mode="inner") & (self.labels > 0)
 
     def overlay(self, bands=(0, 1, 2), color=(255, 255, 0)) -> np.ndarray:
         """uint8 RGB preview of three bands with object outlines drawn on."""
         if self.raster is None:
             raise ValueError("no image attached to this result")
-        img = rescale_bands(self.raster.image[list(bands)]).astype(np.uint8)
+        img = to_uint8(rescale_bands(self.raster.image[list(bands)]))
         rgb = np.moveaxis(img, 0, -1).copy()
         rgb[self.boundaries()] = color
         return rgb
@@ -124,16 +125,54 @@ def _chessboard(shape, size):
     return (rows[:, None] * ncol + cols[None, :] + 1).astype(np.int32)
 
 
-def _relabel(lab: np.ndarray) -> np.ndarray:
-    """Consecutive ids 1..n, with every id spatially connected."""
+def _relabel(lab: np.ndarray, valid: np.ndarray | None = None) -> np.ndarray:
+    """Consecutive ids 1..n, with every id spatially connected; pixels outside ``valid`` get 0.
+
+    Each id is labelled inside its own bounding box, so the cost follows the number of pixels, not
+    (number of objects x number of pixels): a segmentation with tens of thousands of objects on a real scene
+    takes seconds.
+    """
     from scipy import ndimage as ndi
-    out = np.zeros(lab.shape, dtype=np.int32)
+    src = np.asarray(lab).astype(np.int64)
+    # Compact the ids to 1..k (find_objects skips 0 and sizes its answer by the largest id);
+    # pixels outside ``valid`` become 0 and stay out.
+    if valid is None:
+        _, inv = np.unique(src, return_inverse=True)
+        src = inv.reshape(src.shape).astype(np.int64) + 1
+    else:
+        _, inv = np.unique(src[valid], return_inverse=True)
+        compact = np.zeros(src.shape, dtype=np.int64)
+        compact[valid] = inv.astype(np.int64) + 1
+        src = compact
+    out = np.zeros(src.shape, dtype=np.int32)
     nxt = 1
-    for v in np.unique(lab):
-        comp, n = ndi.label(lab == v)
-        out[comp > 0] = comp[comp > 0] + (nxt - 1)
+    for v, sl in enumerate(ndi.find_objects(src), start=1):
+        if sl is None:
+            continue
+        sub = src[sl] == v
+        comp, n = ndi.label(sub)
+        view = out[sl]
+        view[sub] = comp[sub] + (nxt - 1)
         nxt += n
     return out
+
+
+def _prepare(rd: RasterData, rescale: bool):
+    """Image for the algorithms, plus the mask of pixels that hold data.
+
+    Invalid pixels (cloud-masked, nodata) cannot be segmented: the algorithms either refuse them or, worse, let them
+    poison every distance. They are filled with the value of the nearest valid pixel so the algorithm sees a continuous
+    image, and the caller sets their label to 0 afterwards.
+    """
+    from scipy import ndimage as ndi
+    valid = valid_mask(rd)
+    if not valid.any():
+        raise ValueError("the image has no valid pixels (every pixel is NaN or nodata)")
+    img = rescale_bands(rd.image) if rescale else rd.image.astype(np.float64)
+    if not valid.all():
+        idx = ndi.distance_transform_edt(~valid, return_distances=False, return_indices=True)
+        img = img[:, idx[0], idx[1]]
+    return img, valid
 
 
 def segment(image, method: str = "multires", *, band_names=None, transform=None,
@@ -154,7 +193,7 @@ def segment(image, method: str = "multires", *, band_names=None, transform=None,
     if method not in METHODS:
         raise ValueError(f"unknown method {method!r}; choose from {METHODS}")
     rd = as_raster_data(image, band_names, transform, crs)
-    img = rescale_bands(rd.image) if rescale else rd.image.astype(np.float64)
+    img, valid = _prepare(rd, rescale)
     H, W = img.shape[1:]
 
     if method == "multires":
@@ -216,7 +255,7 @@ def segment(image, method: str = "multires", *, band_names=None, transform=None,
         lab = _chessboard((H, W), int(p["size"]))
         params = p
 
-    return SegmentationResult(_relabel(lab), method, params, rd)
+    return SegmentationResult(_relabel(lab, valid), method, params, rd, None if valid.all() else valid)
 
 
 def from_labels(labels, image=None, *, band_names=None, transform=None, crs=None,
@@ -246,7 +285,7 @@ def segment_levels(image, scales, *, band_names=None, transform=None, crs=None,
     """
     scales = sorted(float(s) for s in scales)
     rd = as_raster_data(image, band_names, transform, crs)
-    img = rescale_bands(rd.image) if rescale else rd.image.astype(np.float64)
+    img, valid = _prepare(rd, rescale)
     H, W = img.shape[1:]
     p = dict(color_weight=0.9, compactness_weight=0.5, init="auto",
              init_segments=None, band_weights=None)
@@ -262,5 +301,5 @@ def segment_levels(image, scales, *, band_names=None, transform=None, crs=None,
     for s in scales:
         m.run(s)
         q = dict(p, scale=s)
-        out[s] = SegmentationResult(m.labels(), "multires", q, rd)
+        out[s] = SegmentationResult(_relabel(m.labels(), valid), "multires", q, rd, None if valid.all() else valid)
     return out

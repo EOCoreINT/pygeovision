@@ -4,7 +4,7 @@
 
 *Burn severity from dNBR (USGS classes) between a pre-fire and a post-fire date*
 
-**Topic:** Fire and burn severity · **Status:** Runs out of the box · **Tags:** `fire`, `dnbr`, `bitemporal`
+**Topic:** Floods, fire and hazards · **Status:** Runs out of the box · **Tags:** `fire`, `dnbr`, `bitemporal`
 
 ## The question it answers
 
@@ -87,6 +87,54 @@ Every pipeline also takes `--bbox` and `--output`; see [common options](../index
 ### Choosing dates and inputs
 
 The closest clear images before and after the fire. A long gap lets regrowth or later fires mix in.
+
+## Modify it
+
+Three levels, from least to most effort. Start at the first; most changes need nothing more.
+
+### 1. Change a setting
+
+Every argument in the table above is changed per run, with `--param NAME=VALUE` on the command line or `NAME=VALUE` in Python. The changes people make most with this pipeline:
+
+- **Dates.** `date_before` shortly before the fire and `date_after` shortly after, in the same season where possible.
+- **Your own classes.** The classes use simplified USGS/MTBS thresholds (0.10, 0.27, 0.66). `dnbr.tif` is also written, so you can classify it with thresholds that suit your vegetation.
+- **Cloud and smoke.** Read `valid_fraction`; choose dates with clear skies.
+
+After any change, read the **parameters** block of `run_summary.json`: it records the values that were used, so a result can always be traced to its settings.
+
+### 2. Change where the data comes from, and what is written
+
+- **Providers.** `providers=["planetary_computer"]` (CLI `--provider planetary_computer`) restricts the catalogues the pipeline searches; see [Providers](../../data/providers.md).
+- **Output.** `output_dir` (CLI `--output`) is the folder for the rasters, `run_summary.json` and `deliverables/`. Rebuild maps and reports from a finished run without re-downloading: [Rebuilding](../../reporting/rebuilding.md).
+- **Your own area.** A bounding box, or the true shape of an administrative area ([boundaries](../../data/boundaries.md)).
+
+### 3. Change the method (write a variant)
+
+The pipeline is the class `WildfireSeverityPipeline` in `pygeovision/ai/pipelines/domains.py`. To change its behaviour without editing the package, subclass it, give the subclass a new `name`, and override `run`. This changes the defaults of one run; the original is untouched:
+
+```python
+from pygeovision import PyGeoVision
+from pygeovision.ai.pipelines import pipeline_catalogue
+
+Base = pipeline_catalogue()["wildfire_severity"]
+
+
+class MyWildfireSeverity(Base):
+    name = "my_wildfire_severity"          # a new name, so files and reports do not clash with the original
+
+    def run(self, bbox, output_dir, **kwargs):
+        result = super().run(bbox, output_dir, **kwargs)
+        if result.success:
+            print("written:", result.output_path)      # post-process the output here
+        return result
+
+client = PyGeoVision()
+result = MyWildfireSeverity(client).run(bbox, "./variant")   # plus the same date arguments as in Run it
+```
+
+Calling `.run` on your class does not need any registration. To use it by name in `client.pipeline(...)`, register it in the process; to write a pipeline from scratch see [Write your own pipeline](../custom.md). The built-in `pygeovision channel` command runs only the built-in pipelines.
+
+To change the numbers of the method itself (a threshold written in the code, not exposed as an argument), read `WildfireSeverityPipeline.run` in `pygeovision/ai/pipelines/domains.py`; the *How it works* section above lists the steps in the order the code takes them. Whatever you change, compare the new run with the old one ([comparing runs](../results.md#comparing-runs)) and validate the result against reference data before you use it ([validation](../../data/validation.md)).
 
 ## What you get
 

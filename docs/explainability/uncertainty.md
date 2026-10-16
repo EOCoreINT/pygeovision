@@ -23,12 +23,10 @@ print(result)
 ```
 
 ```text
-{'success': True, 'image_size': (160, 160), 'n_mc_passes': 50, 'n_dropout_layers': 1,
- 'mean_entropy': 0.240, 'mean_epistemic': 0.00186, 'mean_aleatoric': 0.199,
- 'high_uncertainty_fraction': 0.110, 'output_path': 'scene_uncertainty.tif'}
+{'success': True, 'image_size': (rows, cols), 'n_mc_passes': 50, 'n_dropout_layers': <n>,
+ 'mean_entropy': <value>, 'mean_epistemic': <value>, 'mean_aleatoric': <value>,
+ 'high_uncertainty_fraction': <share>, 'output_path': 'scene_uncertainty.tif'}
 ```
-
-(real output of the [example model](index.md#a-worked-example-used-on-these-pages) on demo scene B, 20 passes.)
 
 ### `UncertaintyEstimator(model, n_passes=20, device=None)`
 
@@ -85,36 +83,33 @@ The returned dict:
 | `warning` | Present when no dropout layer exists |
 | `output_path` | The written file |
 
-## What the maps say, tested
+## What the maps say: check it on your own data
 
-The example model on demo scene B (160 × 160 pixels, true classes known), 20 passes:
+Before you rely on an uncertainty map, test two things against reference labels you trust, on a scene the model did not train on.
 
-| | Mean entropy |
-|---|---:|
-| Pixels in a 3-pixel band around true class boundaries (23 % of the scene) | **0.389** |
-| All other pixels | 0.195 |
-| Pixels the model got **wrong** (3.6 % of the scene) | **0.433** |
-| Pixels it got right | 0.233 |
+```python
+import rasterio, numpy as np
+with rasterio.open("scene_uncertainty.tif") as src:
+    label, entropy = src.read(1), src.read(2)
+wrong = label != reference                       # reference: class ids on the same grid, 255 = unlabelled
+ok = reference != 255
+print("mean entropy, wrong pixels:", entropy[ok & wrong].mean(), " right pixels:", entropy[ok & ~wrong].mean())
+top = entropy >= np.quantile(entropy[ok], 0.9)           # the 10 % most uncertain pixels
+print("share of all errors inside the top 10 % entropy:", (top & ok & wrong).sum() / (ok & wrong).sum())
+```
 
-So the uncertainty **is** concentrated on boundaries and on errors, roughly twice as high. That is the useful finding.
-
-Now the sobering one. Take the 10 % of pixels with the highest entropy: they contain only **28 %** of the wrong pixels.
-Uncertainty is **not an error detector**. Most mistakes are made confidently (this model is confidently wrong about whole
-objects), and a large share of the high-entropy pixels are correct ones on boundaries. Use the map to prioritise review,
-not to promise that low-uncertainty pixels are right.
+1. **Is the uncertainty higher where the model is wrong, and along class boundaries?** Usually yes: that is the useful finding.
+2. **How much of the error does the top decile catch?** Usually far less than the pixels flagged would suggest. Uncertainty is
+   **not an error detector**: most mistakes are made confidently (a model can be confidently wrong about whole objects), and
+   many high-entropy pixels are correct ones on boundaries. Use the map to prioritise review, not to promise that
+   low-uncertainty pixels are right.
 
 ### How many passes?
 
-Summary numbers move with the random draw. Mean entropy of the same model and scene over 6 different seeds:
-
-| Passes | Mean over seeds | Range |
-|---:|---:|---:|
-| 20 | 0.209 | 0.178 – 0.286 |
-| 100 | 0.214 | 0.202 – 0.243 |
-
-With 20 passes on a layer of 16 channels (the example uses `Dropout2d`, which drops whole channels) the scene average
-varied by about ±25 %. Use **50–100 passes** for numbers you want to compare, and set `torch.manual_seed(...)` for
-reproducible maps. Time grows linearly: on the 160 × 160 scene on a CPU, 5 / 20 / 50 passes took 0.2 / 0.7 / 1.5 s.
+Summary numbers move with the random draw, and the fewer the passes the more they move. With `Dropout2d` (which drops
+whole channels) and few channels the scene average can vary by tens of percent between seeds at 20 passes. Use **50-100
+passes** for numbers you want to compare, repeat with a few seeds to see the spread, and set `torch.manual_seed(...)` for
+reproducible maps. Run time grows linearly with the number of passes.
 
 ## Memory and speed
 

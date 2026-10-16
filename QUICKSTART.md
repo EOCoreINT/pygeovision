@@ -21,7 +21,7 @@ pip install "pygeovision[all]"
 
 ```bash
 pygeovision status
-# ✓ PyGeoVision 2.1.9
+# ✓ PyGeoVision 2.2.0
 # ✓ PyGeoFetch 1.0.0  (22 providers, 10 open access)
 # ✓ Model registry    119 architectures
 # ✓ Dataset registry  503 datasets

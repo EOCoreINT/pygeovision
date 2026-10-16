@@ -1,7 +1,7 @@
 # Pipelines
 
 A **pipeline** takes a place and a time, finds the right imagery or reference data, prepares it correctly, computes an
-answer, and delivers it as rasters, vectors, a map, tables and a report. PyGeoVision ships **40 pipelines**. Each answers
+answer, and delivers it as rasters, vectors, a map, tables and a report. PyGeoVision ships **41 pipelines**. Each answers
 one question, for example *"which areas flooded?"*, *"how much forest was lost?"* or *"how steep is this terrain?"*.
 
 ```{list-table}
@@ -12,7 +12,7 @@ one question, for example *"which areas flooded?"*, *"how much forest was lost?"
 * - Find the pipeline for your question
   - [Choosing a pipeline](choosing.md)
 * - Read about one pipeline (why, how, outputs, what to do when it fails)
-  - [The catalogue of all 40](catalog/index.md)
+  - [The catalogue of all 41](catalog/index.md)
 * - Understand what a run writes and how to read it
   - [Reading results](results.md)
 * - Chain search → download → inference → export in a file
@@ -27,7 +27,7 @@ The difference matters, so it is stated on every page.
 
 | Kind | Count | What you need | Why |
 |---|---|---|---|
-| **ready** | 33 | A bounding box and dates. | Each is a documented index, a terrain product, a radar or optical method, a published reference map or a published vector dataset. The answer comes from real data and a stated method. |
+| **ready** | 34 | A bounding box and dates. | Each is a documented index, a terrain product, a radar or optical method, a published reference map or a published vector dataset. The answer comes from real data and a stated method. |
 | **needs weights** | 7 | A checkpoint **you trained**. | The answer comes from a neural network, and PyGeoVision ships no trained weights for these tasks: a network that has not been trained produces confident-looking random output. These pipelines refuse to run without `--checkpoint`, and they check this **before** downloading anything. |
 
 The seven that need weights are `crop_monitoring`, `deforestation`, `disaster_assessment`, `landslide_detection`,
@@ -38,7 +38,7 @@ for `disaster_assessment`). Each page says which.
 ## Run one
 
 ```bash
-pygeovision channel list                                   # all 40, with their kind
+pygeovision channel list                                   # all 41, with their kind
 
 pygeovision channel wildfire_severity \
     --bbox -122.6 39.7 -121.9 40.2 \
@@ -66,6 +66,13 @@ else:
 The command is `channel` (not `pipeline`): the `pygeovision pipeline` group runs [YAML workflows](yaml-workflows.md), a different thing.
 
 ## What happens during a run
+
+```{figure} ../_static/img/pipeline-run.svg
+:alt: Anatomy of a pipeline run in six stages: search, select, download, mask, compute, deliver
+:width: 100%
+
+The stages of a run. A failure in any stage before the last reports `success=False` and says why.
+```
 
 1. **Check the request.** Dates, the bounding box and, for *needs weights* pipelines, the checkpoint. A bad request fails
    here, before any download.
@@ -150,14 +157,3 @@ pipeline_catalogue()["flood_mapping"].description     # the one-line description
 ```
 
 Asking for a [removed pipeline](removed.md) raises a `ValueError` that quotes the reason.
-
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-choosing
-catalog/index
-results
-yaml-workflows
-removed
-```

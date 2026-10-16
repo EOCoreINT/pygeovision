@@ -50,6 +50,10 @@ Commands:
 
 ### `pygeovision data auth`
 
+Manage satellite provider credentials (stored in system keyring).
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision data auth [OPTIONS] COMMAND [ARGS]...
 
@@ -64,8 +68,29 @@ Commands:
   remove  Remove stored credentials for a provider.
   test    Test connectivity to a provider.
 ```
+:::
 
 #### `pygeovision data auth add`
+
+Add credentials for a satellite data provider.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `PROVIDER` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--username` | text |  |  | Username (usgs, nasa_earthdata). |
+| `--password` | text |  |  | Password (usgs, nasa_earthdata). |
+| `--api-key` | text |  |  | API key (planet, opentopography, airbus_oneatlas). |
+| `--client-id` | text |  |  | OAuth2 client ID (copernicus, sentinel_hub, maxar_gbdx). |
+| `--client-secret` | text |  |  | OAuth2 client secret. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data auth add [OPTIONS] PROVIDER
@@ -85,8 +110,13 @@ Options:
   --client-secret TEXT  OAuth2 client secret.
   --help                Show this message and exit.
 ```
+:::
 
 #### `pygeovision data auth list`
+
+List providers with stored credentials.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data auth list [OPTIONS]
@@ -96,8 +126,25 @@ Usage: pygeovision data auth list [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 #### `pygeovision data auth remove`
+
+Remove stored credentials for a provider.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `PROVIDER` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--yes` | flag | off |  | Skip confirmation. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data auth remove [OPTIONS] PROVIDER
@@ -108,8 +155,19 @@ Options:
   --yes   Skip confirmation.
   --help  Show this message and exit.
 ```
+:::
 
 #### `pygeovision data auth test`
+
+Test connectivity to a provider.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `PROVIDER` | text | yes |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data auth test [OPTIONS] PROVIDER
@@ -119,8 +177,13 @@ Usage: pygeovision data auth test [OPTIONS] PROVIDER
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision data cache`
+
+Manage pygeofetch search result cache.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data cache [OPTIONS] COMMAND [ARGS]...
@@ -134,8 +197,21 @@ Commands:
   clear  Clear the pygeofetch search result cache.
   stats  Show cache statistics.
 ```
+:::
 
 #### `pygeovision data cache clear`
+
+Clear the pygeofetch search result cache.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--provider` | text |  |  | Clear only this provider. |
+| `--older-than` | text |  |  | Clear entries older than (e.g. 7d, 1h). |
+| `--dry-run` | flag | off |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data cache clear [OPTIONS]
@@ -148,8 +224,13 @@ Options:
   --dry-run
   --help             Show this message and exit.
 ```
+:::
 
 #### `pygeovision data cache stats`
+
+Show cache statistics.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data cache stats [OPTIONS]
@@ -159,8 +240,31 @@ Usage: pygeovision data cache stats [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision data download`
+
+Download satellite scenes via pygeofetch.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--from-search` | path |  |  | GeoJSON results file from 'data search'. |
+| `--bbox` | number |  |  | Download all results in this bbox (requires --date). |
+| `--date` | text |  |  |  |
+| `--providers` | text |  |  |  |
+| `--output`, `-o` | text | `./downloads` |  |  |
+| `--parallel` | integer | `4` |  |  |
+| `--verify-checksum` | flag | off |  |  |
+| `--resume` | flag | `True` |  |  |
+| `--retry` | integer | `5` |  |  |
+| `--post-process` | text |  |  | Post-processing chain: unzip,reproject:EPSG:4326,compress:lzw,cog |
+| `--bandwidth-limit` | text |  |  | Download throttle in MB/s. |
+| `--on-failure` | one of `skip` | `abort` | `retry` | `skip` |  |  |
+| `--max-items` | integer |  |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data download [OPTIONS]
@@ -206,8 +310,13 @@ Options:
   --max-items INTEGER
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision data pipeline`
+
+Manage and run pygeofetch YAML data pipelines.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data pipeline [OPTIONS] COMMAND [ARGS]...
@@ -224,8 +333,19 @@ Commands:
   schedule  Schedule a pygeofetch pipeline for recurring execution.
   validate  Validate a pygeofetch pipeline YAML without running it.
 ```
+:::
 
 #### `pygeovision data pipeline history`
+
+Show pygeofetch pipeline run history.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--limit` | integer | `20` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data pipeline history [OPTIONS]
@@ -236,8 +356,13 @@ Options:
   --limit INTEGER  [default: 20]
   --help           Show this message and exit.
 ```
+:::
 
 #### `pygeovision data pipeline list`
+
+List all scheduled pygeofetch pipelines.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data pipeline list [OPTIONS]
@@ -247,8 +372,25 @@ Usage: pygeovision data pipeline list [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 #### `pygeovision data pipeline run`
+
+Run a pygeofetch YAML pipeline.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `YAML_FILE` | path | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--step` | text |  |  | Run only this named step. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data pipeline run [OPTIONS] YAML_FILE
@@ -279,8 +421,26 @@ Options:
   --step TEXT  Run only this named step.
   --help       Show this message and exit.
 ```
+:::
 
 #### `pygeovision data pipeline schedule`
+
+Schedule a pygeofetch pipeline for recurring execution.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `YAML_FILE` | path | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--name` | text |  |  | Schedule name. |
+| `--cron` | text |  |  | Cron expression (e.g. '0 6 * * 1'). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data pipeline schedule [OPTIONS] YAML_FILE
@@ -292,8 +452,19 @@ Options:
   --cron TEXT  Cron expression (e.g. '0 6 * * 1').
   --help       Show this message and exit.
 ```
+:::
 
 #### `pygeovision data pipeline validate`
+
+Validate a pygeofetch pipeline YAML without running it.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `YAML_FILE` | path | yes |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data pipeline validate [OPTIONS] YAML_FILE
@@ -303,8 +474,21 @@ Usage: pygeovision data pipeline validate [OPTIONS] YAML_FILE
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision data providers`
+
+List all 22 pygeofetch satellite data providers.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--open-only` | flag | off |  | Only open-access providers. |
+| `--sar` | flag | off |  | Only SAR-capable providers. |
+| `--sub-meter` | flag | off |  | Only sub-metre resolution providers. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data providers [OPTIONS]
@@ -317,8 +501,30 @@ Options:
   --sub-meter  Only sub-metre resolution providers.
   --help       Show this message and exit.
 ```
+:::
 
 ### `pygeovision data search`
+
+Search satellite imagery across 22+ pygeofetch providers.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--bbox` | number |  | yes | Bounding box in WGS84. |
+| `--date` | text |  |  | Date (YYYY-MM) or range (YYYY-MM-DD/YYYY-MM-DD). |
+| `--start-date` | text |  |  | Start date YYYY-MM-DD. |
+| `--end-date` | text |  |  | End date YYYY-MM-DD. |
+| `--providers` | text |  |  | Comma-separated provider IDs (e.g. planetary_computer,copernicus). |
+| `--satellite` | text |  |  | Satellite shortcut: sentinel-2, landsat, planet, dem, etc. |
+| `--collections` | text |  |  | STAC collection IDs (e.g. sentinel-2-l2a,landsat-c2-l2). |
+| `--cloud-max` | number | `30.0` |  | Max cloud cover (percent). |
+| `--max-results` | integer | `50` |  |  |
+| `--sort-by` | one of `datetime` | `cloud_cover` | `score` | `satellite` | `datetime` |  |  |
+| `--output`, `-o` | text |  |  | Save results to GeoJSON file. |
+| `--format` | one of `table` | `json` | `ids` | `table` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision data search [OPTIONS]
@@ -356,3 +562,4 @@ Options:
   --format [table|json|ids]
   --help                          Show this message and exit.
 ```
+:::

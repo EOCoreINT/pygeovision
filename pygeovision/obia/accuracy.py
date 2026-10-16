@@ -74,16 +74,17 @@ def confusion_report(reference: pd.Series, predicted: pd.Series, weights: pd.Ser
 
 
 def assess_classification(result, labels, reference_gdf, class_column: str, transform=None,
-                          weights: pd.Series | None = None, min_coverage: float | None = None) -> dict:
+                          weights: pd.Series | None = None, min_coverage: float | None = None, crs=None) -> dict:
     """Assess a :class:`ClassificationResult` against reference polygons/points.
 
     The reference class of an object is the class of the reference geometry that
     covers most of it (see :func:`~pygeovision.obia.classify.samples_from_geometries`).
     Only objects the reference reaches are assessed - report ``n_objects``
-    alongside the accuracies.
+    alongside the accuracies. Pass ``crs`` (the image's coordinate system) when the reference is in another one
+    and it is reprojected for you.
     """
     from .classify import samples_from_geometries
-    ref = samples_from_geometries(labels, reference_gdf, class_column, transform, min_coverage)
+    ref = samples_from_geometries(labels, reference_gdf, class_column, transform, min_coverage, crs=crs)
     if ref.empty:
         raise ValueError("no object is covered by the reference geometries")
     return confusion_report(ref, result.classes, weights)
@@ -128,6 +129,9 @@ def segmentation_quality(seg_labels, ref_labels):
     key = ref[m] * nseg + seg[m]
     uniq, inter = np.unique(key, return_counts=True)
     df = pd.DataFrame({"ref": uniq // nseg, "seg": uniq % nseg, "inter": inter})
+    df = df[df["seg"] > 0]                      # label 0 is "no data" (cloud), not a segment that could match
+    if df.empty:
+        raise ValueError("no reference object overlaps a segment (is the reference under cloud or on another grid?)")
     best = df.sort_values(["ref", "inter"], ascending=[True, False]).drop_duplicates("ref").set_index("ref")
     parts = df.assign(frac_in_ref=df["inter"] / seg_area[df["seg"].to_numpy()])
     n_parts = parts[parts["frac_in_ref"] >= 0.5].groupby("ref").size()
@@ -149,5 +153,5 @@ def segmentation_quality(seg_labels, ref_labels):
                "mean_under_seg": float(out["under_seg"].mean()),
                "mean_D": float(out["D"].mean()), "median_D": float(out["D"].median()),
                "mean_QR": float(out["QR"].mean()),
-               "n_segments_total": int(len(np.unique(seg)))}
+               "n_segments_total": int(len(np.unique(seg[seg > 0])))}
     return out, summary

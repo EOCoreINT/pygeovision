@@ -16,6 +16,16 @@ Version lines with ticks; `--json` prints the same as JSON.
 
 ### `pygeovision status`
 
+Show PyGeoVision, pygeofetch, and native AI stack status.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--json` | flag | off |  | Output as JSON. |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision status [OPTIONS]
 
@@ -25,3 +35,4 @@ Options:
   --json  Output as JSON.
   --help  Show this message and exit.
 ```
+:::

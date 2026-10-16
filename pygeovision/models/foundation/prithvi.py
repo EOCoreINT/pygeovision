@@ -1041,6 +1041,11 @@ class Prithvi:
 
 _HEAD_FORMAT = "pygeovision-prithvi-head-v1"
 
+#: Task names a trained head can be registered under (``head_weights={task: path}``, ``save_prithvi_head(task=...)``).
+HEAD_TASKS = ("land_cover", "flood", "burn_scar", "crop_mapping", "biomass")
+#: Method-style spellings accepted for the same tasks.
+_TASK_ALIASES = {"flood_detection": "flood", "burn_scar_detection": "burn_scar", "biomass_estimation": "biomass"}
+
 
 def save_prithvi_head(model: Any, path: str, variant: str, task: str, num_classes: int) -> str:
     """Save the trained ``.head`` of a :meth:`Prithvi.build_segmentation_head` model.
@@ -1061,7 +1066,10 @@ def _load_head_file(path: str, variant: str, task: str, num_classes: int | None)
     if not isinstance(blob, dict) or blob.get("format") != _HEAD_FORMAT:
         raise ValueError(f"{path} is not a Prithvi head file written by save_prithvi_head()")
     for key, want in (("variant", variant), ("task", task)):
-        if blob.get(key) != want:
+        have = blob.get(key)
+        if key == "task":
+            have, want = _TASK_ALIASES.get(have, have), _TASK_ALIASES.get(want, want)
+        if have != want:
             raise ValueError(f"{path} was trained for {key}={blob.get(key)!r}, not {want!r}")
     if num_classes is not None and blob.get("num_classes") != num_classes:
         raise ValueError(f"{path} has {blob.get('num_classes')} classes, expected {num_classes}")
@@ -1256,7 +1264,15 @@ class PrithviTasks:
                  allow_random_init: bool = False) -> None:
         self.model_name = model_name
         self._prithvi   = Prithvi(model_name, device=device, allow_random_init=allow_random_init)
-        self._head_weights = dict(head_weights or {})
+        self._head_weights = {}
+        for key, path in dict(head_weights or {}).items():
+            canon = _TASK_ALIASES.get(key, key)
+            if canon not in HEAD_TASKS:
+                raise ValueError(
+                    f"head_weights has the unknown task {key!r}; use one of {sorted(HEAD_TASKS)} "
+                    f"(or the aliases {sorted(_TASK_ALIASES)}). A head under any other name would be ignored "
+                    "and the task would quietly run its spectral rule instead.")
+            self._head_weights[canon] = path
         self._seg_heads: dict[str, Any] = {}
 
     def _seg_head(self, task: str, n_classes: int) -> Any:

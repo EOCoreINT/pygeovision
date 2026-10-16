@@ -1,0 +1,131 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PyGeoVision\n"
+"PO-Revision-Date: 2026-10-16 00:00+0000\n"
+"Last-Translator: PyGeoVision Contributors\n"
+"Language-Team: de\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Documentation"
+msgstr "Dokumentation"
+
+msgid "Tutorials"
+msgstr "Tutorials"
+
+msgid "Community"
+msgstr "Community"
+
+msgid "Download"
+msgstr "Herunterladen"
+
+msgid "Search"
+msgstr "Suchen"
+
+msgid "Version:"
+msgstr "Version:"
+
+msgid "Home"
+msgstr "Startseite"
+
+msgid "Language"
+msgstr "Sprache"
+
+msgid "Partly translated"
+msgstr "Teilweise übersetzt: Nicht übersetzte Seiten erscheinen auf Englisch."
+
+msgid "Getting started"
+msgstr "Erste Schritte"
+
+msgid "Data"
+msgstr "Daten"
+
+msgid "Pipelines"
+msgstr "Pipelines"
+
+msgid "Models and training"
+msgstr "Modelle und Training"
+
+msgid "Object-based analysis"
+msgstr "Objektbasierte Analyse"
+
+msgid "Trust, monitor, deploy"
+msgstr "Vertrauen, Überwachung, Bereitstellung"
+
+msgid "Advanced tools"
+msgstr "Erweiterte Werkzeuge"
+
+msgid "Examples"
+msgstr "Beispiele"
+
+msgid "Reference"
+msgstr "Referenz"
+
+msgid "Project"
+msgstr "Projekt"
+
+msgid "Segmentation"
+msgstr "Segmentierung"
+
+msgid "Classification"
+msgstr "Klassifikation"
+
+msgid "Object detection"
+msgstr "Objekterkennung"
+
+msgid "Change detection"
+msgstr "Änderungserkennung"
+
+msgid "Foundation models"
+msgstr "Foundation-Modelle"
+
+msgid "Vision-language"
+msgstr "Bild-Sprache-Modelle"
+
+msgid "3D / LiDAR"
+msgstr "3D / LiDAR"
+
+msgid "Super-resolution"
+msgstr "Superauflösung"
+
+msgid "Time series"
+msgstr "Zeitreihen"
+
+msgid "Object-based analysis (OBIA)"
+msgstr "Objektbasierte Analyse (OBIA)"
+
+msgid "Models"
+msgstr "Modelle"
+
+msgid "Labelling"
+msgstr "Labeling"
+
+msgid "Training"
+msgstr "Training"
+
+msgid "Inference"
+msgstr "Inferenz"
+
+msgid "Experiments"
+msgstr "Experimente"
+
+msgid "Explainability"
+msgstr "Erklärbarkeit"
+
+msgid "Monitoring"
+msgstr "Überwachung"
+
+msgid "Reporting"
+msgstr "Berichte"
+
+msgid "Deployment"
+msgstr "Bereitstellung"
+
+msgid "CLI reference"
+msgstr "CLI-Referenz"
+
+msgid "Python API"
+msgstr "Python-API"

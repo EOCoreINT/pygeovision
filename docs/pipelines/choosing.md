@@ -12,6 +12,7 @@ mistakes happen. Each pipeline name links to its page, which says in more detail
 |---|---|---|
 | Where is open water right now? | [`water_bodies`](catalog/water_bodies.md) | NDWI on Sentinel-2. |
 | How did a lake or reservoir change through a year? | [`water_extent_timeseries`](catalog/water_extent_timeseries.md) | Water area per date, and how often each pixel was water. |
+| Is a mine or quarry site revegetating, and where is it stuck? | [`mine_rehabilitation`](catalog/mine_rehabilitation.md) | Greenness against an undisturbed reference over several years; see [mining](../examples/mining.md). |
 | How did water change over four decades? | [`surface_water_dynamics`](catalog/surface_water_dynamics.md) | JRC Global Surface Water, 1984–2020. |
 | What flooded in this event, and the sky was clear? | [`flood_mapping`](catalog/flood_mapping.md) | Optical, simple and explainable. |
 | What flooded, and it was cloudy? | [`sar_flood_mapping`](catalog/sar_flood_mapping.md) | Radar sees through cloud. |
@@ -126,19 +127,12 @@ the threshold. When a published product exists for your question and period, sta
 
 ## Quick decision guide
 
-```text
-Is the question about change between two dates?
-├─ yes ── is it a flood? ───────── yes ── cloudy? ── yes ── multisensor_flood_mapping / sar_flood_mapping
-│                                                  └─ no ─── flood_mapping
-│          is it fire? ────────── wildfire_severity (scar) / active_fire (burning)
-│          is it forest or built-up? ── forest_change / urban_expansion / landcover_change
-│          anything else ──────── change_detection
-└─ no ─── is it a map of what is there?
-          ├─ land cover ────────── land_cover
-          ├─ water ─────────────── water_bodies
-          ├─ terrain ───────────── terrain_analysis / drainage_analysis
-          ├─ roads / buildings ─── road_network / building_footprints
-          └─ temperature / snow / vegetation ── land_surface_temperature / snow_cover / vegetation_indices
+```{figure} ../_static/img/tree-pipeline-chooser.svg
+:alt: Choosing a pipeline: change or a map of what is there, then the topic
+:width: 100%
+:class: pgv-figure
+
+Follow the question from the left; the pipeline names are on the right.
 ```
 
 ## If your question has no ready pipeline
@@ -146,7 +140,7 @@ Is the question about change between two dates?
 1. **Check the indices.** [`pygeovision indices list`](../data/indices.md) has 21 indices and transforms you can compute on any raster in one command.
 2. **Combine existing outputs** with the [postprocessing tools](../data/postprocessing.md): thresholds, class statistics, zonal statistics.
 3. **Train a model** for the task and run it through a *needs weights* pipeline or [direct inference](../inference/index.md).
-4. **Ask for it.** [Contributing](../contributing.md) explains how a pipeline is added.
+4. **Ask for it.** [Contributing](../project/contributing.md) explains how a pipeline is added.
 
 ## Pipelines that were removed
 

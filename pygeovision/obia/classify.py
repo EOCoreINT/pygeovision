@@ -395,17 +395,38 @@ class ObjectClassifier:
 
 # ---------------------------------------------------------------- sample tools
 def samples_from_geometries(labels, gdf, class_column: str, transform=None,
-                            min_coverage: float | None = None) -> pd.Series:
+                            min_coverage: float | None = None, crs=None) -> pd.Series:
     """Give each image object the reference class that covers most of it.
 
     Polygons (training areas or reference data) are rasterised onto the label
     grid.  An object is labelled with the dominant reference class if that class
     covers at least ``min_coverage`` of the object (default 0.5 for polygons;
     for point samples any hit counts).  Objects the reference does not reach
-    are left out.
+    are left out, and label 0 (no data) is never a sample.
+
+    ``crs`` is the coordinate system of the label raster. When it is given and the geometries
+    carry a different one, they are reprojected; if they have none, a ``ValueError`` asks you to
+    set it. Geometries that lie wholly outside the raster extent raise ``ValueError`` too: that is
+    nearly always a coordinate-system mix-up (degrees against metres), not an empty result.
     """
     from .vector import rasterize_geometries
     lab = np.asarray(labels).astype(np.int64)
+    if crs is not None:
+        if getattr(gdf, "crs", None) is None:
+            raise ValueError("the reference geometries have no coordinate system; set one with "
+                             "gdf.set_crs(...) so they can be placed on the image")
+        if gdf.crs != crs:
+            gdf = gdf.to_crs(crs)
+    if transform is not None and len(gdf):
+        x0, y0 = transform * (0, 0)
+        x1, y1 = transform * (lab.shape[1], lab.shape[0])
+        minx, maxx, miny, maxy = min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1)
+        gx0, gy0, gx1, gy1 = gdf.total_bounds
+        if gx1 < minx or gx0 > maxx or gy1 < miny or gy0 > maxy:
+            raise ValueError(
+                f"the reference geometries (x {gx0:.5g}..{gx1:.5g}, y {gy0:.5g}..{gy1:.5g}) lie outside the image "
+                f"(x {minx:.5g}..{maxx:.5g}, y {miny:.5g}..{maxy:.5g}). This is usually a coordinate-system mismatch: "
+                "pass crs=<the image's CRS> or reproject the geometries with gdf.to_crs(...).")
     ref, codes = rasterize_geometries(gdf, lab.shape, transform, class_column)
     if min_coverage is None:
         pts = all(g.geom_type in ("Point", "MultiPoint") for g in gdf.geometry if g is not None)
@@ -420,9 +441,58 @@ def samples_from_geometries(labels, gdf, class_column: str, transform=None,
     df = pd.DataFrame({"obj": uniq // K, "code": uniq % K, "n": cnt})
     best = df.sort_values(["obj", "n"], ascending=[True, False]).drop_duplicates("obj").set_index("obj")
     area = np.bincount(lab.ravel(), minlength=int(lab.max()) + 1)
+    best = best[best.index > 0]                     # label 0 = no data, never an object
     best["cov"] = best["n"] / area[best.index.to_numpy()]
     best = best[best["cov"] >= min_coverage]
     s = best["code"].map(inv).astype(object)
     s.index.name = "obj_id"
     s.name = "class"
     return s
+
+
+def samples_from_raster(labels, class_raster, mapping: dict | None = None, min_purity: float = 0.6,
+                        nodata: int = 0) -> pd.DataFrame:
+    """Turn an existing land-cover map (ESA WorldCover, Dynamic World, an older classification) into
+    *weak* training samples: each object gets the class that most of its pixels carry.
+
+    ``class_raster`` is a 2-D integer raster on the same grid as ``labels``. ``mapping`` translates its
+    codes to your class names (``{10: "forest", 40: "farmland", ...}``); codes that are not listed are
+    "something else" - they never win, but they do count against purity. Pixels equal to ``nodata`` are
+    ignored altogether. An object is kept only if the winning class covers at least ``min_purity`` of
+    its mapped-or-unmapped pixels, so objects that straddle two classes in the map are left out rather
+    than given a coin-flip label.
+
+    Returns a DataFrame indexed by ``obj_id`` with ``class``, ``purity`` and ``n_px``. These labels
+    inherit every error of the source map: use them to train, not to measure accuracy.
+    """
+    lab = np.asarray(labels).astype(np.int64)
+    ras = np.asarray(class_raster)
+    if lab.shape != ras.shape:
+        raise ValueError(f"labels {lab.shape} and class raster {ras.shape} must be on the same grid")
+    if not 0.0 < min_purity <= 1.0:
+        raise ValueError("min_purity must be in (0, 1]")
+    raw = ras.astype(np.int64)
+    uniq_codes = np.unique(raw[raw != nodata])
+    if mapping is None:
+        mapping = {int(c): str(c) for c in uniq_codes}
+    names = sorted(set(mapping.values()))
+    cls_of = {int(c): names.index(n) + 1 for c, n in mapping.items()}   # 1..K, 0 = unmapped
+    K = len(names) + 1
+    code = np.zeros(raw.shape, np.int64)
+    for c, k in cls_of.items():
+        code[raw == c] = k
+    m = (lab > 0) & (raw != nodata)
+    if not m.any():
+        return pd.DataFrame(columns=["class", "purity", "n_px"], index=pd.Index([], name="obj_id"))
+    key = lab[m] * K + code[m]
+    uniq, cnt = np.unique(key, return_counts=True)
+    df = pd.DataFrame({"obj": uniq // K, "code": uniq % K, "n": cnt})
+    total = df.groupby("obj")["n"].transform("sum")
+    df["purity"] = df["n"] / total
+    df["n_px"] = total
+    best = df[df["code"] > 0].sort_values(["obj", "n"], ascending=[True, False]).drop_duplicates("obj").set_index("obj")
+    best = best[best["purity"] >= min_purity]
+    out = pd.DataFrame({"class": best["code"].map(lambda k: names[int(k) - 1]).astype(object),
+                        "purity": best["purity"], "n_px": best["n_px"].astype(int)})
+    out.index.name = "obj_id"
+    return out

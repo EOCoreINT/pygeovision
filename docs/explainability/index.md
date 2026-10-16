@@ -53,15 +53,6 @@ $ pygeovision explain gradcam scene.tif -m unet-r50 --checkpoint best.pth --clas
 
 Only GradCAM has a command; uncertainty, attention and SHAP are Python APIs. See the [GradCAM page](gradcam.md#command-line).
 
-## A worked example used on these pages
-
-The pages share one small model so that the numbers are comparable and reproducible. A three-layer convolutional
-segmentation network (two `Conv-BatchNorm-ReLU` blocks, a `Dropout2d(0.2)`, a 1×1 classifier) was trained for 300 steps
-on random 64 × 64 crops of the synthetic [OBIA demo scene](../obia/demo.md) (seed 0), then explained on a second scene
-(seed 1). It reaches **96.4 % pixel accuracy** on that second scene. It is a toy, chosen because the true classes are
-known exactly, so we can check whether the explanation points at the right thing. Real models are bigger and their
-maps are messier.
-
 ## What to do when…
 
 | You see | Cause | Do this |
@@ -71,13 +62,3 @@ maps are messier.
 | Everything is zeros | Hooks did not fire / no attention found | See the "What to do" table on each page |
 | Maps look different on every run (uncertainty) | Dropout is random by design | Raise `n_passes`; fix `torch.manual_seed` for exact repeats |
 | You want to explain classical (non-neural) OBIA classifiers | These tools are for neural networks | OBIA rules and trees are readable already: [Classification → rules](../obia/classification.md) |
-
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-gradcam
-uncertainty
-attention
-shap
-```

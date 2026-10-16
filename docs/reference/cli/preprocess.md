@@ -50,6 +50,24 @@ Commands:
 
 ### `pygeovision preprocess clip`
 
+Clip a raster to a bounding box.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--bbox` | text |  | yes | minlon,minlat,maxlon,maxlat in WGS84. |
+| `--output` | text |  |  | Output path (default: _clipped). |
+| `--validate` | flag | off |  |  |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision preprocess clip [OPTIONS] INPUT_PATH
 
@@ -64,8 +82,29 @@ Options:
   --validate
   --help         Show this message and exit.
 ```
+:::
 
 ### `pygeovision preprocess normalise`
+
+Normalise pixel values.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--method` | one of `minmax` | `zscore` | `percentile` | `scale_factor` | `minmax` |  |  |
+| `--scale-factor` | number | `10000.0` |  | Divisor for scale_factor method (Sentinel-2 L2A = 10000). |
+| `--percentile` | number | `2.0` |  |  |
+| `--output` | text |  |  |  |
+| `--validate` | flag | off |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision preprocess normalise [OPTIONS] INPUT_PATH
@@ -85,8 +124,31 @@ Options:
   --validate
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision preprocess pipeline`
+
+Run the full preprocessing pipeline in one command.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  | yes | Final output path. |
+| `--bands` | text |  |  | Bands to stack, e.g. B02,B03,B04,B08,B11,B12 |
+| `--bbox` | text |  |  | Clip bbox: minlon,minlat,maxlon,maxlat |
+| `--scl` | text |  |  | SCL band path for cloud masking. |
+| `--normalise` | one of `minmax` | `zscore` | `percentile` | `scale_factor` | `none` |  |  |  |
+| `--resample-m` | number |  |  | Resample to N metres. |
+| `--validate` | flag | off |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision preprocess pipeline [OPTIONS] INPUT_PATH
@@ -111,8 +173,28 @@ Options:
   --validate
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision preprocess resample`
+
+Resample a raster to a target resolution.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--resolution` | number |  | yes | Target pixel size in metres. |
+| `--output` | text |  |  |  |
+| `--method` | one of `nearest` | `bilinear` | `cubic` | `lanczos` | `average` | `bilinear` |  |  |
+| `--validate` | flag | off |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision preprocess resample [OPTIONS] INPUT_PATH
@@ -130,8 +212,27 @@ Options:
   --validate
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision preprocess stack`
+
+Stack individual band files from a scene directory.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `SCENE_DIR` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--bands` | text |  | yes | Comma-separated band names, e.g. B02,B03,B04,B08 |
+| `--output` | text |  | yes | Output stacked GeoTIFF path. |
+| `--validate` | flag | off |  | Validate output after stacking. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision preprocess stack [OPTIONS] SCENE_DIR
@@ -147,3 +248,4 @@ Options:
   --validate     Validate output after stacking.
   --help         Show this message and exit.
 ```
+:::

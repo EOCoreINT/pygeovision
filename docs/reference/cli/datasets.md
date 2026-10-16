@@ -44,6 +44,10 @@ Commands:
 
 ### `pygeovision datasets domains`
 
+List all research domains in the catalog.
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision datasets domains [OPTIONS]
 
@@ -52,8 +56,25 @@ Usage: pygeovision datasets domains [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision datasets download`
+
+Show where dataset NAME can be obtained.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `NAME` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output`, `-o` | text |  |  | Output directory. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision datasets download [OPTIONS] NAME
@@ -67,8 +88,19 @@ Options:
   -o, --output TEXT  Output directory.
   --help             Show this message and exit.
 ```
+:::
 
 ### `pygeovision datasets info`
+
+Show full metadata for a dataset.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `NAME` | text | yes |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision datasets info [OPTIONS] NAME
@@ -78,8 +110,25 @@ Usage: pygeovision datasets info [OPTIONS] NAME
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision datasets list`
+
+List datasets from the catalogue (about 460), optionally filtered.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--domain` | text |  |  | Filter by research domain. |
+| `--modality` | text |  |  | Filter by data modality. |
+| `--task` | text |  |  | Filter by ML task (segmentation, detection, …). |
+| `--min-year` | integer |  |  |  |
+| `--max-volume-gb` | number |  |  | Max dataset size in GB. |
+| `--max-res-m` | number |  |  | Max spatial resolution in metres. |
+| `--limit` | integer | `25` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision datasets list [OPTIONS]
@@ -96,8 +145,25 @@ Options:
   --limit INTEGER        [default: 25]
   --help                 Show this message and exit.
 ```
+:::
 
 ### `pygeovision datasets search`
+
+Search datasets by keyword (name, description, domain, task).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `QUERY` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--limit` | integer | `20` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision datasets search [OPTIONS] QUERY
@@ -108,8 +174,25 @@ Options:
   --limit INTEGER  [default: 20]
   --help           Show this message and exit.
 ```
+:::
 
 ### `pygeovision datasets similar`
+
+Find datasets similar to NAME using the EarthNets similarity formula.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `NAME` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--n` | integer | `10` |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision datasets similar [OPTIONS] NAME
@@ -120,8 +203,13 @@ Options:
   --n INTEGER  [default: 10]
   --help       Show this message and exit.
 ```
+:::
 
 ### `pygeovision datasets stats`
+
+Show catalog statistics (total datasets, volume, domains, tasks).
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision datasets stats [OPTIONS]
@@ -131,8 +219,26 @@ Usage: pygeovision datasets stats [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::
 
 ### `pygeovision datasets top`
+
+Show the top-N datasets for a given ML task (EarthNets ranking).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `TASK` | text | no |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--n` | integer | `5` |  | Number of top datasets to show. |
+| `--modality` | text |  |  | Only datasets of this modality (rgb, multispectral, sar, ...). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision datasets top [OPTIONS] [TASK]
@@ -150,3 +256,4 @@ Options:
   --modality TEXT  Only datasets of this modality (rgb, multispectral, sar, ...).
   --help           Show this message and exit.
 ```
+:::

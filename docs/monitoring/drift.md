@@ -57,13 +57,13 @@ the current images must have the same band order as the reference.
 ### The report
 
 ```text
-{'timestamp': '2026-10-11T16:30:12', 'drift_detected': True, 'action_required': True,
+{'timestamp': '<time>', 'drift_detected': <bool>, 'action_required': <bool>,
  'incomplete': False, 'errors': [],
  'data_drift': {
-    'overall_psi': 2.375, 'drift_level': 'major', 'max_psi': 3.2233, 'worst_band': 'band_3',
-    'per_band': {'band_1': {'psi': 2.42, 'kl': ..., 'level': 'major', 'mean_reference': ..., 'mean_current': ...}, ...},
-    'n_reference': 5, 'n_current': 3,
-    'recommendation': 'Major distribution shift! Retrain model on recent data immediately.'},
+    'overall_psi': <value>, 'drift_level': '<none|minor|major>', 'max_psi': <value>, 'worst_band': 'band_3',
+    'per_band': {'band_1': {'psi': <value>, 'kl': ..., 'level': '...', 'mean_reference': ..., 'mean_current': ...}, ...},
+    'n_reference': <n>, 'n_current': <n>,
+    'recommendation': '<text matching the level>'},
  'performance_drift': {...}}
 ```
 
@@ -81,38 +81,29 @@ When nothing can be compared (empty or unreadable reference or current images, n
 `{"error": "..."}` inside `data_drift` and `incomplete: True`. It is **never** reported as "no drift". Check
 `report["incomplete"]` in any automated job.
 
-### Tested behaviour
+### Reading the numbers
 
-Reference: five demo scenes (4 bands, values 0–255, seeds 0–4). Three test sets of scenes the detector had not seen:
+Judge a PSI against a **baseline from your own data**: compare the reference scenes with other scenes from the same place and
+season that you know are fine. That PSI is not zero, because even an identical process gives different samples, and it is the
+level to beat before you call anything drift. Typical readings: below about 0.1 none, 0.1 to 0.25 minor, above 0.25 major.
+A brightness or contrast change (haze, a different sensor gain, a processing change) pushes the PSI of the affected bands far
+above a same-season baseline, and `worst_band` tells you which.
 
-| Current images | `overall_psi` | Level | Worst band |
-|---|---:|---|---|
-| Three other scenes from the same generator | 0.055 | none | band_3 (0.080) |
-| Same scenes, brightness ×1.25 + 10 | 2.375 | major | band_3 (3.22) |
-| Same scenes, contrast ×0.6 + 40 ("hazy") | 3.563 | major | band_4 (5.27) |
-
-The PSI of the unchanged set is not zero (0.055) because even identical processes give different samples; a level of 0.1
-is already close. Also tested: the **same file with 60 columns set to 0**: PSI 0.39 when the file declares `nodata=0`
-(the zeros are ignored, the rest of the scene is a different crop) and **1.70** when it does not (zeros counted as data).
-**Declare nodata in your GeoTIFFs**, or fill-values will look like drift.
+One trap: fill-values. A file with a stripe of zeros will look like drift unless the zeros are declared as no data. **Declare
+`nodata` in your GeoTIFFs**: when the file declares it, those pixels are ignored; when it does not, they are counted as data.
 
 `DistributionDrift` on its own works with arrays: `compute_psi(expected_values, actual_values)` takes two samples and
-returns the PSI (a normal sample vs. itself shifted by 0.5 standard deviations: 0.25; shifted by 5: 12.4), and
+returns the PSI (a normal sample against itself shifted by 0.5 standard deviations gives 0.25, shifted by 5 gives 12.4), and
 `compute_kl_divergence(p, q)` takes two histograms.
 
 ### From the shell
 
 ```console
-$ pygeovision monitor drift ref same --output same.json
-  Drift level: none (PSI 0.0549, worst band band_3 0.0793) | Report: same.json
-$ pygeovision monitor drift ref bright --output bright.json
-  Drift level: major (PSI 2.4081, worst band band_3 3.1377) | Report: bright.json
-$ pygeovision monitor drift ref empty_folder --output e.json
+$ pygeovision monitor drift ref_folder current_folder --output drift.json
+  Drift level: <none|minor|major> (PSI <value>, worst band <band> <value>) | Report: drift.json
+$ pygeovision monitor drift ref_folder empty_folder --output e.json
   ✗ drift could not be assessed: Nothing could be compared: no readable current images, or their bands do not match the reference. | Report: e.json
 ```
-
-(real output on the demo-scene folders described above; the PSI differs slightly from the Python table because the command
-reads files in directory order.)
 
 Uses up to 50 `*.tif` per folder (the first 50 in directory order), and writes the full report. If the comparison cannot be
 made it prints `✗ drift could not be assessed: <reason>` and exits with status 1, so a scheduler sees the failure.

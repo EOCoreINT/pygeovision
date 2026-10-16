@@ -21,6 +21,27 @@ Needs the run folder from a `channel` run (output rasters and `run_summary.json`
 
 ### `pygeovision report`
 
+Rebuild the map, vectors and reports of an earlier pipeline run.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `OUTPUT_DIR` | path | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--formats` | text | `pdf,xlsx,docx` |  | Report formats: pdf, xlsx, docx ('none' for none). |
+| `--vector-formats` | text | `gpkg,geojson` |  | Vector formats: gpkg, geojson, shp, kml ('none' for none). |
+| `--class-names` | text |  |  | Comma-separated class names for a trained network's classes 0,1,2... |
+| `--title` | text |  |  | Replace the report title. |
+| `--no-vectors` | flag | off |  | Do not write vector files. |
+| `--no-maps` | flag | off |  | Do not draw maps and charts. |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision report [OPTIONS] OUTPUT_DIR
 
@@ -42,3 +63,4 @@ Options:
   --no-maps              Do not draw maps and charts.
   --help                 Show this message and exit.
 ```
+:::

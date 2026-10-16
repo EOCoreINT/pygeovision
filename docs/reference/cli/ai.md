@@ -5,7 +5,7 @@
 Commands that work directly on files you already have, without the search-and-download step of a pipeline:
 rule-based water and building masks, segmentation or detection with your trained weights, bi-temporal change,
 a quick cloud mask, training-chip export and tiled inference. The full guide is
-[Direct native inference](../../cli/direct-inference.md).
+[Direct native inference](../../inference/cli.md).
 
 ## When to use it
 
@@ -60,6 +60,23 @@ Commands:
 
 ### `pygeovision ai change`
 
+Bi-temporal change detection.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--before` | path |  | yes | Pre-event raster. |
+| `--after` | path |  | yes | Post-event raster. |
+| `--output`, `-o` | text |  | yes | Output change mask GeoTIFF. |
+| `--method` | one of `spectral_diff` | `changeformer` | `bit` | `dsamnet` | `spectral_diff` |  | spectral_diff = change vector analysis + Otsu (no weights). The others run a siamese network and need --checkpoint. |
+| `--checkpoint` | path |  |  | Trained weights (required for changeformer / bit / dsamnet). |
+| `--num-classes` | integer | `2` |  | Network output classes. |
+| `--min-magnitude` | number |  |  | spectral_diff only: absolute magnitude floor, in the raster's units. |
+| `--backbone` | one of `resnet18` | `resnet50` |  |  | bit / dsamnet only: the encoder the checkpoint was trained with (default resnet18; the registry's bit-r50 is resnet50). |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision ai change [OPTIONS]
 
@@ -89,8 +106,24 @@ Options:
                                   with (default resnet18; the registry's bit-r50 is resnet50).
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai chips`
+
+Export aligned imagery/label training chips (native windowed tiling).
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--image` | path |  | yes | Source imagery GeoTIFF. |
+| `--label` | path |  | yes | Label/mask GeoTIFF. |
+| `--output`, `-o` | text |  | yes | Output chip directory. |
+| `--chip-size` | integer | `256` |  |  |
+| `--overlap` | integer | `0` |  |  |
+| `--prefix` | text | `chip` |  | File-name prefix. Use a different prefix per scene when several scenes go into one folder, otherwise chips of the later scene overwrite those of the earlier one. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai chips [OPTIONS]
@@ -112,8 +145,27 @@ Options:
                        the earlier one.  [default: chip]
   --help               Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai classify`
+
+Classify satellite imagery natively (CLIP zero-shot / ESA WorldCover).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `MODE` | one of `scene` | `land-cover` | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--input`, `-i` | path |  | yes |  |
+| `--classes` | text |  |  | Comma-separated class names (scene mode). |
+| `--output`, `-o` | text | `./output/land_cover.tif` |  | Output GeoTIFF (land-cover mode). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai classify [OPTIONS] {scene|land-cover}
@@ -131,8 +183,21 @@ Options:
   -o, --output TEXT  Output GeoTIFF (land-cover mode).
   --help             Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai cloud-mask`
+
+Generate a cloud mask via native brightness thresholding (bright + spectrally flat pixels across visible bands = likely cloud).
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--input`, `-i` | path |  | yes |  |
+| `--output`, `-o` | text |  | yes | Output cloud mask GeoTIFF. |
+| `--brightness-threshold` | number | `0.7` |  | Reflectance threshold (0-1, normalised) above which pixels are flagged cloudy. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai cloud-mask [OPTIONS]
@@ -150,8 +215,29 @@ Options:
                                 flagged cloudy.  [default: 0.7]
   --help                        Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai detect`
+
+Detect objects in satellite/aerial imagery using native YOLO.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `TARGET` | one of `generic` | `ships` | `cars` | `custom` | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--input`, `-i` | path |  | yes |  |
+| `--output`, `-o` | text |  | yes | generic/ships/cars: GeoJSON file of boxes (use .geojson). custom: a GeoTIFF of per-pixel class scores (the model must output one score map per class, not boxes). |
+| `--model` | text |  |  | Registry model name (target=custom). |
+| `--checkpoint` | path |  |  | Your trained weights for --model (target=custom; required there). |
+| `--num-classes` | integer | `2` |  | Classes the checkpoint was trained for. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai detect [OPTIONS] {generic|ships|cars|custom}
@@ -172,8 +258,27 @@ Options:
   --num-classes INTEGER  Classes the checkpoint was trained for.  [default: 2]
   --help                 Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai infer`
+
+Run tiled inference on a large GeoTIFF with your trained model.
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--input`, `-i` | path |  | yes |  |
+| `--model`, `-m` | text |  | yes | Registry model name (see `pygeovision ai-models list`). |
+| `--checkpoint` | path |  | yes | Your trained weights for --model (state dict from GeoTrainer). |
+| `--output`, `-o` | text |  | yes | Output prediction GeoTIFF. |
+| `--num-classes` | integer | `2` |  |  |
+| `--in-channels` | integer |  |  | Bands the model was trained on (default: the input's). |
+| `--tile-size` | integer | `512` |  |  |
+| `--overlap` | integer | `64` |  |  |
+| `--normalise`, `--no-normalise` | flag | `--normalise` |  | Stretch every band to its own 2-98 percentile range before the model sees it. Use --no-normalise if the model was trained on values that were already scaled (for example reflectance 0-1), otherwise the prediction is made on differently scaled data and can be wrong. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai infer [OPTIONS]
@@ -202,8 +307,31 @@ Options:
                                 can be wrong.  [default: normalise]
   --help                        Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai segment`
+
+Segment geospatial features natively.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `TARGET` | one of `buildings` | `water` | `sam` | `custom` | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--input`, `-i` | path |  | yes |  |
+| `--output`, `-o` | text |  | yes | Output mask GeoTIFF. |
+| `--model` | text |  |  | Registry model name (target=custom), e.g. unet_resnet50. |
+| `--checkpoint` | path |  |  | Your trained weights for --model (target=custom; required there). |
+| `--num-classes` | integer | `2` |  | Classes the checkpoint was trained for. |
+| `--green-band` | integer |  |  | target=water: 1-based green band (default 2 of a blue-green-red-NIR stack). |
+| `--nir-band` | integer |  |  | target=water: 1-based near-infrared band (default 4). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai segment [OPTIONS] {buildings|water|sam|custom}
@@ -225,8 +353,29 @@ Options:
   --nir-band INTEGER     target=water: 1-based near-infrared band (default 4).
   --help                 Show this message and exit.
 ```
+:::
 
 ### `pygeovision ai train`
+
+Configure a native training run (segmentation or detection).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `TASK` | one of `segmentation` | `detection` | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--data`, `-d` | path |  | yes |  |
+| `--output`, `-o` | text |  | yes | Output model checkpoint path. |
+| `--num-classes` | integer | `2` |  |  |
+| `--epochs` | integer | `50` |  |  |
+| `--backbone` | text |  |  | Native registry model name (default: unet-r50 for segmentation, faster-rcnn-r50 for detection). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision ai train [OPTIONS] {segmentation|detection}
@@ -250,3 +399,4 @@ Options:
                          rcnn-r50 for detection).
   --help                 Show this message and exit.
 ```
+:::

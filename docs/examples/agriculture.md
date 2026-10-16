@@ -66,7 +66,7 @@ pygeovision channel vegetation_indices \
 `valid_fraction` for every date. Dates without usable imagery are skipped and listed (`n_dates_used` counts the others).
 
 For a statistical view of the same question (trend, flagged odd dates), take the per-date images into the
-[time-series tool](../advanced/timeseries.md):
+[time-series tool](../timeseries/index.md):
 
 ```bash
 pygeovision timeseries analyze scene_2024_04.tif scene_2024_06.tif scene_2024_08.tif scene_2024_10.tif \

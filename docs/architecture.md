@@ -24,13 +24,13 @@ About 240 Python files. Lines are physical lines including comments and docstrin
 
 | Package | Lines | Role | Documented in |
 |---|---:|---|---|
-| `ai/` | 18 600 | The AI layer: the 40 pipelines, training, tiled inference, labelers, native model registry | [Pipelines](pipelines/index.md), [Training](training/index.md), [Labeling](labeling/index.md) |
+| `ai/` | 18 600 | The AI layer: the 41 pipelines, training, tiled inference, labelers, native model registry | [Pipelines](pipelines/index.md), [Training](training/index.md), [Labeling](labeling/index.md) |
 | `data/` | 12 800 | Scene choice, download, radiometry, reference products (WorldCover, JRC …), indices, post-processing, validation | [Data](data/index.md) |
 | `models/` | 11 100 | The general model registry (79 entries), foundation-model wrappers, VLM, embeddings | [Models](models/index.md) |
 | `reporting/` | 4 400 | Map, vector and PDF/Word/Excel deliverables | [Reporting](reporting/index.md) |
 | `labeling/` | 3 500 | Standalone labeling module used by the CLI (OSM, buildings, WorldCover, SAM, quality, active learning) | [Labeling](labeling/index.md) |
 | `cli/` | 3 100 | The 25 command groups and 92 commands | [CLI reference](reference/cli/index.md) |
-| `advanced/` | 2 100 | Few-shot, multi-task, AutoML, vision-language, time series, point clouds | [Advanced](advanced/index.md) |
+| `advanced/` | 2 100 | Few-shot, multi-task, AutoML, vision-language, time series, point clouds | [Few-shot](classification/few-shot.md), [AutoML](experiments/automl.md), [Time series](timeseries/index.md), [Point clouds](lidar/index.md) |
 | `obia/` | 2 000 | Object-based image analysis | [OBIA](obia/index.md) |
 | `training/` | 1 700 | Callbacks, checkpoints, data, HPO, metrics, optimisers (the trainer itself is in `ai/training`) | [Training](training/index.md) |
 | `datasets/` | 1 600 | A discovery catalogue of about 460 public datasets | [Datasets](datasets/index.md) |
@@ -40,8 +40,8 @@ About 240 Python files. Lines are physical lines including comments and docstrin
 | `monitoring/` | 900 | Drift, performance, alerts, site tracking | [Monitoring](monitoring/index.md) |
 | `pipelines/` | 800 | The YAML workflow engine | [YAML workflows](pipelines/yaml-workflows.md) |
 | `losses/` | 700 | Segmentation, detection and class-balance losses | [Losses](training/losses.md) |
-| `cloud/`, `edge/` | 600, 550 | AWS/Azure/GCP deployment; ONNX/Jetson | [Edge and cloud](edge-cloud/index.md) |
-| `benchmark/` | 450 | `ModelEvaluator`, leaderboards | [Benchmark](benchmark/index.md) |
+| `cloud/`, `edge/` | 600, 550 | AWS/Azure/GCP deployment; ONNX/Jetson | [Edge and cloud](deployment/index.md) |
+| `benchmark/` | 450 | `ModelEvaluator`, leaderboards | [Benchmark](experiments/benchmark.md) |
 | `core/` | 400 | Configuration and exceptions | [Config](reference/config.md), [Exceptions](reference/exceptions.md) |
 
 ### What a pipeline run touches
@@ -122,4 +122,4 @@ pygeovision models summary                                               # regis
 ## What was removed, and why
 
 Five packages with no import anywhere (`api/`, `enterprise/`, `serving/`, `utils/`, `viz/`), a superseded data-access design, the natural-language agent
-(a deliberate scope decision), and 21 pipelines that could not produce a correct result ([list](pipelines/removed.md)). The dated record is in the [roadmap](reference/roadmap.md).
+(a deliberate scope decision), and 21 pipelines that could not produce a correct result ([list](pipelines/removed.md)). The dated record is in the [roadmap](project/roadmap.md).

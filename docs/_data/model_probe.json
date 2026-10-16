@@ -1,0 +1,1100 @@
+{
+ "alphaearth": {
+  "build_seconds": 0.0,
+  "class": "AlphaEarthGeo",
+  "family": "alphaearth",
+  "status": "wrapper",
+  "task": "foundation"
+ },
+ "bit-r50": {
+  "build_seconds": 0.34,
+  "class": "BIT",
+  "family": "bit",
+  "input": [
+   [
+    2,
+    4,
+    64,
+    64
+   ],
+   [
+    2,
+    4,
+    64,
+    64
+   ]
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 9.0,
+  "status": "builds",
+  "task": "change_detection"
+ },
+ "centernet-r50": {
+  "build_seconds": 0.38,
+  "class": "CenterNet",
+  "family": "anchor_free",
+  "input": "list of (4, 128, 128) tensors",
+  "output": "list of dicts: boxes, labels, scores",
+  "params_m": 32.67,
+  "status": "builds",
+  "task": "detection"
+ },
+ "changeformer-mit-b0": {
+  "build_seconds": 0.01,
+  "class": "ChangeFormerModel",
+  "family": "changeformer",
+  "input": [
+   [
+    2,
+    4,
+    64,
+    64
+   ],
+   [
+    2,
+    4,
+    64,
+    64
+   ]
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 0.8,
+  "status": "builds",
+  "task": "change_detection"
+ },
+ "changeformer-mit-b4": {
+  "family": "changeformer",
+  "message": "'changeformer-mit-b4': the published ChangeFormer with a MiT-B4 backbone is not implemented in this package, and building the compact network under that name would be mislabelling it. Use 'changeformer-mit-b0' (compact siamese network), 'bit-r50' or 'dsamnet'.",
+  "status": "listed_only",
+  "task": "change_detection"
+ },
+ "changestar-r18": {
+  "family": "changestar",
+  "message": "'changestar-r18': ChangeStar has no implementation in torchvision/timm/transformers and none in this codebase (use ChangeFormer, BIT or DSAMNet). Provide your own model rather than silently getting a different architecture.",
+  "status": "listed_only",
+  "task": "change_detection"
+ },
+ "chatearthnet": {
+  "family": "chatearthnet",
+  "message": "'chatearthnet': ChatEarthNet has no verified public checkpoint or construction code in this codebase. Provide your own model rather than silently getting a different architecture.",
+  "status": "listed_only",
+  "task": "vlm"
+ },
+ "clip-vit-b32": {
+  "build_seconds": 0.0,
+  "class": "CLIPGeo",
+  "family": "clip",
+  "status": "wrapper",
+  "task": "classification"
+ },
+ "convnext-b": {
+  "build_seconds": 1.28,
+  "class": "ConvNeXt",
+  "family": "convnext",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 87.57,
+  "status": "builds",
+  "task": "classification"
+ },
+ "convnext-l": {
+  "build_seconds": 2.8,
+  "class": "ConvNeXt",
+  "family": "convnext",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 196.24,
+  "status": "builds",
+  "task": "classification"
+ },
+ "convnext-t": {
+  "build_seconds": 0.34,
+  "class": "ConvNeXt",
+  "family": "convnext",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 27.82,
+  "status": "builds",
+  "task": "classification"
+ },
+ "deeplab-r101": {
+  "build_seconds": 0.52,
+  "class": "DeepLabV3",
+  "family": "deeplab",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 58.63,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "deeplab-r50": {
+  "build_seconds": 0.32,
+  "class": "DeepLabV3",
+  "family": "deeplab",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 39.64,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "densenet121": {
+  "build_seconds": 0.11,
+  "class": "DenseNet",
+  "family": "densenet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 6.96,
+  "status": "builds",
+  "task": "classification"
+ },
+ "densenet201": {
+  "build_seconds": 0.2,
+  "class": "DenseNet",
+  "family": "densenet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 18.1,
+  "status": "builds",
+  "task": "classification"
+ },
+ "detr-r101": {
+  "build_seconds": 0.98,
+  "class": "DetrForObjectDetection",
+  "family": "detr",
+  "input": [
+   1,
+   4,
+   128,
+   128
+  ],
+  "output": {
+   "logits": [
+    1,
+    100,
+    4
+   ],
+   "pred_boxes": [
+    1,
+    100,
+    4
+   ]
+  },
+  "params_m": 60.45,
+  "status": "builds",
+  "task": "detection"
+ },
+ "detr-r50": {
+  "build_seconds": 0.7,
+  "class": "DetrForObjectDetection",
+  "family": "detr",
+  "input": [
+   1,
+   4,
+   128,
+   128
+  ],
+  "output": {
+   "logits": [
+    1,
+    100,
+    4
+   ],
+   "pred_boxes": [
+    1,
+    100,
+    4
+   ]
+  },
+  "params_m": 41.51,
+  "status": "builds",
+  "task": "detection"
+ },
+ "dinov2-b": {
+  "build_seconds": 1.43,
+  "class": "HFClassificationAdapter",
+  "family": "dinov2",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 86.74,
+  "status": "builds",
+  "task": "classification"
+ },
+ "dinov2-g": {
+  "build_seconds": 34.98,
+  "class": "HFClassificationAdapter",
+  "family": "dinov2",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 1136.79,
+  "status": "builds",
+  "task": "classification"
+ },
+ "dinov2-l": {
+  "build_seconds": 8.16,
+  "class": "HFClassificationAdapter",
+  "family": "dinov2",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 304.58,
+  "status": "builds",
+  "task": "classification"
+ },
+ "dinov2-s": {
+  "build_seconds": 0.44,
+  "class": "HFClassificationAdapter",
+  "family": "dinov2",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 22.13,
+  "status": "builds",
+  "task": "classification"
+ },
+ "dinov3_segmentor": {
+  "family": "dinov3_head",
+  "message": "'dinov3_segmentor': A DINOv3 segmentation head needs a DINOv3 backbone; use pygeovision.models.foundation.dinov3 for features. Provide your own model rather than silently getting a different architecture.",
+  "status": "listed_only",
+  "task": "segmentation"
+ },
+ "dofa-base": {
+  "family": "dofa",
+  "message": "ImportError: DOFA requires torchgeo: pip install torchgeo",
+  "status": "error",
+  "task": "foundation"
+ },
+ "dofa-large": {
+  "family": "dofa",
+  "message": "ImportError: DOFA requires torchgeo: pip install torchgeo",
+  "status": "error",
+  "task": "foundation"
+ },
+ "dsamnet": {
+  "build_seconds": 0.13,
+  "class": "DSAMNet",
+  "family": "dsamnet",
+  "input": [
+   [
+    2,
+    4,
+    64,
+    64
+   ],
+   [
+    2,
+    4,
+    64,
+    64
+   ]
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 11.92,
+  "status": "builds",
+  "task": "change_detection"
+ },
+ "efficientnet-b4": {
+  "build_seconds": 0.21,
+  "class": "EfficientNet",
+  "family": "efficientnet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 17.55,
+  "status": "builds",
+  "task": "classification"
+ },
+ "efficientnet-b7": {
+  "build_seconds": 0.67,
+  "class": "EfficientNet",
+  "family": "efficientnet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 63.8,
+  "status": "builds",
+  "task": "classification"
+ },
+ "faster-rcnn-r50": {
+  "build_seconds": 0.41,
+  "class": "FasterRCNN",
+  "family": "rcnn",
+  "input": "list of (4, 128, 128) tensors",
+  "output": "list of dicts: boxes, labels, scores",
+  "params_m": 41.37,
+  "status": "builds",
+  "task": "detection"
+ },
+ "fcn-r50": {
+  "build_seconds": 0.3,
+  "class": "TorchvisionSegmentationAdapter",
+  "family": "fcn",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 32.95,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "fcos-r50": {
+  "build_seconds": 0.39,
+  "class": "FCOS",
+  "family": "anchor_free",
+  "input": "list of (4, 128, 128) tensors",
+  "output": "list of dicts: boxes, labels, scores",
+  "params_m": 32.13,
+  "status": "builds",
+  "task": "detection"
+ },
+ "grounding-dino": {
+  "family": "vlm",
+  "message": "ModelLoadError: 'grounding-dino' cannot be built offline: its architecture config is only available from the Hugging Face Hub (IDEA-Research/grounding-dino-tiny) and the Hub could not be reached: Can't load the configuration of 'IDEA-Research/grounding-dino-tiny'. If you were trying to load it from 'https://hugging",
+  "status": "error",
+  "task": "detection"
+ },
+ "kpconv": {
+  "build_seconds": 0.01,
+  "class": "KPConvSeg",
+  "family": "kpconv",
+  "input": [
+   2,
+   3,
+   512
+  ],
+  "output": [
+   2,
+   3,
+   512
+  ],
+  "params_m": 0.22,
+  "status": "builds",
+  "task": "3d"
+ },
+ "lisat-7b": {
+  "family": "lisat",
+  "message": "'lisat-7b' is a real, published model (Quenum et al. 2025, arXiv:2505.02829) with weights at 'jquenum/LISAt-7b', but its checkpoint is a custom LISA-style multimodal LLM + SAM decoder, not a standard transformers class. Loading it needs the authors' lisat_code repository, flash-attn and a separate R",
+  "status": "listed_only",
+  "task": "vlm"
+ },
+ "mask-rcnn-r50": {
+  "build_seconds": 0.41,
+  "class": "MaskRCNN",
+  "family": "rcnn",
+  "input": "list of (4, 128, 128) tensors",
+  "output": "list of dicts: boxes, labels, masks, scores",
+  "params_m": 43.99,
+  "status": "builds",
+  "task": "detection"
+ },
+ "mask2former-swin-b": {
+  "family": "mask2former",
+  "message": "ModelLoadError: 'mask2former-swin-b' cannot be built offline: its architecture config is only available from the Hugging Face Hub (facebook/mask2former-swin-base-ade-semantic) and the Hub could not be reached: Can't load the configuration of 'facebook/mask2former-swin-base-ade-semantic'. If you were trying to load ",
+  "status": "error",
+  "task": "segmentation"
+ },
+ "mask2former-swin-t": {
+  "family": "mask2former",
+  "message": "ModelLoadError: 'mask2former-swin-t' cannot be built offline: its architecture config is only available from the Hugging Face Hub (facebook/mask2former-swin-tiny-ade-semantic) and the Hub could not be reached: Can't load the configuration of 'facebook/mask2former-swin-tiny-ade-semantic'. If you were trying to load ",
+  "status": "error",
+  "task": "segmentation"
+ },
+ "moondream2": {
+  "build_seconds": 0.0,
+  "class": "MoondreamGeo",
+  "family": "moondream",
+  "status": "wrapper",
+  "task": "vlm"
+ },
+ "openclip-b32": {
+  "build_seconds": 0.0,
+  "class": "CLIPGeo",
+  "family": "clip",
+  "status": "wrapper",
+  "task": "vlm"
+ },
+ "openclip-l14": {
+  "build_seconds": 0.0,
+  "class": "CLIPGeo",
+  "family": "clip",
+  "status": "wrapper",
+  "task": "vlm"
+ },
+ "pointnet2-msg": {
+  "build_seconds": 0.01,
+  "class": "PointNet2Seg",
+  "family": "pointnet",
+  "input": [
+   2,
+   3,
+   512
+  ],
+  "output": [
+   2,
+   3,
+   512
+  ],
+  "params_m": 0.97,
+  "status": "builds",
+  "task": "3d"
+ },
+ "pointnet2-ssg": {
+  "build_seconds": 0.01,
+  "class": "PointNet2Seg",
+  "family": "pointnet",
+  "input": [
+   2,
+   3,
+   512
+  ],
+  "output": [
+   2,
+   3,
+   512
+  ],
+  "params_m": 0.88,
+  "status": "builds",
+  "task": "3d"
+ },
+ "pointtransformer": {
+  "build_seconds": 0.01,
+  "class": "PTv3Seg",
+  "family": "transformer",
+  "input": [
+   2,
+   3,
+   512
+  ],
+  "output": [
+   2,
+   3,
+   512
+  ],
+  "params_m": 1.16,
+  "status": "builds",
+  "task": "3d"
+ },
+ "prithvi-100m": {
+  "family": "prithvi",
+  "message": "ValueError: 'prithvi-100m': there is no architecture-only Prithvi build. Use pretrained=True, or allow_random_init=True for a flagged, randomly initialised stand-in.",
+  "status": "error",
+  "task": "foundation"
+ },
+ "prithvi-300m": {
+  "family": "prithvi",
+  "message": "ValueError: 'prithvi-300m': there is no architecture-only Prithvi build. Use pretrained=True, or allow_random_init=True for a flagged, randomly initialised stand-in.",
+  "status": "error",
+  "task": "foundation"
+ },
+ "prithvi-600m": {
+  "family": "prithvi",
+  "message": "ValueError: 'prithvi-600m': there is no architecture-only Prithvi build. Use pretrained=True, or allow_random_init=True for a flagged, randomly initialised stand-in.",
+  "status": "error",
+  "task": "foundation"
+ },
+ "prithvi_burn_scar": {
+  "family": "prithvi",
+  "message": "'prithvi_burn_scar' is a TerraTorch/MMSegmentation fine-tune that this package cannot load. Fine-tune 'prithvi-100m' on your own burn labels, or use the wildfire_severity pipeline (dNBR, no weights).",
+  "status": "listed_only",
+  "task": "segmentation"
+ },
+ "prithvi_eo_1_0": {
+  "family": "prithvi",
+  "message": "ValueError: 'prithvi_eo_1_0': there is no architecture-only Prithvi build. Use pretrained=True, or allow_random_init=True for a flagged, randomly initialised stand-in.",
+  "status": "error",
+  "task": "foundation"
+ },
+ "prithvi_eo_2_0": {
+  "family": "prithvi",
+  "message": "ValueError: 'prithvi_eo_2_0': there is no architecture-only Prithvi build. Use pretrained=True, or allow_random_init=True for a flagged, randomly initialised stand-in.",
+  "status": "error",
+  "task": "foundation"
+ },
+ "prithvi_eo_2_0_600m": {
+  "family": "prithvi",
+  "message": "ValueError: 'prithvi_eo_2_0_600m': there is no architecture-only Prithvi build. Use pretrained=True, or allow_random_init=True for a flagged, randomly initialised stand-in.",
+  "status": "error",
+  "task": "foundation"
+ },
+ "pspnet-r50": {
+  "build_seconds": 0.26,
+  "class": "PSPNet",
+  "family": "pspnet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 24.31,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "ptv3": {
+  "build_seconds": 0.01,
+  "class": "PTv3Seg",
+  "family": "transformer",
+  "input": [
+   2,
+   3,
+   512
+  ],
+  "output": [
+   2,
+   3,
+   512
+  ],
+  "params_m": 1.16,
+  "status": "builds",
+  "task": "3d"
+ },
+ "randlanet": {
+  "build_seconds": 0.02,
+  "class": "RandLANetSeg",
+  "family": "randlanet",
+  "input": [
+   2,
+   3,
+   512
+  ],
+  "output": [
+   2,
+   3,
+   512
+  ],
+  "params_m": 2.08,
+  "status": "builds",
+  "task": "3d"
+ },
+ "remoteclip-b32": {
+  "build_seconds": 0.0,
+  "class": "CLIPGeo",
+  "family": "clip",
+  "status": "wrapper",
+  "task": "foundation"
+ },
+ "remoteclip-l14": {
+  "build_seconds": 0.0,
+  "class": "CLIPGeo",
+  "family": "clip",
+  "status": "wrapper",
+  "task": "foundation"
+ },
+ "resnet101": {
+  "build_seconds": 0.44,
+  "class": "ResNet",
+  "family": "resnet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 42.51,
+  "status": "builds",
+  "task": "classification"
+ },
+ "resnet152": {
+  "build_seconds": 0.6,
+  "class": "ResNet",
+  "family": "resnet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 58.15,
+  "status": "builds",
+  "task": "classification"
+ },
+ "resnet50": {
+  "build_seconds": 0.25,
+  "class": "ResNet",
+  "family": "resnet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 23.52,
+  "status": "builds",
+  "task": "classification"
+ },
+ "rf-detr-b": {
+  "family": "detr",
+  "message": "No build path is registered for 'rf-detr-b' (family='detr'). It has no timm_id or hf_id and no dedicated builder; returning a generic network would give meaningless results, so this raises. Provide your own model.",
+  "status": "listed_only",
+  "task": "detection"
+ },
+ "rf-detr-l": {
+  "family": "detr",
+  "message": "No build path is registered for 'rf-detr-l' (family='detr'). It has no timm_id or hf_id and no dedicated builder; returning a generic network would give meaningless results, so this raises. Provide your own model.",
+  "status": "listed_only",
+  "task": "detection"
+ },
+ "rt-detr-l": {
+  "build_seconds": 5.03,
+  "class": "RTDetrForObjectDetection",
+  "family": "detr",
+  "input": [
+   1,
+   4,
+   128,
+   128
+  ],
+  "output": {
+   "logits": [
+    1,
+    300,
+    3
+   ],
+   "pred_boxes": [
+    1,
+    300,
+    4
+   ]
+  },
+  "params_m": 42.73,
+  "status": "builds",
+  "task": "detection"
+ },
+ "sam-vit-b": {
+  "build_seconds": 0.0,
+  "class": "GeoSAM",
+  "family": "sam",
+  "status": "wrapper",
+  "task": "segmentation"
+ },
+ "sam-vit-h": {
+  "build_seconds": 0.0,
+  "class": "GeoSAM",
+  "family": "sam",
+  "status": "wrapper",
+  "task": "segmentation"
+ },
+ "sam-vit-l": {
+  "build_seconds": 0.0,
+  "class": "GeoSAM",
+  "family": "sam",
+  "status": "wrapper",
+  "task": "segmentation"
+ },
+ "sam2-hiera-l": {
+  "build_seconds": 0.0,
+  "class": "GeoSAM",
+  "family": "sam2",
+  "status": "wrapper",
+  "task": "segmentation"
+ },
+ "satlas-pretrain": {
+  "family": "satlas",
+  "message": "'satlas-pretrain': SatlasPretrain has no verified public checkpoint or construction code in this codebase. Provide your own model rather than silently getting a different architecture.",
+  "status": "listed_only",
+  "task": "foundation"
+ },
+ "segformer-b0": {
+  "build_seconds": 0.12,
+  "class": "HFSegmentationAdapter",
+  "family": "segformer",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 3.72,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "segformer-b2": {
+  "build_seconds": 0.29,
+  "class": "HFSegmentationAdapter",
+  "family": "segformer",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 27.35,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "segformer-b5": {
+  "build_seconds": 0.9,
+  "class": "HFSegmentationAdapter",
+  "family": "segformer",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 84.6,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "swin-b": {
+  "build_seconds": 1.07,
+  "class": "SwinTransformer",
+  "family": "swin",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 86.75,
+  "status": "builds",
+  "task": "classification"
+ },
+ "swin-l": {
+  "build_seconds": 2.53,
+  "class": "SwinTransformer",
+  "family": "swin",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 195.0,
+  "status": "builds",
+  "task": "classification"
+ },
+ "swin-t": {
+  "build_seconds": 1.36,
+  "class": "SwinTransformer",
+  "family": "swin",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 27.52,
+  "status": "builds",
+  "task": "classification"
+ },
+ "swinir-m": {
+  "build_seconds": 0.35,
+  "class": "Swin2SRForImageSuperResolution",
+  "family": "swin",
+  "input": [
+   1,
+   4,
+   32,
+   32
+  ],
+  "output": {
+   "reconstruction": [
+    1,
+    4,
+    128,
+    128
+   ]
+  },
+  "params_m": 12.06,
+  "status": "builds",
+  "task": "super_resolution"
+ },
+ "tessera": {
+  "build_seconds": 0.0,
+  "class": "TesseraGeo",
+  "family": "tessera",
+  "status": "wrapper",
+  "task": "foundation"
+ },
+ "unet-efficientb4": {
+  "build_seconds": 0.14,
+  "class": "Unet",
+  "family": "unet_variant",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 20.23,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "unet-r101": {
+  "build_seconds": 0.54,
+  "class": "Unet",
+  "family": "unet_variant",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 51.52,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "unet-r50": {
+  "build_seconds": 0.42,
+  "class": "Unet",
+  "family": "unet_variant",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 32.52,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "upernet-swin-b": {
+  "build_seconds": 1.35,
+  "class": "HFSegmentationAdapter",
+  "family": "upernet",
+  "input": [
+   2,
+   4,
+   64,
+   64
+  ],
+  "output": [
+   2,
+   3,
+   64,
+   64
+  ],
+  "params_m": 119.99,
+  "status": "builds",
+  "task": "segmentation"
+ },
+ "vit-b16": {
+  "build_seconds": 44.63,
+  "class": "HFClassificationAdapter",
+  "family": "vit",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 86.0,
+  "status": "builds",
+  "task": "classification"
+ },
+ "vit-l16": {
+  "build_seconds": 7.2,
+  "class": "HFClassificationAdapter",
+  "family": "vit",
+  "input": [
+   2,
+   4,
+   224,
+   224
+  ],
+  "output": [
+   2,
+   3
+  ],
+  "params_m": 303.57,
+  "status": "builds",
+  "task": "classification"
+ }
+}

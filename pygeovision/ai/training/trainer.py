@@ -791,6 +791,12 @@ class GeoTrainer:
         scaler = self._build_scaler()
 
         if resume_state is not None:
+            saved_opt = resume_state.get("optimizer_class")
+            if saved_opt is not None and saved_opt != type(optimizer).__name__:
+                raise RuntimeError(
+                    f"Cannot resume from {ckpt_mgr.last_path}: it was written with the {saved_opt} optimizer "
+                    f"but this run builds {type(optimizer).__name__}. Use the original optimizer to resume, "
+                    f"or resume=False (with checkpoint_path=<best.pth> to keep the weights).")
             try:
                 optimizer.load_state_dict(resume_state["optimizer_state_dict"])
                 if scheduler is not None and resume_state.get("scheduler_state_dict"):
@@ -1090,6 +1096,7 @@ class GeoTrainer:
                     "epoch": epoch,
                     "model_state_dict": _unwrap(model).state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
+                    "optimizer_class": type(optimizer).__name__,
                     "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
                     "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
                     "history": history,

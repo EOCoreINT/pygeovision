@@ -4,7 +4,7 @@
 
 *Surface water mask from NDWI (green, NIR); or your own trained model*
 
-**Topic:** Water and floods · **Status:** Runs out of the box · **Tags:** `water`, `ndwi`
+**Topic:** Water and wetlands · **Status:** Runs out of the box · **Tags:** `water`, `ndwi`
 
 ## The question it answers
 
@@ -98,6 +98,52 @@ Every pipeline also takes `--bbox` and `--output`; see [common options](../index
 ### Choosing dates and inputs
 
 A month with clear sky. For a seasonal lake, run the dry and wet seasons separately.
+
+## Modify it
+
+Three levels, from least to most effort. Start at the first; most changes need nothing more.
+
+### 1. Change a setting
+
+Every argument in the table above is changed per run, with `--param NAME=VALUE` on the command line or `NAME=VALUE` in Python. The changes people make most with this pipeline:
+
+- **Method.** `method="ndwi"` (index threshold) or `"model"` (your network, with `checkpoint=`, `model`, `bands`, `num_classes`).
+- **Threshold.** `ndwi_threshold` defaults to 0.3 (conservative); lower values include turbid and shallow water, 0 is McFeeters' original value.
+- **Cloud.** `cloud_cover_max` defaults to 10.
+
+After any change, read the **parameters** block of `run_summary.json`: it records the values that were used, so a result can always be traced to its settings.
+
+### 2. Change where the data comes from, and what is written
+
+- **Providers.** `providers=["planetary_computer"]` (CLI `--provider planetary_computer`) restricts the catalogues the pipeline searches; see [Providers](../../data/providers.md).
+- **Output.** `output_dir` (CLI `--output`) is the folder for the rasters, `run_summary.json` and `deliverables/`. Rebuild maps and reports from a finished run without re-downloading: [Rebuilding](../../reporting/rebuilding.md).
+- **Your own area.** A bounding box, or the true shape of an administrative area ([boundaries](../../data/boundaries.md)).
+
+### 3. Change the method (write a variant)
+
+The pipeline is the class `WaterBodiesPipeline` in `pygeovision/ai/pipelines/__init__.py`. To change its behaviour without editing the package, subclass it, give the subclass a new `name`, and override `run`. This changes the defaults of one run; the original is untouched:
+
+```python
+from pygeovision import PyGeoVision
+from pygeovision.ai.pipelines import pipeline_catalogue
+
+Base = pipeline_catalogue()["water_bodies"]
+
+
+class MyWaterBodies(Base):
+    name = "my_water_bodies"          # a new name, so files and reports do not clash with the original
+
+    def run(self, bbox, output_dir, **kwargs):
+        kwargs.setdefault("cloud_cover_max", 15.0)        # your default (the built-in one is 10.0)
+        return super().run(bbox, output_dir, **kwargs)
+
+client = PyGeoVision()
+result = MyWaterBodies(client).run(bbox, "./variant")   # plus the same date arguments as in Run it
+```
+
+Calling `.run` on your class does not need any registration. To use it by name in `client.pipeline(...)`, register it in the process; to write a pipeline from scratch see [Write your own pipeline](../custom.md). The built-in `pygeovision channel` command runs only the built-in pipelines.
+
+To change the numbers of the method itself (a threshold written in the code, not exposed as an argument), read `WaterBodiesPipeline.run` in `pygeovision/ai/pipelines/__init__.py`; the *How it works* section above lists the steps in the order the code takes them. Whatever you change, compare the new run with the old one ([comparing runs](../results.md#comparing-runs)) and validate the result against reference data before you use it ([validation](../../data/validation.md)).
 
 ## What you get
 

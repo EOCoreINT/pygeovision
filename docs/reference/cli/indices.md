@@ -47,6 +47,23 @@ Commands:
 
 ### `pygeovision indices all`
 
+Compute all (or selected) spectral indices in one command.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output-dir` | text |  | yes | Directory for all index GeoTIFFs. |
+| `--indices` | text |  |  | Comma-separated list. Default: every index the default band layout supports (NDRE is skipped unless a red-edge band is configured). |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision indices all [OPTIONS] INPUT_PATH
 
@@ -62,8 +79,34 @@ Options:
                      (NDRE is skipped unless a red-edge band is configured).
   --help             Show this message and exit.
 ```
+:::
 
 ### `pygeovision indices compute`
+
+Compute a spectral index.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `INPUT_PATH` | text | yes |
+| `INDEX_NAME` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output` | text |  |  | Output GeoTIFF path. |
+| `--red` | integer | `3` |  | 1-based red band index. |
+| `--nir` | integer | `4` |  | 1-based NIR band index. |
+| `--green` | integer | `2` |  |  |
+| `--blue` | integer | `1` |  |  |
+| `--swir1` | integer | `5` |  |  |
+| `--swir2` | integer | `6` |  |  |
+| `--red-edge` | integer |  |  | 1-based red-edge band index (required for ndre; the default six-band stack has none). |
+| `--validate` | flag | off |  |  |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision indices compute [OPTIONS] INPUT_PATH INDEX_NAME
@@ -90,8 +133,13 @@ Options:
   --validate
   --help              Show this message and exit.
 ```
+:::
 
 ### `pygeovision indices list`
+
+List all available spectral indices.
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision indices list [OPTIONS]
@@ -101,3 +149,4 @@ Usage: pygeovision indices list [OPTIONS]
 Options:
   --help  Show this message and exit.
 ```
+:::

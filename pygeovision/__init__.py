@@ -215,6 +215,9 @@ class PyGeoVision:
         )
         self.labeling = _LabelingClientProxy()
 
+        # Object-based image analysis — real-data loaders on top of the search/download/labeling layers
+        self.obia = _ObiaClientProxy(self)
+
         # Geospatial losses — Dice, Focal, Tversky, Boundary, Lovász, OHEM
         from pygeovision.losses import (
             BoundaryAwareLoss,
@@ -678,7 +681,7 @@ class PyGeoVision:
         import difflib
         import inspect
         import logging
-
+        
         known = set(inspect.signature(pipeline.run).parameters) | cls._COMMON_PIPELINE_ARGUMENTS
         for key in kwargs:
             if key in known:
@@ -1103,6 +1106,36 @@ class _LabelingClientProxy:
         from pygeovision.labeling.active import ActiveLearner
         return ActiveLearner(strategy=strategy, budget=budget)
     def __repr__(self): return "LabelingLayer(osm|ms_buildings|google_buildings|esa_worldcover|dynamic_world|sam_auto|foundation|pipeline|quality|active)"
+
+
+class _ObiaClientProxy:
+    """client.obia — real data for object-based image analysis, through PyGeoVision's own search and download.
+
+    The analysis functions themselves (``segment``, ``extract_features``, classifiers, accuracy) live in
+    :mod:`pygeovision.obia`; this proxy only gets imagery and reference layers onto its layout.
+    """
+    def __init__(self, client):
+        self._client = client
+
+    def scene(self, bbox, date, out_dir="./obia_download", bands=None, cloud_cover_max=30.0, **kw):
+        """Cloud-masked, cropped Sentinel-2 image as a ``RasterData`` (see :func:`pygeovision.obia.fetch_scene`).
+
+        Reports progress by default; ``verbose=False`` silences it, ``heartbeat=`` sets the seconds between updates."""
+        from pygeovision.obia import fetch_scene
+        kw = dict(kw)
+        if bands is not None:
+            kw["bands"] = tuple(bands)
+        return fetch_scene(self._client, bbox, date, out_dir, cloud_cover_max=cloud_cover_max, **kw)
+    def worldcover(self, bbox, out_path="./obia_download/worldcover.tif", like=None, **kw):
+        """ESA WorldCover as ``(array, path)``, on ``like``'s grid if given (``verbose=``, ``heartbeat=`` as in ``scene``)."""
+        from pygeovision.obia import fetch_worldcover
+        return fetch_worldcover(self._client, bbox, out_path, like=like, **kw)
+    def osm_polygons(self, bbox, filters=None, **kw):
+        """OpenStreetMap polygons (mines and quarries by default) as a GeoDataFrame in EPSG:4326."""
+        from pygeovision.obia import fetch_osm_polygons
+        from pygeovision.obia.scene import MINE_OSM_FILTERS
+        return fetch_osm_polygons(bbox, filters or MINE_OSM_FILTERS, **kw)
+    def __repr__(self): return "ObiaLayer(scene|worldcover|osm_polygons)  -> analysis functions: pygeovision.obia"
 
 
 class _LossesClientProxy:

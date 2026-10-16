@@ -138,12 +138,3 @@ your statistics in a table. To give your own analysis a specific question, metho
 | Far fewer polygons than expected | Speckle on a large area was merged by a sieve to stay under the size limit | See [Vector layers](vectors.md#size-limits) |
 | Excel feature sheet is cut off | Excel is limited to the first 5,000 features per layer | Use the GeoPackage for the full table |
 | Shapefile field names are cut at 10 characters | A Shapefile limit | Use the GeoPackage |
-
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-contents
-vectors
-rebuilding
-```

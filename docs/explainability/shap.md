@@ -21,10 +21,8 @@ shap_exp.plot_band_importance(result, band_names=["blue", "green", "red", "nir"]
 ```
 
 ```text
-{'band_importance': {'band_1': 0.006226, 'band_2': 0.002989, 'band_3': 0.007121, 'band_4': 0.016122}, 'method': 'shap'}
+{'band_importance': {'band_1': <value>, 'band_2': <value>, 'band_3': <value>, 'band_4': <value>}, 'method': 'shap'}
 ```
-
-(real output, a small chip classifier on a 16 × 16 chip from the demo scene; about 8 s on a CPU.)
 
 ### `GeospatialSHAP(model, device=None, background_samples=50)`
 
@@ -52,38 +50,33 @@ SHAP's `DeepExplainer` compares the model's output for your chip with its output
 if your data are standardised (zero = the average pixel) and a poor one for raw reflectance (zero = no light at all,
 something the model never saw). **Standardise your chips the way the model was trained** before calling this.
 
-## Reading the result: a tested example
+## Reading the result: SHAP against an ablation
 
-A small chip classifier (one convolution + linear layer, 98.5 % training accuracy) was trained on 16 × 16 chips of the
-demo scene to say which of six classes dominates. SHAP importances for one chip, and the average over ten chips:
+Do not trust one method. Cross-check the SHAP ranking with an **ablation**: set a band to zero (or its training mean) and
+measure how much accuracy drops on chips the model has not trained on.
 
-| Band | One chip | Mean of 10 chips |
-|---|---:|---:|
-| blue | 0.0062 | 0.0067 |
-| green | 0.0030 | 0.0084 |
-| red | 0.0071 | 0.0085 |
-| nir | **0.0161** | **0.0155** |
+```python
+import numpy as np
+imp = np.mean([list(shap_exp.band_importance(c)["band_importance"].values()) for c in chips], axis=0)
 
-NIR dominates, as expected for classes that differ by vegetation and water. Now the cross-check, **setting a band to
-zero and measuring how much accuracy drops** on the training chips:
+def accuracy(X, Y):
+    return float((model(X).argmax(1) == Y).float().mean())
 
-| Band removed | Accuracy drop |
-|---|---:|
-| blue | 0.007 |
-| green | **0.198** |
-| red | 0.028 |
-| nir | **0.203** |
+base = accuracy(X_val, Y_val)
+for b, name in enumerate(band_names):
+    Xb = X_val.clone(); Xb[:, b] = 0
+    print(name, "SHAP", round(float(imp[b]), 4), "accuracy drop", round(base - accuracy(Xb, Y_val), 3))
+```
 
-The two methods agree on NIR and **disagree on green**: SHAP calls it the least important band, the ablation says it is as
-important as NIR. Neither is wrong. They answer different questions: SHAP measures the contribution to the output
-*around the zero baseline*; ablation measures what is lost when the band is removed. When they disagree, believe the
-ablation if your question is "can I drop this band?", and treat SHAP as a pointer for where to look.
+Where the two agree, you can trust the ranking. Where they disagree, neither is wrong: they answer different questions. SHAP
+measures the contribution to the output *around the zero baseline*; ablation measures what is lost when the band is removed.
+When they disagree, believe the ablation if your question is "can I drop this band?", and treat SHAP as a pointer for where to look.
 
 ## Cost and limits
 
 - **SHAP is slow.** DeepExplainer scales with the input size and the background size. Use small chips (32–64 pixels) and
-  20–50 background samples; one 16 × 16 chip took about 8 s including start-up.
-- **One chip is noisy.** Average over many chips (see the table: the ranking of the three weak bands changes between one chip and ten).
+  20–50 background samples; expect seconds per chip on a CPU, more for larger chips.
+- **One chip is noisy.** Average over many chips (the ranking of the weaker bands can change between one chip and ten).
 - **Output layout.** SHAP returns either a list (one array per output) or an array with a trailing output dimension; both
   are handled. For a segmentation model the output is large (`classes × H × W`) and slow; for a quick answer explain a
   chip classifier or a model wrapper that returns one score per chip.

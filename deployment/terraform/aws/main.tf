@@ -66,7 +66,7 @@ resource "helm_release" "pygeovision" {
   name       = "pygeovision"
   repository = "https://appiahkubis14.github.io/pygeovision-helm"
   chart      = "pygeovision"
-  version    = "2.1.9"
+  version    = "2.2.0"
   namespace  = "pygeovision"
   create_namespace = true
 

@@ -1,0 +1,581 @@
+# Hand-written guidance for every model family. tools/generate_model_pages.py joins this with the registry
+# (names, descriptions, pretrained sources) and docs/_data/model_probe.json (measured parameter counts and shapes).
+# Keys are "<registry task>/<family>". Fields: title, what, built_with, pick, avoid, modify, gotchas.
+
+segmentation/unet_variant:
+  title: U-Net
+  what: |
+    The default choice for pixel-wise maps. An encoder (a ResNet or EfficientNet) shrinks the image step by step to learn
+    *what* is there, and a decoder grows it back to full size while taking in the encoder's early, detailed features
+    through skip connections, which is what keeps boundaries sharp. It is small enough to train on one GPU and it works
+    with few labels.
+  built_with: "`segmentation_models_pytorch` (encoder weights from timm / torchvision)."
+  pick:
+    - You need a strong, well-understood baseline for land cover, water, buildings, roads or crops.
+    - You have hundreds to a few thousand labelled chips, not tens of thousands.
+    - Boundaries matter (field edges, building outlines, shorelines).
+  avoid:
+    - You need whole-scene context over hundreds of metres. Use a transformer such as `segformer-b2` or `upernet-swin-b`.
+    - You want instance masks (one mask per object). That is detection with masks (`mask-rcnn-r50`) or SAM.
+  modify:
+    - "`num_classes`: one output channel per class, **including background**; this changes only the last layer."
+    - "`in_channels`: the first convolution is rebuilt for your band count. With `pretrained=True` the extra bands start from the mean of the RGB filters, a starting point to fine-tune, not a pretrained meaning."
+    - "`pretrained=False` trains from scratch (works offline, needs more data); `freeze_backbone=True` in `TrainingConfig` trains only the decoder at first."
+    - "Pick the encoder by name: `unet-r50`, `unet-r101` or `unet-efficientb4`. A bigger encoder helps only when you have the data to feed it."
+  gotchas:
+    - "Chip sizes must be divisible by 32 (the encoder halves the size five times). 256 or 512 are safe."
+
+segmentation/deeplab:
+  title: DeepLabV3
+  what: |
+    Uses *atrous* (dilated) convolutions and a pyramid of them (ASPP) to look at the same place at several scales
+    without shrinking the image further. It captures context well, at the price of blurrier boundaries than U-Net because
+    its output is made at a coarser grid and scaled up.
+  built_with: "`segmentation_models_pytorch`."
+  pick:
+    - Objects vary a lot in size inside one image (a village and a city; a stream and a river).
+    - You want a second opinion next to U-Net in a [benchmark](../experiments/benchmark.md).
+  avoid:
+    - Narrow, thin structures (roads, canals) where a one-pixel error matters.
+  modify:
+    - "`deeplab-r50` or `deeplab-r101`; `num_classes`, `in_channels`, `pretrained` work as for every model."
+  gotchas:
+    - "Batch size 1 can fail in the pooling branch while training with batch-norm; use 2 or more."
+
+segmentation/pspnet:
+  title: PSPNet
+  what: |
+    Pools the feature map at several grid sizes (the *pyramid*) and joins the results, giving each pixel a summary of the
+    whole scene. Strong on scene parsing where the class of a pixel depends on its surroundings.
+  built_with: "`segmentation_models_pytorch`."
+  pick:
+    - Context decides the class (an urban park or a garden depends on what is around it).
+  avoid:
+    - Small objects; its output is coarse.
+  modify:
+    - "`pspnet-r50`; the usual `num_classes`, `in_channels` and `pretrained`."
+
+segmentation/fcn:
+  title: FCN
+  what: |
+    The original "fully convolutional" network: a classification backbone with its last layers turned into convolutions,
+    so it predicts a class for every pixel. It is the simplest architecture here, which makes it a useful *floor*: if a
+    more complex model does not beat FCN on your data, the extra complexity is not helping.
+  built_with: "`torchvision.models.segmentation`."
+  pick:
+    - A fast, simple baseline, or a teaching example.
+  avoid:
+    - Final results where boundary quality matters.
+  modify:
+    - "`fcn-r50`; the usual `num_classes`, `in_channels` and `pretrained`."
+
+segmentation/segformer:
+  title: SegFormer
+  what: |
+    A transformer encoder (MiT) that produces features at four scales, with a light all-MLP decoder. It handles large
+    context better than a plain U-Net and does not need positional embeddings tied to one image size, so it accepts the
+    chip sizes you give it. `b0` is tiny, `b2` is the usual choice, `b5` is for large datasets.
+  built_with: "Hugging Face `transformers` (`SegformerForSemanticSegmentation`). The architecture is built from code, so `pretrained=False` works **offline**."
+  pick:
+    - You have a few thousand labelled chips or more and want better context than a CNN.
+    - You want one model family that scales from a laptop (`b0`) to a large GPU (`b5`).
+  avoid:
+    - Very few labels. Transformers need more data than a ResNet U-Net unless you start from pretrained weights.
+  modify:
+    - "`segformer-b0`, `segformer-b2`, `segformer-b5`."
+    - "The output is rescaled to the input size for you, so the model returns `(batch, classes, H, W)` like every other segmentation model."
+  gotchas:
+    - "Pretrained weights are for 3-band images; extra bands are added by rebuilding the patch embedding (see the note above)."
+
+segmentation/upernet:
+  title: UperNet with a Swin backbone
+  what: |
+    A pyramid-pooling decoder (UPerNet) on a Swin transformer. It is the largest dense-prediction model in the registry
+    and the one that profits most from a big dataset and a big GPU.
+  built_with: "Hugging Face `transformers` (`UperNetForSemanticSegmentation`)."
+  pick:
+    - Large datasets, a 24 GB GPU, and accuracy more important than speed.
+  avoid:
+    - Small projects, edge deployment.
+  modify:
+    - "`upernet-swin-b`. Swin uses windows tied to the chip size; build with `img_size=<your chip size>` if yours is not 224 or 512."
+
+segmentation/mask2former:
+  title: Mask2Former
+  what: |
+    Predicts a set of masks and a class for each (a "mask classification" design) and can do semantic, instance and panoptic
+    segmentation with one network. Strong, but heavier to train and to run.
+  built_with: "Hugging Face `transformers` (`Mask2FormerForUniversalSegmentation`)."
+  pick:
+    - You need instance or panoptic output, not just a class map.
+  avoid:
+    - Offline machines: the architecture configuration is fetched from the Hub, so even `pretrained=False` needs a network on the first build.
+  modify:
+    - "`mask2former-swin-t`, `mask2former-swin-b`. Output is a model-specific object, not a plain logits tensor."
+  gotchas:
+    - "Not driven by `GeoTrainer`'s standard segmentation loop, because its loss is computed inside the model."
+
+segmentation/sam:
+  title: SAM (Segment Anything)
+  what: |
+    A promptable model: you give it points, boxes or nothing (automatic mode) and it returns masks of *things*. It does
+    not know classes. It is a tool for fast labelling and for outlining objects you have already found, not a land-cover
+    classifier.
+  built_with: "`GeoSAM` wrapper over the Hugging Face SAM checkpoints (`sam-vit-b`, `-l`, `-h`)."
+  pick:
+    - Producing training labels quickly ([SAM labelling](../labeling/sam.md)).
+    - Turning a box or a point into a clean outline.
+  avoid:
+    - Naming what a segment is. Pair it with CLIP or a classifier ([naming segments](../labeling/naming-segments.md)).
+  modify:
+    - "`sam-vit-b` is the fastest; `sam-vit-h` is the most accurate and needs several GB of GPU memory."
+  gotchas:
+    - "Trained on photographs. On multispectral imagery, feed it a three-band composite scaled to 8 bits."
+
+segmentation/sam2:
+  title: SAM 2
+  what: |
+    The successor of SAM, built to follow objects through video; for still imagery it is used the same way as SAM, with
+    a different image encoder (Hiera).
+  built_with: "`GeoSAM` wrapper over the Hugging Face checkpoint."
+  pick:
+    - You already use SAM and want to try the newer encoder.
+  avoid:
+    - Anything that needs class names.
+  modify:
+    - "`sam2-hiera-l` is the one registered size."
+
+segmentation/dinov3_head:
+  title: DINOv3 segmentation head
+  what: |
+    Listed so the name is not lost, but not buildable: a segmentation head needs a DINOv3 backbone and the package has no
+    verified way to attach one. Use the DINOv3 *features* instead ([DINOv3](../foundation-models/dinov3.md)) and train
+    your own head on them.
+  built_with: "Not built."
+  pick: []
+  avoid:
+    - Calling `get_model("dinov3_segmentor")`; it raises `NotImplementedError` with this explanation.
+  modify: []
+
+segmentation/prithvi:
+  title: Prithvi burn-scar fine-tune
+  what: |
+    A published fine-tune of Prithvi for burn scars that needs the TerraTorch / MMSegmentation stack. This package cannot
+    load it. Fine-tune `prithvi-100m` on your own burn labels, or run the `wildfire_severity` pipeline (dNBR, no weights).
+  built_with: "Not built."
+  pick: []
+  avoid:
+    - Calling `get_model("prithvi_burn_scar")`; it raises `NotImplementedError`.
+  modify: []
+
+classification/resnet:
+  title: ResNet
+  what: |
+    The dependable workhorse. Residual connections let it be deep without becoming hard to train. ResNet-50 is the usual
+    starting point; 101 and 152 add depth and cost.
+  built_with: "`timm` (falls back to `torchvision` when timm is missing)."
+  pick:
+    - A first classifier on any chip dataset.
+    - A backbone that is cheap to deploy (ONNX, edge).
+  avoid:
+    - Maximum accuracy on large datasets: transformers and ConvNeXt usually win there.
+  modify:
+    - "`num_classes` replaces the last layer; `in_channels` rebuilds the first convolution."
+    - "Works at any chip size from about 32 pixels up (global average pooling)."
+
+classification/densenet:
+  title: DenseNet
+  what: |
+    Every layer receives the features of all earlier layers. That reuse makes it parameter-efficient: DenseNet-121 has far
+    fewer weights than ResNet-50 and often matches it on small datasets, at the cost of more memory during training.
+  built_with: "`timm`."
+  pick:
+    - Small labelled sets where a compact model resists over-fitting.
+  avoid:
+    - Tight GPU memory; its activations are large.
+  modify:
+    - "`densenet121` or `densenet201`; the usual arguments."
+
+classification/efficientnet:
+  title: EfficientNet
+  what: |
+    Scales depth, width and resolution together. `b4` and `b7` are the large end of the family: accurate per parameter
+    but slower per image than their parameter count suggests, because of depthwise convolutions and many layers.
+  built_with: "`timm`."
+  pick:
+    - You want accuracy per parameter and have the time to train.
+  avoid:
+    - Latency-critical deployment; ResNet or ConvNeXt run faster on most hardware.
+  modify:
+    - "`efficientnet-b4`, `efficientnet-b7`. Larger variants expect larger chips (380 and 600 pixels in the original paper), but they run on smaller chips."
+
+classification/convnext:
+  title: ConvNeXt
+  what: |
+    A convolutional network modernised with the design choices of transformers (larger kernels, layer norm, fewer
+    activations). It matches transformer accuracy while staying a plain convolutional network, so it is easy to train and
+    to export.
+  built_with: "`timm`."
+  pick:
+    - Best general accuracy without the chip-size restrictions of window transformers.
+  avoid:
+    - Very small datasets; start from pretrained weights.
+  modify:
+    - "`convnext-t` (tiny), `convnext-b` (base), `convnext-l` (large)."
+
+classification/swin:
+  title: Swin Transformer
+  what: |
+    A transformer that attends within shifted windows, which keeps the cost manageable on images. Accurate, but tied
+    to the chip size it was built for.
+  built_with: "`timm`."
+  pick:
+    - Large labelled sets and a capable GPU.
+  avoid:
+    - Variable chip sizes. Window attention fixes the size; pass `img_size=` to match yours.
+  modify:
+    - "`swin-t`, `swin-b`, `swin-l`. `get_model('swin-t', img_size=256, ...)`."
+  gotchas:
+    - "The probe uses 224 x 224 chips for this family because anything else raises the window-size error."
+
+classification/vit:
+  title: Vision Transformer (ViT)
+  what: |
+    Cuts the image into 16 x 16 patches and runs a plain transformer over them. Excellent with lots of data or good
+    pretrained weights; weaker than convolutional models when trained from scratch on a few thousand chips.
+  built_with: "Hugging Face `transformers` (`ViTForImageClassification`)."
+  pick:
+    - You start from pretrained weights and have enough chips to fine-tune.
+  avoid:
+    - Training from scratch on little data.
+  modify:
+    - "`vit-b16` (base) and `vit-l16` (large). The chip size is fixed at build time; pass `img_size=`."
+
+classification/dinov2:
+  title: DINOv2
+  what: |
+    A vision transformer pretrained without labels on a very large image collection. Its features are strong for
+    classification with few labels, even with the backbone frozen.
+  built_with: "Hugging Face `transformers` (`Dinov2ForImageClassification`)."
+  pick:
+    - A few hundred labels per class, or fewer, with a frozen backbone.
+    - The same features also drive [few-shot classification](../classification/few-shot.md).
+  avoid:
+    - Anything where the sensor is far from photographs and you have no labels to adapt it.
+  modify:
+    - "`dinov2-s`, `-b`, `-l`, `-g` (giant, over a billion parameters; needs a large GPU)."
+
+classification/clip:
+  title: CLIP
+  what: |
+    Matches images with text. `clip-vit-b32` in the classification registry is the zero-shot wrapper (`CLIPGeo`), not a
+    network with a class head: you give category names, it returns probabilities.
+  built_with: "`CLIPGeo` wrapper (Hugging Face `transformers`)."
+  pick:
+    - A first look at unlabelled tiles, with no training.
+  avoid:
+    - Decisions. Zero-shot scores are for prioritising tiles you will then check.
+  modify:
+    - "Change the category wording, not the weights: \"flooded farmland\" works differently from \"water\"."
+
+detection/rcnn:
+  title: Faster R-CNN and Mask R-CNN
+  what: |
+    Two-stage detectors: a first stage proposes regions that might hold an object, a second stage classifies each and
+    refines its box. Mask R-CNN adds a mask for every box. Accurate and forgiving, and the best-understood detectors
+    available, but slow for scenes with thousands of objects.
+  built_with: "`torchvision` (ResNet-50 with a feature pyramid)."
+  pick:
+    - A reliable first detector for buildings, vehicles, ships or tanks.
+    - Mask R-CNN when you want an outline for each object.
+  avoid:
+    - Very small objects only a few pixels wide; consider tiling at higher zoom.
+  modify:
+    - "`in_channels` also changes the **input normalisation** inside the model (torchvision normalises with three numbers), so four-band chips work."
+    - "`num_classes` is the number of **object** types; the background class is added for you (a predictor with `num_classes + 1` outputs). In your targets, labels run from 1 to `num_classes` and 0 is background."
+  gotchas:
+    - "In evaluation mode the model returns a list with one dict per image (`boxes`, `labels`, `scores`, plus `masks` for Mask R-CNN), not a tensor."
+
+detection/anchor_free:
+  title: FCOS and CenterNet
+  what: |
+    Detectors without anchor boxes. FCOS predicts, for each location, the distance to the four sides of a box. CenterNet
+    (written in this package, since neither torchvision nor timm ships it) predicts each object as one peak in a heat map
+    and needs no non-maximum suppression.
+  built_with: "`torchvision` (FCOS); the package's own implementation (CenterNet)."
+  pick:
+    - Many small objects of similar size (cars, trees, solar panels).
+    - Simple post-processing (CenterNet).
+  avoid:
+    - Highly overlapping objects; two centres that fall on one pixel are merged.
+  modify:
+    - "`fcos-r50`, `centernet-r50`. Both take a list of tensors and a list of target dicts like torchvision, so `GeoTrainer(task=\"detection\")` trains them. As for Faster R-CNN, `num_classes` counts object types and labels start at 1."
+
+detection/detr:
+  title: DETR and RT-DETR
+  what: |
+    Transformer detectors that predict a fixed set of boxes directly (100 for DETR, 300 for RT-DETR) and match them to
+    objects during training. No anchors and no non-maximum suppression. RT-DETR is the real-time variant.
+  built_with: "Hugging Face `transformers`."
+  pick:
+    - You want a simple, end-to-end detector and have a big dataset.
+  avoid:
+    - Small datasets (DETR trains slowly) and tiny objects.
+  modify:
+    - "The model takes a **tensor** `(batch, bands, H, W)` and returns an object with `logits` and `pred_boxes`; it does not return the list-of-dicts format of torchvision detectors."
+    - "`num_classes` adds one \"no object\" class internally for DETR (the probe's `logits` have `num_classes + 1` columns)."
+  gotchas:
+    - "`rf-detr-b` and `rf-detr-l` are listed but have no build path; calling them raises `NotImplementedError`."
+
+detection/vlm:
+  title: Grounding DINO
+  what: |
+    Finds objects from a text description ("storage tank", "ship") with no training. Listed in the registry; it needs its
+    configuration from the Hugging Face Hub, so it cannot be built offline.
+  built_with: "Hugging Face `transformers`."
+  pick:
+    - Open-vocabulary detection of things you have no training data for.
+  avoid:
+    - Offline machines.
+  modify: []
+
+change_detection/bit:
+  title: BIT (Bitemporal Image Transformer)
+  what: |
+    A port of the published BIT network. A shared ResNet encodes both dates, a small transformer relates the two
+    sets of tokens, and a decoder produces the change map. Good at ignoring changes that do not matter (seasonal colour,
+    shadows) once trained.
+  built_with: "The package's own port of Chen et al. (2021) with a `timm`/`torchvision` ResNet backbone."
+  pick:
+    - You have a few hundred labelled pairs of images and want a strong siamese model.
+  avoid:
+    - No training pairs at all: use `spectral_diff` or a pipeline that needs no weights.
+  modify:
+    - "`bit-r50` is the ResNet-50 variant; the CLI default `resnet18` is built by `build_bit(backbone=\"resnet18\")`."
+    - "`forward(before, after)` takes **two** tensors. To train it with `GeoTrainer`, wrap it so one stacked tensor is split ([how](train.md))."
+
+change_detection/dsamnet:
+  title: DSAMNet
+  what: |
+    A port of the Deeply Supervised Attention Metric-based Network. Two shared encoders, attention modules, and extra
+    losses on intermediate layers push the network towards a feature distance that separates changed from unchanged
+    pixels.
+  built_with: "The package's own port of Liu & Shi (2021)."
+  pick:
+    - Small change datasets; the deep supervision stabilises training.
+  avoid:
+    - Wide scenes with many tiny changes; the output is coarse.
+  modify:
+    - "`dsamnet` is the ResNet-18 variant. `forward(before, after)` takes two tensors."
+
+change_detection/changeformer:
+  title: ChangeFormer (compact)
+  what: |
+    A small siamese network with a cross-attention block (about 0.8 million parameters). It is **not** the published
+    ChangeFormer; the name is kept for compatibility. It can take either two tensors or the two dates stacked on the
+    channel axis, which makes it the easiest change model to train with `GeoTrainer`.
+  built_with: "The package's own implementation."
+  pick:
+    - A change model that trains on a CPU or small GPU, or the simplest thing that works.
+  avoid:
+    - Claiming the published ChangeFormer's accuracy. `changeformer-mit-b4` raises `NotImplementedError` for this reason.
+  modify:
+    - "`in_channels` is the number of bands **per date**. Feed one tensor with the dates stacked `[before | after]` (so `2 x in_channels` channels) or call `net(before, after)`."
+
+change_detection/changestar:
+  title: ChangeStar
+  what: |
+    Listed in the registry but not implemented anywhere in the package, torchvision, timm or transformers. Calling it
+    raises `NotImplementedError` and points to BIT, DSAMNet or ChangeFormer.
+  built_with: "Not built."
+  pick: []
+  avoid:
+    - Using this name.
+  modify: []
+
+3d/pointnet:
+  title: PointNet++
+  what: |
+    The first widely used network that works on raw points. It samples centre points, groups the neighbours of each and
+    learns a small feature from every group, level by level. `ssg` groups at one radius per level, `msg` at several.
+  built_with: "The package's own port (Qi et al. 2017), pure PyTorch."
+  pick:
+    - Small tiles (a few thousand points) and a first baseline.
+  avoid:
+    - Whole airborne tiles with millions of points; the sampling is slow.
+  modify:
+    - "`pointnet2-ssg`, `pointnet2-msg`. Input `(batch, 3, points)`, output `(batch, classes, points)`."
+
+3d/randlanet:
+  title: RandLA-Net
+  what: |
+    Built for the size of real LiDAR. It samples points *at random* instead of by farthest-point sampling (the main
+    cost of PointNet++) and learns local geometry with attention pooling.
+  built_with: "The package's own port (Hu et al. 2020)."
+  pick:
+    - Large airborne or terrestrial tiles.
+  avoid:
+    - Tiny samples where its random down-sampling discards too much.
+  modify:
+    - "`randlanet`. Input `(batch, 3, points)`; output `(batch, classes, points)`."
+
+3d/kpconv:
+  title: KPConv
+  what: |
+    A convolution whose kernel is a small set of *kernel points* placed in 3D space. Each neighbour's influence depends on
+    how close it lies to the nearest kernel point. Very good at fine geometry such as poles and wires.
+  built_with: "The package's own port (Thomas et al. 2019) of the core operator."
+  pick:
+    - Fine geometry, and datasets with consistent point density.
+  avoid:
+    - Very large clouds; neighbour search is costly.
+  modify:
+    - "`kpconv`. Input `(batch, 3, points)`; output `(batch, classes, points)`."
+
+3d/transformer:
+  title: Point Transformer V3
+  what: |
+    Sorts the points along a space-filling curve and runs attention inside fixed windows of the sorted list. That removes
+    neighbour search, the main cost of older point transformers, and gives the current best accuracy-per-time.
+  built_with: "The package's own compact port (Wu et al. 2024)."
+  pick:
+    - Best accuracy when you have labelled clouds and a GPU.
+  avoid:
+    - Using it to claim the published model's scores: this is a compact port.
+  modify:
+    - "`ptv3` and `pointtransformer` are the same network. Input `(batch, 3, points)`."
+
+super_resolution/swin:
+  title: Swin2SR
+  what: |
+    A transformer for 4x upscaling. It restores *plausible* detail: edges become sharper and textures richer, but the
+    new pixels are inferred, not measured. Never use the result to measure small objects.
+  built_with: "Hugging Face `transformers` (`Swin2SRForImageSuperResolution`)."
+  pick:
+    - Making imagery easier to look at; giving a labeller a sharper view.
+  avoid:
+    - Measuring areas, counting objects, or any analysis where the added detail would count as data.
+  modify:
+    - "`swinir-m` expects three-band RGB for the pretrained weights. For other band counts build with `pretrained=False` and train, or upscale three bands at a time."
+    - "Output is a dictionary: `model(x)[\"reconstruction\"]`, 4 times larger on each side."
+
+vlm/clip:
+  title: CLIP and OpenCLIP
+  what: |
+    Learn a shared space for images and words. Used for zero-shot labels, text search over a folder of tiles and for
+    naming SAM segments.
+  built_with: "`CLIPGeo` (Hugging Face `transformers`, or `open_clip` for the OpenCLIP entries)."
+  pick:
+    - Zero-shot prioritising; searching a large archive by description.
+  avoid:
+    - Quantities and decisions.
+  modify:
+    - "`openclip-b32`, `openclip-l14`: the larger model is slower and somewhat more accurate."
+
+vlm/moondream:
+  title: Moondream 2
+  what: |
+    A small model that writes captions and answers questions about an image. Runs on a laptop GPU or CPU.
+  built_with: "`MoondreamGeo` wrapper (Hugging Face)."
+  pick:
+    - Quick descriptions of tiles; a human-in-the-loop review helper.
+  avoid:
+    - Counting, measuring, or any fact you will not check.
+  modify:
+    - "Ask a different question rather than changing the weights: the same model answers in free text."
+
+vlm/lisat:
+  title: LISAt
+  what: |
+    A real published model (Quenum et al. 2025) that segments from a text instruction. Its checkpoint is a custom
+    multimodal LLM plus SAM decoder that needs the authors' code, so it has no verified build path here.
+  built_with: "Not built."
+  pick: []
+  avoid:
+    - Calling it; `NotImplementedError` explains what it needs.
+  modify: []
+
+vlm/chatearthnet:
+  title: ChatEarthNet
+  what: |
+    A dataset of captions for Sentinel-2 images. Listed in the registry, but no verified public checkpoint or construction
+    code exists in this package.
+  built_with: "Not built."
+  pick: []
+  avoid:
+    - Calling it.
+  modify: []
+
+foundation/prithvi:
+  title: Prithvi-EO
+  what: |
+    NASA and IBM's geospatial foundation model, pretrained on Harmonized Landsat-Sentinel imagery with multi-date input.
+    Use its encoder as a backbone and train a small head. See [Prithvi-EO](../foundation-models/prithvi.md).
+  built_with: "Hugging Face checkpoints through `load_prithvi_hf`."
+  pick:
+    - Few labels, multispectral imagery, tasks that benefit from time (crops, burn scars, floods).
+  avoid:
+    - Offline machines without the checkpoint. There is no architecture-only build; `pretrained=False` raises unless you pass `allow_random_init=True`, which gives a flagged, random stand-in.
+  modify:
+    - "`prithvi-100m`, `prithvi-300m`, `prithvi-600m` are the original names; `prithvi_eo_1_0`, `prithvi_eo_2_0`, `prithvi_eo_2_0_600m` point to the Hugging Face model versions."
+
+foundation/dofa:
+  title: DOFA
+  what: |
+    A foundation model that takes any set of bands, because it learns a different embedding for each *wavelength* you
+    give it. One model for optical, radar and hyperspectral imagery. See [DOFA](../foundation-models/dofa.md).
+  built_with: "`torchgeo` (`load_dofa_hf`)."
+  pick:
+    - Many sensors or band combinations, with one model.
+  avoid:
+    - Machines without `torchgeo`.
+  modify:
+    - "`dofa-base`, `dofa-large`."
+
+foundation/clip:
+  title: RemoteCLIP
+  what: |
+    CLIP fine-tuned on remote-sensing image and caption pairs, which helps zero-shot labels and text search on satellite
+    and aerial imagery. See [CLIP and RemoteCLIP](../foundation-models/clip.md).
+  built_with: "`CLIPGeo` with `open_clip`."
+  pick:
+    - Zero-shot work on aerial and satellite tiles.
+  avoid:
+    - Quantities.
+  modify:
+    - "`remoteclip-b32`, `remoteclip-l14`."
+
+foundation/satlas:
+  title: SatlasPretrain
+  what: |
+    Listed, but no verified public checkpoint or construction code exists in this package; calling it raises
+    `NotImplementedError`.
+  built_with: "Not built."
+  pick: []
+  avoid:
+    - Calling it.
+  modify: []
+
+foundation/tessera:
+  title: TESSERA
+  what: |
+    Pixel-level embeddings derived from time series of Sentinel-1 and Sentinel-2. `TesseraGeo` fetches them for a place.
+    See [Embeddings](../foundation-models/embeddings.md).
+  built_with: "`TesseraGeo` wrapper."
+  pick:
+    - Classifying pixels with a few labels by using the embeddings as features.
+  avoid:
+    - Machines without network access to the embedding service.
+  modify: []
+
+foundation/alphaearth:
+  title: AlphaEarth
+  what: |
+    Annual 64-dimensional embeddings of the Earth's surface from Google, accessed through Earth Engine. See
+    [Embeddings](../foundation-models/embeddings.md).
+  built_with: "`AlphaEarthGeo` wrapper."
+  pick:
+    - Annual-scale mapping with few labels.
+  avoid:
+    - Needs Earth Engine access.
+  modify: []

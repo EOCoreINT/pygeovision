@@ -80,9 +80,10 @@ class Sen1Floods11Config:
 
     Sen1Floods11 (Bonafilia et al., 2020) is the canonical benchmark for
     SAR-based flood mapping.  It contains:
-      - 446 manually labelled Sentinel-1 scenes across 11 flood events
-      - Paired Sentinel-1 (VV + VH) and Sentinel-2 optical imagery
-      - Labels: water (1), non-water (0), invalid (-1)
+
+    - 446 manually labelled Sentinel-1 scenes across 11 flood events
+    - Paired Sentinel-1 (VV + VH) and Sentinel-2 optical imagery
+    - Labels: water (1), non-water (0), invalid (-1)
 
     This config produces a TerraTorch-compatible data module for Prithvi
     fine-tuning on SAR data.
@@ -202,10 +203,10 @@ class ScatteringPromptTuner:
         ----------
         method : str
             ``"scattering"`` (default): initialise using the known scattering
-                mechanism vectors above — gives the model a physically-
-                meaningful starting point rather than random noise.
-            ``"random"`` : random normal initialisation (standard prompt tuning).
-            ``"zeros"``  : zero initialisation.
+            mechanism vectors above — gives the model a physically-
+            meaningful starting point rather than random noise.
+            ``"random"``: random normal initialisation (standard prompt tuning).
+            ``"zeros"``: zero initialisation.
 
         Returns
         -------

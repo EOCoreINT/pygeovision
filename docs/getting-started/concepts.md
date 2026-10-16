@@ -8,36 +8,29 @@ result strange?" questions are answered here.
 PyGeoVision is built in three layers. Knowing which layer a feature lives in tells you which page documents it and
 which dependencies it needs.
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  3. Task layer      40 pipelines · reporting · CLI (`channel`, `report`)     │
-│                     "give me flood extent for this box and this date"        │
-├──────────────────────────────────────────────────────────────────────────────┤
-│  2. AI layer        model registry · training · tiled inference · labelling  │
-│                     OBIA · explainability · monitoring · edge · cloud        │
-│                     "train / run / explain / ship a network"                 │
-├──────────────────────────────────────────────────────────────────────────────┤
-│  1. Data layer      22 providers (via pygeofetch) · reference products       │
-│                     spectral indices · radiometry · scene selection          │
-│                     "find, download and calibrate imagery"                   │
-└──────────────────────────────────────────────────────────────────────────────┘
+```{figure} ../_static/img/stack-layers.svg
+:alt: PyGeoVision in three layers: data at the bottom, AI in the middle, tasks on top
+:width: 100%
+:class: pgv-figure
+
+Each layer uses only the one below it.
 ```
 
 - The **data layer** ([Data guide](../data/index.md)) finds scenes, downloads the bands you need, applies the
   radiometric scale factors, masks cloud and writes analysis-ready GeoTIFFs.
 - The **AI layer** is optional. It needs PyTorch (`pip install "pygeovision[train]"`). Nothing in the data layer or
-  in the 33 *ready* pipelines imports it.
+  in the 34 *ready* pipelines imports it.
 - The **task layer** ties both together into *named, finished products*: a pipeline downloads what it needs,
   computes a defined quantity and writes rasters, vectors, a map and a report.
 
 ## Pipelines: the unit of work
 
 A **pipeline** answers one question for one area and one time. It has a name (`flood_mapping`,
-`vegetation_anomaly`, `terrain_analysis`…), a fixed set of inputs and a documented output. There are 40:
+`vegetation_anomaly`, `terrain_analysis`…), a fixed set of inputs and a documented output. There are 41:
 
 | Status | Count | Meaning |
 |---|---|---|
-| **ready** | 33 | Runs out of the box. The result is computed from real imagery, a DEM, radar, or a published reference map. No model to train |
+| **ready** | 34 | Runs out of the box. The result is computed from real imagery, a DEM, radar, or a published reference map. No model to train |
 | **needs weights** | 7 | Runs *your* trained network. You must pass `--checkpoint` / `checkpoint=`. PyGeoVision refuses to invent an untrained answer |
 
 Two rules apply to every pipeline, and they are the reason the catalogue is smaller than it once was:
@@ -47,7 +40,7 @@ Two rules apply to every pipeline, and they are the reason the catalogue is smal
 2. **No hidden constants and no untrained networks.** Every threshold is a documented parameter with a literature
    source; every `needs weights` pipeline stops with a clear error if no checkpoint is given.
 
-See the [pipeline catalogue](../pipelines/index.md) for all 40, and [Choosing a pipeline](../pipelines/choosing.md)
+See the [pipeline catalogue](../pipelines/index.md) for all 41, and [Choosing a pipeline](../pipelines/choosing.md)
 if you are not sure which fits.
 
 ## Study area: bounding boxes

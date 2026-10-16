@@ -69,9 +69,12 @@ def glcm_texture(labels, layer, levels: int = 16, distance: int = 1,
     from skimage.feature import graycomatrix
 
     lab = np.asarray(labels)
-    lo, hi = np.percentile(layer, [2, 98])
+    finite = np.isfinite(layer)
+    if not finite.any():
+        raise ValueError("the texture layer has no finite pixels")
+    lo, hi = np.percentile(layer[finite], [2, 98])
     q = np.zeros(layer.shape, dtype=np.uint8) if hi <= lo else \
-        np.clip(((layer - lo) / (hi - lo)) * levels, 0, levels - 1).astype(np.uint8)
+        np.clip((np.nan_to_num(layer - lo, nan=0.0) / (hi - lo)) * levels, 0, levels - 1).astype(np.uint8)
     ids = np.unique(lab[lab > 0]) if ids is None else np.asarray(ids)
     slices = ndi.find_objects(lab.astype(np.int64))
     i_idx, j_idx = np.indices((levels, levels))
@@ -207,7 +210,11 @@ def extract_features(labels, image, band_names=None, *, extra_layers=None,
 
     if context:
         a, b, ln = border_pairs(lab)
-        edge = image_edge_lengths(lab, n_max + 1)[ids].astype(np.float64)
+        # Label 0 is "no data" (cloud, outside the scene): a border with it is an open edge, like the image frame, not a neighbour.
+        nodata_border = np.bincount(b[a == 0], weights=ln[a == 0], minlength=n_max + 1)
+        keep = a > 0
+        a, b, ln = a[keep], b[keep], ln[keep]
+        edge = image_edge_lengths(lab, n_max + 1)[ids].astype(np.float64) + nodata_border[ids]
         total = np.bincount(a, weights=ln, minlength=n_max + 1) \
             + np.bincount(b, weights=ln, minlength=n_max + 1)
         total_all = total[ids] + edge

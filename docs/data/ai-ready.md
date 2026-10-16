@@ -186,7 +186,7 @@ when `fix_georeference_first=True` (the default); if it cannot be repaired the c
 These are **heuristic** mappings that place radar information where an optical network expects "dark water, bright
 vegetation". They are not a calibrated transformation, and a model that has never seen radar will give weak results
 with any of them. For good radar results fine-tune the network on labelled SAR
-([SAR adapters](../models/foundation.md#radar-with-optical-foundation-models)) or use the SAR-native pipelines
+([SAR adapters](../foundation-models/radar.md#radar-with-optical-foundation-models)) or use the SAR-native pipelines
 ([`sar_flood_mapping`](../pipelines/catalog/sar_flood_mapping.md)), which need no network.
 ```
 
@@ -221,11 +221,12 @@ to cover a box ([Scene selection](scene-selection.md)).
 
 ## Choosing between the gates
 
-```text
-Do you have a scene folder or an un-clipped raster?  ── yes ──▶ client.prepare_for_ai(...)
-        │ no (already clipped, masked and scaled)
-        ▼
-Optical ──▶ prepare_optical_for_ai(...)       Radar (VV, VH) ──▶ prepare_sar_for_ai(...)
+```{figure} ../_static/img/tree-ai-ready.svg
+:alt: Which AI-ready gate to use for a scene folder, clipped optical data or clipped radar
+:width: 100%
+:class: pgv-figure
+
+Pick the gate by what you already have.
 ```
 
 Then hand the array to [inference](../inference/index.md), or write it into a [training set](../training/index.md).

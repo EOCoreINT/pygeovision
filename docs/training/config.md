@@ -60,7 +60,7 @@ If you pass ready-made data loaders (`fit(train_loader=..., val_loader=...)`), t
 | `num_classes` | 2 | Number of classes the metrics should count, background included. For detection, the classes **including** the background of the detector |
 | `in_channels` | 3 | Bands in. Used by the ONNX export; must equal the model's input |
 | `pretrained` | `True` | Recorded in the configuration only. The weights are whatever the model you pass in already has: `get_model(..., pretrained=True)` decides |
-| `freeze_backbone` | `False` | Keep the encoder (the part that was pretrained) fixed for the whole run and train only the head. See [Advanced training](advanced.md#staged-fine-tuning) |
+| `freeze_backbone` | `False` | Keep the encoder (the part that was pretrained) fixed for the whole run and train only the head. See [Advanced training](fine-tuning.md#staged-fine-tuning) |
 | `unfreeze_backbone_epoch` | `None` | Train the head alone for the first *N* epochs, then train everything. Overrides `freeze_backbone` |
 | `backbone_lr_scale` | 1.0 | Learning rate of the encoder = `learning_rate × backbone_lr_scale`. `0.1` fine-tunes a pretrained encoder gently |
 | `checkpoint_path` | `None` | Start from the weights in this file (fine-tuning). Loaded **non-strictly**: layers that fit are filled in, others are reported in a warning. Use it to move to a different `num_classes` |
@@ -86,7 +86,7 @@ starts from public weights. Neither is needed to resume an interrupted run; that
 | `momentum` | 0.9 | `sgd` only |
 | `nesterov` | `True` | `sgd` only |
 | `grad_clip` | 1.0 | Limits the overall size of a gradient step, which tames sudden spikes. `0` turns it off |
-| `grad_accumulation_steps` | 1 | Add up gradients over this many batches before updating: an effective batch of `batch_size × steps` with the memory of one. See [Advanced training](advanced.md#gradient-accumulation) |
+| `grad_accumulation_steps` | 1 | Add up gradients over this many batches before updating: an effective batch of `batch_size × steps` with the memory of one. See [Advanced training](performance.md#gradient-accumulation) |
 
 *Which optimiser:* `adamw` is the dependable default. Choose `sgd` (learning rate around 1e-2, with momentum) when you
 want to follow a recipe that was published with SGD.
@@ -146,7 +146,7 @@ Mixed precision only takes effect on a GPU; on a CPU the setting is ignored.
 | `sync_batchnorm` | `True` | Share batch-norm statistics across GPUs (DDP) |
 | `find_unused_parameters` | `False` | Passed to DDP; set `True` if DDP complains about parameters that received no gradient |
 
-With one GPU or a CPU these do nothing beyond choosing the device. Read [Advanced training](advanced.md#several-gpus)
+With one GPU or a CPU these do nothing beyond choosing the device. Read [Advanced training](performance.md#several-gpus)
 before relying on multi-GPU: how the built-in loop behaves there is limited.
 
 ## Checkpoints and resuming
@@ -206,7 +206,7 @@ Points to know:
 | `wandb_project` | `"pygeovision"` | Weights & Biases project |
 | `log_every_n_steps` | 10 | Interval for per-step debug messages (visible only with `logging.DEBUG`) |
 
-Per-epoch numbers are logged to the trackers. See [Advanced training](advanced.md#experiment-tracking).
+Per-epoch numbers are logged to the trackers. See [Advanced training](../experiments/tracking.md#experiment-tracking).
 
 ## Export
 
@@ -218,7 +218,7 @@ Per-epoch numbers are logged to the trackers. See [Advanced training](advanced.m
 
 The export is of the model **as it is after the last epoch**, not of `best.pth`, and a failure only logs a warning.
 For a deployable file from the best weights, load `best.pth` and export it yourself
-([Advanced training](advanced.md#exporting-and-shrinking-a-model)). Detection models do not export through this path.
+([Advanced training](export.md#exporting-and-shrinking-a-model)). Detection models do not export through this path.
 
 ## Metric names
 

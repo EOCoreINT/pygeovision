@@ -24,13 +24,13 @@ example below shows one such mistake, the fix, and what the fix is really worth.
 ```python
 from pygeovision import obia
 
-levels = obia.segment_levels(scene.raster, scales=[10, 30])   # one merging run, paused twice
+levels = obia.segment_levels(rd, scales=[10, 30])   # one merging run, paused twice
 fine, coarse = levels[10.0], levels[30.0]
-print(fine.n_objects, coarse.n_objects)                        # 176 38
+print(fine.n_objects, coarse.n_objects)                        # many fine objects, fewer coarse ones
 ```
 
-Because both levels come from the same run, **every coarse object is an exact union of fine objects** (checked on the demo
-scene: every one of the 176 fine objects lies inside exactly one coarse object). Two independent `segment` calls at
+Because both levels come from the same run, **every coarse object is an exact union of fine objects** (every fine object lies inside
+exactly one coarse object). Two independent `segment` calls at
 different scales do not guarantee that. See [Segmentation](segmentation.md#several-scales-at-once-segment_levels).
 
 ### Which coarse object does a fine object belong to? `parent_map`
@@ -40,15 +40,7 @@ pm = obia.parent_map(fine.labels, coarse.labels)
 pm.head(5)
 ```
 
-```text
-obj_id
-1    1
-2    2
-3    3
-4    3
-5    3
-Name: coarse, dtype: int64
-```
+The result is a Series indexed by fine object id, whose value is the id of the coarse object (`coarse`).
 
 `parent_map(fine_labels, coarse_labels)` returns a Series indexed by fine id whose value is the coarse object that covers
 **most** of the fine object. With `segment_levels` that is the only parent. With two unrelated segmentations it is the
@@ -57,20 +49,12 @@ best overlap, which is a reasonable choice but not a true containment.
 ### How does an object differ from its parent? `super_object_features`
 
 ```python
-sup = obia.super_object_features(fine.labels, coarse.labels, scene.raster,
-                                 extra_layers=obia.spectral_layers(scene.raster))
+sup = obia.super_object_features(fine.labels, coarse.labels, rd,
+                                 extra_layers=obia.spectral_layers(rd))
 sup[["parent_id", "parent_area_px", "rel_area_of_parent", "diff_to_parent_ndvi"]].head(5).round(3)
 ```
 
-```text
-        parent_id  parent_area_px  rel_area_of_parent  diff_to_parent_ndvi
-obj_id
-1               1           891.0               0.398                0.003
-2               2          1610.0               0.615                0.004
-3               3          4447.0               0.024                0.015
-4               3          4447.0               0.047               -0.005
-5               3          4447.0               0.023                0.004
-```
+One row per fine object, with the columns below.
 
 | Column | Meaning | Reading it |
 |---|---|---|
@@ -79,9 +63,9 @@ obj_id
 | `rel_area_of_parent` | Own area ÷ parent area | Near 1: the object *is* its parent. Near 0: one small piece of a large whole |
 | `diff_to_parent_<layer>` | Own mean − parent mean, for every band and extra layer | Near 0: typical for its parent. Large: stands out inside it |
 
-Objects 3, 4 and 5 above share parent 3 (4,447 pixels) and each is 2–5 % of it: they are fragments of one big thing, and
-their `diff_to_parent_*` values are small. A fine object that is a *small share of its parent and very different from it*
-(for example a bright roof inside a dark parent) is the interesting case.
+Fine objects that share a large parent and are each a few percent of it are fragments of one big thing, and their
+`diff_to_parent_*` values are small. A fine object that is a *small share of its parent and very different from it* (for
+example a bright roof inside a dark parent) is the interesting case.
 
 Use these as columns in rules or in `ObjectClassifier`; join them on the object id:
 
@@ -96,23 +80,10 @@ The other direction: classify the **fine** level, then say how much of each coar
 
 ```python
 frac = obia.sub_object_fraction(fine_result.classes, fine_feats["area_px"], pm, "cropland")
-frac.head(8).round(3)
 ```
 
-```text
-parent_id
-1    0.000
-2    1.000
-3    0.000
-4    0.984
-5    0.000
-6    0.000
-7    0.000
-8    0.100
-Name: area, dtype: float64
-```
-
-Read: coarse object 2 is 100 % cropland (by area), 4 is 98 %, 8 is 10 %. Typical uses: call a coarse object "cropland" if
+The result is a Series indexed by coarse object id: the share of each coarse object's area that is covered by fine objects
+of that class (1.0 = all of it, 0.1 = a tenth). Typical uses: call a coarse object "cropland" if
 it is more than 70 % cropland objects; flag "mixed" parents (every class below 70 %) for review; compute the built-up
 share of a block. `sub_object_fraction(fine_classes, fine_area, parents, class_name)` takes the three Series aligned on
 the fine object id; objects without a parent are ignored.
@@ -124,15 +95,7 @@ the fine object id; objects without a parent are ignored.
 ```python
 first = rules.classify(feats)                              # any first classification
 ctx = obia.class_context(seg.labels, first.classes)
-ctx.filter(like="rel_border").round(2).head(3)
-```
-
-```text
-        rel_border_bare_field  rel_border_building  rel_border_cropland  rel_border_forest  rel_border_road  rel_border_unclassified  rel_border_water
-obj_id
-1                        0.03                0.00                 0.88               0.09             0.00                     0.00               0.0
-2                        1.00                0.00                 0.00               0.00             0.00                     0.00               0.0
-3                        0.02                0.07                 0.37               0.25             0.14                     0.15               0.0
+ctx.filter(like="rel_border").round(2).head(3)      # one rel_border_<class> column per class
 ```
 
 For every class `c` it gives two columns:
@@ -142,8 +105,8 @@ For every class `c` it gives two columns:
 | `rel_border_<c>` | Share of the object's border with other objects (by shared border length) that touches objects of class `c`. Over all classes it sums to exactly 1 for any object that has a neighbour; the stretch of border on the image frame is not counted here (see `rel_border_image_edge` in the [feature table](features.md#context-neighbours)) |
 | `n_nb_<c>` | Number of neighbours of class `c` |
 
-Object 1 above has 88 % of its border against cropland. Object 2 is completely surrounded by bare field. Class names are
-cleaned like feature names (`bare_field` stays `bare_field`).
+A row such as `rel_border_cropland = 0.88` means that 88 % of the object's border is against cropland objects; an object
+completely surrounded by one class has 1.0 for it. Class names are cleaned like feature names (`bare_field` stays `bare_field`).
 
 Two things to keep in mind:
 
@@ -154,28 +117,11 @@ Two things to keep in mind:
 
 ## A worked example: slivers on field edges
 
-On the demo scene, scale 20, a first set of rules (water, forest, cropland, road by `elongation > 8`, building, bare field, in that order)
-scores **0.756** overall accuracy against the true objects. The confusion matrix shows the main error:
-
-```text
-              bare_field  building  cropland  forest  road  unclassified  water
-cropland               0         0         8       8     0             1      0
-```
-
-Eight cropland objects were called **forest**. Printing them shows why:
-
-```text
- obj  truth     area_px  std_nir  mean_ndvi
-   5  cropland     25     17.7      0.44
-  10  cropland     79     16.6      0.67
-  17  cropland     27     29.0      0.49
-  32  cropland    117     19.9      0.59
-   9  forest     1734     13.7      0.76      <- real forest
-  37  forest     1384     14.1      0.62      <- real forest
-```
-
-These are **slivers** (20–117 pixels) that sit across a boundary between two fields. They contain pixels from both, so
-their `std_nir` is high, which the forest rule reads as "textured". Real forest is both textured *and* large (1,300+ pixels).
+A common error in field scenes: **slivers**, small objects that sit across the boundary between two fields. They contain
+pixels from both, so their `std_nir` is high, and a rule that reads high `std_nir` as "textured, therefore forest" calls them
+forest. Real forest is both textured *and* large. To find out whether this happens in your scene, print the objects that a rule
+claimed wrongly (against your reference) with their `area_px`, `std_nir` and `mean_ndvi`: slivers show up as small areas
+with the "wrong" texture.
 
 **Fix 1: add a size condition** (this uses the feature table only):
 
@@ -183,7 +129,8 @@ their `std_nir` is high, which the forest rule reads as "textured". Real forest 
 ("forest", "mean_ndvi > 0.4 and std_nir > 8 and area_px > 300")
 ```
 
-Accuracy rises from **0.756 to 0.844** (kappa 0.793), area-weighted from 0.968 to 0.977.
+Choose the area threshold from your own table, not from this page: it is a few times the size of a sliver and well below the
+size of a stand of trees at your resolution.
 
 **Fix 2: give small leftovers the class they mostly touch** (this is where context comes in):
 
@@ -198,17 +145,14 @@ classes = first.classes.copy()
 classes.loc[relabel.index] = relabel
 ```
 
-Accuracy rises to **0.867** (kappa 0.818). Of the 15 small objects considered, 5 actually changed class, and the net
-gain is **one more correct object out of 45** (39 instead of 38). Look at what happened, not only the headline: the
-confusion matrix shows cropland slivers that were `unclassified` are now assigned, but two real cropland objects became
-`bare_field` because they touched more bare field than cropland. Context changed *which* objects are wrong, and on balance
-slightly fewer. That is the typical outcome: context trims errors at the edges of classes; it does not repair a rule that
-is wrong in the middle.
+Then look at what changed, not only at the score: compare the confusion matrices before and after. Context trims errors at the
+edges of classes (slivers take the class they sit in), but it can also flip a real small object that happens to touch
+more of another class. It does not repair a rule that is wrong in the middle of a class.
 
 ```{important}
-These thresholds were chosen **by looking at this same scene**, so the 0.756 → 0.844 → 0.867 sequence shows what the fix
-does, not what you can expect on new imagery. To get an honest number, write the rules on one scene and assess them on
-another ([Accuracy](accuracy.md#the-training-data-trap)).
+Thresholds chosen **by looking at a scene** fit that scene. The improvement you see on it shows what the fix does, not what you
+can expect on new imagery. For an honest number, write the rules on one area and assess them on another, against reference
+points they were not tuned on ([Accuracy](accuracy.md#the-training-data-trap)).
 ```
 
 ## Which is the right tool?

@@ -3,7 +3,7 @@
 # `pygeovision timeseries`
 
 A spectral index through a stack of dated images: one mean per image, a linear trend and anomaly flags.
-Guide: [Time series](../../advanced/timeseries.md).
+Guide: [Time series](../../timeseries/index.md).
 
 ## When to use it
 
@@ -39,6 +39,26 @@ Commands:
 
 ### `pygeovision timeseries analyze`
 
+Mean index per image, in the order given, plus a linear trend.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `IMAGES` | path | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--index`, `-i` | one of `ndvi` | `ndwi` | `evi` | `savi` | `ndbi` | `ndvi` |  | Index to compute. |
+| `--sensor`, `-s` | one of `sentinel2` | `landsat8` | `planet` | `naip` | `sentinel2` |  | Band-order preset (positions of red/nir/... in your files). |
+| `--dates` | text |  |  | Comma-separated label per image, e.g. 2024-01,2024-02 (default 1..N). |
+| `--period` | integer |  |  | Steps per seasonal cycle (12 for monthly): trend with the cycle removed. |
+| `--output`, `-o` | text |  |  | Write the full series (mean/std/p10/p90/valid_fraction) as JSON. |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision timeseries analyze [OPTIONS] IMAGES...
 
@@ -60,8 +80,30 @@ Options:
                                   JSON.
   --help                          Show this message and exit.
 ```
+:::
 
 ### `pygeovision timeseries anomaly`
+
+Flag dates whose mean index is unusual (needs at least 5 images with data).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `IMAGES` | path | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--threshold`, `-t` | number |  |  | Score above which a date is flagged (default 2.5 zscore, 3.5 mad). |
+| `--method`, `-m` | one of `zscore` | `mad` | `zscore` |  | mad = median-based, robust to the anomaly itself. |
+| `--index`, `-i` | one of `ndvi` | `ndwi` | `evi` | `savi` | `ndbi` | `ndvi` |  |  |
+| `--sensor`, `-s` | one of `sentinel2` | `landsat8` | `planet` | `naip` | `sentinel2` |  |  |
+| `--dates` | text |  |  | Comma-separated label per image. |
+| `--period` | integer |  |  | Steps per seasonal cycle (12 for monthly): compare like with like. |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision timeseries anomaly [OPTIONS] IMAGES...
@@ -82,3 +124,4 @@ Options:
                                   like.
   --help                          Show this message and exit.
 ```
+:::

@@ -1,0 +1,7 @@
+class,objects,area_ha,share_of_mapped_%
+forest,1260.0,0.0,
+farmland,116.0,0.0,
+built_up,1299.0,0.0,
+mine_disturbed,15.0,0.0,
+water,0.0,0.0,
+(no data: cloud/shadow),0.0,0.0,

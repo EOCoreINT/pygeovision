@@ -3,7 +3,7 @@
 # `pygeovision edge`
 
 Export a registry model to **ONNX** and benchmark ONNX Runtime speed. Jetson/TensorRT conversion is Python only
-(`JetsonConverter`). See [Edge deployment](../../edge-cloud/edge.md).
+(`JetsonConverter`). See [Edge deployment](../../deployment/edge.md).
 
 ## When to use it
 
@@ -18,7 +18,7 @@ ONNX Runtime providers in use.
 
 * The export has a **fixed spatial size** unless you pass `--dynamic-size`; ONNX Runtime then refuses other sizes.
 * Compare the exported model's output with the original on real chips before trusting it
-  ([how](../../edge-cloud/edge.md#check-the-export)).
+  ([how](../../deployment/edge.md#check-the-export)).
 * A CUDA/TensorRT request on a machine without them falls back to the CPU with a warning.
 
 ## Commands
@@ -38,6 +38,23 @@ Commands:
 
 ### `pygeovision edge benchmark-onnx`
 
+Benchmark ONNX model inference speed.
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `ONNX_PATH` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--device` | text | `cpu` |  |  |
+| `--runs` | integer | `100` |  |  |
+
+:::{dropdown} Full help text
+
 ```text
 Usage: pygeovision edge benchmark-onnx [OPTIONS] ONNX_PATH
 
@@ -48,8 +65,30 @@ Options:
   --runs INTEGER  [default: 100]
   --help          Show this message and exit.
 ```
+:::
 
 ### `pygeovision edge export-onnx`
+
+Export a registry model to ONNX (fixed input size unless --dynamic-size).
+
+**Arguments**
+
+| Argument | Type | Required |
+|---|---|---|
+| `MODEL_NAME` | text | yes |
+
+**Options**
+
+| Option | Type | Default | Required | Meaning |
+|---|---|---|---|---|
+| `--output`, `-o` | text | `./model.onnx` |  |  |
+| `--classes` | integer | `2` |  |  |
+| `--in-channels` | integer | `4` |  |  |
+| `--input-size` | integer | `512` |  |  |
+| `--checkpoint` | path |  |  | Your trained weights (strict load). Without it the registry's pretrained initialisation is exported -- fine for latency tests, not a trained model. |
+| `--dynamic-size` | flag | off |  | Let the ONNX model accept any height and width (default: exactly --input-size). |
+
+:::{dropdown} Full help text
 
 ```text
 Usage: pygeovision edge export-onnx [OPTIONS] MODEL_NAME
@@ -68,3 +107,4 @@ Options:
                          --input-size).
   --help                 Show this message and exit.
 ```
+:::

@@ -1,12 +1,18 @@
-"""Sphinx configuration for the PyGeoVision documentation (built by Read the Docs; build locally with ``make -C docs html``)."""
+"""Sphinx configuration for the PyGeoVision documentation.
+
+Build locally with ``make -C docs html`` (English plus every translation, see ``tools/build_all.sh``).
+Set ``DOCS_SKIP_OTHER_LANGS=1`` for a fast English-only build while writing.
+"""
 from __future__ import annotations
 
 import importlib.metadata
 import os
+import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
 project = "PyGeoVision"
@@ -15,7 +21,6 @@ copyright = "PyGeoVision Contributors, MIT licence"  # noqa: A001 - Sphinx's own
 try:
     release = importlib.metadata.version("pygeovision")
 except importlib.metadata.PackageNotFoundError:
-    import re
     release = re.search(r'"([^"]+)"', (ROOT / "pygeovision" / "_version.py").read_text(encoding="utf-8")).group(1)
 version = ".".join(release.split(".")[:2])
 
@@ -27,18 +32,20 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx_copybutton",
     "sphinx_design",
+    "sphinx_reredirects",
 ]
 
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 root_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "_generated_src", "README.md"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "_generated_src", "README.md", "locale", "tools", "**/_sidebar.md", "reference/api/_index_table.md"]
 templates_path = ["_templates"]
 
 # --- Markdown (MyST) -----------------------------------------------------------------------------------------------
 myst_enable_extensions = ["colon_fence", "deflist", "fieldlist", "attrs_inline", "tasklist", "substitution"]
 myst_heading_anchors = 3
 myst_substitutions = {"version": release}
-suppress_warnings = ["myst.header"]
+# ref.python: docstrings name classes that exist in both implementations (pygeovision.* and pygeovision.ai.*); the pages show both.
+suppress_warnings = ["myst.header", "ref.python"]
 
 # --- API reference -------------------------------------------------------------------------------------------------
 autodoc_default_options = {"members": True, "undoc-members": False, "show-inheritance": True, "member-order": "bysource"}
@@ -48,6 +55,7 @@ autosummary_generate = False
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
 napoleon_use_param = True
+napoleon_use_ivar = True      # dataclass "Attributes:" sections become fields, not duplicate objects
 napoleon_use_rtype = False
 # Heavy optional dependencies are not needed to render documentation; importing a module must not require a GPU stack.
 autodoc_mock_imports = [
@@ -61,20 +69,136 @@ nitpicky = False
 
 # --- HTML ----------------------------------------------------------------------------------------------------------
 html_theme = "furo"
-html_title = f"PyGeoVision {release}"
-html_static_path = ["_static"]
-html_css_files = ["custom.css"]
+html_title = "PyGeoVision"
 html_theme_options = {
     "source_repository": "https://github.com/pygeovision/pygeovision/",
     "source_branch": "main",
     "source_directory": "docs/",
     "navigation_with_keys": True,
-    "light_css_variables": {"color-brand-primary": "#1b4965", "color-brand-content": "#1b4965"},
-    "dark_css_variables": {"color-brand-primary": "#62b6cb", "color-brand-content": "#62b6cb"},
+    # The top navigation bar (templates/page.html) is rendered through Furo's announcement slot, so it sits above
+    # the whole page. Furo only emits that slot when an announcement is set; the text itself is never shown.
+    "announcement": "x",
 }
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
+html_js_files = ["pgv.js"]
+html_favicon = "_static/img/logo.svg"
 copybutton_prompt_text = r">>> |\.\.\. |\$ "
 copybutton_prompt_is_regexp = True
 
-# On Read the Docs the build must fail on a broken page, not publish it.
-if os.environ.get("READTHEDOCS"):
-    nitpicky = False
+# --- Pages that moved when the documentation was reorganised -----------------------------------------------------------
+# Old URLs keep working: each old document name redirects to its new location.
+_MOVED = {
+    # old document name -> where its content lives now (document names, not URLs)
+    "contributing": "project/contributing",
+    "reference/changelog": "project/changelog",
+    "reference/roadmap": "project/roadmap",
+    "advanced/index": "reference/python-api",
+    "advanced/automl": "experiments/automl",
+    "advanced/multitask": "training/multitask",
+    "advanced/few-shot": "classification/few-shot",
+    "advanced/timeseries": "timeseries/index",
+    "advanced/pointcloud": "lidar/index",
+    "advanced/vlm": "vision-language/index",
+    "benchmark/index": "experiments/benchmark",
+    "edge-cloud/index": "deployment/index",
+    "edge-cloud/edge": "deployment/edge",
+    "edge-cloud/cloud": "deployment/cloud",
+    "cli/direct-inference": "inference/cli",
+    "models/foundation": "foundation-models/index",
+    "training/advanced": "training/fine-tuning",
+    "inference/detection": "detection/predict",
+}
+
+
+def _relative_url(old: str, new: str) -> str:
+    """A redirect target relative to the old page, as sphinx_reredirects expects (``../experiments/automl.html``)."""
+    return os.path.relpath(new, os.path.dirname(old) or ".").replace(os.sep, "/") + ".html"
+
+
+redirects = {old: _relative_url(old, new) for old, new in _MOVED.items()}
+
+# --- Internationalisation ------------------------------------------------------------------------------------------
+# Translations live in locale/<lang>/LC_MESSAGES/*.po (one file per page, plus chrome.po for the navigation bar).
+# Text that is not translated falls back to English, so every language build is complete; pages without a
+# translation show a "partly translated" note. Build everything with tools/build_all.sh.
+language = os.environ.get("DOCS_LANG", "en")
+locale_dirs = ["locale/"]
+gettext_compact = False
+gettext_uuid = False
+LANGUAGES = [
+    ("en", "English"), ("fr", "Français"), ("es", "Español"), ("pt", "Português"),
+    ("de", "Deutsch"), ("zh_CN", "简体中文"), ("ar", "العربية"),
+]
+html_context = {"languages": LANGUAGES, "current_language": language,
+                "pgv_rtl": language in ("ar",), "pgv_partial": False,
+                "repo_url": "https://github.com/pygeovision/pygeovision",
+                "pypi_url": "https://pypi.org/project/pygeovision/"}
+
+
+def _load_chrome(lang: str) -> dict:
+    """Navigation-bar strings from locale/<lang>/LC_MESSAGES/chrome.po (empty for English or when polib is missing)."""
+    try:
+        import polib
+        po = polib.pofile(str(HERE / "locale" / lang / "LC_MESSAGES" / "chrome.po"))
+        return {e.msgid: e.msgstr for e in po if e.msgstr}
+    except Exception:  # noqa: BLE001 - a missing translation must never break the English build
+        return {}
+
+
+_chrome = _load_chrome(language)
+
+
+def setup(app):  # noqa: D103
+    def _ctx(app, pagename, templatename, context, doctree):
+        context["pgv_t"] = lambda s: _chrome.get(s, s)
+        if language != "en":
+            mo = HERE / "locale" / language / "LC_MESSAGES" / (pagename + ".mo")
+            po = HERE / "locale" / language / "LC_MESSAGES" / (pagename + ".po")
+            context["pgv_partial"] = not (mo.exists() or po.exists())
+
+    app.connect("html-page-context", _ctx)
+
+    # A plain ``sphinx-build`` (as Read the Docs runs it) produces English at the site root and then builds every
+    # other language into <outdir>/<lang>/, so the language switcher works without custom CI.
+    # DOCS_SUBBUILD is set for those inner builds so they do not recurse.
+    def _all_langs(app, exc):
+        import subprocess
+        import tempfile
+        if exc or app.builder.name != "html" or language != "en":
+            return
+        if os.environ.get("DOCS_SUBBUILD") or os.environ.get("DOCS_SKIP_OTHER_LANGS"):
+            return
+        for code, _label in LANGUAGES:
+            if code == "en" or not (HERE / "locale" / code).is_dir():
+                continue
+            env = dict(os.environ, DOCS_LANG=code, DOCS_SUBBUILD="1")
+            with tempfile.TemporaryDirectory() as dt:
+                r = subprocess.run([sys.executable, "-m", "sphinx", "-b", "html", "-q", "-d", dt,
+                                    "-D", "language=" + code, str(app.srcdir),
+                                    os.path.join(str(app.outdir), code)], env=env)
+            if r.returncode:
+                print("WARNING: language build failed:", code)
+
+    app.connect("build-finished", _all_langs)
+
+
+# --- i18n fix ------------------------------------------------------------------------------------------------------
+# MyST overwrites a document's heading-slug table every time Sphinx re-parses a translated fragment, which breaks
+# cross-page anchors in translated builds. Merge the tables instead.
+try:
+    from myst_parser.mdit_to_docutils.base import DocutilsRenderer as _Renderer
+
+    _orig_finalise = _Renderer._render_finalise
+
+    def _render_finalise(self):
+        env = getattr(self, "sphinx_env", None)
+        old = dict(env.metadata[env.docname].get("myst_slugs", {})) if env else {}
+        _orig_finalise(self)
+        if env and old:
+            new = env.metadata[env.docname].get("myst_slugs", {})
+            env.metadata[env.docname]["myst_slugs"] = {**new, **old}
+
+    _Renderer._render_finalise = _render_finalise
+except Exception:  # noqa: BLE001 - only matters for translated builds
+    pass

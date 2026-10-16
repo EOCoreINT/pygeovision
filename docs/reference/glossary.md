@@ -54,7 +54,7 @@ EVI
 : Enhanced Vegetation Index; less saturated than NDVI in dense canopy; uses the blue band.
 
 Foundation model
-: A large network pre-trained on huge unlabelled imagery (Prithvi, DOFA, DINOv2/v3, SAM, CLIP/RemoteCLIP) and adapted to a task ([foundation models](../models/foundation.md)).
+: A large network pre-trained on huge unlabelled imagery (Prithvi, DOFA, DINOv2/v3, SAM, CLIP/RemoteCLIP) and adapted to a task ([foundation models](../foundation-models/index.md)).
 
 GSD
 : Ground sampling distance: the size of one pixel on the ground (10 m for Sentinel-2 bands used here).

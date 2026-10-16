@@ -130,5 +130,5 @@ logged, so it is not overwritten.
 | Records of different models mixed | Shared default path in `ai.monitoring` | Use one path per model |
 
 ```{seealso}
-[Data drift](drift.md) · [Alerts](alerts.md) · [Benchmarking](../benchmark/index.md)
+[Data drift](drift.md) · [Alerts](alerts.md) · [Benchmarking](../experiments/benchmark.md)
 ```

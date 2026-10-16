@@ -4,7 +4,7 @@
 
 *Forest loss and gain between two years (2015-2020) from the JAXA PALSAR forest/non-forest map*
 
-**Topic:** Forests · **Status:** Runs out of the box · **Tags:** `forest`, `change`, `radar`, `reference-product`
+**Topic:** Land cover, forests and change · **Status:** Runs out of the box · **Tags:** `forest`, `change`, `radar`, `reference-product`
 
 ## The question it answers
 
@@ -90,6 +90,52 @@ Every pipeline also takes `--bbox` and `--output`; see [common options](../index
 ### Choosing dates and inputs
 
 Years, 2015 to 2020. Order matters: `date_before` must be earlier. Loss per year is `forest_loss_ha` divided by the years between the two.
+
+## Modify it
+
+Three levels, from least to most effort. Start at the first; most changes need nothing more.
+
+### 1. Change a setting
+
+Every argument in the table above is changed per run, with `--param NAME=VALUE` on the command line or `NAME=VALUE` in Python. The changes people make most with this pipeline:
+
+- **Forest definition.** `include_open_forest=True` also counts canopy 10–90% (the FAO definition); the default counts only above 90%.
+- **Resolution.** `resolution_m` is the output grid (native 25 m); very large boxes are coarsened and the run records it.
+- **Years are limited** to 2015–2020 by the product; for later years use `landcover_change` or train a model for `deforestation`.
+
+After any change, read the **parameters** block of `run_summary.json`: it records the values that were used, so a result can always be traced to its settings.
+
+### 2. Change where the data comes from, and what is written
+
+- **Providers.** `providers=["planetary_computer"]` (CLI `--provider planetary_computer`) restricts the catalogues the pipeline searches; see [Providers](../../data/providers.md).
+- **Output.** `output_dir` (CLI `--output`) is the folder for the rasters, `run_summary.json` and `deliverables/`. Rebuild maps and reports from a finished run without re-downloading: [Rebuilding](../../reporting/rebuilding.md).
+- **Your own area.** A bounding box, or the true shape of an administrative area ([boundaries](../../data/boundaries.md)).
+
+### 3. Change the method (write a variant)
+
+The pipeline is the class `ForestChangePipeline` in `pygeovision/ai/pipelines/reference_products.py`. To change its behaviour without editing the package, subclass it, give the subclass a new `name`, and override `run`. This changes the defaults of one run; the original is untouched:
+
+```python
+from pygeovision import PyGeoVision
+from pygeovision.ai.pipelines import pipeline_catalogue
+
+Base = pipeline_catalogue()["forest_change"]
+
+
+class MyForestChange(Base):
+    name = "my_forest_change"          # a new name, so files and reports do not clash with the original
+
+    def run(self, bbox, output_dir, **kwargs):
+        kwargs.setdefault("include_open_forest", True)        # your default (the built-in one is False)
+        return super().run(bbox, output_dir, **kwargs)
+
+client = PyGeoVision()
+result = MyForestChange(client).run(bbox, "./variant")   # plus the same date arguments as in Run it
+```
+
+Calling `.run` on your class does not need any registration. To use it by name in `client.pipeline(...)`, register it in the process; to write a pipeline from scratch see [Write your own pipeline](../custom.md). The built-in `pygeovision channel` command runs only the built-in pipelines.
+
+To change the numbers of the method itself (a threshold written in the code, not exposed as an argument), read `ForestChangePipeline.run` in `pygeovision/ai/pipelines/reference_products.py`; the *How it works* section above lists the steps in the order the code takes them. Whatever you change, compare the new run with the old one ([comparing runs](../results.md#comparing-runs)) and validate the result against reference data before you use it ([validation](../../data/validation.md)).
 
 ## What you get
 

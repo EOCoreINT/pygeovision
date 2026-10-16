@@ -95,6 +95,52 @@ Every pipeline also takes `--bbox` and `--output`; see [common options](../index
 Name one month; the baseline is the same month in the previous years. Choose a month in the growing season. For a tropical
 wet season the cloud limit may leave too few usable years; the report lists `baseline_years_missing`.
 
+## Modify it
+
+Three levels, from least to most effort. Start at the first; most changes need nothing more.
+
+### 1. Change a setting
+
+Every argument in the table above is changed per run, with `--param NAME=VALUE` on the command line or `NAME=VALUE` in Python. The changes people make most with this pipeline:
+
+- **Baseline length.** `baseline_years` is a number of previous years (default 5) or a list such as `2019,2020,2021`; at least 3 must produce a usable image.
+- **Cloud.** `cloud_cover_max` defaults to 30.
+- **The target month** `date` is required; compare the same month with the baseline.
+
+After any change, read the **parameters** block of `run_summary.json`: it records the values that were used, so a result can always be traced to its settings.
+
+### 2. Change where the data comes from, and what is written
+
+- **Providers.** `providers=["planetary_computer"]` (CLI `--provider planetary_computer`) restricts the catalogues the pipeline searches; see [Providers](../../data/providers.md).
+- **Output.** `output_dir` (CLI `--output`) is the folder for the rasters, `run_summary.json` and `deliverables/`. Rebuild maps and reports from a finished run without re-downloading: [Rebuilding](../../reporting/rebuilding.md).
+- **Your own area.** A bounding box, or the true shape of an administrative area ([boundaries](../../data/boundaries.md)).
+
+### 3. Change the method (write a variant)
+
+The pipeline is the class `VegetationAnomalyPipeline` in `pygeovision/ai/pipelines/timeseries.py`. To change its behaviour without editing the package, subclass it, give the subclass a new `name`, and override `run`. This changes the defaults of one run; the original is untouched:
+
+```python
+from pygeovision import PyGeoVision
+from pygeovision.ai.pipelines import pipeline_catalogue
+
+Base = pipeline_catalogue()["vegetation_anomaly"]
+
+
+class MyVegetationAnomaly(Base):
+    name = "my_vegetation_anomaly"          # a new name, so files and reports do not clash with the original
+
+    def run(self, bbox, output_dir, **kwargs):
+        kwargs.setdefault("baseline_years", 6)        # your default (the built-in one is 5)
+        return super().run(bbox, output_dir, **kwargs)
+
+client = PyGeoVision()
+result = MyVegetationAnomaly(client).run(bbox, "./variant")   # plus the same date arguments as in Run it
+```
+
+Calling `.run` on your class does not need any registration. To use it by name in `client.pipeline(...)`, register it in the process; to write a pipeline from scratch see [Write your own pipeline](../custom.md). The built-in `pygeovision channel` command runs only the built-in pipelines.
+
+To change the numbers of the method itself (a threshold written in the code, not exposed as an argument), read `VegetationAnomalyPipeline.run` in `pygeovision/ai/pipelines/timeseries.py`; the *How it works* section above lists the steps in the order the code takes them. Whatever you change, compare the new run with the old one ([comparing runs](../results.md#comparing-runs)) and validate the result against reference data before you use it ([validation](../../data/validation.md)).
+
 ## What you get
 
 | File | Layer | Contents |

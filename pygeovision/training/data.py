@@ -85,7 +85,9 @@ class GeoSegDataset:
     skip_nodata : bool
         Skip chips where more than 50% of image pixels are zero (nodata).
 
-    Example::
+    Examples
+    --------
+    ::
 
         from pygeovision.training.data import GeoSegDataset
         from torch.utils.data import DataLoader
