@@ -17,7 +17,6 @@ import inspect
 import json
 import shlex
 import sys
-import textwrap
 from pathlib import Path
 
 import yaml
@@ -36,6 +35,16 @@ GROUPS: dict[str, list[str]] = {
     "Cities and infrastructure": ["urban", "infrastructure"],
     "Energy and mining": ["energy", "mining"],
     "Climate, ice, terrain and ecology": ["climate", "cryosphere", "terrain", "coast", "ecology", "heritage"],
+}
+# One catalogue page per topic: file name and a short description of what the topic is for.
+GROUP_PAGES: dict[str, tuple[str, str]] = {
+    "Agriculture and vegetation": ("agriculture", "Is the vegetation healthy, and is it different from normal? NDVI change between two dates, anomalies against earlier years, vegetation indices over a season, and crop-type mapping with your own trained model."),
+    "Water and wetlands": ("water", "Where is the water, how much is there, and is it changing? Surface-water masks, water extent over time, long-term water history, water quality, wetlands and evapotranspiration."),
+    "Floods, fire and hazards": ("hazards", "What did the event affect? Flood extent from radar and optical imagery, burn severity, active fire, volcanic heat and landslide scars."),
+    "Land cover, forests and change": ("land-cover", "What covers the ground and what changed? Land-cover maps, forest loss, urban expansion and generic change between two dates."),
+    "Cities and infrastructure": ("cities", "What has been built? Building footprints, road networks, solar installations and urban growth."),
+    "Energy and mining": ("energy-mining", "Where are energy and extraction sites, and how are they changing?"),
+    "Climate, ice, terrain and ecology": ("climate-terrain", "Snow and ice, terrain and drainage, coasts, habitat and heritage sites."),
 }
 DOMAIN_TITLES = {dom: title for title, doms in GROUPS.items() for dom in doms}
 DOMAIN_TITLES["other"] = "Other"
@@ -134,63 +143,24 @@ def _table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(out) + "\n"
 
 
-_SKIP_TUNE = {"date", "date_before", "date_after", "dates", "checkpoint", "model", "bands", "num_classes", "tile_size",
-              "overlap", "crop_classes", "site", "reference", "source", "method", "start_year", "end_year", "baseline_year",
-              "analysis_year", "pre_date", "post_date", "disaster_type", "providers", "resolution_m"}
-
-
-def _tunable(cls):
-    """The first numeric or boolean argument with a default that a variant would reasonably change, and an example value."""
-    for pname, p in inspect.signature(cls.run).parameters.items():
-        if pname in {"self", "bbox", "output_dir"} or pname in _SKIP_TUNE or p.kind is inspect.Parameter.VAR_KEYWORD:
-            continue
-        d = p.default
-        if isinstance(d, bool):
-            return pname, d, repr(not d)
-        if isinstance(d, (int, float)) and not isinstance(d, bool):
-            alt = (round(d * 1.5, 4) if isinstance(d, float) else d + 1) if d else (0.1 if isinstance(d, float) else 1)
-            return pname, d, repr(alt)
-    return None
-
-
 def _modify_section(name: str, cls, modify: list) -> list[str]:
-    src = Path(inspect.getsourcefile(cls)).resolve().relative_to(ROOT).as_posix()
     L = ["## Modify it\n",
-         "Three levels, from least to most effort. Start at the first; most changes need nothing more.\n",
-         "### 1. Change a setting\n",
+         "Most changes need nothing more than an argument. Start here.\n",
+         "### Change a setting\n",
          "Every argument in the table above is changed per run, with `--param NAME=VALUE` on the command line or `NAME=VALUE` in "
          "Python. The changes people make most with this pipeline:\n",
          _bullets(modify),
          "After any change, read the **parameters** block of `run_summary.json`: it records the values that were used, so a "
          "result can always be traced to its settings.\n",
-         "### 2. Change where the data comes from, and what is written\n",
+         "### Change the data and the output\n",
          "- **Providers.** `providers=[\"planetary_computer\"]` (CLI `--provider planetary_computer`) restricts the "
          "catalogues the pipeline searches; see [Providers](../../data/providers.md).\n"
          "- **Output.** `output_dir` (CLI `--output`) is the folder for the rasters, `run_summary.json` and `deliverables/`. "
          "Rebuild maps and reports from a finished run without re-downloading: [Rebuilding](../../reporting/rebuilding.md).\n"
          "- **Your own area.** A bounding box, or the true shape of an administrative area ([boundaries](../../data/boundaries.md)).\n",
-         "### 3. Change the method (write a variant)\n",
-         f"The pipeline is the class `{cls.__name__}` in `{src}`. To change its behaviour without editing the package, subclass "
-         "it, give the subclass a new `name`, and override `run`. This changes the defaults of one run; the original is untouched:\n"]
-    tun = _tunable(cls)
-    cb = f"Base = pipeline_catalogue()[\"{name}\"]\n\n\nclass My{''.join(w.title() for w in name.split('_'))}(Base):\n    name = \"my_{name}\"          # a new name, so files and reports do not clash with the original\n\n"
-    if tun:
-        pn, d, alt = tun
-        cb += (f"    def run(self, bbox, output_dir, **kwargs):\n        kwargs.setdefault(\"{pn}\", {alt})        # your default (the built-in one is {d!r})\n"
-               "        return super().run(bbox, output_dir, **kwargs)\n")
-    else:
-        cb += ("    def run(self, bbox, output_dir, **kwargs):\n        result = super().run(bbox, output_dir, **kwargs)\n"
-               "        if result.success:\n            print(\"written:\", result.output_path)      # post-process the output here\n"
-               "        return result\n")
-    L.append("```python\nfrom pygeovision import PyGeoVision\nfrom pygeovision.ai.pipelines import pipeline_catalogue\n\n" + cb
-             + f"\nclient = PyGeoVision()\nresult = My{''.join(w.title() for w in name.split('_'))}(client).run(bbox, \"./variant\")   # plus the same date arguments as in Run it\n```\n")
-    L.append("Calling `.run` on your class does not need any registration. To use it by name in `client.pipeline(...)`, register it "
-             "in the process; to write a pipeline from scratch see [Write your own pipeline](../custom.md). The built-in "
-             "`pygeovision channel` command runs only the built-in pipelines.\n")
-    L.append("To change the numbers of the method itself (a threshold written in the code, not exposed as an argument), read "
-             f"`{cls.__name__}.run` in `{src}`; the *How it works* section above lists the steps in the order the code takes them. "
-             "Whatever you change, compare the new run with the old one ([comparing runs](../results.md#comparing-runs)) and validate the result "
-             "against reference data before you use it ([validation](../../data/validation.md)).\n")
+         "Compare a changed run with the original ([comparing runs](../results.md#comparing-runs)) and validate the result against "
+         "reference data before you use it ([validation](../../data/validation.md)). To change the method itself, "
+         "[write your own pipeline](../custom.md).\n"]
     return L
 
 
@@ -324,22 +294,31 @@ def _by_group(cat: dict) -> dict[str, list[tuple[str, object]]]:
 
 def index(groups: dict[str, list[tuple[str, object]]]) -> str:
     n = sum(len(v) for v in groups.values())
+    ready = sum(1 for items in groups.values() for _, c in items if c.kind == "ready")
     L = [NOTICE, "# Pipeline catalogue\n",
-         f"All {n} pipelines, grouped by topic. Each page explains why you would run it, how, what comes out, how to read "
-         "it, what to change and what to do when it fails. In the sidebar every topic is its own group.\n"]
+         f"All {n} pipelines, grouped by the kind of question they answer. Pick a topic, then a pipeline: each pipeline has its own page "
+         "that says why you would run it, how to run it, what comes out, how to read it, what to change and what to do when it fails.\n",
+         f"{ready} of the {n} run out of the box. The other {n - ready} run a network that you trained and need `--checkpoint`. "
+         "Not sure which to use? [Choosing a pipeline](../choosing.md) goes from a question to a pipeline.\n",
+         "| Topic | Pipelines | What it answers |", "|---|---:|---|"]
     for title, items in groups.items():
-        L.append(f"## {title}\n")
-        rows = [[f"[`{nm}`]({nm}.md)", "ready" if c.kind == "ready" else "needs weights", c.description] for nm, c in items]
-        L.append(_table(["Pipeline", "Status", "What it does"], rows))
+        slug, blurb = GROUP_PAGES[title]
+        L.append(f"| [{title}]({slug}.md) | {len(items)} | {blurb} |")
+    L.append("")
+    L.append("Two other pages belong here: [pipelines that were removed](../removed.md) and why, and "
+             "[reading results](../results.md), which applies to every pipeline.\n")
+    L.append("```{toctree}\n:hidden:\n:maxdepth: 1\n\n" + "\n".join(GROUP_PAGES[t][0] for t in groups) + "\n../removed\n```\n")
     return "\n".join(L)
 
 
-def sidebar(groups: dict[str, list[tuple[str, object]]]) -> str:
-    """One toctree per topic, included from docs/index.md so each topic is a sidebar group of its own."""
-    L = [NOTICE]
-    for title, items in groups.items():
-        L.append("```{toctree}\n:hidden:\n:maxdepth: 1\n:caption: Pipelines: " + title + "\n\n"
-                 + "\n".join(f"pipelines/catalog/{nm}" for nm, _ in items) + "\n```\n")
+def topic_page(title: str, items: list[tuple[str, object]]) -> str:
+    slug, blurb = GROUP_PAGES[title]
+    L = [NOTICE, f"# {title}\n", blurb + "\n"]
+    rows = [[f"[`{nm}`]({nm}.md)", "ready" if c.kind == "ready" else "needs weights", c.description] for nm, c in items]
+    L.append(_table(["Pipeline", "Status", "What it does"], rows))
+    L.append("**ready** pipelines run as they are. **needs weights** pipelines run a network you trained, "
+             "and stop with a clear message if you do not pass `--checkpoint`.\n")
+    L.append("```{toctree}\n:hidden:\n:maxdepth: 1\n\n" + "\n".join(nm for nm, _ in items) + "\n```\n")
     return "\n".join(L)
 
 
@@ -361,7 +340,8 @@ def build() -> dict[Path, str]:
         out[OUT / f"{name}.md"] = page(name, cls, spec_for(name), examples[name], notes[name], modify[name])
     groups = _by_group(cat)
     out[OUT / "index.md"] = index(groups)
-    out[DOCS / "pipelines" / "_sidebar.md"] = sidebar(groups)
+    for title, items in groups.items():
+        out[OUT / f"{GROUP_PAGES[title][0]}.md"] = topic_page(title, items)
     return out
 
 

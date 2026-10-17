@@ -1,4 +1,4 @@
-# Edge deployment: ONNX and Jetson
+# Edge deployment
 
 **Package:** `pygeovision.edge` · **Classes:** `ONNXRuntimeInference`, `JetsonDeployer` ·
 **CLI:** `pygeovision edge export-onnx`, `pygeovision edge benchmark-onnx` · **Install:** `pip install "pygeovision[edge]"`
@@ -218,6 +218,6 @@ paths could not be run in PyGeoVision's own test environment (CPU only).
 | `trtexec` rejects `--workspace=…` | Newer TensorRT replaced it with `--memPoolSize` | Use `--memPoolSize=workspace:4096M` (the generated command already does; on TensorRT older than 8.4 use `--workspace=4096`) |
 
 ```{seealso}
-[Cloud deployment](cloud.md) · [Exporting and shrinking a model](../training/export.md#exporting-and-shrinking-a-model) ·
+[Cloud deployment](cloud.md) · [Exporting and shrinking a model](../training/export.md) ·
 [Inference](../inference/index.md) · [Benchmarking](../experiments/benchmark.md)
 ```

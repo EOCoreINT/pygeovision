@@ -128,4 +128,3 @@ a new run from the best weights instead: `checkpoint_path=".../best.pth"`. That 
 
 - [Training configuration: checkpoints and resuming](config.md#checkpoints-and-resuming), [Callbacks](callbacks.md), [Experiment tracking](../experiments/tracking.md)
 - [Fine-tuning from a checkpoint](fine-tuning.md), [Export and shrinking a model](export.md)
-- [`GeoTrainer` in the Python API](../reference/api/training.md)

@@ -1,4 +1,4 @@
-# Exporting and shrinking a model
+# Export and shrinking
 
 **Why.** The `.pth` file needs PyTorch and your code to load. Exporting makes a file other tools can run (ONNX Runtime
 on a server or an edge device, TensorRT, a browser), and compression makes it smaller or faster at some cost in

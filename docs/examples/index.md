@@ -38,3 +38,16 @@ honesty: its plumbing and statistics are tested on synthetic data and its real-i
 4. **255 and NaN are "unknown", not "none".** Never read them as dry, unburned or unchanged.
 5. **A pipeline gives a screening result, not a measurement.** Validate a figure you will publish against your own
    reference points ([`postprocess accuracy`](../reference/cli/postprocess.md), [OBIA accuracy](../obia/accuracy.md)).
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+agriculture
+forestry
+urban
+water
+disaster
+mining
+climate
+```

@@ -218,7 +218,7 @@ Per-epoch numbers are logged to the trackers. See [Advanced training](../experim
 
 The export is of the model **as it is after the last epoch**, not of `best.pth`, and a failure only logs a warning.
 For a deployable file from the best weights, load `best.pth` and export it yourself
-([Advanced training](export.md#exporting-and-shrinking-a-model)). Detection models do not export through this path.
+([Advanced training](export.md)). Detection models do not export through this path.
 
 ## Metric names
 

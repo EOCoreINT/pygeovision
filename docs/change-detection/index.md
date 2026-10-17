@@ -81,3 +81,12 @@ An automatic threshold always splits the pixels into two groups, even on a scene
 | Change map is mostly "changed" with `spectral_diff` | Different sun angle, season or sensor between dates | Use dates in the same season; correct radiometry first; set `--min-magnitude` |
 | `size mismatch` with `--method bit` | Encoder differs from training | Add `--backbone resnet50` (or `resnet18`) to match |
 | Clouds appear as change | Cloud differs between dates | Mask cloud before differencing ([Preprocessing](../data/preprocessing.md)) |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+models
+train
+predict
+```

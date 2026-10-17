@@ -70,3 +70,14 @@ The experiment loop. Tracking records every run; search proposes the next one; t
 
 Related: [Training configuration](../training/config.md) · [Callbacks and custom metrics](../training/callbacks.md) ·
 [Monitoring a deployed model](../monitoring/index.md)
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+tracking
+search
+automl
+benchmark
+leaderboard
+```

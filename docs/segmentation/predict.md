@@ -1,4 +1,4 @@
-# Predict with a segmentation model
+# Predict
 
 There are three ways to get a segmentation map, in increasing order of effort: a method that needs **no training**, a
 **trained network** on a file you already have, and a **pipeline** that finds the imagery for you.

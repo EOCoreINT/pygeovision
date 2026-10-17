@@ -95,3 +95,12 @@ can look good while a rare class is missed entirely, so always read the per-clas
 | Blocky seams between tiles | Tiles predicted independently | Increase `overlap`; keep `blend="gaussian"` ([Inference](../inference/tiles.md#tiles-overlap-and-seams)) |
 | Mask is shifted from the imagery | Never from the model: the output copies the input's grid. Check the input CRS | [Core concepts](../getting-started/concepts.md) |
 | `size mismatch` loading a checkpoint | Architecture, classes or bands differ from training | [How the registries relate](../models/registry.md) |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+models
+train
+predict
+```

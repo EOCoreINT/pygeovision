@@ -1,13 +1,17 @@
-# Data guide
+# Data overview
 
 The data layer finds satellite scenes, downloads only the files you need, and turns them into **analysis-ready
 rasters**: correctly scaled, cloud-masked, mosaicked over your area and cropped to your box. Every pipeline is built
 on it, and every function it uses is also available directly, so you can prepare data for your own analysis.
 
+Data work has two halves. First you **get the right imagery** for your area and dates. Then you **prepare and check** it so that a
+model or an index can use it. Most of the time the pipelines do both for you; this section is for when you want to see or control
+what they do, or to prepare data for your own analysis.
+
 ```{list-table}
 :header-rows: 1
 :widths: 28 72
-* - Page
+* - Get imagery
   - What it answers
 * - [Search and download](search-and-download.md)
   - How do I find scenes and fetch them, from Python and from the CLI? What do `SearchResult` and `DownloadResult` contain?
@@ -17,31 +21,20 @@ on it, and every function it uses is also available directly, so you can prepare
   - How do I store credentials safely, and test that they work?
 * - [Scene selection and mosaicking](scene-selection.md)
   - How does PyGeoVision decide *which* scenes to use, and what happens when one scene does not cover my box?
-* - [Radiometry and cloud masks](radiometry.md)
-  - What scale factors are applied? How are cloud and shadow masked? Why is the 2022 Sentinel-2 offset handled?
-* - [Spectral indices](indices.md)
-  - What do NDVI, NDWI, NBR… mean, how are they computed here, and when do they mislead?
+* - [Study-area boundaries](boundaries.md)
+  - How do I use the true shape of an administrative area instead of a hand-typed box?
 * - [Reference products and terrain](reference-data.md)
   - Where do land cover, surface water, forest maps and DEMs come from, and how are they read for just my box?
 * - [Building and road footprints](footprints.md)
   - How do I get building and road vectors from Microsoft, Google and OpenStreetMap?
-* - [Study-area boundaries](boundaries.md)
-  - How do I use the true shape of an administrative area instead of a hand-typed box?
-* - [Radar (SAR) preprocessing](sar.md)
-  - How is Sentinel-1 prepared: georeference recovery, despeckling, dB conversion, normalisation?
-* - [Validation](validation.md)
-  - How do I check a raster before a model sees it, and what is fixed automatically?
-* - [Preprocessing toolbox](preprocessing.md)
-  - Stack, clip, mask, normalise, resample, mosaic, composite, tile.
-* - [Postprocessing toolbox](postprocessing.md)
-  - Vectorise, sieve, smooth, regularise, zonal statistics, accuracy assessment, COG, export.
-* - [AI-ready data](ai-ready.md)
-  - What does `prepare_for_ai()` do, and what comes back?
-* - [Texture features](texture.md)
-  - GLCM (Haralick) texture from a band.
+* - [Dataset catalogue](../datasets/index.md)
+  - Which public training datasets exist for my task? (Metadata only; nothing is downloaded.)
 * - [Data pipelines (YAML)](yaml-pipelines.md)
-  - How do I describe a repeatable search → filter → download → export workflow and schedule it?
+  - How do I keep a folder of imagery up to date on a schedule?
 ```
+
+Once you have imagery, [prepare and check it](prepare.md): scale it to reflectance, mask cloud, compute indices, validate it and
+turn model output into polygons.
 
 ## The flow in one picture
 
@@ -63,3 +56,19 @@ Each arrow is described in detail on the pages above. Two design decisions shape
    calibration jump at a seam between two acquisitions.
 2. **Say how much you got.** The coverage actually achieved (`aoi_coverage_fraction`) and the share of clear pixels
    are recorded and attached to the result. A run that could only see 40 % of your box tells you so.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+search-and-download
+providers
+authentication
+scene-selection
+boundaries
+reference-data
+footprints
+../datasets/index
+yaml-pipelines
+prepare
+```

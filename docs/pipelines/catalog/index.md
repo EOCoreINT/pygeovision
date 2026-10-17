@@ -2,80 +2,32 @@
 
 # Pipeline catalogue
 
-All 41 pipelines, grouped by topic. Each page explains why you would run it, how, what comes out, how to read it, what to change and what to do when it fails. In the sidebar every topic is its own group.
+All 41 pipelines, grouped by the kind of question they answer. Pick a topic, then a pipeline: each pipeline has its own page that says why you would run it, how to run it, what comes out, how to read it, what to change and what to do when it fails.
 
-## Agriculture and vegetation
+34 of the 41 run out of the box. The other 7 run a network that you trained and need `--checkpoint`. Not sure which to use? [Choosing a pipeline](../choosing.md) goes from a question to a pipeline.
 
-| Pipeline | Status | What it does |
-|---|---|---|
-| [`crop_health`](crop_health.md) | ready | NDVI drop between two dates (vegetation stress / loss anomaly) |
-| [`crop_monitoring`](crop_monitoring.md) | needs weights | Crop-type segmentation with your trained model (checkpoint required) |
-| [`vegetation_anomaly`](vegetation_anomaly.md) | ready | NDVI anomaly, z-score and Vegetation Condition Index of a month against the same month in earlier years |
-| [`vegetation_indices`](vegetation_indices.md) | ready | NDVI, EVI and NDWI per date across a time series |
+| Topic | Pipelines | What it answers |
+|---|---:|---|
+| [Agriculture and vegetation](agriculture.md) | 4 | Is the vegetation healthy, and is it different from normal? NDVI change between two dates, anomalies against earlier years, vegetation indices over a season, and crop-type mapping with your own trained model. |
+| [Water and wetlands](water.md) | 6 | Where is the water, how much is there, and is it changing? Surface-water masks, water extent over time, long-term water history, water quality, wetlands and evapotranspiration. |
+| [Floods, fire and hazards](hazards.md) | 8 | What did the event affect? Flood extent from radar and optical imagery, burn severity, active fire, volcanic heat and landslide scars. |
+| [Land cover, forests and change](land-cover.md) | 5 | What covers the ground and what changed? Land-cover maps, forest loss, urban expansion and generic change between two dates. |
+| [Cities and infrastructure](cities.md) | 6 | What has been built? Building footprints, road networks, solar installations and urban growth. |
+| [Energy and mining](energy-mining.md) | 4 | Where are energy and extraction sites, and how are they changing? |
+| [Climate, ice, terrain and ecology](climate-terrain.md) | 8 | Snow and ice, terrain and drainage, coasts, habitat and heritage sites. |
 
-## Water and wetlands
+Two other pages belong here: [pipelines that were removed](../removed.md) and why, and [reading results](../results.md), which applies to every pipeline.
 
-| Pipeline | Status | What it does |
-|---|---|---|
-| [`evapotranspiration`](evapotranspiration.md) | ready | Annual evapotranspiration, potential ET and their ratio for a year from MODIS MOD16A3GF (500 m) |
-| [`surface_water_dynamics`](surface_water_dynamics.md) | ready | Permanent, seasonal, new and lost surface water 1984-2020 from the JRC Global Surface Water history |
-| [`water_bodies`](water_bodies.md) | ready | Surface water mask from NDWI (green, NIR); or your own trained model |
-| [`water_extent_timeseries`](water_extent_timeseries.md) | ready | Surface-water area for each of several dates and a map of how often each pixel was water (MNDWI) |
-| [`water_quality`](water_quality.md) | ready | Relative chlorophyll index (NDCI) and red-reflectance turbidity indicator inside water |
-| [`wetland_mapping`](wetland_mapping.md) | ready | Open water vs inundated vegetation from MNDWI and EVI |
+```{toctree}
+:hidden:
+:maxdepth: 1
 
-## Floods, fire and hazards
-
-| Pipeline | Status | What it does |
-|---|---|---|
-| [`active_fire`](active_fire.md) | ready | Days with a MODIS active-fire detection per 1 km pixel for a month or date range, with fire points |
-| [`disaster_assessment`](disaster_assessment.md) | needs weights | Pre/post-event damage classes with your trained siamese model (checkpoint required) |
-| [`flood_mapping`](flood_mapping.md) | ready | Flooded area = MNDWI water on the flood date minus permanent water from a dry reference |
-| [`landslide_detection`](landslide_detection.md) | needs weights | Landslide scars from a before/after pair with your trained change model (checkpoint required) |
-| [`multisensor_flood_mapping`](multisensor_flood_mapping.md) | ready | Flooded area from Sentinel-1 radar + Sentinel-2 optical + terrain (HAND): per-pixel agreement between sensors, cloud-independent where radar sees |
-| [`sar_flood_mapping`](sar_flood_mapping.md) | ready | Flooded area from Sentinel-1 radar (cloud-independent): open water on the flood date that was not water before |
-| [`volcano_monitoring`](volcano_monitoring.md) | ready | Landsat thermal anomalies (scene mean + 20 C by default); candidates, not confirmed activity |
-| [`wildfire_severity`](wildfire_severity.md) | ready | Burn severity from dNBR (USGS classes) between a pre-fire and a post-fire date |
-
-## Land cover, forests and change
-
-| Pipeline | Status | What it does |
-|---|---|---|
-| [`change_detection`](change_detection.md) | ready | Change vector analysis between two dates (Otsu threshold); or your own siamese model |
-| [`deforestation`](deforestation.md) | needs weights | Forest-loss classes between two dates with your trained model (checkpoint required) |
-| [`forest_change`](forest_change.md) | ready | Forest loss and gain between two years (2015-2020) from the JAXA PALSAR forest/non-forest map |
-| [`land_cover`](land_cover.md) | ready | ESA WorldCover 2021 reference map (or Dynamic World / your own model) for a bounding box |
-| [`landcover_change`](landcover_change.md) | ready | Where annual 10 m land cover changed between two years (2017-2023), and from/to which class |
-
-## Cities and infrastructure
-
-| Pipeline | Status | What it does |
-|---|---|---|
-| [`building_footprints`](building_footprints.md) | ready | Building footprints from Microsoft, Google or OpenStreetMap data (or segmentation with your own trained model) |
-| [`road_extraction`](road_extraction.md) | needs weights | Road segmentation with your trained model (checkpoint required) |
-| [`road_network`](road_network.md) | ready | Road network from OpenStreetMap: length by road class, road density and a GeoPackage of every road |
-| [`urban_expansion`](urban_expansion.md) | ready | New and lost built-up area between two years from the annual 10 m land-cover product |
-| [`urban_growth`](urban_growth.md) | needs weights | Urban expansion between two Landsat dates with your trained model (checkpoint required) |
-| [`urban_heat_island`](urban_heat_island.md) | ready | Landsat land surface temperature and areas hotter than the scene mean + threshold |
-
-## Energy and mining
-
-| Pipeline | Status | What it does |
-|---|---|---|
-| [`mine_rehabilitation`](mine_rehabilitation.md) | ready | Revegetation of a mine or quarry site against an undisturbed reference over several same-season dates |
-| [`solar_detection`](solar_detection.md) | needs weights | Solar-panel segmentation with your trained model (checkpoint required) |
-| [`solar_potential`](solar_potential.md) | ready | Clear-sky relative irradiance (0-1) on terrain for a date and hour, from a DEM |
-| [`wind_farm_siting`](wind_farm_siting.md) | ready | Slope and land-cover exclusion screen with a terrain-exposure score (no wind speed) |
-
-## Climate, ice, terrain and ecology
-
-| Pipeline | Status | What it does |
-|---|---|---|
-| [`archaeological_site`](archaeological_site.md) | ready | Local Relief Model and multi-directional hillshade from a DEM, for expert interpretation |
-| [`biodiversity_hotspot`](biodiversity_hotspot.md) | ready | Local Shannon habitat-diversity map from WorldCover 2021, with top-decile hotspots |
-| [`coastal_monitoring`](coastal_monitoring.md) | ready | Land/water change between two dates from MNDWI (shoreline retreat and advance) |
-| [`drainage_analysis`](drainage_analysis.md) | ready | Flow accumulation, stream network with Strahler order, and Height Above Nearest Drainage (HAND) from a DEM |
-| [`glacier_monitoring`](glacier_monitoring.md) | ready | Snow/ice area change between two dates from NDSI, on commonly cloud-free pixels |
-| [`land_surface_temperature`](land_surface_temperature.md) | ready | Landsat Collection 2 Level-2 land surface temperature in deg C |
-| [`snow_cover`](snow_cover.md) | ready | Snow/ice extent from NDSI > 0.4 on one date |
-| [`terrain_analysis`](terrain_analysis.md) | ready | Elevation, slope, aspect, hillshade and ruggedness (TRI) from the Copernicus 30 m DEM |
+agriculture
+water
+hazards
+land-cover
+cities
+energy-mining
+climate-terrain
+../removed
+```

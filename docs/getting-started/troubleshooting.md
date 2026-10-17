@@ -111,7 +111,7 @@ First read three numbers in `result.stats` / `run_summary.json`:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| No `deliverables/` folder | `--no-report`, `PYGEOVISION_REPORT=0`, or the report failed | Check `result.metadata["deliverables_error"]`; rebuild with `pygeovision report <output>` |
+| No `deliverables/` folder | `--no-report`, `PYGEOVISION_REPORT=0`, or the report failed | After `--no-report`, run again without it. After a failure, check `result.metadata["deliverables_error"]` and, if `run_summary.json` exists, rebuild with `pygeovision report <output>` |
 | Report missing PDF/Word/Excel | The report extra is missing | `pip install "pygeovision[report]"` |
 | Class names show as numbers | The pipeline has no names for a custom network | `pygeovision report <output> --class-names …` ([Rebuilding](../reporting/rebuilding.md)) |
 | Shapefile fields are truncated | The 10-character Shapefile limit | Use the GeoPackage |
@@ -134,3 +134,11 @@ First read three numbers in `result.stats` / `run_summary.json`:
 3. Check the pipeline's own page: each has a "Troubleshooting" section for its specific failures.
 4. Search the [FAQ](faq.md).
 5. Open an issue with `pygeovision doctor`, the command, the log, and the bounding box and dates.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+diagnostics
+faq
+```

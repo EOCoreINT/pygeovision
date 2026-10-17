@@ -10,83 +10,29 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "Getting started"
+msgid "Get started"
 msgstr "Premiers pas"
+
+msgid "Guides"
+msgstr "Guides"
+
+msgid "Data"
+msgstr "Données"
 
 msgid "Pipelines"
 msgstr "Pipelines"
 
+msgid "Models"
+msgstr "Modèles"
+
+msgid "Train and deploy"
+msgstr "Entraîner et déployer"
+
 msgid "Case studies"
 msgstr "Études de cas"
-
-msgid "Examples"
-msgstr "Exemples"
 
 msgid "Reference"
 msgstr "Référence"
 
 msgid "Project"
 msgstr "Projet"
-
-msgid "Data: find and download"
-msgstr "Données : trouver et télécharger"
-
-msgid "Data: prepare and check"
-msgstr "Données : préparer et vérifier"
-
-msgid "Segmentation"
-msgstr "Segmentation"
-
-msgid "Classification"
-msgstr "Classification"
-
-msgid "Object detection"
-msgstr "Détection d'objets"
-
-msgid "Change detection"
-msgstr "Détection de changements"
-
-msgid "Foundation models"
-msgstr "Modèles de fondation"
-
-msgid "Vision-language"
-msgstr "Vision-langage"
-
-msgid "3D / LiDAR"
-msgstr "3D / LiDAR"
-
-msgid "Super-resolution"
-msgstr "Super-résolution"
-
-msgid "Time series"
-msgstr "Séries temporelles"
-
-msgid "Object-based analysis (OBIA)"
-msgstr "Analyse orientée objet (OBIA)"
-
-msgid "Models"
-msgstr "Modèles"
-
-msgid "Labelling"
-msgstr "Annotation"
-
-msgid "Training"
-msgstr "Entraînement"
-
-msgid "Inference"
-msgstr "Inférence"
-
-msgid "Experiments"
-msgstr "Expériences"
-
-msgid "Explainability"
-msgstr "Explicabilité"
-
-msgid "Monitoring"
-msgstr "Surveillance"
-
-msgid "Reporting"
-msgstr "Rapports"
-
-msgid "Deployment"
-msgstr "Déploiement"

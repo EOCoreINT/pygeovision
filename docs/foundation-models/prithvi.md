@@ -186,4 +186,3 @@ use it to find where to look, then confirm with a pixel-level method ([change de
 
 - [Foundation models overview](index.md), [Radar with Prithvi](radar.md), [Embeddings](embeddings.md), [DOFA](dofa.md)
 - [Fine-tuning](../training/fine-tuning.md), [Training callbacks](../training/callbacks.md)
-- [`pygeovision.models.foundation.prithvi` in the Python API](../reference/api/builders-foundation.md)

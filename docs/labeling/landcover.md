@@ -1,4 +1,4 @@
-# Land-cover labels (ESA WorldCover and 10 m annual maps)
+# Land-cover labels
 
 **Classes:** `ESAWorldCoverLabeler`, `DynamicWorldLabeler` in `pygeovision.labeling` ·
 **Client:** `client.labeling.esa_worldcover(...)`, `client.labeling.dynamic_world(...)`

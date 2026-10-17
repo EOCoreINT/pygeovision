@@ -1,4 +1,4 @@
-# Building footprint labels (Microsoft and Google)
+# Building labels
 
 **Classes:** `MicrosoftBuildingsLabeler`, `GoogleBuildingsLabeler` in `pygeovision.labeling` ·
 **Client:** `client.labeling.microsoft_buildings(...)`, `client.labeling.google_buildings(...)`

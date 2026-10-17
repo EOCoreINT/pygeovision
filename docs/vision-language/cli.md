@@ -1,4 +1,4 @@
-# The vision-language command line
+# Command line
 
 Three commands cover the vision-language tools from the shell. They need no Python and are meant for quick looks: describe one tile,
 ask it a question, or search a folder.

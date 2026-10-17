@@ -1,4 +1,4 @@
-# Which vision-language model
+# Choosing a model
 
 Several models live under the vision-language heading, and they answer different questions. This page puts them side by side so you
 can choose, and says plainly which ones this package can run.

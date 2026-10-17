@@ -1,4 +1,4 @@
-# Pipelines
+# Pipelines overview
 
 A **pipeline** takes a place and a time, finds the right imagery or reference data, prepares it correctly, computes an
 answer, and delivers it as rasters, vectors, a map, tables and a report. PyGeoVision ships **41 pipelines**. Each answers

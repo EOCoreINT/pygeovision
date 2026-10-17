@@ -1,4 +1,4 @@
-# Object-based image analysis (OBIA)
+# Object-based analysis
 
 **Package:** `pygeovision.obia` · **CLI:** `pygeovision obia` (7 commands)
 
@@ -116,3 +116,18 @@ gets `b1, b2, b3, b4`, and then `spectral_layers` finds no `red`, `nir` or `gree
 - Rule strings are evaluated with `pandas.DataFrame.eval`. Treat a rules file as **code**, not as untrusted input.
 - Accuracy is only as honest as your reference data. Read [Accuracy assessment](accuracy.md), especially the section on
   why scoring a classifier on its own training samples says nothing.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+tutorial
+real-data
+segmentation
+scale
+features
+classification
+hierarchy-context
+accuracy
+data-io
+```

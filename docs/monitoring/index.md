@@ -91,4 +91,14 @@ $ pygeovision monitor drift ./train_tifs ./this_week --output drift_report.json
 
 - [Deploying models](../deployment/index.md): monitor what you deploy, from the first week
 - [Inference](../inference/index.md#matching-the-input-to-training): many apparent drifts are a scaling mismatch
-- [`pygeovision.monitoring` in the Python API](../reference/api/monitoring.md), [`pygeovision monitor` on the command line](../reference/cli/monitor.md)
+- [`pygeovision monitor` on the command line](../reference/cli/monitor.md)
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+drift
+performance
+alerts
+site-tracking
+```

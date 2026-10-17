@@ -1,4 +1,4 @@
-# Active learning: label the right images first
+# Active learning
 
 **Class:** `pygeovision.labeling.ActiveLearner` · **Client:** `client.labeling.active_learner(strategy, budget)`
 

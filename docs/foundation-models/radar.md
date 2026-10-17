@@ -1,5 +1,5 @@
 (sar-adapters)=
-# Radar with optical foundation models
+# Radar and foundation models
 
 Prithvi and DINOv3 were trained on **optical** imagery. Sentinel-1 radar measures backscatter, a different physical quantity, in
 decibels, with speckle. Feeding raw radar to an optical model fails, usually **without an error**: the numbers go in and a confident
@@ -224,4 +224,3 @@ change model.
 
 - [Radar data preparation](../data/sar.md), [Foundation models overview](index.md), [Prithvi-EO](prithvi.md), [DINOv3](dinov3.md)
 - [`sar_flood_mapping`](../pipelines/catalog/sar_flood_mapping.md), [`multisensor_flood_mapping`](../pipelines/catalog/multisensor_flood_mapping.md)
-- [`pygeovision.models.adapters` in the Python API](../reference/api/builders-foundation.md)

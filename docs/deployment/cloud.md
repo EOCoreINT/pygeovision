@@ -1,4 +1,4 @@
-# Cloud deployment: SageMaker, Azure ML, Vertex AI
+# Cloud deployment
 
 **Package:** `pygeovision.cloud` · **Classes:** `AWSDeployer`, `AzureDeployer`, `GCPDeployer` (all subclasses of `CloudDeployer`),
 helper `build_sagemaker_archive` · **CLI:** `pygeovision cloud deploy-aws`, `pygeovision cloud deploy-gcp` ·

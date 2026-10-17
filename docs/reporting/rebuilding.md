@@ -8,9 +8,15 @@ A run is expensive (it downloads imagery); its deliverables are cheap. `pygeovis
 - You trained a network and want your own **class names** on the maps, tables and polygons (`--class-names`).
 - You need **another format**: Word for editing, Excel for tables, a Shapefile for a colleague with an old GIS, a KML for Google Earth.
 - You want a **different title**, for a client report.
-- You ran with `--no-report` to save time and now want the report.
 - You **upgraded PyGeoVision** and want the newest layout of an old run.
 - The report step **failed** (for example the optional libraries were missing) and you have now installed them.
+
+```{note}
+A run made with `--no-report` (or `PYGEOVISION_REPORT=0`) writes **no** `run_summary.json`, and `pygeovision report` rebuilds from that file,
+so there is nothing to rebuild from: run the analysis again without the flag. To make a run quick but keep the ability to add reports
+later, use `--report-formats none --vector-formats none` instead. That skips the PDF, Word and Excel files and the polygons, and keeps
+the maps and `run_summary.json`.
+```
 
 ## Command line
 

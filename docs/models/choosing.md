@@ -63,7 +63,7 @@ December, however many chips it saw.
 |---|---|
 | RGB, or RGB + NIR (3–4 bands) | Any model. Pretrained weights fit RGB best |
 | 6–13 multispectral bands | Fine, but the extra bands start untrained. Expect to fine-tune longer. [Prithvi](../foundation-models/index.md) and [DOFA](../foundation-models/index.md) are designed for multispectral input |
-| Radar (VV, VH) | Train on radar directly, or use the [SAR adapters](../foundation-models/radar.md#radar-with-optical-foundation-models). Do not feed raw dB values to an optical network |
+| Radar (VV, VH) | Train on radar directly, or use the [SAR adapters](../foundation-models/radar.md). Do not feed raw dB values to an optical network |
 | Very many bands (hyperspectral) | Segmentation models still work (`in_channels=…`); consider reducing bands first |
 
 ### What hardware do you have?

@@ -152,4 +152,3 @@ cost little, and you can delete them in Azure ML studio.
 ## Related
 
 - [Cloud overview](cloud.md), [SageMaker](sagemaker.md), [Vertex AI](vertex.md), [Edge: ONNX export and check](edge.md).
-- [`pygeovision.cloud` in the Python API](../reference/api/deployment.md).

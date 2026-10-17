@@ -119,4 +119,17 @@ DOFA, DINOv3, CLIP, SAM) and any accuracy figure, because the test environment h
 
 - [Models by task](../models/tasks.md), [Choosing a model](../models/choosing.md), [Fine-tuning](../training/fine-tuning.md)
 - [Vision-language models](../vision-language/index.md), [Classification with few labels](../classification/few-shot.md)
-- [`pygeovision.models.foundation` in the Python API](../reference/api/builders-foundation.md)
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+models
+prithvi
+dofa
+dinov3
+clip
+sam
+embeddings
+radar
+```

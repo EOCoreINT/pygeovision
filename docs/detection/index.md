@@ -91,3 +91,12 @@ shown on the [predict page](predict.md), or with `GeoYOLO.detect_tiled`.
 | Many false boxes | Too low a threshold or too little negative data | Raise the threshold; add chips without objects |
 | `val_map50` is 0.0 every epoch | The model is not learning yet, or labels use class `0` | Labels must start at 1; train longer; check boxes are inside the image |
 | Boxes in the wrong place on the map | Pixel boxes not converted with the raster's transform | Use `GeoYOLO.detect_tiled`, which does it for you, or the transform in [predict](predict.md) |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+models
+train
+predict
+```

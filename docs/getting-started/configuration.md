@@ -135,7 +135,8 @@ or written. Include this output when you report a problem.
 ## Disabling the report
 
 Deliverables are on by default. To skip them for one run, pass `--no-report` (CLI) or `report=False` (Python). To skip
-them everywhere, export `PYGEOVISION_REPORT=0`. An analysis is never turned into a failure by a reporting problem: if
+them everywhere, export `PYGEOVISION_REPORT=0`. A run with reports off writes no `run_summary.json` either; for a quicker run that keeps it,
+use `--report-formats none --vector-formats none`. An analysis is never turned into a failure by a reporting problem: if
 the map or report cannot be built, the rasters are still written and `result.metadata["deliverables_error"]` says why
 ([Deliverables](../reporting/index.md)).
 

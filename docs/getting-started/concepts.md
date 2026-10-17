@@ -199,4 +199,8 @@ does not ship weights trained on your task — you [train](../training/index.md)
   - [Troubleshooting](troubleshooting.md)
 * - Not sure which pipeline
   - [Choosing a pipeline](../pipelines/choosing.md)
+* - Decide your area and dates
+  - [Choose your area and dates](../guides/your-area.md)
+* - Script it, or run many areas
+  - [Use it from Python](../guides/python.md), [Run many areas](../guides/automate.md)
 ```

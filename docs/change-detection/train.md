@@ -1,4 +1,4 @@
-# Train a change-detection network
+# Train
 
 A change network learns from **pairs of images and a change mask**. `GeoTrainer` feeds a model one tensor, so the two dates
 are stacked into one multi-band image and, for networks that take two inputs, split again inside a small wrapper.

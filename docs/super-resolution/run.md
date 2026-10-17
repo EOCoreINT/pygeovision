@@ -1,4 +1,4 @@
-# Run super-resolution on a GeoTIFF
+# Run super-resolution
 
 The model upscales a tensor; to upscale a **georeferenced raster** you also tile it, stitch the result and write it with a
 finer pixel size so it lands on the same ground. This recipe does that. It was run on a synthetic 4-band 130 × 100 pixel

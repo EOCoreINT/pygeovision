@@ -80,3 +80,13 @@ the right cell on an off-multiple extent), heights below sea level, noise classe
 areas and edge handling, CRS output, geographic-CRS refusal, blockwise classification (every point predicted once, repeatable
 with a seed, checkpoint loading and mismatch, class codes, files without intensity and tiny clouds). The
 trained-classifier path was checked as plumbing only; **no accuracy claim is made for any LiDAR classification model**.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+models
+canopy-height
+buildings
+classify
+```

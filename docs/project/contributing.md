@@ -121,8 +121,8 @@ Describe in the pull request what you ran and what you could **not** run.
 
 ## Good first issues
 
-- `pygeovision/training/callbacks.py` is imported by nothing; wire it into the trainer or delete it ([roadmap](roadmap.md)).
-- Merge another [duplicate pair](../architecture.md#systems-that-exist-twice) by re-export, as was done for the trainer.
+- Pick an item from the [roadmap](roadmap.md): something that does not exist yet, or something that exists but has not been checked on real data. A verified run on real imagery is a valuable contribution.
+- Fix a problem listed in [known issues](../reference/known-issues.md).
 - Bring back a [removed pipeline](../pipelines/removed.md): each entry says what it needs, for example a trained road-segmentation model or aerosol data.
 - Move the `PyGeoVision` client out of `pygeovision/__init__.py`.
 

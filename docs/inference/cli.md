@@ -1,4 +1,4 @@
-# Direct Native Inference (`ai segment` / `ai detect` / `ai classify` / `ai change`)
+# Inference from the command line
 
 A genuinely different interface from `pygeovision channel <pipeline>`:
 these commands run inference directly on a file you already have on

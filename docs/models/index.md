@@ -1,4 +1,4 @@
-# Models
+# Models overview
 
 A *model* in PyGeoVision is a neural-network architecture you can build, train, fine-tune and run on satellite imagery.
 This section explains what the package gives you, what it deliberately does **not** give you, and how to choose and use
@@ -102,3 +102,14 @@ Argument meanings:
 | A pretrained download is slow or blocked | Set `HF_HOME` to a folder that already contains the weights, or build with `pretrained=False` |
 | Prediction looks random | The checkpoint is not trained for this data, or the input is scaled differently from training. See [Inference](../inference/index.md#matching-the-input-to-training) |
 | You need a model that is not here | Register your own `nn.Module`: [How the registries relate](registry.md#adding-your-own-model) |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+tasks
+choosing
+registry
+catalog
+unavailable
+```

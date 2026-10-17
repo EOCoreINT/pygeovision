@@ -1,4 +1,4 @@
-# Combining sources: `AutoLabelPipeline`
+# Combining label sources
 
 **Class:** `pygeovision.labeling.AutoLabelPipeline` · **Client:** `client.labeling.pipeline(bbox, sources=[...], output_dir=...)`
 

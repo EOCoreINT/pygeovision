@@ -1,4 +1,4 @@
-# OBIA tutorial: from a real image to honest accuracy
+# OBIA tutorial
 
 This walk-through takes a **real Sentinel-2 image**, downloaded with PyGeoVision's own search and download tools, from raw
 bands to a classified map, and says at each step what the step does, what to look at and what to do when it goes wrong.

@@ -62,3 +62,13 @@ Only GradCAM has a command; uncertainty, attention and SHAP are Python APIs. See
 | Everything is zeros | Hooks did not fire / no attention found | See the "What to do" table on each page |
 | Maps look different on every run (uncertainty) | Dropout is random by design | Raise `n_passes`; fix `torch.manual_seed` for exact repeats |
 | You want to explain classical (non-neural) OBIA classifiers | These tools are for neural networks | OBIA rules and trees are readable already: [Classification → rules](../obia/classification.md) |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+gradcam
+uncertainty
+attention
+shap
+```

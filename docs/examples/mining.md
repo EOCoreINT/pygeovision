@@ -1,4 +1,4 @@
-# Mining and land rehabilitation
+# Mining
 
 A mine changes the land twice: when it is opened and when it is closed. The first change is easy to see from space. The second
 is the one that ends up in a closure plan: **is the disturbed ground coming back, how much of it, and is it still improving?**

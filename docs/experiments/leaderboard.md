@@ -1,4 +1,4 @@
-# The leaderboard and the benchmark CLI
+# Leaderboard
 
 ## The leaderboard
 

@@ -10,83 +10,29 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "Getting started"
+msgid "Get started"
 msgstr "البدء"
+
+msgid "Guides"
+msgstr "الأدلة"
+
+msgid "Data"
+msgstr "البيانات"
 
 msgid "Pipelines"
 msgstr "خطوط المعالجة"
 
+msgid "Models"
+msgstr "النماذج"
+
+msgid "Train and deploy"
+msgstr "التدريب والنشر"
+
 msgid "Case studies"
 msgstr "دراسات حالة"
-
-msgid "Examples"
-msgstr "أمثلة"
 
 msgid "Reference"
 msgstr "المرجع"
 
 msgid "Project"
 msgstr "المشروع"
-
-msgid "Data: find and download"
-msgstr "البيانات: البحث والتنزيل"
-
-msgid "Data: prepare and check"
-msgstr "البيانات: التحضير والفحص"
-
-msgid "Segmentation"
-msgstr "تجزئة الصور"
-
-msgid "Classification"
-msgstr "التصنيف"
-
-msgid "Object detection"
-msgstr "اكتشاف الكائنات"
-
-msgid "Change detection"
-msgstr "اكتشاف التغيّر"
-
-msgid "Foundation models"
-msgstr "النماذج التأسيسية"
-
-msgid "Vision-language"
-msgstr "الرؤية واللغة"
-
-msgid "3D / LiDAR"
-msgstr "3D / LiDAR"
-
-msgid "Super-resolution"
-msgstr "الدقة الفائقة"
-
-msgid "Time series"
-msgstr "السلاسل الزمنية"
-
-msgid "Object-based analysis (OBIA)"
-msgstr "التحليل القائم على الكائنات (OBIA)"
-
-msgid "Models"
-msgstr "النماذج"
-
-msgid "Labelling"
-msgstr "وسم البيانات"
-
-msgid "Training"
-msgstr "التدريب"
-
-msgid "Inference"
-msgstr "الاستدلال"
-
-msgid "Experiments"
-msgstr "التجارب"
-
-msgid "Explainability"
-msgstr "القابلية للتفسير"
-
-msgid "Monitoring"
-msgstr "المراقبة"
-
-msgid "Reporting"
-msgstr "التقارير"
-
-msgid "Deployment"
-msgstr "النشر"

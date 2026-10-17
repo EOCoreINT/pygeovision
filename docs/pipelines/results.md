@@ -113,7 +113,7 @@ print((classes == 1).sum() * pixel_ha, "ha flooded;", f"{valid.mean():.0%} of th
 
 ## `run_summary.json`
 
-The complete record of a run, written next to the rasters. Keep it with the results.
+The complete record of a run, written next to the rasters together with the deliverables (so a run made with `--no-report` has none). Keep it with the results.
 
 | Key | Contents |
 |---|---|

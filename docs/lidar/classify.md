@@ -1,4 +1,4 @@
-# Classifying points with a network you trained
+# Classify points
 
 ```python
 r = proc.classify_points(

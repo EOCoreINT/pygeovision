@@ -5,7 +5,7 @@ The [named pipelines](index.md) answer one fixed question each. A **workflow** i
 overrides from the command line. Use it to apply **a network you trained** to many scenes and get vector files out, repeatably.
 
 ```{note}
-Two other things have similar names. `pygeovision channel NAME` runs one of the 40 [named pipelines](catalog/index.md). `pygeovision data pipeline` runs
+Two other things have similar names. `pygeovision channel NAME` runs one of the 41 [named pipelines](catalog/index.md). `pygeovision data pipeline` runs
 the lighter [data pipelines](../data/yaml-pipelines.md) (search, download, preprocess, index, post-process, no network). This page is about
 `pygeovision pipeline`, the workflow runner that includes model inference.
 ```

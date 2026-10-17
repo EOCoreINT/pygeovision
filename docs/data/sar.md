@@ -64,7 +64,7 @@ Optical foundation models (Prithvi, DINOv3) do not accept raw backscatter. The a
 `pygeovision.models.adapters` map radar to the input those models expect:
 `sar_to_hls_6ch` (physics-guided mapping into six HLS-like channels), `sar_to_pseudo_rgb`, `coregister_sar_pair`
 (align a pre/post pair), `validate_sar_ai_input`, `SARPrithviAdapter`, `SARDINOv3Adapter`, and
-`SARSpeckleAugmentation` for fine-tuning. See [Foundation models](../foundation-models/radar.md#radar-with-optical-foundation-models).
+`SARSpeckleAugmentation` for fine-tuning. See [Foundation models](../foundation-models/radar.md).
 
 ## Radar pipelines
 

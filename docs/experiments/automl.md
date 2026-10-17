@@ -1,4 +1,4 @@
-# AutoML: hyper-parameter search
+# AutoML
 
 **Package:** `pygeovision.advanced.automl` · **Class:** `GeoAutoML` · **Needs:** `pip install optuna` (plotting: `plotly`)
 

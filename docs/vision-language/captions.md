@@ -1,4 +1,4 @@
-# Moondream: captions and questions
+# Captions and questions
 
 Moondream2 is a small vision-language model (about 1.8 billion parameters) that looks at one picture and either **writes a
 sentence about it** or **answers a short question**. It is the tool for "what is this tile?" and for a quick check such as "is there
@@ -96,4 +96,3 @@ per-file error for a bad image and carries on.
 ## Related
 
 - [Vision-language overview](index.md), [Which vision-language model](foundation.md), [CLIP](clip.md), [the command line](cli.md).
-- [`MoondreamGeo` in the Python API](../reference/api/builders-vlm.md).

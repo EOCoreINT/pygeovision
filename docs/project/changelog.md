@@ -3,7 +3,7 @@
 What changed in behaviour, grouped by area. This release (2.1.8) is the result of documenting every feature by running it: each
 item below was found because an example did not do what its page said it would, and each has a test. Entries that **change what you
 get** (a different default, an error where there used to be silence) are marked **behaviour change**. For the
-older, longer narrative of audits see the [roadmap](roadmap.md).
+older, longer narrative of audits see the [audit history](audit-history.md).
 
 ## 2.1.8
 
@@ -17,7 +17,7 @@ older, longer narrative of audits see the [roadmap](roadmap.md).
   The navigation bar and the landing page, and the Quickstart, are translated; every other page falls back to English and says "partly
   translated". See `docs/locale/README.md` to add pages or languages, and `docs/tools/check_translations.py` to check them.
 - **New pages:** [Diagnostics](../getting-started/diagnostics.md), [Known issues](../reference/known-issues.md),
-  [Testing](../reference/testing.md) and [Security](../reference/security.md).
+  Testing and [Security](../reference/security.md).
 - **Moved:** the changelog, the roadmap and the contributing guide now live under `project/`. The old addresses redirect.
 - **Build:** `make -C docs html` builds every language and fails on a warning; `make -C docs html-en` builds English only.
   `docs/requirements.txt` gained `furo`, `sphinx-reredirects` and `polib`.
@@ -99,4 +99,4 @@ older, longer narrative of audits see the [roadmap](roadmap.md).
 
 ## Earlier releases
 
-See the [roadmap history](roadmap.md#history).
+See the [audit history](audit-history.md).

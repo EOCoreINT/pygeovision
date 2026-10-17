@@ -13,9 +13,6 @@ msgstr ""
 msgid "Documentation"
 msgstr "文档"
 
-msgid "Tutorials"
-msgstr "教程"
-
 msgid "Community"
 msgstr "社区"
 
@@ -37,9 +34,6 @@ msgstr "语言"
 msgid "Partly translated"
 msgstr "部分已翻译：未翻译的页面以英文显示。"
 
-msgid "Getting started"
-msgstr "快速入门"
-
 msgid "Data"
 msgstr "数据"
 
@@ -60,9 +54,6 @@ msgstr "高级工具"
 
 msgid "Case studies"
 msgstr "案例研究"
-
-msgid "Examples"
-msgstr "示例"
 
 msgid "Reference"
 msgstr "参考"
@@ -130,5 +121,11 @@ msgstr "部署"
 msgid "CLI reference"
 msgstr "命令行参考"
 
-msgid "Python API"
-msgstr "Python API"
+msgid "Get started"
+msgstr "快速入门"
+
+msgid "Guides"
+msgstr "指南"
+
+msgid "Train and deploy"
+msgstr "训练与部署"

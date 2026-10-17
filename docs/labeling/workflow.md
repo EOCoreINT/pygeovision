@@ -1,4 +1,4 @@
-# Worked example: from a bounding box to training chips
+# From a box to training chips
 
 This page strings the labeling tools together for one realistic job: **a building-segmentation training set for a
 scene**, labels from OSM and Microsoft footprints, checked and cleaned. Every command works the same on your own

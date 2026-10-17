@@ -26,10 +26,6 @@ version = ".".join(release.split(".")[:2])
 
 extensions = [
     "myst_parser",
-    "sphinx.ext.autodoc",
-    "sphinx.ext.autosummary",
-    "sphinx.ext.napoleon",
-    "sphinx.ext.viewcode",
     "sphinx_copybutton",
     "sphinx_design",
     "sphinx_reredirects",
@@ -37,35 +33,14 @@ extensions = [
 
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 root_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "_generated_src", "README.md", "locale", "tools", "**/_sidebar.md", "reference/api/_index_table.md"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "_generated_src", "README.md", "locale", "tools"]
 templates_path = ["_templates"]
 
 # --- Markdown (MyST) -----------------------------------------------------------------------------------------------
 myst_enable_extensions = ["colon_fence", "deflist", "fieldlist", "attrs_inline", "tasklist", "substitution"]
 myst_heading_anchors = 3
 myst_substitutions = {"version": release}
-# ref.python: docstrings name classes that exist in both implementations (pygeovision.* and pygeovision.ai.*); the pages show both.
-suppress_warnings = ["myst.header", "ref.python"]
-
-# --- API reference -------------------------------------------------------------------------------------------------
-autodoc_default_options = {"members": True, "undoc-members": False, "show-inheritance": True, "member-order": "bysource"}
-autodoc_typehints = "description"
-autodoc_class_signature = "separated"
-autosummary_generate = False
-napoleon_google_docstring = True
-napoleon_numpy_docstring = True
-napoleon_use_param = True
-napoleon_use_ivar = True      # dataclass "Attributes:" sections become fields, not duplicate objects
-napoleon_use_rtype = False
-# Heavy optional dependencies are not needed to render documentation; importing a module must not require a GPU stack.
-autodoc_mock_imports = [
-    "torch", "torchvision", "torchaudio", "timm", "segmentation_models_pytorch", "transformers", "huggingface_hub",
-    "einops", "albumentations", "optuna", "mlflow", "wandb", "onnx", "onnxruntime", "onnxsim", "open_clip", "faiss",
-    "hdbscan", "umap", "shap", "captum", "laspy", "s2sphere", "boto3", "sagemaker", "azure", "google", "statsmodels",
-    "fastapi", "uvicorn", "websockets", "cv2", "ultralytics", "segment_anything", "sam2", "pygeofetch", "folium",
-    "plotly", "seaborn", "rioxarray", "xarray", "passlib", "jose", "cryptography", "sqlalchemy",
-]
-nitpicky = False
+suppress_warnings = ["myst.header"]
 
 # --- HTML ----------------------------------------------------------------------------------------------------------
 html_theme = "furo"
@@ -93,7 +68,7 @@ _MOVED = {
     "contributing": "project/contributing",
     "reference/changelog": "project/changelog",
     "reference/roadmap": "project/roadmap",
-    "advanced/index": "reference/python-api",
+    "advanced/index": "guides/python",
     "advanced/automl": "experiments/automl",
     "advanced/multitask": "training/multitask",
     "advanced/few-shot": "classification/few-shot",
@@ -108,7 +83,18 @@ _MOVED = {
     "models/foundation": "foundation-models/index",
     "training/advanced": "training/fine-tuning",
     "inference/detection": "detection/predict",
+    # the documentation was rewritten for users of the package: pages about the code were removed
+    "architecture": "getting-started/concepts",
+    "reference/python-api": "guides/python",
+    "reference/testing": "project/contributing",
+    "inference/engine": "inference/index",
 }
+# The generated Python API reference (one page per package) was removed; its old addresses lead to the Python guide.
+for _name in ("advanced", "benchmark", "builders-3d", "builders-change-detection", "builders-classification", "builders-detection",
+              "builders-foundation", "builders-segmentation", "builders-vlm", "client", "core", "data-access", "data-prepare",
+              "datasets", "deployment", "engine", "explainability", "inference", "labeling", "losses", "models", "monitoring",
+              "obia", "pipelines", "reporting", "training", "workflows"):
+    _MOVED[f"reference/api/{_name}"] = "guides/python"
 
 
 def _relative_url(old: str, new: str) -> str:

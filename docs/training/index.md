@@ -257,3 +257,18 @@ about.
 | `size mismatch` / `Missing key(s)` loading the checkpoint | The model name, classes or bands differ from training | [How the registries relate](../models/registry.md) |
 | Old checkpoints from an earlier run are still in the folder | A new run does not clear `output_dir`; `best.pth` and `last.pth` are overwritten, older `epoch_*` files stay | Use a fresh `output_dir` per experiment |
 | Training stopped early | `early_stopping_patience` epochs without improvement | Expected; raise the patience, or inspect `history` for a plateau |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+data
+config
+losses
+fine-tuning
+resuming
+performance
+callbacks
+export
+multitask
+```

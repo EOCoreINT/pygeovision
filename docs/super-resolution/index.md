@@ -72,3 +72,11 @@ with torch.no_grad():
 | Visible grid of seams | Tiles without context | Add padding and crop it, as in [run it](run.md) |
 | Hallucinated texture (stripes, grain) | The model invents detail | Use a smaller scale, compare with the original, never measure on it |
 | Shapes error inside the model | Tile sides not a multiple of 8 | Pad every tile to the same size, as in [run it](run.md) |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+models
+run
+```

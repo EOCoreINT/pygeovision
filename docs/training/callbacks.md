@@ -1,4 +1,4 @@
-# Callbacks and custom metrics
+# Callbacks and metrics
 
 Early stopping, "keep the best *k* checkpoints" and "save the last epoch" are things most runs need. `GeoTrainer` already does
 all three from **settings**, so for a normal run you never write a callback. This page explains what you get for free, how to
@@ -162,4 +162,3 @@ epoch-9 weights back into `model`. The folder then holds `epoch009.pth`, `epoch0
 - [The training configuration](config.md): every setting, including the ones above.
 - [Resuming an interrupted run](resuming.md) and [Experiment tracking](../experiments/tracking.md).
 - [Evaluating a model](../experiments/benchmark.md): scoring a checkpoint on data it has not seen.
-- The classes on the [Python API page for training](../reference/api/training.md).

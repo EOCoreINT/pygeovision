@@ -151,4 +151,3 @@ can use any scheme (`page` for pager-worthy, say), but keep one: a handler like 
 ## Related
 
 - [Monitoring overview](index.md), [Data drift](drift.md), [Performance tracking](performance.md), [Site tracking](site-tracking.md)
-- [`pygeovision.monitoring` in the Python API](../reference/api/monitoring.md)

@@ -1,4 +1,4 @@
-# Deploying models: edge and cloud
+# Deployment
 
 A trained `.pth` file is not yet something a field laptop, a drone computer or a web service can run. Deployment is the step that
 takes a model out of the training environment and puts it where it will be used. This section covers the ways PyGeoVision does that,
@@ -120,6 +120,17 @@ All options are in the [command-line reference](../reference/cli/index.md). Azur
 
 ## Related
 
-- [Exporting and shrinking a model (training)](../training/export.md#exporting-and-shrinking-a-model)
+- [Exporting and shrinking a model (training)](../training/export.md)
 - [Benchmarking](../experiments/benchmark.md), [Installation extras](../getting-started/installation.md)
-- [Python API: `pygeovision.edge` and `pygeovision.cloud`](../reference/api/deployment.md)
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+edge
+jetson
+cloud
+sagemaker
+azure
+vertex
+```

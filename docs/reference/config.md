@@ -56,12 +56,6 @@ cfg.as_pygeofetch_config()                     # the subset pygeofetch understan
 cfg.save()                                     # writes ~/.pygeovision/config.yaml
 ```
 
-```{eval-rst}
-.. autoclass:: pygeovision.core.config.PyGeoVisionConfig
-   :members: load, as_pygeofetch_config, save
-   :no-index:
-```
-
 ## Files read, in order
 
 1. Built-in defaults

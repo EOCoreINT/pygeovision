@@ -1,4 +1,4 @@
-# Inference: running a trained model on imagery
+# Inference
 
 Inference is applying a trained model to new imagery to produce a map. A satellite scene is far too large to hand to a
 network in one piece (a 10,000 × 10,000 pixel scene would need tens of gigabytes of working memory), so PyGeoVision
@@ -220,9 +220,19 @@ first (`pygeovision preprocess clip`), predict each, and mosaic. `StreamingInfer
 | `Could not build 'X'` | The name is in neither registry | `pygeovision models list`; [registries](../models/registry.md) |
 | Grid lines visible in the map | No overlap, or tiles too small | `--overlap` 10–25% of `--chip-size`, `gaussian` blending, larger `--chip-size` |
 | Out of memory | Scene too large for RAM or GPU | Smaller `--chip-size` (GPU); clip the scene into pieces (RAM); `device="cpu"` |
-| Very slow on CPU | Large model, large scene | A GPU; smaller `--overlap`; `tta=False`; export to ONNX ([Advanced training](../training/export.md#exporting-and-shrinking-a-model)) |
+| Very slow on CPU | Large model, large scene | A GPU; smaller `--overlap`; `tta=False`; export to ONNX ([Advanced training](../training/export.md)) |
 | Pixels of value 255 in the output | They are no-data (NaN or the nodata value in the input) | Expected; mask them in your GIS or by `nodata=255` |
 | The whole map is class 0 in one corner | Padded edge or no-data region in the input | Check the input there; with the current engine every real pixel is predicted |
 | Chip prediction failed … Detection models … not compatible | A detector or change-detection model was passed to `TiledInference` | See [Detection](../detection/predict.md); use `ai change` for change models |
 | `✓ 0/0 succeeded` in the old output | All outputs existed and were skipped | Now reported as skipped; `--overwrite` to redo |
 | Different result each run | Dropout or batch-norm in training mode | The engine calls `eval()`; if you pass your own already-wrapped model, check it is in eval mode |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+tiles
+batch
+ensembles
+cli
+```

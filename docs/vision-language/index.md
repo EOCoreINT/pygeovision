@@ -1,4 +1,4 @@
-# Vision-language models: describe, ask, search
+# Vision-language
 
 **Package:** `pygeovision.models.vlm` (also importable from `pygeovision.advanced.vlm`) · **Classes:** `CLIPGeo`,
 `MoondreamGeo`, `GeoImageRetrieval` · **CLI:** `pygeovision vlm caption | query | search` ·
@@ -91,3 +91,14 @@ Supported file types for folders: `.tif .tiff .png .jpg .jpeg`, any capitalisati
   reporting, the CLI error messages, the pinned Moondream revision and both of its API generations (with stand-in models).
 * **Not verified:** any real output of CLIP, RemoteCLIP, GeoRSCLIP or Moondream, and their accuracy on your imagery. Their
   weights are downloaded from the Hugging Face Hub, which is not reachable from the test environment.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+models
+foundation
+clip
+captions
+cli
+```

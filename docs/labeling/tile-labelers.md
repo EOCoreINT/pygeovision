@@ -1,4 +1,4 @@
-# Tile labelers, dataset building and Label Studio
+# Tile labelers and Label Studio
 
 **Package:** `pygeovision.ai.labeling` · **Entry points:** `client.ai.label(tiles, labeler, output_dir)`,
 `GeoDataLoader.prepare(..., labels=...)`

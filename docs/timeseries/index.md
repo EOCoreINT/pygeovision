@@ -1,4 +1,4 @@
-# Time series of a spectral index
+# Time series
 
 **Package:** `pygeovision.advanced.timeseries` · **Class:** `GeoTimeSeries` · **CLI:** `pygeovision timeseries analyze | anomaly` ·
 **Needs:** `rasterio`, `numpy` (`scipy` for p-values, `matplotlib` for plots)

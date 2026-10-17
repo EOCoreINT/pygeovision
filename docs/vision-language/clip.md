@@ -1,4 +1,4 @@
-# CLIP: zero-shot labels and text search
+# CLIP and text search
 
 ## Models
 

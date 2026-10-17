@@ -1,4 +1,4 @@
-# Models that are listed but not available
+# Unavailable models
 
 The registry names a few models so that you can **find** them and see why they are not offered. Building any of them raises
 `NotImplementedError` with the reason. Nothing is substituted: asking for `changeformer-mit-b4` never quietly gives you a

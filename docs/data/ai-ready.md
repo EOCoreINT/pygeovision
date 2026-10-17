@@ -186,7 +186,7 @@ when `fix_georeference_first=True` (the default); if it cannot be repaired the c
 These are **heuristic** mappings that place radar information where an optical network expects "dark water, bright
 vegetation". They are not a calibrated transformation, and a model that has never seen radar will give weak results
 with any of them. For good radar results fine-tune the network on labelled SAR
-([SAR adapters](../foundation-models/radar.md#radar-with-optical-foundation-models)) or use the SAR-native pipelines
+([SAR adapters](../foundation-models/radar.md)) or use the SAR-native pipelines
 ([`sar_flood_mapping`](../pipelines/catalog/sar_flood_mapping.md)), which need no network.
 ```
 

@@ -102,4 +102,3 @@ it. Text search scores (cosine similarities of about 0.15 to 0.35) mean nothing 
 
 - [CLIP: zero-shot labels and text search](../vision-language/clip.md): classification, search, and the reusable index.
 - [Vision-language overview](../vision-language/index.md), [Foundation models overview](index.md), [DINOv3](dinov3.md) for image features without text.
-- [`pygeovision.models.vlm` in the Python API](../reference/api/builders-vlm.md).

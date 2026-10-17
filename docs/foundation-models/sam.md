@@ -122,4 +122,3 @@ building is thousands of pixels and a grid of 32 is plenty; at 10 m a building i
 
 - [Segment Anything labelling](../labeling/sam.md), [Naming segments](../labeling/naming-segments.md), [Foundation models overview](index.md).
 - [Segmentation models](../segmentation/models.md) lists SAM next to the networks that do give classes.
-- [`pygeovision.models.segmentation.sam` in the Python API](../reference/api/builders-segmentation.md).

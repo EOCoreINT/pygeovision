@@ -1,4 +1,4 @@
-# Naming segments with `assign_classes`
+# Naming segments
 
 **Function:** `pygeovision.labeling.assign_classes`
 

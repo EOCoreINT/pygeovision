@@ -1,4 +1,4 @@
-# Uncertainty maps (Monte Carlo Dropout)
+# Uncertainty maps
 
 **Class:** `UncertaintyEstimator` (`pygeovision.explainability`) · **Python:** `client.xai.uncertainty(model, n_passes=20)`
 

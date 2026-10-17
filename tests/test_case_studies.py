@@ -472,12 +472,13 @@ def test_there_is_a_page_for_every_study_and_the_hub_lists_them_all():
                 "london-landcover-habitat", "london-buildings-roads", "london-vegetation"}
     assert {p.stem for p in STUDY_PAGES} == expected
     hub = (DOCS / "case-studies" / "index.md").read_text(encoding="utf-8")
-    assert "toctree" not in hub                       # like the other section indexes: the root toctree lists the pages
     assert {m for m in re.findall(r"\]\(([a-z-]+)\.md\)", hub)} >= expected
-    home = (DOCS / "index.md").read_text(encoding="utf-8")
-    assert ":caption: Case studies" in home
+    # the sidebar lists the hub, and the hub's own toctree lists the pages (so they sit under it in the sidebar)
+    toctree = hub[hub.index("```{toctree}"):]
     for name in expected:
-        assert f"case-studies/{name}\n" in home
+        assert f"\n{name}\n" in toctree, name
+    home = (DOCS / "index.md").read_text(encoding="utf-8")
+    assert ":caption: Case studies" in home and "case-studies/index\n" in home
 
 
 @pytest.mark.parametrize("page", STUDY_PAGES, ids=lambda p: p.stem)

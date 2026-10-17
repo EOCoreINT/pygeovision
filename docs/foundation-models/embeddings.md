@@ -1,4 +1,4 @@
-# Embeddings: TESSERA and AlphaEarth
+# Embeddings
 
 Two products give you a vector for **every pixel** that someone else already computed from a whole year of satellite data, so you never run
 a large encoder yourself. You fetch the numbers for your area, then use them as the input of a very simple model. With a few hundred labelled
@@ -196,4 +196,3 @@ Prithvi a file path, TESSERA a box); the class does not hide that.
 
 - [Foundation models overview](index.md), [Prithvi-EO](prithvi.md), [DOFA](dofa.md), [CLIP and RemoteCLIP](clip.md)
 - [Few-shot classification](../classification/few-shot.md)
-- Python API: [`TesseraGeo` and `AlphaEarthGeo`](../reference/api/builders-foundation.md), [`GeoEmbeddings`](../reference/api/models.md)

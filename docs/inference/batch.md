@@ -176,5 +176,5 @@ per-scene stretch that `infer` uses, so do not mix the two.
 ## Related
 
 - [Inference overview](index.md), [Tiles, overlap and seams](tiles.md), [Combining several models](ensembles.md).
-- [The `infer` commands](../reference/cli/infer.md) and the [Python API for inference](../reference/api/inference.md).
+- [The `infer` commands](../reference/cli/infer.md)
 - A year of scenes? Combine with [monitoring](../monitoring/index.md) to watch the model for drift.

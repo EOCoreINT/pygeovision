@@ -275,10 +275,8 @@ def cli_pages() -> dict[str, str]:
     for g, s, n in index_rows:
         idx.append(f"| [`{g}`]({g}.md) | {s} | {n} |")
     idx.append("")
+    idx.append("```{toctree}\n:hidden:\n:maxdepth: 1\n\n" + "\n".join(g for g, _, _ in index_rows) + "\n```\n")
     pages["index.md"] = "\n".join(idx)
-    # every group is listed directly in the sidebar (docs/index.md includes this file)
-    pages["_sidebar.md"] = (NOTICE + "\n```{toctree}\n:hidden:\n:maxdepth: 1\n:caption: CLI reference\n\nreference/cli/index\n"
-                            + "\n".join(f"reference/cli/{g}" for g, _, _ in index_rows) + "\n```\n")
     return pages
 
 

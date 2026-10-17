@@ -110,4 +110,3 @@ requires `--checkpoint`. [Choosing a model](choosing.md) walks through the decis
 ## Related
 
 - [Training a model](../training/index.md), [Inference](../inference/index.md), [Experiments](../experiments/index.md).
-- Every model's Python code: [the builders in the Python API](../reference/api/models.md).

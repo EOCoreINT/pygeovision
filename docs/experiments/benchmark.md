@@ -1,4 +1,4 @@
-# Benchmarking and model comparison
+# Benchmarking
 
 **Package:** `pygeovision.benchmark` · **Classes:** `ModelEvaluator`, `BenchmarkResult`, `Leaderboard` ·
 **CLI:** `pygeovision benchmark datasets | models | tasks` (catalogue helpers, see [below](leaderboard.md#the-benchmark-cli))

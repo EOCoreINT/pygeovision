@@ -1,4 +1,4 @@
-# Reference products and terrain
+# Reference products
 
 Some questions are best answered by a **published product** rather than by processing imagery yourself: a land-cover
 map, a water-history atlas, a forest/non-forest map, a DEM. PyGeoVision reads only the **window of the product that

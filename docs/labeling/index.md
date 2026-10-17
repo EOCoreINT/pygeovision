@@ -1,4 +1,4 @@
-# Labeling: getting training labels
+# Labeling
 
 A model learns from examples, and an example is an image **plus the right answer for every pixel**. Making those answers
 by hand (tracing every building in a district) takes weeks. PyGeoVision's labeling layer gets you a **first set of
@@ -80,7 +80,7 @@ A worked example of steps 1–5 is on the [workflow page](workflow.md).
 ## Command line
 
 ```console
-$ pygeovision label osm -74.05 40.70 -73.95 40.80 --reference data/nyc.tif -c buildings -c roads -o labels/nyc.tif
+$ pygeovision label osm --reference data/nyc.tif -c buildings -c roads -o labels/nyc.tif -- -74.05 40.70 -73.95 40.80
 $ pygeovision label quality labels/nyc.tif --html
 ```
 
@@ -94,3 +94,20 @@ directly). See the [CLI reference](../reference/cli/label.md).
 - It does not fill gaps. A pixel nobody mapped is background, not "unknown", unless you decide otherwise (see
   [OpenStreetMap](osm.md) on what to do with unmapped areas).
 - It does not give SAM or cluster results class names. That takes a reference map or a person.
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+workflow
+osm
+buildings
+landcover
+sam
+foundation
+naming-segments
+pipeline
+quality
+active
+tile-labelers
+```

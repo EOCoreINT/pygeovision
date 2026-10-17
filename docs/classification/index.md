@@ -114,3 +114,13 @@ wide margin, not that it is right 90% of the time. For decisions:
 | High training accuracy, poor validation accuracy | Over-fitting, or chips from the same scene in both sets | Split by scene or area; augment; use a smaller model or pretrained weights |
 | `ValueError` about the window size (ViT/Swin) | Chip size differs from what the model was built for | `get_model(..., img_size=<your chip size>)` |
 | Zero-shot results look random | The sensor or the bands are far from photographs, or the category words are ambiguous | Use RemoteCLIP, describe the categories in more detail, or train a classifier |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+models
+train
+predict
+few-shot
+```

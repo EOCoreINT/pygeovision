@@ -1,4 +1,4 @@
-# Deliverables: maps, vectors and reports
+# Reports and deliverables
 
 An analysis is only useful once someone else can open it. After every successful pipeline run, PyGeoVision turns the rasters into the things people
 actually use: **a map for a slide, polygons for a GIS, and a report for a decision-maker**, all measured from the delivered rasters so the numbers in the report
@@ -63,7 +63,7 @@ output/
 Deliverables are on by default for every pipeline run.
 
 ```bash
-pygeovision channel flood_mapping … --no-report                        # skip all of it
+pygeovision channel flood_mapping … --no-report                        # skip all of it, including run_summary.json
 pygeovision channel flood_mapping … --report-formats pdf,docx          # only these reports (also xlsx; 'none' for none)
 pygeovision channel flood_mapping … --vector-formats gpkg,shp,kml      # which vector files (gpkg, geojson, shp, kml; 'none')
 pygeovision channel flood_mapping … --class-names "Dry,Flooded,Permanent water"
@@ -130,7 +130,7 @@ your statistics in a table. To give your own analysis a specific question, metho
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| No `deliverables/` folder | `--no-report`, `PYGEOVISION_REPORT=0`, or the build failed | Check `result.metadata["deliverables_error"]`; run `pygeovision report <output>` |
+| No `deliverables/` folder | `--no-report`, `PYGEOVISION_REPORT=0`, or the build failed | After `--no-report`, run again without it (`pygeovision report` needs the `run_summary.json` that flag skips). After a failure, check `result.metadata["deliverables_error"]`, and run `pygeovision report <output>` if `run_summary.json` exists |
 | "pdf report skipped … Install the reporting extras" | Optional libraries missing | `pip install "pygeovision[report]"` |
 | Report has class numbers, not names | A network you trained: PyGeoVision cannot know your labels | `--class-names` now, or [rebuild](rebuilding.md) |
 | Map has no basemap | By design: it must work offline and draw the analysis layer clearly | Open the GeoPackage in QGIS over any basemap |
@@ -138,3 +138,12 @@ your statistics in a table. To give your own analysis a specific question, metho
 | Far fewer polygons than expected | Speckle on a large area was merged by a sieve to stay under the size limit | See [Vector layers](vectors.md#size-limits) |
 | Excel feature sheet is cut off | Excel is limited to the first 5,000 features per layer | Use the GeoPackage for the full table |
 | Shapefile field names are cut at 10 characters | A Shapefile limit | Use the GeoPackage |
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+contents
+vectors
+rebuilding
+```

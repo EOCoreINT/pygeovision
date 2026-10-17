@@ -13,9 +13,6 @@ msgstr ""
 msgid "Documentation"
 msgstr "Documentation"
 
-msgid "Tutorials"
-msgstr "Tutoriels"
-
 msgid "Community"
 msgstr "Communauté"
 
@@ -37,9 +34,6 @@ msgstr "Langue"
 msgid "Partly translated"
 msgstr "Traduction partielle : les pages non traduites restent en anglais."
 
-msgid "Getting started"
-msgstr "Premiers pas"
-
 msgid "Data"
 msgstr "Données"
 
@@ -60,9 +54,6 @@ msgstr "Outils avancés"
 
 msgid "Case studies"
 msgstr "Études de cas"
-
-msgid "Examples"
-msgstr "Exemples"
 
 msgid "Reference"
 msgstr "Référence"
@@ -130,5 +121,11 @@ msgstr "Déploiement"
 msgid "CLI reference"
 msgstr "Référence de la CLI"
 
-msgid "Python API"
-msgstr "API Python"
+msgid "Get started"
+msgstr "Premiers pas"
+
+msgid "Guides"
+msgstr "Guides"
+
+msgid "Train and deploy"
+msgstr "Entraîner et déployer"

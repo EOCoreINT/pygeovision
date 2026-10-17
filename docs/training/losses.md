@@ -1,4 +1,4 @@
-# Loss functions and class imbalance
+# Loss functions
 
 The **loss** is the number the network tries to make small. It measures how wrong the predicted map is. Choosing it
 decides what "wrong" means, and for geospatial data that matters more than for photographs, because the things we map

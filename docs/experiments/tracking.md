@@ -167,4 +167,3 @@ it counts the calls (note that a `step` of 0 is treated as "no step" and also co
 
 - [Resuming an interrupted run](../training/resuming.md), [Training callbacks](../training/callbacks.md), [Training configuration](../training/config.md)
 - [Experiments overview](index.md), [Leaderboard](leaderboard.md), [Hyper-parameter search](search.md)
-- [`ExperimentTracker` in the Python API](../reference/api/training.md)

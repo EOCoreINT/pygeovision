@@ -93,9 +93,12 @@ print(result["n_features"], result["categories"])
 ### Command line
 
 ```console
-$ pygeovision label osm -74.05 40.70 -73.95 40.80 \
-      --reference data/nyc_sentinel2.tif -c buildings -c roads -c water -o labels/nyc_osm.tif
+$ pygeovision label osm --reference data/nyc_sentinel2.tif -c buildings -c roads -c water -o labels/nyc_osm.tif \
+      -- -74.05 40.70 -73.95 40.80
 ```
+
+The four numbers are positional (west, south, east, north), so a negative longitude would be read as an option. Put the options
+first and a `--` before the numbers, as above. For a box with positive longitudes (east of Greenwich) no `--` is needed.
 
 ### Through the client
 

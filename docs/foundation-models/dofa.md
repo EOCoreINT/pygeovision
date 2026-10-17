@@ -155,4 +155,3 @@ Cut scenes into chips of about 224 pixels first ([Preparing training data](../tr
 ## Related
 
 - [Foundation models overview](index.md), [Prithvi-EO](prithvi.md), [DINOv3](dinov3.md), [Embeddings](embeddings.md).
-- [The foundation-model builders in the Python API](../reference/api/builders-foundation.md).

@@ -185,4 +185,3 @@ copy the folder over, and point `weights_path` at it.
 ## Related
 
 - [Foundation models overview](index.md), [Embeddings](embeddings.md), [CLIP and RemoteCLIP](clip.md).
-- [The foundation-model builders in the Python API](../reference/api/builders-foundation.md).

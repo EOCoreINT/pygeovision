@@ -1,4 +1,4 @@
-# Real imagery: cloud holes, weak labels, CRS
+# Real imagery
 
 **Functions:** `obia.fetch_scene`, `obia.fetch_worldcover`, `obia.fetch_osm_polygons`, `obia.valid_mask`,
 `obia.samples_from_raster`, `obia.samples_from_geometries(..., crs=)` · **Client:** `client.obia.scene / worldcover / osm_polygons` ·

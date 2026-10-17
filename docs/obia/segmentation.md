@@ -1,4 +1,4 @@
-# Segmentation: making image objects
+# Segmentation
 
 **Functions:** `obia.segment`, `obia.segment_levels`, `obia.from_labels` · **CLI:** `pygeovision obia segment`
 

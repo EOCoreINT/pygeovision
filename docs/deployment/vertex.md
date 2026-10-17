@@ -163,4 +163,3 @@ longer need them.
 ## Related
 
 - [Cloud overview](cloud.md), [SageMaker](sagemaker.md), [Azure ML](azure.md), [Edge: ONNX export and check](edge.md).
-- [`pygeovision.cloud` in the Python API](../reference/api/deployment.md).

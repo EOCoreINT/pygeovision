@@ -192,8 +192,6 @@ def test_code_fences_are_balanced():
 def test_relative_links_point_at_existing_files():
     bad = []
     for p in _md_files():
-        if p.name == "_index_table.md":          # included by reference/python-api.md: its links are relative to that page
-            continue
         text = re.sub(r"```.*?```", "", p.read_text(), flags=re.S)
         for target in re.findall(r"\]\(([^)\s]+?\.md)(?:#[^)]*)?\)", text):
             if target.startswith(("http://", "https://")):
@@ -228,34 +226,9 @@ def test_model_pages_are_current():
     assert r.returncode == 0, f"run: PYTHONPATH=. python tools/generate_model_pages.py\n{r.stdout}{r.stderr}"
 
 
-def test_python_api_pages_are_current():
-    r = _run_check("generate_api_docs.py")
-    assert r.returncode == 0, f"run: PYTHONPATH=. python tools/generate_api_docs.py\n{r.stdout}{r.stderr}"
-
-
 def test_flow_figures_are_current():
     r = _run_check("make_flow_figures.py")
     assert r.returncode == 0, f"run: PYTHONPATH=. python tools/make_flow_figures.py\n{r.stdout}{r.stderr}"
-
-
-def test_python_api_reference_covers_every_exported_class():
-    """Every CamelCase name a package lists in ``__all__`` must be documented on some Python API page."""
-    import ast
-
-    sys.path.insert(0, str(ROOT / "tools"))
-    try:
-        import generate_api_docs as g
-    finally:
-        sys.path.pop(0)
-    documented = g.documented_names()
-    aliases = {"LabelStudioIntegration"}           # an alias of LabelStudioLabeler, which is documented
-    missing = []
-    for init in (ROOT / "pygeovision").rglob("__init__.py"):
-        names = g._all_of(ast.parse(init.read_text(encoding="utf-8")))
-        for n in names or []:
-            if n[:1].isupper() and not n.isupper() and n not in documented and n not in aliases:
-                missing.append(f"{'.'.join(init.parent.relative_to(ROOT).parts)}.{n}")
-    assert not missing, "exported but not in docs/_data/api_pages.yaml: " + ", ".join(sorted(missing))
 
 
 def test_every_redirect_points_at_a_page_that_exists_and_no_redirect_shadows_a_page():
@@ -269,6 +242,8 @@ def test_every_redirect_points_at_a_page_that_exists_and_no_redirect_shadows_a_p
 
 def test_every_page_is_in_a_sidebar_toctree_or_deliberately_excluded():
     """A page that no toctree lists builds with a warning and is unreachable from the sidebar."""
+    import os
+
     listed = set()
     for p in DOCS.rglob("*.md"):
         if "_build" in p.parts:
@@ -276,12 +251,15 @@ def test_every_page_is_in_a_sidebar_toctree_or_deliberately_excluded():
         for block in re.findall(r"```\{toctree\}(.*?)```", p.read_text(encoding="utf-8"), flags=re.S):
             for line in block.splitlines():
                 line = line.strip()
-                if line and not line.startswith(":") and "<" not in line:
-                    listed.add(line)
-    sidebar_text = "\n".join(p.read_text(encoding="utf-8") for p in DOCS.rglob("_sidebar.md"))
-    for line in sidebar_text.splitlines():
-        if line.strip() and not line.strip().startswith((":", "`")):
-            listed.add(line.strip())
+                if not line or line.startswith(":"):
+                    continue
+                m = re.match(r"^.*<(.+)>$", line)                       # "Title <path>"
+                target = (m.group(1) if m else line)
+                if target.startswith(("http://", "https://")):
+                    continue
+                # entries are relative to the page that holds the toctree (or to the root when they start with a slash)
+                base = DOCS if target.startswith("/") else p.parent
+                listed.add(Path(os.path.normpath(base / target.lstrip("/"))).relative_to(DOCS).as_posix())
     conf = (DOCS / "conf.py").read_text(encoding="utf-8")
     excluded = re.findall(r'"([^"]+)"', conf[conf.index("exclude_patterns"): conf.index("]", conf.index("exclude_patterns"))])
     orphans = []

@@ -17,6 +17,8 @@ Use `label osm` when you have imagery and need quick, approximate training label
 ## Things to know
 
 * Give `--reference` (the image) so the labels sit on the image's exact grid and CRS.
+* The box is four positional numbers, so a negative longitude is read as an option. Put the options first and `--` before the
+  numbers: `label osm -o labels/osm.tif -- -74.05 40.70 -73.95 40.80`.
 * OpenStreetMap is incomplete in many regions and out of date elsewhere; labels are approximate, not truth
   ([OSM labeling](../../labeling/osm.md)).
 * `label quality` uses raster-only heuristics. It is **not** a measure of accuracy.

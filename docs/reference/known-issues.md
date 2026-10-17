@@ -1,7 +1,7 @@
 # Known issues
 
 Limitations and behaviours that differ from what you might expect. Each item says what happens, why, and what to do. The dated
-record of everything that was found and fixed is the [roadmap](../project/roadmap.md); this page is only what is still true today.
+record of everything that was found and fixed is the [audit history](../project/audit-history.md); this page is only what is still true today.
 
 ## Scope: what PyGeoVision does not ship
 
@@ -42,14 +42,6 @@ record of everything that was found and fixed is the [roadmap](../project/roadma
 | **There is no built-in sample scene.** | OBIA works on real imagery only and needs a network for `obia fetch` (Planetary Computer and AWS Earth Search need no credentials). |
 | **Rule strings are evaluated with `pandas.DataFrame.eval`.** | Treat a rules file as code ([Security](security.md)). |
 | **Unnamed bands break NDVI rules.** | A GeoTIFF without band descriptions gets `b1, b2, …`, so no NDVI or NDWI is derived. Add the descriptions once ([OBIA](../obia/index.md#conventions)). |
-
-## Code structure
-
-| Issue | Detail |
-|---|---|
-| **The `PyGeoVision` client is one large module.** | `pygeovision/__init__.py` should move to its own module. |
-| **Seven pairs of classes exist twice.** | The trainer pair was merged by re-export; the others remain ([Architecture](../architecture.md#systems-that-exist-twice)). |
-| **`pygeovision/training/callbacks.py` is imported by nothing.** | The trainer uses `pygeovision/ai/training/callbacks.py`. |
 
 ## Not verified in the documentation environment
 

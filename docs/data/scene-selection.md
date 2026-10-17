@@ -1,4 +1,4 @@
-# Scene selection and mosaicking
+# Scene selection
 
 When you give a pipeline a bounding box and a date window, PyGeoVision does more than "take the first scene". This
 page describes exactly what it does, so you can predict results, read the logs, and decide when to intervene.

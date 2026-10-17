@@ -132,4 +132,3 @@ with rasterio.open("two_of_three.tif", "w", **profile) as dst:
 
 - [Inference overview](index.md), [Predicting many scenes](batch.md), [Tiles, overlap and seams](tiles.md).
 - [Explainability and uncertainty](../explainability/index.md): where a model is unsure.
-- [`pygeovision.inference` in the Python API](../reference/api/inference.md).

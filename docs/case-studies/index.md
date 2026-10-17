@@ -79,3 +79,17 @@ To run the checks behind these pages:
 ```bash
 pytest tests/test_case_studies.py
 ```
+
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+flood-accra
+flood-nepal
+wildfire
+drainage-tyrol
+water-quality
+london-landcover-habitat
+london-buildings-roads
+london-vegetation
+```
