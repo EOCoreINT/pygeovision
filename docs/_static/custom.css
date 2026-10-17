@@ -101,7 +101,7 @@ body[data-theme="dark"] {
   .toc-sticky { width: 15rem; }
   .toc-tree { border-left: 1px solid var(--pgv-line); margin-left: .5rem; padding-top: .3rem; }
 }
-.content { min-width: 0; width: auto; max-width: 82rem; margin: 0 auto; padding: 1.25rem 2.25rem 3rem; }
+.content { min-width: 0; width: auto; max-width: 78rem; margin: 0 auto; padding: 1.25rem 2.25rem 3rem; }
 @media (max-width: 82em) { .content { padding: 1rem 1.25rem 2.5rem; } }
 @media (min-width: 120em) { .content { max-width: 90rem; } }
 
