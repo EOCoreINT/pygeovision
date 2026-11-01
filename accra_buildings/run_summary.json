@@ -1,0 +1,123 @@
+{
+  "pygeovision_version": "2.2.0",
+  "generated_utc": "2026-10-17T21:32:14+00:00",
+  "pipeline": "building_footprints",
+  "title": "Building Footprints",
+  "success": true,
+  "bbox": [
+    -0.25,
+    5.58,
+    -0.15,
+    5.66
+  ],
+  "aoi_area_km2": 98.0118,
+  "period": "n/a (published dataset)",
+  "output_path": "accra_buildings/building_density.tif",
+  "duration_seconds": 102.41461396217346,
+  "parameters": {
+    "cloud_mask": true,
+    "source": "microsoft",
+    "cell_m": 100
+  },
+  "metadata": {
+    "date": "n/a (published dataset)",
+    "crs": "EPSG:32630",
+    "vector_files": [
+      {
+        "name": "buildings",
+        "path": "/home/samuel-appiah-kubi/Desktop/main/OSP/pygeovision/accra_buildings/building_footprints.gpkg"
+      }
+    ]
+  },
+  "stats": {
+    "source": "microsoft",
+    "source_note": "Microsoft Global ML Building Footprints: machine-learning detections on Bing/Maxar/Vexcel imagery of various dates (about 1% false positives reported by the project); building heights where available.",
+    "building_count": 96788,
+    "building_area_ha": 1591.6272559999998,
+    "building_coverage": 0.16213461986520541,
+    "buildings_per_km2": 985.952303113456,
+    "mean_building_area_m2": 164.4446890110344,
+    "median_building_area_m2": 110.69,
+    "aoi_area_km2": 98.16702054892646,
+    "cell_m": 100,
+    "max_cell_coverage": 1.0,
+    "footprints_file": "accra_buildings/building_footprints.gpkg",
+    "buildings_with_height": 0,
+    "mean_height_m": null
+  },
+  "layers": [
+    {
+      "key": "density",
+      "title": "Share of each cell covered by buildings",
+      "file": "accra_buildings/building_density.tif",
+      "kind": "continuous",
+      "classes": [],
+      "summary": {
+        "n_valid": 9836,
+        "n_total": 10080,
+        "valid_fraction": 0.9757936507936508,
+        "min": 0.0,
+        "max": 1.0,
+        "mean": 0.16036319074463184,
+        "std": 0.14752118628098512,
+        "p2": 0.0,
+        "p5": 0.0,
+        "p25": 0.018406249582767487,
+        "median": 0.1438409984111786,
+        "p75": 0.25225700438022614,
+        "p95": 0.4146749898791313,
+        "p98": 0.5207674026489257
+      }
+    },
+    {
+      "key": "count",
+      "title": "Buildings per cell",
+      "file": "accra_buildings/building_count.tif",
+      "kind": "continuous",
+      "classes": [],
+      "summary": {
+        "n_valid": 9836,
+        "n_total": 10080,
+        "valid_fraction": 0.9757936507936508,
+        "min": 0.0,
+        "max": 56.0,
+        "mean": 9.746441642944287,
+        "std": 9.645915139548555,
+        "p2": 0.0,
+        "p5": 0.0,
+        "p25": 1.0,
+        "median": 7.0,
+        "p75": 15.0,
+        "p95": 30.0,
+        "p98": 36.0
+      }
+    }
+  ],
+  "deliverables": {
+    "directory": "accra_buildings/deliverables",
+    "reports": {
+      "pdf": "accra_buildings/deliverables/building_footprints_report.pdf",
+      "xlsx": "accra_buildings/deliverables/building_footprints_report.xlsx",
+      "docx": "accra_buildings/deliverables/building_footprints_report.docx"
+    },
+    "maps": [
+      "accra_buildings/deliverables/maps/building_footprints_map.png",
+      "accra_buildings/deliverables/maps/building_footprints_map_count.png"
+    ],
+    "charts": [
+      "accra_buildings/deliverables/maps/building_footprints_histogram.png"
+    ],
+    "vectors": {
+      "gpkg": [
+        "accra_buildings/deliverables/vectors/building_footprints.gpkg"
+      ],
+      "geojson": [
+        "accra_buildings/deliverables/vectors/geojson/building_footprints_aoi.geojson",
+        "accra_buildings/deliverables/vectors/geojson/building_footprints_buildings.geojson"
+      ]
+    },
+    "summary_json": null,
+    "warnings": []
+  },
+  "deliverables_seconds": 7.98
+}

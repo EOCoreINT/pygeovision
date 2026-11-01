@@ -1,0 +1,124 @@
+{
+  "pygeovision_version": "2.2.0",
+  "generated_utc": "2026-10-17T19:17:11+00:00",
+  "pipeline": "solar_potential",
+  "title": "Solar Potential (terrain illumination)",
+  "success": true,
+  "bbox": [
+    7.8,
+    46.4,
+    8.3,
+    46.7
+  ],
+  "aoi_area_km2": 1278.7832,
+  "period": "2024-12-21",
+  "output_path": "alps_winter_sun/solar_potential.tif",
+  "duration_seconds": 22.821980476379395,
+  "parameters": {
+    "cloud_mask": true,
+    "date": "2024-12-21",
+    "hour": 12
+  },
+  "metadata": {
+    "dem_path": "alps_winter_sun/dem/opentopography/opentopo_SRTMGL1_7.8_46.4_dem.tif"
+  },
+  "stats": {
+    "date": "2024-12-21",
+    "hour": 12,
+    "dem_type": "srtm1arc",
+    "sun_zenith_deg": 69.97617792396223,
+    "sun_azimuth_deg": 179.99989919322786,
+    "mean_relative_irradiance": 0.33611375276887356,
+    "pct_self_shaded": 0.22121862139917695,
+    "note": "Single-instant relative factor; no terrain shadowing, no atmosphere."
+  },
+  "layers": [
+    {
+      "key": "solar",
+      "title": "Relative clear-sky irradiance (0-1)",
+      "file": "alps_winter_sun/solar_potential.tif",
+      "kind": "continuous",
+      "classes": [
+        {
+          "value": 0,
+          "name": "Very low (< 0.25)",
+          "color": "#ffffb2",
+          "pixels": 789910,
+          "area_ha": 51954.41181020063,
+          "share": 0.4062795955892742,
+          "share_aoi": 0.4062795955892743
+        },
+        {
+          "value": 1,
+          "name": "Low (0.25-0.5)",
+          "color": "#fecc5c",
+          "pixels": 556162,
+          "area_ha": 36585.49399211686,
+          "share": 0.2860958133421251,
+          "share_aoi": 0.28609581334212514
+        },
+        {
+          "value": 2,
+          "name": "Moderate (0.5-0.75)",
+          "color": "#fd8d3c",
+          "pixels": 462110,
+          "area_ha": 30403.287079954946,
+          "share": 0.2377514199285668,
+          "share_aoi": 0.23775141992856685
+        },
+        {
+          "value": 3,
+          "name": "High (>= 0.75)",
+          "color": "#e31a1c",
+          "pixels": 135818,
+          "area_ha": 8935.274001709651,
+          "share": 0.06987317114003401,
+          "share_aoi": 0.06987317114003402
+        }
+      ],
+      "summary": {
+        "n_valid": 1944000,
+        "n_total": 1944000,
+        "valid_fraction": 1.0,
+        "min": 0.0,
+        "max": 0.9999242424964905,
+        "mean": 0.33611375277463373,
+        "std": 0.26923493672345683,
+        "p2": 0.0,
+        "p5": 0.0,
+        "p25": 0.04017025604844093,
+        "median": 0.34238722920417786,
+        "p75": 0.5556701421737671,
+        "p95": 0.7808499336242676,
+        "p98": 0.8455184888839724
+      }
+    }
+  ],
+  "deliverables": {
+    "directory": "alps_winter_sun/deliverables",
+    "reports": {
+      "pdf": "alps_winter_sun/deliverables/solar_potential_report.pdf",
+      "xlsx": "alps_winter_sun/deliverables/solar_potential_report.xlsx",
+      "docx": "alps_winter_sun/deliverables/solar_potential_report.docx"
+    },
+    "maps": [
+      "alps_winter_sun/deliverables/maps/solar_potential_map.png"
+    ],
+    "charts": [
+      "alps_winter_sun/deliverables/maps/solar_potential_chart.png",
+      "alps_winter_sun/deliverables/maps/solar_potential_histogram.png"
+    ],
+    "vectors": {
+      "gpkg": [
+        "alps_winter_sun/deliverables/vectors/solar_potential.gpkg"
+      ],
+      "geojson": [
+        "alps_winter_sun/deliverables/vectors/geojson/solar_potential_aoi.geojson",
+        "alps_winter_sun/deliverables/vectors/geojson/solar_potential_irradiance_classes.geojson"
+      ]
+    },
+    "summary_json": null,
+    "warnings": []
+  },
+  "deliverables_seconds": 12.76
+}
