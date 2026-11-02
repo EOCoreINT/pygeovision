@@ -1,4 +1,5 @@
 """Number formatting shared by the PDF, Word and Excel writers."""
+
 from __future__ import annotations
 
 import math
@@ -8,9 +9,19 @@ NA = "n/a"
 
 #: format code -> Excel number format (fractions are stored as 0-1, so "0.0%" shows 12.3 %)
 EXCEL_FORMATS = {
-    "frac": "0.0%", "ha": "#,##0.0", "km2": "#,##0.00", "int": "#,##0",
-    "num1": "0.0", "num2": "0.00", "num3": "0.000", "num4": "0.0000",
-    "c": "0.0", "m": "#,##0.0", "deg": "0.0", "text": "@", "bool": "@",
+    "frac": "0.0%",
+    "ha": "#,##0.0",
+    "km2": "#,##0.00",
+    "int": "#,##0",
+    "num1": "0.0",
+    "num2": "0.00",
+    "num3": "0.000",
+    "num4": "0.0000",
+    "c": "0.0",
+    "m": "#,##0.0",
+    "deg": "0.0",
+    "text": "@",
+    "bool": "@",
 }
 
 

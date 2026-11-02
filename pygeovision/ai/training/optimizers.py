@@ -1,4 +1,5 @@
 """Optimizer and LR scheduler builders (Phase 4.1)."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +9,7 @@ def build_optimizer(model: Any, cfg: Any) -> Any:
     """Build optimizer from TrainingConfig."""
     try:
         import torch.optim as optim
+
         params = [p for p in model.parameters() if p.requires_grad]
         name = cfg.optimizer.lower()
         if name == "adamw":
@@ -15,31 +17,41 @@ def build_optimizer(model: Any, cfg: Any) -> Any:
         elif name == "adam":
             return optim.Adam(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
         elif name == "sgd":
-            return optim.SGD(params, lr=cfg.learning_rate, momentum=cfg.momentum,
-                             weight_decay=cfg.weight_decay, nesterov=cfg.nesterov)
+            return optim.SGD(
+                params,
+                lr=cfg.learning_rate,
+                momentum=cfg.momentum,
+                weight_decay=cfg.weight_decay,
+                nesterov=cfg.nesterov,
+            )
         elif name == "lion":
             try:
                 from lion_pytorch import Lion
+
                 return Lion(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
             except ImportError:
                 return optim.AdamW(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
         elif name == "lars":
             try:
                 from torch.optim import SGD
-                from torch.optim.lr_scheduler import LinearLR
-                return SGD(params, lr=cfg.learning_rate, momentum=0.9, weight_decay=cfg.weight_decay)
+                from torch.optim.lr_scheduler import LinearLR  # noqa: F401
+
+                return SGD(
+                    params, lr=cfg.learning_rate, momentum=0.9, weight_decay=cfg.weight_decay
+                )
             except Exception:
                 return optim.AdamW(params, lr=cfg.learning_rate)
         else:
             return optim.AdamW(params, lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
-    except ImportError:
-        raise ImportError("torch is required for training. pip install torch")
+    except ImportError as exc:
+        raise ImportError("torch is required for training. pip install torch") from exc
 
 
 def build_scheduler(optimizer: Any, cfg: Any, steps_per_epoch: int = 100) -> Any | None:
     """Build LR scheduler from TrainingConfig."""
     try:
         import torch.optim.lr_scheduler as sched
+
         name = cfg.scheduler.lower()
         total_steps = cfg.max_epochs * steps_per_epoch
         warmup_steps = cfg.warmup_epochs * steps_per_epoch
@@ -57,33 +69,56 @@ def build_scheduler(optimizer: Any, cfg: Any, steps_per_epoch: int = 100) -> Any
             # consistent with "linear"/"onecycle" below.
             scheduler = sched.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=cfg.min_lr)
         elif name == "cosine_warmup":
+
             def _lr_lambda(step):
                 if step < warmup_steps:
-                    return cfg.warmup_lr_scale + (1.0 - cfg.warmup_lr_scale) * step / max(warmup_steps, 1)
+                    return cfg.warmup_lr_scale + (1.0 - cfg.warmup_lr_scale) * step / max(
+                        warmup_steps, 1
+                    )
                 progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
                 import math
-                return cfg.min_lr / cfg.learning_rate + 0.5 * (1.0 - cfg.min_lr / cfg.learning_rate) * (1 + math.cos(math.pi * progress))
+
+                return cfg.min_lr / cfg.learning_rate + 0.5 * (
+                    1.0 - cfg.min_lr / cfg.learning_rate
+                ) * (1 + math.cos(math.pi * progress))
+
             scheduler = sched.LambdaLR(optimizer, _lr_lambda)
         elif name == "linear":
-            scheduler = sched.LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=total_steps)
+            scheduler = sched.LinearLR(
+                optimizer, start_factor=1.0, end_factor=0.0, total_iters=total_steps
+            )
         elif name == "step":
             # Real fix, same unit-mismatch bug as "cosine" above:
             # lr_step_size is documented/intended as "decay every N
             # epochs" but was passed directly as step_size to a
             # per-batch-stepped scheduler, decaying N times too fast.
             # Now scaled by steps_per_epoch to match real stepping frequency.
-            scheduler = sched.StepLR(optimizer, step_size=cfg.lr_step_size * steps_per_epoch, gamma=cfg.lr_gamma)
+            scheduler = sched.StepLR(
+                optimizer, step_size=cfg.lr_step_size * steps_per_epoch, gamma=cfg.lr_gamma
+            )
         elif name == "plateau":
-            scheduler = sched.ReduceLROnPlateau(optimizer, mode="min", factor=cfg.lr_gamma,
-                                                patience=5, min_lr=cfg.min_lr)
+            scheduler = sched.ReduceLROnPlateau(
+                optimizer, mode="min", factor=cfg.lr_gamma, patience=5, min_lr=cfg.min_lr
+            )
         elif name == "onecycle":
-            scheduler = sched.OneCycleLR(optimizer, max_lr=cfg.learning_rate,
-                                          total_steps=total_steps, pct_start=0.1)
+            scheduler = sched.OneCycleLR(
+                optimizer, max_lr=cfg.learning_rate, total_steps=total_steps, pct_start=0.1
+            )
         elif name == "warmup_cosine":
             from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
-            warmup = LinearLR(optimizer, start_factor=cfg.warmup_lr_scale, end_factor=1.0, total_iters=warmup_steps)
-            cosine = CosineAnnealingLR(optimizer, T_max=total_steps - warmup_steps, eta_min=cfg.min_lr)
-            scheduler = SequentialLR(optimizer, schedulers=[warmup, cosine], milestones=[warmup_steps])
+
+            warmup = LinearLR(
+                optimizer,
+                start_factor=cfg.warmup_lr_scale,
+                end_factor=1.0,
+                total_iters=warmup_steps,
+            )
+            cosine = CosineAnnealingLR(
+                optimizer, T_max=total_steps - warmup_steps, eta_min=cfg.min_lr
+            )
+            scheduler = SequentialLR(
+                optimizer, schedulers=[warmup, cosine], milestones=[warmup_steps]
+            )
         else:
             scheduler = sched.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=cfg.min_lr)
         return scheduler

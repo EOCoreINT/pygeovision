@@ -23,6 +23,7 @@ Architecture (matches the paper exactly):
 This is NOT a registry stub — every module below is a real, working
 nn.Module with verified forward-pass shapes (see the test suite).
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,6 +37,7 @@ def _require_torch():
         import torch
         import torch.nn as nn
         import torch.nn.functional as F
+
         return torch, nn, F
     except ImportError:
         raise ImportError("torch required for BIT: pip install torch") from None
@@ -43,8 +45,10 @@ def _require_torch():
 
 # ── ResNet backbone (dilated, stops at layer3/layer4 like the official impl) ──
 
-def _build_resnet_backbone(backbone: str, in_channels: int, pretrained: bool,
-                            resnet_stages_num: int):
+
+def _build_resnet_backbone(
+    backbone: str, in_channels: int, pretrained: bool, resnet_stages_num: int
+):
     """Build a torchvision ResNet trunk, truncated after `resnet_stages_num`
     stages, with dilation in the later stages to keep spatial resolution
     (matches the official implementation's use of dilated convolutions
@@ -101,16 +105,22 @@ def _build_resnet_backbone(backbone: str, in_channels: int, pretrained: bool,
 
     if in_channels != 3:
         old_conv = net.conv1
-        new_conv = nn.Conv2d(in_channels, old_conv.out_channels,
-                              kernel_size=old_conv.kernel_size, stride=old_conv.stride,
-                              padding=old_conv.padding, bias=False)
+        new_conv = nn.Conv2d(
+            in_channels,
+            old_conv.out_channels,
+            kernel_size=old_conv.kernel_size,
+            stride=old_conv.stride,
+            padding=old_conv.padding,
+            bias=False,
+        )
         if pretrained:
             with torch.no_grad():
                 if in_channels >= 3:
                     new_conv.weight[:, :3] = old_conv.weight
                     if in_channels > 3:
                         new_conv.weight[:, 3:] = old_conv.weight.mean(dim=1, keepdim=True).repeat(
-                            1, in_channels - 3, 1, 1)
+                            1, in_channels - 3, 1, 1
+                        )
                 else:
                     new_conv.weight[:] = old_conv.weight[:, :in_channels]
         net.conv1 = new_conv
@@ -123,14 +133,23 @@ class ResNetBackbone:
     stem -> layer1 -> layer2 -> [layer3] -> [layer4] and stops at the
     configured stage, matching BIT_CD's `resnet_stages_num`."""
 
-    def __new__(cls, backbone: str, in_channels: int, pretrained: bool,
-                resnet_stages_num: int = 4, if_upsample_2x: bool = True):
+    def __new__(
+        cls,
+        backbone: str,
+        in_channels: int,
+        pretrained: bool,
+        resnet_stages_num: int = 4,
+        if_upsample_2x: bool = True,
+    ):
         torch, nn, F = _require_torch()
         net, out_channels, stages = _build_resnet_backbone(
-            backbone, in_channels, pretrained, resnet_stages_num,
+            backbone,
+            in_channels,
+            pretrained,
+            resnet_stages_num,
         )
 
-        class _Backbone(nn.Module):
+        class _Backbone(nn.Module):  # type: ignore[name-defined]
             def __init__(self):
                 super().__init__()
                 self.resnet = net
@@ -141,7 +160,10 @@ class ResNetBackbone:
 
             def forward(self, x):
                 r = self.resnet
-                x = r.conv1(x); x = r.bn1(x); x = r.relu(x); x = r.maxpool(x)
+                x = r.conv1(x)
+                x = r.bn1(x)
+                x = r.relu(x)
+                x = r.maxpool(x)
                 x = r.layer1(x)
                 x = r.layer2(x)
                 if self.stages >= 4:
@@ -157,50 +179,59 @@ class ResNetBackbone:
 
 # ── Transformer building blocks (standard pre-norm transformer, per paper) ──
 
+
 def _build_transformer_modules():
     torch, nn, F = _require_torch()
 
-    class Residual(nn.Module):
+    class Residual(nn.Module):  # type: ignore[name-defined]
         def __init__(self, fn):
             super().__init__()
             self.fn = fn
+
         def forward(self, x, **kw):
             return self.fn(x, **kw) + x
 
-    class PreNorm(nn.Module):
+    class PreNorm(nn.Module):  # type: ignore[name-defined]
         def __init__(self, dim, fn):
             super().__init__()
             self.norm = nn.LayerNorm(dim)
             self.fn = fn
+
         def forward(self, x, **kw):
             return self.fn(self.norm(x), **kw)
 
-    class PreNorm2(nn.Module):
+    class PreNorm2(nn.Module):  # type: ignore[name-defined]
         """Pre-norm variant for cross-attention (decoder): normalises the
         query stream only, matching the official TransformerDecoder."""
+
         def __init__(self, dim, fn):
             super().__init__()
             self.norm = nn.LayerNorm(dim)
             self.fn = fn
+
         def forward(self, x, m, **kw):
             return self.fn(self.norm(x), m, **kw)
 
-    class FeedForward(nn.Module):
+    class FeedForward(nn.Module):  # type: ignore[name-defined]
         def __init__(self, dim, hidden_dim, dropout=0.0):
             super().__init__()
             self.net = nn.Sequential(
-                nn.Linear(dim, hidden_dim), nn.GELU(), nn.Dropout(dropout),
-                nn.Linear(hidden_dim, dim), nn.Dropout(dropout),
+                nn.Linear(dim, hidden_dim),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, dim),
+                nn.Dropout(dropout),
             )
+
         def forward(self, x):
             return self.net(x)
 
-    class MultiHeadAttention(nn.Module):
+    class MultiHeadAttention(nn.Module):  # type: ignore[name-defined]
         def __init__(self, dim, heads=8, dim_head=64, dropout=0.0):
             super().__init__()
             inner_dim = dim_head * heads
             self.heads = heads
-            self.scale = dim_head ** -0.5
+            self.scale = dim_head**-0.5
             self.to_q = nn.Linear(dim, inner_dim, bias=False)
             self.to_k = nn.Linear(dim, inner_dim, bias=False)
             self.to_v = nn.Linear(dim, inner_dim, bias=False)
@@ -217,34 +248,50 @@ def _build_transformer_modules():
             out = (attn @ v).transpose(1, 2).reshape(B, N, -1)
             return self.to_out(out)
 
-    class TransformerEncoder(nn.Module):
+    class TransformerEncoder(nn.Module):  # type: ignore[name-defined]
         """Standard transformer encoder — models context jointly across
         both images' semantic tokens (concatenated before this module)."""
+
         def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0.0):
             super().__init__()
-            self.layers = nn.ModuleList([
-                nn.ModuleList([
-                    Residual(PreNorm(dim, MultiHeadAttention(dim, heads, dim_head, dropout))),
-                    Residual(PreNorm(dim, FeedForward(dim, mlp_dim, dropout))),
-                ]) for _ in range(depth)
-            ])
+            self.layers = nn.ModuleList(
+                [
+                    nn.ModuleList(
+                        [
+                            Residual(
+                                PreNorm(dim, MultiHeadAttention(dim, heads, dim_head, dropout))
+                            ),
+                            Residual(PreNorm(dim, FeedForward(dim, mlp_dim, dropout))),
+                        ]
+                    )
+                    for _ in range(depth)
+                ]
+            )
+
         def forward(self, x):
             for attn, ff in self.layers:
                 x = attn(x)
                 x = ff(x)
             return x
 
-    class TransformerDecoder(nn.Module):
+    class TransformerDecoder(nn.Module):  # type: ignore[name-defined]
         """Siamese decoder — projects context-rich tokens back into pixel
         space via cross-attention (query=pixels, key/value=tokens)."""
+
         def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0.0):
             super().__init__()
-            self.layers = nn.ModuleList([
-                nn.ModuleList([
-                    PreNorm2(dim, MultiHeadAttention(dim, heads, dim_head, dropout)),
-                    Residual(PreNorm(dim, FeedForward(dim, mlp_dim, dropout))),
-                ]) for _ in range(depth)
-            ])
+            self.layers = nn.ModuleList(
+                [
+                    nn.ModuleList(
+                        [
+                            PreNorm2(dim, MultiHeadAttention(dim, heads, dim_head, dropout)),
+                            Residual(PreNorm(dim, FeedForward(dim, mlp_dim, dropout))),
+                        ]
+                    )
+                    for _ in range(depth)
+                ]
+            )
+
         def forward(self, x, m):
             for attn, ff in self.layers:
                 x = attn(x, m) + x
@@ -274,9 +321,10 @@ class BITModel:
         TransformerEncoder, TransformerDecoder = _build_transformer_modules()
 
         backbone_net = ResNetBackbone(backbone, in_channels, pretrained, resnet_stages_num)
-        dim = backbone_net.out_channels  # 32, matches BIT_CD's conv_pred output
+        # 32, matches BIT_CD's conv_pred output
+        dim = backbone_net.out_channels  # type: ignore[attr-defined]
 
-        class BIT(nn.Module):
+        class BIT(nn.Module):  # type: ignore[name-defined]
             def __init__(self):
                 super().__init__()
                 self.backbone = backbone_net
@@ -291,46 +339,58 @@ class BITModel:
                 self.pos_embedding_decoder = nn.Parameter(torch.randn(1, dim, 32, 32))
 
                 self.encoder = TransformerEncoder(
-                    dim=dim, depth=enc_depth, heads=8, dim_head=dim_head, mlp_dim=dim * 2,
+                    dim=dim,
+                    depth=enc_depth,
+                    heads=8,
+                    dim_head=dim_head,
+                    mlp_dim=dim * 2,
                 )
                 self.decoder = TransformerDecoder(
-                    dim=dim, depth=dec_depth, heads=8, dim_head=decoder_dim_head, mlp_dim=dim * 2,
+                    dim=dim,
+                    depth=dec_depth,
+                    heads=8,
+                    dim_head=decoder_dim_head,
+                    mlp_dim=dim * 2,
                 )
 
                 self.classifier = nn.Sequential(
-                    nn.Conv2d(dim, dim, kernel_size=3, padding=1), nn.BatchNorm2d(dim),
+                    nn.Conv2d(dim, dim, kernel_size=3, padding=1),
+                    nn.BatchNorm2d(dim),
                     nn.ReLU(inplace=True),
                     nn.Conv2d(dim, num_classes, kernel_size=3, padding=1),
                 )
 
             def _tokenize(self, x):
                 B, C, H, W = x.shape
-                spatial_attention = self.conv_a(x)                       # (B, token_len, H, W)
+                spatial_attention = self.conv_a(x)  # (B, token_len, H, W)
                 spatial_attention = spatial_attention.view(B, self.token_len, -1)
                 spatial_attention = torch.softmax(spatial_attention, dim=-1)
-                x_flat = x.view(B, C, -1).permute(0, 2, 1)                # (B, HW, C)
-                tokens = torch.einsum("bln,bnc->blc", spatial_attention, x_flat)  # (B, token_len, C)
+                x_flat = x.view(B, C, -1).permute(0, 2, 1)  # (B, HW, C)
+                tokens = torch.einsum(
+                    "bln,bnc->blc", spatial_attention, x_flat
+                )  # (B, token_len, C)
                 return tokens
 
             def _decode(self, x, tokens):
                 B, C, H, W = x.shape
-                pos = F.interpolate(self.pos_embedding_decoder, size=(H, W),
-                                     mode="bilinear", align_corners=True)
+                pos = F.interpolate(
+                    self.pos_embedding_decoder, size=(H, W), mode="bilinear", align_corners=True
+                )
                 x = x + pos
-                x_flat = x.view(B, C, -1).permute(0, 2, 1)                # (B, HW, C)
+                x_flat = x.view(B, C, -1).permute(0, 2, 1)  # (B, HW, C)
                 x_out = self.decoder(x_flat, tokens)
                 x_out = x_out.permute(0, 2, 1).view(B, C, H, W)
                 return x_out
 
             def forward(self, img_a, img_b):
-                fa = self.backbone(img_a)   # (B, 32, H', W')
-                fb = self.backbone(img_b)
+                fa = self.backbone(img_a)  # type: ignore[operator]  # (B, 32, H', W')
+                fb = self.backbone(img_b)  # type: ignore[operator]
 
-                ta = self._tokenize(fa)     # (B, token_len, 32)
+                ta = self._tokenize(fa)  # (B, token_len, 32)
                 tb = self._tokenize(fb)
                 tokens = torch.cat([ta, tb], dim=1) + self.pos_embedding
                 tokens = self.encoder(tokens)
-                ta_ctx, tb_ctx = tokens[:, :self.token_len], tokens[:, self.token_len:]
+                ta_ctx, tb_ctx = tokens[:, : self.token_len], tokens[:, self.token_len :]
 
                 fa_ref = self._decode(fa, ta_ctx)
                 fb_ref = self._decode(fb, tb_ctx)
@@ -343,13 +403,21 @@ class BITModel:
         return BIT()
 
 
-def build_bit(num_classes: int = 2, in_channels: int = 3, backbone: str = "resnet18",
-              pretrained: bool = True, **kwargs) -> Any:
+def build_bit(
+    num_classes: int = 2,
+    in_channels: int = 3,
+    backbone: str = "resnet18",
+    pretrained: bool = True,
+    **kwargs,
+) -> Any:
     """Factory used by the model registry — `get_model('bit-r50', ...)`."""
     backbone = "resnet50" if "r50" in backbone or backbone == "resnet50" else "resnet18"
     return BITModel(
-        in_channels=in_channels, num_classes=num_classes,
-        backbone=backbone, pretrained=pretrained, **kwargs,
+        in_channels=in_channels,
+        num_classes=num_classes,
+        backbone=backbone,
+        pretrained=pretrained,
+        **kwargs,
     )
 
 
@@ -367,32 +435,41 @@ class BITChangeDetector:
         result = detector.detect("before.tif", "after.tif", "change.tif")
     """
 
-    def __init__(self, num_classes: int = 2, in_channels: int = 4,
-                 backbone: str = "resnet18", device: str | None = None) -> None:
+    def __init__(
+        self,
+        num_classes: int = 2,
+        in_channels: int = 4,
+        backbone: str = "resnet18",
+        device: str | None = None,
+    ) -> None:
         self.num_classes = num_classes
         self.in_channels = in_channels
         self.backbone = backbone
         self.device = device or self._auto_device()
-        self._model = None
+        self._model: Any = None
 
     @staticmethod
     def _auto_device():
         try:
             import torch
+
             return "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
             return "cpu"
 
     def build(self) -> Any:
-        self._model = BITModel(
-            in_channels=self.in_channels, num_classes=self.num_classes,
-            backbone=self.backbone, pretrained=False,
+        self._model = BITModel(  # type: ignore[attr-defined]
+            in_channels=self.in_channels,
+            num_classes=self.num_classes,
+            backbone=self.backbone,
+            pretrained=False,
         ).to(self.device)
         return self._model
 
     @staticmethod
     def _fix_channels(arr, target_c: int):
         import numpy as np
+
         c = arr.shape[0]
         if c == target_c:
             return arr
@@ -401,8 +478,9 @@ class BITChangeDetector:
         repeats = (target_c + c - 1) // c
         return np.concatenate([arr] * repeats, axis=0)[:target_c]
 
-    def detect(self, before_path: str, after_path: str,
-               output_path: str = "./output/bit_change.tif") -> dict:
+    def detect(
+        self, before_path: str, after_path: str, output_path: str = "./output/bit_change.tif"
+    ) -> dict:
         """Detect changes between two co-registered GeoTIFFs.
 
         Handles channel mismatches the same way as ChangeFormer: extra
@@ -413,6 +491,7 @@ class BITChangeDetector:
 
         try:
             import pathlib
+
             import numpy as np
             import rasterio
             import torch
@@ -449,7 +528,7 @@ class BITChangeDetector:
 
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         profile.update(count=1, dtype="uint8", compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(pred[np.newaxis])

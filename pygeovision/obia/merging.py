@@ -37,6 +37,7 @@ Scale values are therefore *comparable in meaning* to textbook values (bands
 are stretched to 0-255) but will not reproduce eCognition's object boundaries
 exactly.  Say so when comparing against eCognition results.
 """
+
 from __future__ import annotations
 
 import heapq
@@ -65,8 +66,9 @@ class RegionMerger:
     band_weights : per-band ``w_b`` (default: equal, summing to 1).
     """
 
-    def __init__(self, image, init_labels, color_weight=0.9,
-                 compactness_weight=0.5, band_weights=None):
+    def __init__(
+        self, image, init_labels, color_weight=0.9, compactness_weight=0.5, band_weights=None
+    ):
         if not 0.0 <= color_weight <= 1.0:
             raise ValueError("color_weight must be in [0, 1]")
         if not 0.0 <= compactness_weight <= 1.0:
@@ -111,7 +113,7 @@ class RegionMerger:
 
         # adjacency + perimeter
         a, b_, ln = border_pairs(self._init)
-        self.adj: list[dict[int, int]] = [dict() for _ in range(N)]
+        self.adj: list[dict[int, int]] = [{} for _ in range(N)]
         per = image_edge_lengths(self._init, N).astype(np.float64)
         for x, y, l in zip(a.tolist(), b_.tolist(), ln.tolist()):
             self.adj[x][y] = l
@@ -152,8 +154,9 @@ class RegionMerger:
         bm = self._bbox_perim(r0, r1, c0, c1)
         ba = self._bbox_perim(self.r0[a], self.r1[a], self.c0[a], self.c1[a])
         bb = self._bbox_perim(self.r0[b], self.r1[b], self.c0[b], self.c1[b])
-        h_cmpct = nm * lm / math.sqrt(nm) - (na * self.l[a] / math.sqrt(na)
-                                              + nb * self.l[b] / math.sqrt(nb))
+        h_cmpct = nm * lm / math.sqrt(nm) - (
+            na * self.l[a] / math.sqrt(na) + nb * self.l[b] / math.sqrt(nb)
+        )
         h_smooth = nm * lm / bm - (na * self.l[a] / ba + nb * self.l[b] / bb)
         h_shape = self.wk * h_cmpct + (1.0 - self.wk) * h_smooth
         return self.wc * h_color + (1.0 - self.wc) * h_shape
@@ -161,8 +164,9 @@ class RegionMerger:
     def _push(self, a: int, b: int, shared: int):
         if a > b:
             a, b = b, a
-        heapq.heappush(self._heap, (self._cost(a, b, shared), a, b,
-                                    int(self.ver[a]), int(self.ver[b])))
+        heapq.heappush(
+            self._heap, (self._cost(a, b, shared), a, b, int(self.ver[a]), int(self.ver[b]))
+        )
 
     # --------------------------------------------------------------- merging
     def _merge(self, a: int, b: int):
@@ -190,7 +194,7 @@ class RegionMerger:
         for nb, sh in self.adj[a].items():
             self._push(a, nb, sh)
 
-    def run(self, scale: float) -> "RegionMerger":
+    def run(self, scale: float) -> RegionMerger:
         """Merge until the cheapest remaining merge costs >= ``scale**2``."""
         if scale < 0:
             raise ValueError("scale must be >= 0")
@@ -198,8 +202,7 @@ class RegionMerger:
         heap = self._heap
         while heap:
             cost, a, b, va, vb = heap[0]
-            if not (self.alive[a] and self.alive[b]
-                    and self.ver[a] == va and self.ver[b] == vb):
+            if not (self.alive[a] and self.alive[b] and self.ver[a] == va and self.ver[b] == vb):
                 heapq.heappop(heap)
                 continue
             if cost >= thr:

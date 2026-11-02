@@ -8,6 +8,7 @@ stacked -- but nothing upstream ever resolved this. Both scenes were
 individually correct (their own bands were internally aligned), but the
 PAIR was never aligned to each other.
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
@@ -39,8 +40,17 @@ class TestAlignToCommonGrid:
         path_a, path_b = tmp_path / "before.tif", tmp_path / "after.tif"
         for p, size, transform in [(path_a, size_a, transform_a), (path_b, size_b, transform_b)]:
             data = rng.integers(500, 3000, (3, *size)).astype("uint16")
-            with rasterio.open(p, "w", driver="GTiff", height=size[0], width=size[1], count=3,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size[0],
+                width=size[1],
+                count=3,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(data)
 
         aligned_a, aligned_b = pipeline._align_to_common_grid(path_a, path_b, tmp_path / "aligned")
@@ -53,10 +63,10 @@ class TestAlignToCommonGrid:
     def test_aligned_pair_is_accepted_by_run_pair_without_crashing(self, tmp_path):
         """End-to-end: the actual consumer of this alignment (siamese
         change-detection inference) must accept the result cleanly."""
-        torch = pytest.importorskip("torch", reason="torch not installed")
+        pytest.importorskip("torch", reason="torch not installed")
         pytest.importorskip("segmentation_models_pytorch", reason="smp not installed")
-        from pygeovision.ai.models.architectures.change_detection import build_siamese_unet
         from pygeovision.ai.inference.tiled_inference import TiledInference
+        from pygeovision.ai.models.architectures.change_detection import build_siamese_unet
 
         pipeline = _make_pipeline()
         size_a, size_b = (60, 50), (65, 55)
@@ -66,15 +76,28 @@ class TestAlignToCommonGrid:
         path_a, path_b = tmp_path / "before.tif", tmp_path / "after.tif"
         for p, size, transform in [(path_a, size_a, transform_a), (path_b, size_b, transform_b)]:
             data = rng.integers(500, 3000, (3, *size)).astype("uint16")
-            with rasterio.open(p, "w", driver="GTiff", height=size[0], width=size[1], count=3,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size[0],
+                width=size[1],
+                count=3,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(data)
 
         aligned_a, aligned_b = pipeline._align_to_common_grid(path_a, path_b, tmp_path / "aligned")
 
-        model = build_siamese_unet(in_channels=3, num_classes=2, encoder="resnet18", pretrained=False)
+        model = build_siamese_unet(
+            in_channels=3, num_classes=2, encoder="resnet18", pretrained=False
+        )
         engine = TiledInference(model, tile_size=64, overlap=16)
-        pred = engine.run_pair(str(aligned_a), str(aligned_b), str(tmp_path / "change.tif"), num_classes=2)
+        pred = engine.run_pair(
+            str(aligned_a), str(aligned_b), str(tmp_path / "change.tif"), num_classes=2
+        )
         assert pred is not None
 
     def test_non_overlapping_images_are_left_unchanged_not_corrupted(self, tmp_path):
@@ -90,8 +113,17 @@ class TestAlignToCommonGrid:
         path_a, path_b = tmp_path / "a.tif", tmp_path / "b.tif"
         for p, transform in [(path_a, transform_a), (path_b, transform_b)]:
             data = rng.integers(500, 3000, (3, *size)).astype("uint16")
-            with rasterio.open(p, "w", driver="GTiff", height=size[0], width=size[1], count=3,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size[0],
+                width=size[1],
+                count=3,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(data)
 
         result_a, result_b = pipeline._align_to_common_grid(path_a, path_b, tmp_path / "aligned")
@@ -112,8 +144,17 @@ class TestAlignToCommonGrid:
         path_a, path_b = tmp_path / "hires.tif", tmp_path / "lores.tif"
         for p, size, transform in [(path_a, size_a, transform_a), (path_b, size_b, transform_b)]:
             data = rng.integers(500, 3000, (1, *size)).astype("uint16")
-            with rasterio.open(p, "w", driver="GTiff", height=size[0], width=size[1], count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size[0],
+                width=size[1],
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(data)
 
         aligned_a, aligned_b = pipeline._align_to_common_grid(path_a, path_b, tmp_path / "aligned")

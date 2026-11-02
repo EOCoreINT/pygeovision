@@ -21,8 +21,10 @@ threshold values are tuned from measurements on one real model family
 could need different thresholds. This is a real, measured improvement
 for that model family, not a universal guarantee.
 """
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 torch = pytest.importorskip("torch", reason="torch not installed")
 import torch.nn as nn
@@ -44,24 +46,28 @@ class TestAutoSelectBatchSizeThresholds:
 
     def test_below_2gb_selects_batch_size_1(self):
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         mock_vm = MagicMock(available=1500 * 1e6)
         with patch("psutil.virtual_memory", return_value=mock_vm):
             assert TiledInference._auto_select_batch_size() == 1
 
     def test_below_4gb_selects_batch_size_2(self):
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         mock_vm = MagicMock(available=3000 * 1e6)
         with patch("psutil.virtual_memory", return_value=mock_vm):
             assert TiledInference._auto_select_batch_size() == 2
 
     def test_below_8gb_selects_batch_size_4(self):
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         mock_vm = MagicMock(available=6000 * 1e6)
         with patch("psutil.virtual_memory", return_value=mock_vm):
             assert TiledInference._auto_select_batch_size() == 4
 
     def test_8gb_or_above_selects_batch_size_8(self):
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         mock_vm = MagicMock(available=16000 * 1e6)
         with patch("psutil.virtual_memory", return_value=mock_vm):
             assert TiledInference._auto_select_batch_size() == 8
@@ -70,6 +76,7 @@ class TestAutoSelectBatchSizeThresholds:
         """Boundary check: the comparison is strictly '<', so exactly
         2000MB should NOT fall into the batch_size=1 tier."""
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         mock_vm = MagicMock(available=2000 * 1e6)
         with patch("psutil.virtual_memory", return_value=mock_vm):
             assert TiledInference._auto_select_batch_size() == 2
@@ -78,6 +85,7 @@ class TestAutoSelectBatchSizeThresholds:
 class TestPsutilUnavailableFallback:
     def test_missing_psutil_falls_back_to_safe_fixed_default(self):
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         with patch.dict("sys.modules", {"psutil": None}):
             result = TiledInference._auto_select_batch_size()
         assert result == 2
@@ -86,6 +94,7 @@ class TestPsutilUnavailableFallback:
         """The fallback must be safer than the old fixed default, not
         just any arbitrary value."""
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         with patch.dict("sys.modules", {"psutil": None}):
             result = TiledInference._auto_select_batch_size()
         assert result < 8
@@ -97,6 +106,7 @@ class TestExplicitBatchSizeAlwaysWins:
 
     def test_explicit_value_respected_on_a_low_memory_machine(self):
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         mock_vm = MagicMock(available=1000 * 1e6)  # a machine that would auto-select 1
         with patch("psutil.virtual_memory", return_value=mock_vm):
             engine = TiledInference(TinyModel(), tile_size=512, overlap=64, batch_size=8)
@@ -104,6 +114,7 @@ class TestExplicitBatchSizeAlwaysWins:
 
     def test_explicit_value_respected_on_a_high_memory_machine(self):
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         mock_vm = MagicMock(available=32000 * 1e6)  # a machine that would auto-select 8
         with patch("psutil.virtual_memory", return_value=mock_vm):
             engine = TiledInference(TinyModel(), tile_size=512, overlap=64, batch_size=1)
@@ -111,6 +122,7 @@ class TestExplicitBatchSizeAlwaysWins:
 
     def test_no_batch_size_given_genuinely_auto_detects(self):
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         mock_vm = MagicMock(available=1500 * 1e6)
         with patch("psutil.virtual_memory", return_value=mock_vm):
             engine = TiledInference(TinyModel(), tile_size=512, overlap=64)
@@ -125,18 +137,29 @@ class TestRealEndToEndMemoryBenefit:
 
     def test_simulated_low_memory_uses_less_real_memory_than_high_memory(self, tmp_path):
         import resource
+
         import numpy as np
         import rasterio
         from rasterio.transform import from_bounds
+
         from pygeovision.ai.inference.tiled_inference import TiledInference
 
-        rasterio_mod = pytest.importorskip("rasterio")
+        pytest.importorskip("rasterio")
         size = 1200
         transform = from_bounds(-0.45, 5.50, 0.05, 5.75, size, size)
         rng = np.random.default_rng(0)
         path = tmp_path / "scene.tif"
-        with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=3,
-                            dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=3,
+            dtype="uint16",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             for b in range(1, 4):
                 dst.write(rng.integers(500, 3000, (size, size)).astype("uint16"), b)
 

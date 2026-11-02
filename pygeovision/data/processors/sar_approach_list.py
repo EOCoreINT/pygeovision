@@ -20,6 +20,7 @@ For the NB02 (Disaster Management / Turkey Earthquake) notebook, see
 ``get_nb02_approach_context()`` which returns the full context block to
 inject as a notebook markdown cell.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -239,7 +240,6 @@ clip_sar_to_bbox("iw-vh_norm.tif", "iw-vh_clipped.tif",
                   bbox_wgs84=(36.1, 36.2, 36.4, 36.6))
 """,
     },
-
     # ──────────────────────────────────────────────────────────────────────
     # AI INFERENCE PHASE
     # ──────────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ that nothing is quietly randomly initialised.  Whether the real ``prithvi_mae.py
 the stand-in's constructor/forward signature was checked by reading the published file, not by
 running it -- that needs the Hub.
 """
+
 import json
 import textwrap
 
@@ -16,7 +17,7 @@ torch = pytest.importorskip("torch")
 
 from pygeovision.models.foundation import prithvi as P  # noqa: E402
 
-STAND_IN_MAE = textwrap.dedent('''
+STAND_IN_MAE = textwrap.dedent("""
     import torch
     import torch.nn as nn
 
@@ -55,14 +56,26 @@ STAND_IN_MAE = textwrap.dedent('''
             super().__init__()
             self.encoder = PrithviViT(img_size, patch_size, num_frames, in_chans, embed_dim, depth, num_heads)
             self.decoder = nn.Linear(embed_dim, decoder_embed_dim)
-''')
+""")
 
 MEAN = [1000.0, 1100.0, 1200.0, 1300.0, 1400.0, 1500.0]
 STD = [100.0, 200.0, 300.0, 400.0, 500.0, 600.0]
-CFG = {"architecture": "stand_in", "pretrained_cfg": {
-    "img_size": 32, "num_frames": 4, "patch_size": [1, 16, 16], "in_chans": 6, "embed_dim": 32,
-    "depth": 2, "num_heads": 4, "decoder_embed_dim": 16, "mean": MEAN, "std": STD,
-    "bands": ["B02", "B03", "B04", "B05", "B06", "B07"]}}
+CFG = {
+    "architecture": "stand_in",
+    "pretrained_cfg": {
+        "img_size": 32,
+        "num_frames": 4,
+        "patch_size": [1, 16, 16],
+        "in_chans": 6,
+        "embed_dim": 32,
+        "depth": 2,
+        "num_heads": 4,
+        "decoder_embed_dim": 16,
+        "mean": MEAN,
+        "std": STD,
+        "bands": ["B02", "B03", "B04", "B05", "B06", "B07"],
+    },
+}
 
 
 @pytest.fixture
@@ -87,6 +100,7 @@ def hub(tmp_path, monkeypatch):
         return str(repo / filename)
 
     import huggingface_hub
+
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_download)
     return type("Hub", (), {"dir": repo, "calls": calls, "state": mae.state_dict()})
 
@@ -104,7 +118,11 @@ class TestLoadFromHub:
     def test_three_files_are_fetched_at_the_pinned_revision(self, hub):
         P.load_prithvi_hf("prithvi_eo_2_0")
         spec = P.PRITHVI_MODELS["prithvi_eo_2_0"]
-        assert {c[1] for c in hub.calls} == {"config.json", "prithvi_mae.py", "Prithvi_EO_V2_300M.pt"}
+        assert {c[1] for c in hub.calls} == {
+            "config.json",
+            "prithvi_mae.py",
+            "Prithvi_EO_V2_300M.pt",
+        }
         assert {c[2] for c in hub.calls} == {spec["revision"]}
         assert len(spec["revision"]) == 40 and all(c[0] == spec["hf_id"] for c in hub.calls)
 
@@ -121,7 +139,7 @@ class TestLoadFromHub:
 
     def test_checkpoint_that_does_not_fill_the_architecture_is_refused(self, hub):
         state = dict(torch.load(hub.dir / "Prithvi_EO_V2_300M.pt", weights_only=True))
-        del state["encoder.blocks.1.weight"]            # one encoder layer missing
+        del state["encoder.blocks.1.weight"]  # one encoder layer missing
         torch.save(state, hub.dir / "Prithvi_EO_V2_300M.pt")
         with pytest.raises(P.PrithviLoadError, match="randomly initialised"):
             P.load_prithvi_hf("prithvi_eo_2_0")
@@ -136,15 +154,23 @@ class TestLoadFromHub:
 
     def test_hub_failure_raises_and_is_a_runtime_error(self, monkeypatch):
         import huggingface_hub
-        monkeypatch.setattr(huggingface_hub, "hf_hub_download",
-                            lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
+
+        monkeypatch.setattr(
+            huggingface_hub,
+            "hf_hub_download",
+            lambda *a, **k: (_ for _ in ()).throw(OSError("offline")),
+        )
         with pytest.raises(RuntimeError, match="Nothing was substituted"):
             P.load_prithvi_hf("prithvi_eo_2_0")
 
     def test_allow_random_init_returns_a_flagged_stand_in(self, monkeypatch):
         import huggingface_hub
-        monkeypatch.setattr(huggingface_hub, "hf_hub_download",
-                            lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
+
+        monkeypatch.setattr(
+            huggingface_hub,
+            "hf_hub_download",
+            lambda *a, **k: (_ for _ in ()).throw(OSError("offline")),
+        )
         m = P.load_prithvi_hf("prithvi_eo_2_0", allow_random_init=True)
         assert m._pygeovision_is_random_init is True
 
@@ -160,8 +186,11 @@ class TestLoadFromHub:
 
     def test_no_known_nonexistent_repo_ids(self):
         ids = {s["hf_id"] for s in P.PRITHVI_MODELS.values()}
-        assert not ids & {"ibm-nasa-geospatial/Prithvi-100M", "ibm-nasa-geospatial/Prithvi-100M-burn-scar",
-                          "ibm-nasa-geospatial/Prithvi-100M-multi-temporal-crop-classification"}
+        assert not ids & {
+            "ibm-nasa-geospatial/Prithvi-100M",
+            "ibm-nasa-geospatial/Prithvi-100M-burn-scar",
+            "ibm-nasa-geospatial/Prithvi-100M-multi-temporal-crop-classification",
+        }
         # the flood entry used to point at the crop-classification repo
         assert P.PRITHVI_MODELS["prithvi_eo_1_0_finetuned_flood"]["hf_id"].endswith("sen1floods11")
 
@@ -200,7 +229,7 @@ class TestInputHandling:
         refl = torch.zeros(1, 6, 32, 32)
         refl[:] = torch.tensor([0.10, 0.12, 0.15, 0.20, 0.25, 0.30]).view(1, 6, 1, 1)
         m(pixel_values=refl)
-        seen = _stand_in_module(hub).LAST_INPUT["x"]              # (B, C, T, H, W)
+        seen = _stand_in_module(hub).LAST_INPUT["x"]  # (B, C, T, H, W)
         dn = np.array([1000, 1200, 1500, 2000, 2500, 3000], dtype="float32")
         expected = (dn - np.array(MEAN)) / np.array(STD)
         np.testing.assert_allclose(seen[0, :, 0, 0, 0].numpy(), expected, rtol=1e-5)
@@ -213,17 +242,19 @@ class TestInputHandling:
 
     def test_time_and_channel_axes_are_not_swapped(self, hub):
         m = self._model(hub, frames=2)
-        x = torch.zeros(1, 2, 6, 32, 32)                        # (B, T, C, H, W)
+        x = torch.zeros(1, 2, 6, 32, 32)  # (B, T, C, H, W)
         for t in range(2):
             for c in range(6):
                 x[0, t, c] = 0.01 * (1 + t * 6 + c)
         m(pixel_values=x)
-        seen = _stand_in_module(hub).LAST_INPUT["x"]               # (B, C, T, H, W)
+        seen = _stand_in_module(hub).LAST_INPUT["x"]  # (B, C, T, H, W)
         assert seen.shape == (1, 6, 2, 32, 32)
         for t in range(2):
             for c in range(6):
                 dn = 0.01 * (1 + t * 6 + c) * 10000
-                assert seen[0, c, t, 0, 0].item() == pytest.approx((dn - MEAN[c]) / STD[c], rel=1e-4)
+                assert seen[0, c, t, 0, 0].item() == pytest.approx(
+                    (dn - MEAN[c]) / STD[c], rel=1e-4
+                )
 
     def test_wrong_frames_bands_or_tile_are_rejected_clearly(self, hub):
         m = self._model(hub, frames=1)
@@ -237,17 +268,26 @@ class TestInputHandling:
     def test_output_structure_and_token_order(self, hub):
         class Counting(torch.nn.Module):
             """Encoder whose token i has value i, to pin the (t, h, w) ordering assumption."""
+
             def forward_features(self, x, *a):
                 b, c, t, h, w = x.shape
                 n = 1 + t * (h // 16) * (w // 16)
                 return [torch.arange(n, dtype=torch.float32).view(1, n, 1).expand(b, n, 8)]
 
-        m = _bb()(Counting(), embed_dim=8, patch_size=(1, 16, 16), img_size=32, num_frames=2,
-                  n_bands=6, mean=MEAN, std=STD)
+        m = _bb()(
+            Counting(),
+            embed_dim=8,
+            patch_size=(1, 16, 16),
+            img_size=32,
+            num_frames=2,
+            n_bands=6,
+            mean=MEAN,
+            std=STD,
+        )
         out = m(pixel_values=torch.zeros(1, 2, 6, 32, 32))
         assert out.grid == (2, 2) and out.frame_tokens.shape == (1, 2, 4, 8)
         assert out.cls.shape == (1, 8) and out.cls[0, 0] == 0
-        assert out.frame_tokens[0, 1, 0, 0] == 1 + 4        # first patch of the second date
+        assert out.frame_tokens[0, 1, 0, 0] == 1 + 4  # first patch of the second date
         assert out.frame_tokens[0, 0, 3, 0] == 1 + 3
 
     def test_standardise_hls_function(self):
@@ -259,15 +299,28 @@ class TestInputHandling:
 def _stand_in_module(hub):
     """The imported stand-in prithvi_mae module for this test's fake repo."""
     import sys
-    return sys.modules[f"_pygeovision_prithvi_mae_{abs(hash(str((hub.dir / 'prithvi_mae.py').resolve())))}"]
+
+    return sys.modules[
+        f"_pygeovision_prithvi_mae_{abs(hash(str((hub.dir / 'prithvi_mae.py').resolve())))}"
+    ]
 
 
 def _write_tif(path, n=6, size=64, seed=0):
     import rasterio
     from rasterio.transform import from_bounds
+
     data = (np.random.default_rng(seed).random((n, size, size)) * 6000 + 200).astype("float32")
-    with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=n, dtype="float32",
-                       crs="EPSG:4326", transform=from_bounds(0, 0, 1, 1, size, size)) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=n,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_bounds(0, 0, 1, 1, size, size),
+    ) as dst:
         dst.write(data)
     return str(path)
 
@@ -280,7 +333,7 @@ class TestPrithviClassOnTheRealLoadPath:
         mean = p.extract_features(tif, source="hls", pool="mean")
         assert cls.shape == mean.shape == (1, 32)
         assert not np.allclose(cls, mean)
-        assert p.extract_patch_features(tif).shape == (4, 32)       # 2x2 grid of 16-px patches
+        assert p.extract_patch_features(tif).shape == (4, 32)  # 2x2 grid of 16-px patches
         with pytest.raises(ValueError):
             p.extract_features(tif, pool="max")
 
@@ -311,7 +364,11 @@ class TestPrithviClassOnTheRealLoadPath:
         assert tr["trend_direction"] in ("diverging", "converging", "stable")
         assert len(tr["drift_from_first"]) == 4 and tr["drift_from_first"][0] == 0.0
         se = mt.predict_seasonal(paths, dates=list("abcd"))
-        assert se["seasonal_amplitude"] >= 0 and se["peak_date"] in "abcd" and se["trough_date"] in "abcd"
+        assert (
+            se["seasonal_amplitude"] >= 0
+            and se["peak_date"] in "abcd"
+            and se["trough_date"] in "abcd"
+        )
         assert "not a physical seasonal model" in se["note"]
 
     def test_segmentation_head_output_is_input_resolution_and_backbone_is_frozen(self, hub):
@@ -329,26 +386,40 @@ class TestPrithviClassOnTheRealLoadPath:
 
 
 class TestTasksNeverInventAResult:
-    def test_trained_head_gives_a_backbone_prediction_and_wrong_heads_are_refused(self, hub, tmp_path):
+    def test_trained_head_gives_a_backbone_prediction_and_wrong_heads_are_refused(
+        self, hub, tmp_path
+    ):
         tif = _write_tif(tmp_path / "scene.tif", size=64)
         p = P.Prithvi("prithvi_eo_2_0").load()
         seg = p.build_segmentation_head(num_classes=9)
         good = P.save_prithvi_head(seg, str(tmp_path / "lc.pt"), "prithvi_eo_2_0", "land_cover", 9)
-        res = P.PrithviTasks("prithvi_eo_2_0", head_weights={"land_cover": good}).land_cover(tif, source="hls")
+        res = P.PrithviTasks("prithvi_eo_2_0", head_weights={"land_cover": good}).land_cover(
+            tif, source="hls"
+        )
         assert res["method"] == "backbone" and res["prediction"].shape == (64, 64)
         assert res["prediction"].max() <= 8
 
-        for variant, task, n in (("prithvi_eo_1_0", "land_cover", 9), ("prithvi_eo_2_0", "flood", 9),
-                                 ("prithvi_eo_2_0", "land_cover", 4)):
-            bad = P.save_prithvi_head(seg, str(tmp_path / f"bad_{variant}_{task}_{n}.pt"), variant, task, n)
+        for variant, task, n in (
+            ("prithvi_eo_1_0", "land_cover", 9),
+            ("prithvi_eo_2_0", "flood", 9),
+            ("prithvi_eo_2_0", "land_cover", 4),
+        ):
+            bad = P.save_prithvi_head(
+                seg, str(tmp_path / f"bad_{variant}_{task}_{n}.pt"), variant, task, n
+            )
             with pytest.raises(ValueError):
-                P.PrithviTasks("prithvi_eo_2_0", head_weights={"land_cover": bad}).land_cover(tif, source="hls")
+                P.PrithviTasks("prithvi_eo_2_0", head_weights={"land_cover": bad}).land_cover(
+                    tif, source="hls"
+                )
 
     def test_spectral_route_does_not_touch_the_model(self, tmp_path, monkeypatch):
         tif = _write_tif(tmp_path / "scene.tif", size=32)
         tasks = P.PrithviTasks("prithvi_eo_2_0")
-        monkeypatch.setattr(tasks._prithvi, "_ensure_loaded",
-                            lambda *a, **k: (_ for _ in ()).throw(AssertionError("model must not load")))
+        monkeypatch.setattr(
+            tasks._prithvi,
+            "_ensure_loaded",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("model must not load")),
+        )
         for fn in (tasks.land_cover, tasks.flood_detection, tasks.burn_scar_detection):
             r = fn(tif, source="hls")
             assert r["method"] == "spectral" and "Prithvi was not used" in r["note"]
@@ -357,13 +428,20 @@ class TestTasksNeverInventAResult:
         tif = _write_tif(tmp_path / "scene.tif", size=32)
         head = P.build_regression_head(32)
         f = P.save_prithvi_head(head, str(tmp_path / "bio.pt"), "prithvi_eo_2_0", "biomass", 1)
-        r = P.PrithviTasks("prithvi_eo_2_0", head_weights={"biomass": f}).biomass_estimation(tif, source="hls")
+        r = P.PrithviTasks("prithvi_eo_2_0", head_weights={"biomass": f}).biomass_estimation(
+            tif, source="hls"
+        )
         assert isinstance(r["estimated_biomass_t_ha"], float) and r["method"] == "backbone"
 
     def test_finetune_components_say_they_do_not_train(self, hub, caplog, tmp_path):
         with caplog.at_level("WARNING"):
-            r = P.finetune_prithvi("prithvi_eo_2_0", dataset=object(), num_classes=3, epochs=2,
-                               output_dir=str(tmp_path))
+            r = P.finetune_prithvi(
+                "prithvi_eo_2_0",
+                dataset=object(),
+                num_classes=3,
+                epochs=2,
+                output_dir=str(tmp_path),
+            )
         assert "not used" in caplog.text and "no training has been run" in r["note"]
         assert all(q.requires_grad for q in r["model"].backbone.parameters())
 
@@ -375,11 +453,15 @@ class TestBandMapping:
             data[i] = i + 1
         names = ["B02", "B03", "B04", "B08", "B8A", "B11", "B12"]
         out = P.map_bands(data, source="sentinel2", n_prithvi_bands=6, source_bands=names)
-        assert out[3, 0, 0] == 5            # B8A (5th input), not B08 (4th)
+        assert out[3, 0, 0] == 5  # B8A (5th input), not B08 (4th)
 
     def test_b08_alone_is_used_with_a_warning(self, caplog):
         data = np.arange(6, dtype="float32").reshape(6, 1, 1) * np.ones((6, 2, 2), "float32")
         with caplog.at_level("WARNING"):
-            out = P.map_bands(data, source="sentinel2", n_prithvi_bands=6,
-                              source_bands=["B02", "B03", "B04", "B08", "B11", "B12"])
+            out = P.map_bands(
+                data,
+                source="sentinel2",
+                n_prithvi_bands=6,
+                source_bands=["B02", "B03", "B04", "B08", "B11", "B12"],
+            )
         assert out[3, 0, 0] == 3 and "B08" in caplog.text

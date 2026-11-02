@@ -21,11 +21,13 @@ Bug fixes (Jul 2026):
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass, field
 import logging
 import os
-import shutil
-from dataclasses import dataclass, field
 from pathlib import Path
+import shutil
+from typing import Any
 
 import numpy as np
 import rasterio
@@ -40,33 +42,37 @@ from pygeovision.data.validators.georeference import (
 logger = logging.getLogger(__name__)
 
 # ── Physical constants for Sentinel-1 GRD ────────────────────────────────────
-S1_DB_MIN    = -35.0   # minimum dB value (noise floor for VH)
-S1_DB_MAX    =   5.0   # maximum dB value (urban double-bounce)
+S1_DB_MIN = -35.0  # minimum dB value (noise floor for VH)
+S1_DB_MAX = 5.0  # maximum dB value (urban double-bounce)
 S1_LINEAR_MIN = 10 ** (S1_DB_MIN / 10)
 S1_LINEAR_MAX = 10 ** (S1_DB_MAX / 10)
 
 
 # ── Result dataclass ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class SARPreprocessResult:
     """Result of a single SAR preprocessing step or verify_sar_downloads()."""
-    success:  bool
-    path:     str | None = None
-    errors:   list[str]     = field(default_factory=list)
-    warnings: list[str]     = field(default_factory=list)
-    shape:    tuple[int, ...] | None = None
-    stats:    dict[str, float]          = field(default_factory=dict)
+
+    success: bool
+    path: str | None = None
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    shape: tuple[int, ...] | None = None
+    stats: dict[str, float] = field(default_factory=dict)
 
 
 # ── Speckle filters ───────────────────────────────────────────────────────────
 
+
 def _boxcar(data: np.ndarray, window_size: int) -> np.ndarray:
     """Simple boxcar (mean) filter — fastest, least edge-preserving."""
     from scipy.ndimage import uniform_filter
+
     out = np.empty_like(data)
     for b in range(data.shape[0]):
-        out[b] = uniform_filter(data[b].astype('float64'), size=window_size).astype('float32')
+        out[b] = uniform_filter(data[b].astype("float64"), size=window_size).astype("float32")
     return out
 
 
@@ -76,20 +82,17 @@ def _enhanced_lee(data: np.ndarray, window_size: int, num_looks: int = 4) -> np.
     Operates on LINEAR power data. Do NOT pass dB values.
     """
     from scipy.ndimage import uniform_filter
+
     out = np.empty_like(data)
     w = window_size
     for b in range(data.shape[0]):
-        band = data[b].astype('float64')
+        band = data[b].astype("float64")
         mean = uniform_filter(band, w)
-        mean_sq = uniform_filter(band ** 2, w)
-        var_local = np.maximum(mean_sq - mean ** 2, 0.0)
-        var_noise = mean ** 2 / max(num_looks, 1)
-        weight = np.where(
-            var_local + var_noise > 0,
-            var_local / (var_local + var_noise),
-            0.0
-        )
-        out[b] = (mean + weight * (band - mean)).astype('float32')
+        mean_sq = uniform_filter(band**2, w)
+        var_local = np.maximum(mean_sq - mean**2, 0.0)
+        var_noise = mean**2 / max(num_looks, 1)
+        weight = np.where(var_local + var_noise > 0, var_local / (var_local + var_noise), 0.0)
+        out[b] = (mean + weight * (band - mean)).astype("float32")
     return out
 
 
@@ -117,41 +120,44 @@ def _refined_lee(data: np.ndarray, window_size: int, num_looks: int = 4) -> np.n
     yy, xx = np.mgrid[0:w, 0:w]
     base = np.ones((w, w), dtype=np.float64)
 
-    m_top    = base.copy(); m_top[half + 1:, :]    = 0.0
-    m_bottom = base.copy(); m_bottom[:half, :]      = 0.0
-    m_left   = base.copy(); m_left[:, half + 1:]    = 0.0
-    m_right  = base.copy(); m_right[:, :half]       = 0.0
-    diag_a   = (yy - xx) <= 0
-    diag_b   = (yy + xx) <= (w - 1)
+    m_top = base.copy()
+    m_top[half + 1 :, :] = 0.0
+    m_bottom = base.copy()
+    m_bottom[:half, :] = 0.0
+    m_left = base.copy()
+    m_left[:, half + 1 :] = 0.0
+    m_right = base.copy()
+    m_right[:, :half] = 0.0
+    diag_a = (yy - xx) <= 0
+    diag_b = (yy + xx) <= (w - 1)
     m_diag1a = base * diag_a
     m_diag1b = base * (~diag_a)
     m_diag2a = base * diag_b
     m_diag2b = base * (~diag_b)
 
-    half_windows = [m_top, m_bottom, m_left, m_right,
-                    m_diag1a, m_diag1b, m_diag2a, m_diag2b]
+    half_windows = [m_top, m_bottom, m_left, m_right, m_diag1a, m_diag1b, m_diag2a, m_diag2b]
 
     out = np.empty_like(data)
     for b in range(data.shape[0]):
         band = data[b].astype("float64")
-        band_sq = band ** 2
+        band_sq = band**2
 
         min_var = None
         sel_mean = None
         for mask in half_windows:
             n = float(mask.sum())
-            s  = convolve(band,    mask, mode="reflect")
+            s = convolve(band, mask, mode="reflect")
             s2 = convolve(band_sq, mask, mode="reflect")
             mean_ = s / n
-            var_  = np.maximum(s2 / n - mean_ ** 2, 0.0)
+            var_ = np.maximum(s2 / n - mean_**2, 0.0)
             if min_var is None:
                 min_var, sel_mean = var_, mean_
             else:
                 better = var_ < min_var
-                min_var  = np.where(better, var_, min_var)
+                min_var = np.where(better, var_, min_var)
                 sel_mean = np.where(better, mean_, sel_mean)
 
-        var_noise = sel_mean ** 2 / max(num_looks, 1)
+        var_noise = sel_mean**2 / max(num_looks, 1)
         weight = np.where(
             min_var + var_noise > 0,
             min_var / (min_var + var_noise),
@@ -162,6 +168,7 @@ def _refined_lee(data: np.ndarray, window_size: int, num_looks: int = 4) -> np.n
 
 
 # ── Core processing functions ─────────────────────────────────────────────────
+
 
 def verify_sar_downloads(
     paths: dict[str, str],
@@ -210,7 +217,7 @@ def despeckle_sar(
     output_path: str,
     filter_type: str = "enhanced_lee",
     window_size: int = 7,
-    num_looks:   int = 4,
+    num_looks: int = 4,
 ) -> str:
     """
     S6: Apply speckle filter to SAR data in LINEAR power space.
@@ -236,15 +243,14 @@ def despeckle_sar(
 
     valid_filters = ("enhanced_lee", "refined_lee", "boxcar")
     if filter_type not in valid_filters:
-        raise ValueError(
-            f"Unknown filter_type: {filter_type!r}. Choose from: {valid_filters}"
-        )
+        raise ValueError(f"Unknown filter_type: {filter_type!r}. Choose from: {valid_filters}")
 
-    filter_fn = {
+    filters: dict[str, Callable[..., Any]] = {
         "enhanced_lee": _enhanced_lee,
-        "refined_lee":  _refined_lee,
-        "boxcar":       lambda d, w, **kw: _boxcar(d, w),
-    }[filter_type]
+        "refined_lee": _refined_lee,
+        "boxcar": lambda d, w, **kw: _boxcar(d, w),
+    }
+    filter_fn = filters[filter_type]
 
     with rasterio.open(input_path) as src:
         data = src.read().astype("float32")
@@ -264,11 +270,11 @@ def despeckle_sar(
 
 
 def linear_to_db(
-    input_path:   str,
-    output_path:  str,
-    clip_db_min:  float = S1_DB_MIN,
-    clip_db_max:  float = S1_DB_MAX,
-    epsilon:      float = 1e-10,
+    input_path: str,
+    output_path: str,
+    clip_db_min: float = S1_DB_MIN,
+    clip_db_max: float = S1_DB_MAX,
+    epsilon: float = 1e-10,
 ) -> str:
     """
     S7: Convert linear power SAR data to dB scale.
@@ -312,11 +318,11 @@ def linear_to_db(
 
 
 def normalise_sar_for_ai(
-    input_path:  str,
+    input_path: str,
     output_path: str,
-    method:      str = "minmax_db",
-    db_min:      float = S1_DB_MIN,
-    db_max:      float = S1_DB_MAX,
+    method: str = "minmax_db",
+    db_min: float = S1_DB_MIN,
+    db_max: float = S1_DB_MAX,
 ) -> np.ndarray:
     """
     S8: Normalise SAR data to [0, 1] for AI/ML input.
@@ -345,7 +351,7 @@ def normalise_sar_for_ai(
     elif method == "percentile":
         out = np.empty_like(data)
         for b in range(data.shape[0]):
-            p2  = np.nanpercentile(data[b], 2)
+            p2 = np.nanpercentile(data[b], 2)
             p98 = np.nanpercentile(data[b], 98)
             denom = max(p98 - p2, 1e-6)
             out[b] = np.clip((data[b] - p2) / denom, 0.0, 1.0)
@@ -367,9 +373,9 @@ def normalise_sar_for_ai(
 
 
 def clip_sar_to_bbox(
-    input_path:  str,
+    input_path: str,
     output_path: str,
-    bbox_wgs84:  tuple[float, float, float, float],
+    bbox_wgs84: tuple[float, float, float, float],
 ) -> str:
     """
     S9: Clip SAR raster to a WGS84 bounding box, auto-reprojecting the bbox
@@ -395,8 +401,12 @@ def clip_sar_to_bbox(
         # Check overlap
         r = src.bounds
         clip_box = raster_bbox
-        if (clip_box[2] <= r.left or clip_box[0] >= r.right or
-                clip_box[3] <= r.bottom or clip_box[1] >= r.top):
+        if (
+            clip_box[2] <= r.left
+            or clip_box[0] >= r.right
+            or clip_box[3] <= r.bottom
+            or clip_box[1] >= r.top
+        ):
             raise ValueError(
                 f"Clip bbox {clip_box} does not overlap raster bounds "
                 f"({r.left:.1f}, {r.bottom:.1f}, {r.right:.1f}, {r.top:.1f})"
@@ -408,7 +418,7 @@ def clip_sar_to_bbox(
         x_max = min(clip_box[2], r.right)
         y_max = min(clip_box[3], r.top)
 
-        win  = window_from_bounds(x_min, y_min, x_max, y_max, src.transform)
+        win = window_from_bounds(x_min, y_min, x_max, y_max, src.transform)
         data = src.read(window=win)
         new_transform = src.window_transform(win)
         meta = src.meta.copy()
@@ -422,24 +432,22 @@ def clip_sar_to_bbox(
     with rasterio.open(output_path, "w", **meta) as dst:
         dst.write(data)
 
-    logger.debug(
-        f"clip_sar_to_bbox: {data.shape} → {Path(output_path).name}"
-    )
+    logger.debug(f"clip_sar_to_bbox: {data.shape} → {Path(output_path).name}")
     return output_path
 
 
 # ── assert_valid_georeference ────────────────────────────────────────────────
 
+
 def assert_valid_georeference(path: str) -> None:
     """Raise ValueError if georeference is invalid and unrecoverable."""
     result = validate_sar_georeference(path)
     if not result.valid and result.repaired_path is None:
-        raise ValueError(
-            f"Invalid georeference in {Path(path).name}: {result.errors}"
-        )
+        raise ValueError(f"Invalid georeference in {Path(path).name}: {result.errors}")
 
 
 # ── High-level SARPreprocessor class ─────────────────────────────────────────
+
 
 class SARPreprocessor:
     """
@@ -455,35 +463,35 @@ class SARPreprocessor:
 
     def __init__(
         self,
-        work_dir:      str = "./sar_work",
-        bbox_wgs84:    tuple[float, float, float, float] | None = None,
-        filter_type:   str = "enhanced_lee",
-        window_size:   int = 7,
-        num_looks:     int = 4,
-        db_min:        float = S1_DB_MIN,
-        db_max:        float = S1_DB_MAX,
+        work_dir: str = "./sar_work",
+        bbox_wgs84: tuple[float, float, float, float] | None = None,
+        filter_type: str = "enhanced_lee",
+        window_size: int = 7,
+        num_looks: int = 4,
+        db_min: float = S1_DB_MIN,
+        db_max: float = S1_DB_MAX,
     ):
-        self.work_dir    = Path(work_dir)
-        self.bbox_wgs84  = bbox_wgs84
+        self.work_dir = Path(work_dir)
+        self.bbox_wgs84 = bbox_wgs84
         self.filter_type = filter_type
         self.window_size = window_size
-        self.num_looks   = num_looks
-        self.db_min      = db_min
-        self.db_max      = db_max
+        self.num_looks = num_looks
+        self.db_min = db_min
+        self.db_max = db_max
         self.work_dir.mkdir(parents=True, exist_ok=True)
 
     def run(
         self,
-        raw_path:    str,
-        output_path: str,
-        label:       str = "scene",
+        raw_path: str | Path,
+        output_path: str | Path,
+        label: str = "scene",
     ) -> str | None:
         """
         Run full S0→S9 preprocessing pipeline.
 
         Returns output_path on success, None on failure.
         """
-        raw_path    = Path(raw_path)
+        raw_path = Path(raw_path)
         output_path = Path(output_path)
 
         if not raw_path.exists():
@@ -518,7 +526,8 @@ class SARPreprocessor:
         desp_path = str(self.work_dir / f"{stem}_despeckle.tif")
         try:
             despeckle_sar(
-                working, desp_path,
+                working,
+                desp_path,
                 filter_type=self.filter_type,
                 window_size=self.window_size,
                 num_looks=self.num_looks,
@@ -533,8 +542,9 @@ class SARPreprocessor:
 
         # S8: normalise
         norm_path = str(self.work_dir / f"{stem}_norm.tif")
-        normalise_sar_for_ai(db_path, norm_path, method="minmax_db",
-                             db_min=self.db_min, db_max=self.db_max)
+        normalise_sar_for_ai(
+            db_path, norm_path, method="minmax_db", db_min=self.db_min, db_max=self.db_max
+        )
 
         # S9: clip to bbox
         if self.bbox_wgs84:

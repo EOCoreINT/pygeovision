@@ -5,6 +5,7 @@ These are *heuristics about the raster itself* (class mix, specks, coverage, sha
 whether a label is **right**: for that, compare against a surveyed reference or look at it. A grade of "A"
 means "no obvious defects", not "accurate".
 """
+
 from __future__ import annotations
 
 import logging
@@ -76,6 +77,7 @@ class LabelQualityAssessor:
     def _classes(self, label) -> tuple[list[int], list[int]]:
         """``(classes, unexpected)`` for a label array."""
         import numpy as np
+
         present = sorted(int(v) for v in np.unique(label) if int(v) != self.ignore_index)
         if self.num_classes is None:
             return present, []
@@ -107,13 +109,16 @@ class LabelQualityAssessor:
         if unknown:
             raise ValueError(f"Unknown check(s) {unknown}. Available: {list(AVAILABLE_CHECKS)}")
         if image_path:
-            logger.warning("LabelQualityAssessor.assess: image_path is not used by any check yet; ignoring it.")
+            logger.warning(
+                "LabelQualityAssessor.assess: image_path is not used by any check yet; ignoring it."
+            )
         label_path = Path(label_path)
         results: dict[str, Any] = {"label_path": str(label_path), "checks": {}}
 
         try:
             import numpy as np
             import rasterio
+
             with rasterio.open(str(label_path)) as src:
                 label = src.read(1).astype(np.int64)
                 area_px = pixel_area_m2(src)
@@ -146,10 +151,18 @@ class LabelQualityAssessor:
                 balance_score = 0.0
             results["checks"]["class_balance"] = {
                 "class_counts": class_counts,
-                "class_pct": {c: round(n / max(valid_px, 1) * 100, 2) for c, n in class_counts.items()},
-                "imbalance_ratio": round(imbalance_ratio, 1) if imbalance_ratio != float("inf") else None,
+                "class_pct": {
+                    c: round(n / max(valid_px, 1) * 100, 2) for c, n in class_counts.items()
+                },
+                "imbalance_ratio": (
+                    round(imbalance_ratio, 1) if imbalance_ratio != float("inf") else None
+                ),
                 "score": round(balance_score, 3),
-                "status": "ok" if imbalance_ratio < 20 else "warning" if imbalance_ratio < 100 else "critical",
+                "status": (
+                    "ok"
+                    if imbalance_ratio < 20
+                    else "warning" if imbalance_ratio < 100 else "critical"
+                ),
             }
             scores.append(balance_score)
 
@@ -166,10 +179,10 @@ class LabelQualityAssessor:
             scores.append(coverage_score)
 
         need_scipy = {"slivers", "connectivity"} & set(checks)
-        ndimage = None
+        ndimage: Any = None
         if need_scipy:
             try:
-                from scipy import ndimage
+                from scipy import ndimage  # type: ignore[no-redef]
             except ImportError:
                 for name in need_scipy:
                     results["checks"][name] = {"status": "skipped", "reason": "pip install scipy"}
@@ -215,6 +228,7 @@ class LabelQualityAssessor:
         if "boundaries" in checks:
             try:
                 import cv2
+
                 tot_a, tot_iq = 0.0, 0.0
                 for c in fg:
                     mask = (label == c).astype(np.uint8)
@@ -233,19 +247,25 @@ class LabelQualityAssessor:
                 }
                 scores.append(b_score)
             except ImportError:
-                results["checks"]["boundaries"] = {"status": "skipped", "reason": "pip install opencv-python"}
+                results["checks"]["boundaries"] = {
+                    "status": "skipped",
+                    "reason": "pip install opencv-python",
+                }
 
         quality_score = float(sum(scores) / len(scores)) if scores else 0.0
         n_foreground = int(((label != 0) & ~invalid).sum())
         results["foreground_pixels"] = n_foreground
         if n_foreground == 0:
-            quality_score = 0.0          # a label with nothing on it cannot be "mostly fine"
+            quality_score = 0.0  # a label with nothing on it cannot be "mostly fine"
         results["quality_score"] = round(quality_score, 3)
         results["quality_grade"] = (
-            "A" if quality_score >= 0.9 else
-            "B" if quality_score >= 0.75 else
-            "C" if quality_score >= 0.6 else
-            "D" if quality_score >= 0.4 else "F"
+            "A"
+            if quality_score >= 0.9
+            else (
+                "B"
+                if quality_score >= 0.75
+                else "C" if quality_score >= 0.6 else "D" if quality_score >= 0.4 else "F"
+            )
         )
         results["recommendations"] = self._recommendations(results)
         return results
@@ -255,36 +275,50 @@ class LabelQualityAssessor:
         checks = results.get("checks", {})
 
         if results.get("unexpected_values"):
-            recs.append(f"Values {results['unexpected_values']} are outside 0..{(self.num_classes or 1) - 1} and were "
-                        "not counted: raise num_classes or leave it as None")
+            recs.append(
+                f"Values {results['unexpected_values']} are outside 0..{(self.num_classes or 1) - 1} and were "
+                "not counted: raise num_classes or leave it as None"
+            )
 
         cb = checks.get("class_balance", {})
         if cb.get("status") in ("warning", "critical"):
             ratio = cb.get("imbalance_ratio")
             if ratio is not None and ratio > 0:
-                recs.append(f"Class imbalance ratio {ratio:.0f}x -- use a weighted/overlap loss "
-                            "(see docs/training/losses.md) or oversample the minority class")
+                recs.append(
+                    f"Class imbalance ratio {ratio:.0f}x -- use a weighted/overlap loss "
+                    "(see docs/training/losses.md) or oversample the minority class"
+                )
             else:
-                recs.append("Only one class has pixels -- the label raster carries no information to learn from")
+                recs.append(
+                    "Only one class has pixels -- the label raster carries no information to learn from"
+                )
 
         slivers = checks.get("slivers", {})
         if slivers.get("status") == "warning":
-            recs.append(f"{slivers.get('n_slivers', 0)} specks smaller than {slivers.get('sliver_threshold_px')} px "
-                        "-- run clean() to remove them")
+            recs.append(
+                f"{slivers.get('n_slivers', 0)} specks smaller than {slivers.get('sliver_threshold_px')} px "
+                "-- run clean() to remove them"
+            )
 
         conn = checks.get("connectivity", {})
         if conn.get("status") == "warning":
-            recs.append(f"Only {conn.get('share_in_objects', 0):.0%} of the foreground sits in objects of "
-                        f">= {conn.get('min_object_px')} px -- the label is mostly dust; run clean() or check the source")
+            recs.append(
+                f"Only {conn.get('share_in_objects', 0):.0%} of the foreground sits in objects of "
+                f">= {conn.get('min_object_px')} px -- the label is mostly dust; run clean() or check the source"
+            )
 
         cov = checks.get("coverage", {})
         if cov.get("valid_fraction", 1.0) < 0.5:
-            recs.append("Less than 50% of pixels carry a label (the rest are no-data) -- expand coverage or "
-                        "choose chips with more labelled area")
+            recs.append(
+                "Less than 50% of pixels carry a label (the rest are no-data) -- expand coverage or "
+                "choose chips with more labelled area"
+            )
 
         if results.get("foreground_pixels", 1) == 0:
-            recs.append("The raster has no foreground pixels (everything is background or no-data) -- "
-                        "the source returned nothing for this area")
+            recs.append(
+                "The raster has no foreground pixels (everything is background or no-data) -- "
+                "the source returned nothing for this area"
+            )
 
         if results.get("quality_score", 1.0) < 0.7:
             recs.append("Quality score < 0.7 -- inspect the label over the imagery before training")
@@ -320,7 +354,7 @@ class LabelQualityAssessor:
             import rasterio
             from scipy import ndimage
         except ImportError as exc:
-            raise ImportError(f"scipy + rasterio required: {exc}")
+            raise ImportError(f"scipy + rasterio required: {exc}") from exc
 
         label_path = Path(label_path)
         output_path = Path(output_path)
@@ -355,7 +389,11 @@ class LabelQualityAssessor:
             if smooth:
                 try:
                     import cv2
-                    closed = cv2.morphologyEx((cleaned == c).astype(np.uint8), cv2.MORPH_CLOSE, kernel) == 1
+
+                    closed = (
+                        cv2.morphologyEx((cleaned == c).astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+                        == 1
+                    )
                     add = closed & (cleaned == 0)
                     smooth_px += int(add.sum())
                     cleaned[add] = c
@@ -394,10 +432,16 @@ class LabelQualityAssessor:
         for check_name, check_data in results.get("checks", {}).items():
             status = check_data.get("status", "unknown")
             icon = "✓" if status == "ok" else "⚠" if status == "warning" else "✗"
-            checks_html += (f'<tr><td>{escape(str(check_name))}</td><td>{icon} {escape(str(status))}</td>'
-                            f'<td>{escape(str(check_data.get("score", "—")))}</td></tr>')
+            checks_html += (
+                f"<tr><td>{escape(str(check_name))}</td><td>{icon} {escape(str(status))}</td>"
+                f'<td>{escape(str(check_data.get("score", "—")))}</td></tr>'
+            )
 
-        recs_html = "".join(f"<li>{escape(str(r))}</li>" for r in recs) if recs else "<li>No issues found</li>"
+        recs_html = (
+            "".join(f"<li>{escape(str(r))}</li>" for r in recs)
+            if recs
+            else "<li>No issues found</li>"
+        )
 
         return f"""<html><body style="font-family:sans-serif;padding:20px">
 <h2>Label Quality Report</h2>

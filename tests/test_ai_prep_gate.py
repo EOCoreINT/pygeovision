@@ -1,4 +1,5 @@
 """The AI-readiness gate must accept lon/lat rasters (pixel size in degrees) and still reject broken transforms."""
+
 import numpy as np
 import pytest
 
@@ -9,8 +10,17 @@ from pygeovision.data.ai_prep import DataValidator  # noqa: E402
 
 
 def _write(path, crs, transform, n=32):
-    with rasterio.open(path, "w", driver="GTiff", width=n, height=n, count=2, dtype="float32",
-                       crs=crs, transform=transform) as d:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        width=n,
+        height=n,
+        count=2,
+        dtype="float32",
+        crs=crs,
+        transform=transform,
+    ) as d:
         d.write(np.random.default_rng(0).random((2, n, n), dtype="float32"))
     return str(path)
 

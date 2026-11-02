@@ -1,4 +1,5 @@
 """Vision Transformer scene classifiers (Hugging Face transformers)."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -29,7 +30,15 @@ def build_vit(
 
     if variant not in _HF_IDS:
         raise ValueError(f"variant must be one of {sorted(_HF_IDS)}, got {variant!r}")
-    spec = SimpleNamespace(name=f"vit-{variant}", family="vit", task="classification",
-                           hf_id=_HF_IDS[variant])
-    return build_hf_model(spec, num_classes, in_channels, pretrained,
-                          allow_random_init=allow_random_init, img_size=img_size, **kwargs)
+    spec = SimpleNamespace(
+        name=f"vit-{variant}", family="vit", task="classification", hf_id=_HF_IDS[variant]
+    )
+    return build_hf_model(
+        spec,
+        num_classes,
+        in_channels,
+        pretrained,
+        allow_random_init=allow_random_init,
+        img_size=img_size,
+        **kwargs,
+    )

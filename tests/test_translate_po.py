@@ -1,11 +1,14 @@
 """The translation tool (docs/tools/translate_po.py) with a stand-in translator: nothing is sent anywhere."""
+
 import importlib.util
 from pathlib import Path
 
 import polib
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("translate_po", ROOT / "docs" / "tools" / "translate_po.py")
+spec = importlib.util.spec_from_file_location(
+    "translate_po", ROOT / "docs" / "tools" / "translate_po.py"
+)
 tp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tp)
 
@@ -29,9 +32,18 @@ def test_what_is_translatable():
 
 def test_a_translation_must_keep_code_links_roles_and_fences():
     src = MESSAGES[0]
-    assert tp.valid(src, "Starten Sie die **Pipeline** mit `pygeovision channel land_cover` und lesen Sie [die Anleitung](guide.md).")
-    assert not tp.valid(src, "Starten Sie die **Pipeline** mit `pygeovision kanal land_cover` und lesen Sie [die Anleitung](guide.md).")
-    assert not tp.valid(src, "Starten Sie die Pipeline mit `pygeovision channel land_cover` und lesen Sie [die Anleitung](anleitung.md).")
+    assert tp.valid(
+        src,
+        "Starten Sie die **Pipeline** mit `pygeovision channel land_cover` und lesen Sie [die Anleitung](guide.md).",
+    )
+    assert not tp.valid(
+        src,
+        "Starten Sie die **Pipeline** mit `pygeovision kanal land_cover` und lesen Sie [die Anleitung](guide.md).",
+    )
+    assert not tp.valid(
+        src,
+        "Starten Sie die Pipeline mit `pygeovision channel land_cover` und lesen Sie [die Anleitung](anleitung.md).",
+    )
     assert not tp.valid(MESSAGES[4], "Siehe :doc:`installation` für die Extras.")
     assert not tp.valid(src, "   ")
 
@@ -48,11 +60,18 @@ def test_a_rejected_translation_is_asked_again_alone_and_then_left_in_english():
 
     def flaky(batch):
         calls.append(len(batch))
-        return [t.replace("`pygeovision channel land_cover`", "`falsch`") if "land_cover" in t else "[de] " + t for t in batch]
+        return [
+            (
+                t.replace("`pygeovision channel land_cover`", "`falsch`")
+                if "land_cover" in t
+                else "[de] " + t
+            )
+            for t in batch
+        ]
 
     out = tp.translate_messages(MESSAGES[:2], flaky)
     assert out[0] == "" and out[1] == "[de] Install it."
-    assert calls == [2, 1]                                 # the batch, then the rejected message alone
+    assert calls == [2, 1]  # the batch, then the rejected message alone
 
 
 def test_a_failing_request_leaves_its_messages_in_english_and_keeps_the_rest():
@@ -81,12 +100,12 @@ def test_a_page_is_written_to_the_locale_folder_and_is_resumable(tmp_path):
     po = polib.pofile(str(locale / "de" / "LC_MESSAGES" / "guide.po"))
     by_id = {e.msgid: e.msgstr for e in po}
     assert by_id[MESSAGES[1]] == "[de] Install it."
-    assert by_id[MESSAGES[2]] == ""                         # code is not translated and not sent
+    assert by_id[MESSAGES[2]] == ""  # code is not translated and not sent
     assert po.metadata["Language"] == "de" and "machine" in po.metadata["X-Translator"]
     assert (locale / "de" / "LC_MESSAGES" / "guide.mo").exists()
     sent = []
     again = tp.process(pot, pot_dir, "de", lambda b: sent.append(b) or fake(b), locale=locale)
-    assert again[0] == 0 and sent == []                    # nothing left to translate, nothing sent
+    assert again[0] == 0 and sent == []  # nothing left to translate, nothing sent
 
 
 def test_a_message_added_to_a_page_later_is_picked_up(tmp_path):
@@ -100,7 +119,9 @@ def test_a_message_added_to_a_page_later_is_picked_up(tmp_path):
 
 def test_dry_run_counts_and_writes_nothing(tmp_path):
     pot_dir = _pot(tmp_path, MESSAGES)
-    done, left, words = tp.process(pot_dir / "guide.pot", pot_dir, "de", None, locale=tmp_path / "locale", dry_run=True)
+    done, left, words = tp.process(
+        pot_dir / "guide.pot", pot_dir, "de", None, locale=tmp_path / "locale", dry_run=True
+    )
     assert (done, left) == (0, 3) and words > 5
     assert not (tmp_path / "locale").exists()
 
@@ -109,8 +130,13 @@ def test_main_translates_the_pages_that_match(tmp_path, monkeypatch, capsys):
     pot_dir = _pot(tmp_path, MESSAGES, "guide")
     _pot(tmp_path, MESSAGES, "other")
     monkeypatch.setattr(tp, "LOCALE", tmp_path / "locale")
-    monkeypatch.setattr(tp, "process", lambda *a, **k: _orig(*a, **{**k, "locale": tmp_path / "locale"}))
-    rc = tp.main(["--lang", "de", "--pot-dir", str(pot_dir), "--pages", "guide"], translator_factory=lambda lang, model: fake)
+    monkeypatch.setattr(
+        tp, "process", lambda *a, **k: _orig(*a, **{**k, "locale": tmp_path / "locale"})
+    )
+    rc = tp.main(
+        ["--lang", "de", "--pot-dir", str(pot_dir), "--pages", "guide"],
+        translator_factory=lambda lang, model: fake,
+    )
     assert rc == 0
     assert (tmp_path / "locale" / "de" / "LC_MESSAGES" / "guide.po").exists()
     assert not (tmp_path / "locale" / "de" / "LC_MESSAGES" / "other.po").exists()
@@ -129,6 +155,7 @@ def test_missing_documentation_requirements_are_named_before_sphinx_is_started()
 
 def test_make_pot_stops_with_the_install_command_when_sphinx_is_missing(monkeypatch):
     import pytest
+
     monkeypatch.setattr(tp, "missing_doc_requirements", lambda: ["sphinx", "furo"])
     with pytest.raises(SystemExit) as stop:
         tp.make_pot(Path("/nonexistent"))

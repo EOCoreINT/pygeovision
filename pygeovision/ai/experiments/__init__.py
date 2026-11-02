@@ -16,16 +16,16 @@ Example:
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 import hashlib
 import json
 import logging
 import os
+from pathlib import Path
 import platform
 import random
 import time
-from dataclasses import asdict, dataclass, field
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -48,6 +48,7 @@ class ExperimentRecord:
         artifacts: Paths to saved artifacts.
         environment: Captured environment info.
     """
+
     name: str
     run_id: str
     start_time: str
@@ -201,12 +202,14 @@ class ExperimentTracker:
         for path in sorted(self.save_dir.glob("*.json")):
             try:
                 data = json.loads(path.read_text())
-                records.append({
-                    "run_id": data.get("run_id", path.stem),
-                    "name": data.get("name", ""),
-                    "start_time": data.get("start_time", ""),
-                    "tags": data.get("tags", {}),
-                })
+                records.append(
+                    {
+                        "run_id": data.get("run_id", path.stem),
+                        "name": data.get("name", ""),
+                        "start_time": data.get("start_time", ""),
+                        "tags": data.get("tags", {}),
+                    }
+                )
             except Exception:
                 pass
         return records
@@ -241,6 +244,7 @@ class ExperimentTracker:
         np.random.seed(seed)
         try:
             import torch
+
             torch.manual_seed(seed)
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
@@ -270,6 +274,7 @@ class ExperimentTracker:
         }
         try:
             import torch
+
             env["torch"] = torch.__version__
             env["cuda"] = str(torch.cuda.is_available())
             if torch.cuda.is_available():

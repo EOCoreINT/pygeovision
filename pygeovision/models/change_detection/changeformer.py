@@ -1,4 +1,5 @@
 """ChangeFormer for bi-temporal satellite change detection."""
+
 from __future__ import annotations
 
 import logging
@@ -25,43 +26,58 @@ class ChangeFormer:
         change_map = model.detect("before.tif", "after.tif", "change.tif")
     """
 
-    def __init__(self, num_classes: int = 2, in_channels: int = 4,
-                 backbone: str = "mit-b0", device: str | None = None) -> None:
+    def __init__(
+        self,
+        num_classes: int = 2,
+        in_channels: int = 4,
+        backbone: str = "mit-b0",
+        device: str | None = None,
+    ) -> None:
         if backbone != "mit-b0":
             raise ValueError(
                 f"backbone={backbone!r}: this network has a single fixed architecture. "
                 f"Only the label 'mit-b0' is accepted; the published ChangeFormer backbones are "
-                f"not implemented.")
+                f"not implemented."
+            )
         self.num_classes = num_classes
         self.in_channels = in_channels
         self.backbone = backbone
         self.device = device or self._auto_device()
-        self._model = None
+        self._model: Any = None
 
     @staticmethod
     def _auto_device():
         try:
-            import torch; return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError: return "cpu"
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
 
     def build(self) -> Any:
         """Build the ChangeFormer model architecture."""
         try:
-            import torch
+            import torch  # noqa: F401
             import torch.nn as nn
-        except ImportError:
-            raise ImportError("torch required")
+        except ImportError as exc:
+            raise ImportError("torch required") from exc
 
         class SiameseEncoder(nn.Module):
             def __init__(self, in_ch, embed_dim=64):
                 super().__init__()
                 self.shared = nn.Sequential(
-                    nn.Conv2d(in_ch, embed_dim, 3, padding=1), nn.BatchNorm2d(embed_dim), nn.ReLU(),
-                    nn.Conv2d(embed_dim, embed_dim*2, 3, stride=2, padding=1), nn.BatchNorm2d(embed_dim*2), nn.ReLU(),
-                    nn.Conv2d(embed_dim*2, embed_dim*4, 3, stride=2, padding=1), nn.BatchNorm2d(embed_dim*4), nn.ReLU(),
+                    nn.Conv2d(in_ch, embed_dim, 3, padding=1),
+                    nn.BatchNorm2d(embed_dim),
+                    nn.ReLU(),
+                    nn.Conv2d(embed_dim, embed_dim * 2, 3, stride=2, padding=1),
+                    nn.BatchNorm2d(embed_dim * 2),
+                    nn.ReLU(),
+                    nn.Conv2d(embed_dim * 2, embed_dim * 4, 3, stride=2, padding=1),
+                    nn.BatchNorm2d(embed_dim * 4),
+                    nn.ReLU(),
                 )
                 # Cross-attention for temporal interaction
-                self.attn = nn.MultiheadAttention(embed_dim*4, num_heads=4, batch_first=True)
+                self.attn = nn.MultiheadAttention(embed_dim * 4, num_heads=4, batch_first=True)
 
             def forward(self, x1, x2):
                 f1 = self.shared(x1)  # (B, C, H/4, W/4)
@@ -99,8 +115,9 @@ class ChangeFormer:
         self._model = ChangeFormerModel(self.in_channels, self.num_classes).to(self.device)
         return self._model
 
-    def detect(self, before_path: str, after_path: str,
-                output_path: str = "./output/change.tif") -> dict:
+    def detect(
+        self, before_path: str, after_path: str, output_path: str = "./output/change.tif"
+    ) -> dict:
         """Detect changes between two co-registered GeoTIFFs.
 
         Handles common channel mismatches:
@@ -136,12 +153,12 @@ class ChangeFormer:
                 # Take first target_c bands (e.g. RGB+NIR from a 12-band scene)
                 return arr[:target_c]
             # Repeat bands cyclically until we reach target_c
-            repeats = (target_c + c - 1) // c        # ceil division
+            repeats = (target_c + c - 1) // c  # ceil division
             arr_rep = np.concatenate([arr] * repeats, axis=0)
             return arr_rep[:target_c]
 
         before = _fix_channels(before, self.in_channels)
-        after  = _fix_channels(after,  self.in_channels)
+        after = _fix_channels(after, self.in_channels)
 
         # Normalise per-band to [0, 1]
         for arr in [before, after]:
@@ -158,7 +175,7 @@ class ChangeFormer:
         pW = (4 - W % 4) % 4
         if pH or pW:
             before = np.pad(before, ((0, 0), (0, pH), (0, pW)))
-            after  = np.pad(after,  ((0, 0), (0, pH), (0, pW)))
+            after = np.pad(after, ((0, 0), (0, pH), (0, pW)))
 
         t1 = torch.tensor(before).unsqueeze(0).to(self.device)
         t2 = torch.tensor(after).unsqueeze(0).to(self.device)
@@ -170,15 +187,20 @@ class ChangeFormer:
         change_pct = float(pred.mean()) * 100
 
         import pathlib
+
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         profile.update(count=1, dtype="uint8", compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(pred[np.newaxis])
             dst.update_tags(method="ChangeFormer", change_pct=f"{change_pct:.2f}")
 
-        return {"output_path": output_path, "change_pct": round(change_pct, 3), "model": "ChangeFormer"}
+        return {
+            "output_path": output_path,
+            "change_pct": round(change_pct, 3),
+            "model": "ChangeFormer",
+        }
 
 
 class ChangeDetection:
@@ -202,9 +224,11 @@ class ChangeDetection:
             return ChangeFormer(**kwargs)
         elif variant in ("bit", "bitemporal"):
             from pygeovision.models.change_detection.bit import BITChangeDetector
+
             return BITChangeDetector(**kwargs)
         elif variant == "dsamnet":
             from pygeovision.models.change_detection.dsamnet import DSAMNetChangeDetector
+
             return DSAMNetChangeDetector(**kwargs)
         elif variant == "changestar":
             raise NotImplementedError(
@@ -214,6 +238,5 @@ class ChangeDetection:
             )
         else:
             raise ValueError(
-                f"Unknown model_variant={model_variant!r}. "
-                f"Choose from: {cls._VARIANTS}."
+                f"Unknown model_variant={model_variant!r}. " f"Choose from: {cls._VARIANTS}."
             )

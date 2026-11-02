@@ -3,6 +3,7 @@ EarthNets Dataset Analysis Tools (Phase 5.1).
 Volume trends, resolution distributions, correlation matrix,
 t-SNE/UMAP clustering, radar charts — all computed from the catalogue metadata (about 460 datasets).
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,6 +37,7 @@ class DatasetAnalyzer:
     def __init__(self, registry: Any = None) -> None:
         if registry is None:
             from pygeovision.datasets.registry import dataset_registry
+
             registry = dataset_registry
         self.registry = registry
         self._datasets = registry.all()
@@ -52,7 +54,7 @@ class DatasetAnalyzer:
         total = 0.0
         for y in sorted_years:
             total += year_vol[y]
-            cumulative[y] = round(total / 1024, 2)   # GB → TB
+            cumulative[y] = round(total / 1024, 2)  # GB → TB
 
         if show:
             print("\nVolume trend (cumulative TB by year):")
@@ -62,10 +64,12 @@ class DatasetAnalyzer:
         return cumulative
 
     # ── Resolution distribution ───────────────────────────────────────
-    def resolution_distribution(self, bins: list[float] | None = None, show: bool = True) -> dict[str, int]:
+    def resolution_distribution(
+        self, bins: list[float] | None = None, show: bool = True
+    ) -> dict[str, int]:
         """Histogram of spatial resolution (GSD) values."""
         bins = bins or [0.0, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 100.0, float("inf")]
-        labels = ["<0.1m","0.1-0.5m","0.5-1m","1-5m","5-10m","10-30m","30-100m",">100m"]
+        labels = ["<0.1m", "0.1-0.5m", "0.5-1m", "1-5m", "5-10m", "10-30m", "30-100m", ">100m"]
         counts = dict.fromkeys(labels, 0)
         for d in self._datasets:
             r = d.resolution_m
@@ -120,13 +124,12 @@ class DatasetAnalyzer:
         (symmetric task overlap, 0.3 for different modalities), so the two rankings can differ.
         """
         datasets = (
-            [self.registry[n] for n in names]
-            if names
-            else self._datasets[:30]  # limit for display
+            [self.registry[n] for n in names] if names else self._datasets[:30]  # limit for display
         )
         n = len(datasets)
         matrix = [[0.0] * n for _ in range(n)]
         import math
+
         for i in range(n):
             for j in range(n):
                 if i == j:
@@ -134,11 +137,19 @@ class DatasetAnalyzer:
                     continue
                 a, b = datasets[i], datasets[j]
                 domain_match = 1.0 if a.domain == b.domain else 0.0
-                modal_match  = 1.0 if a.modality == b.modality else 0.3
+                modal_match = 1.0 if a.modality == b.modality else 0.3
                 res_sim = 1.0 / (1.0 + abs(math.log1p(a.resolution_m) - math.log1p(b.resolution_m)))
-                task_sim = len(set(a.tasks) & set(b.tasks)) / max(len(set(a.tasks) | set(b.tasks)), 1)
+                task_sim = len(set(a.tasks) & set(b.tasks)) / max(
+                    len(set(a.tasks) | set(b.tasks)), 1
+                )
                 scale_sim = min(a.n_samples, b.n_samples) / max(a.n_samples, b.n_samples, 1)
-                matrix[i][j] = 0.35*domain_match + 0.2*modal_match + 0.2*res_sim + 0.15*task_sim + 0.1*scale_sim
+                matrix[i][j] = (
+                    0.35 * domain_match
+                    + 0.2 * modal_match
+                    + 0.2 * res_sim
+                    + 0.15 * task_sim
+                    + 0.1 * scale_sim
+                )
 
         if show:
             names_out = [d.name[:12] for d in datasets]
@@ -173,9 +184,10 @@ class DatasetAnalyzer:
             return None
 
         # Build feature matrix
-        domain_map = {d: i for i, d in enumerate(sorted(set(x.domain for x in self._datasets)))}
-        modal_map = {m: i for i, m in enumerate(sorted(set(x.modality for x in self._datasets)))}
+        domain_map = {d: i for i, d in enumerate(sorted({x.domain for x in self._datasets}))}
+        modal_map = {m: i for i, m in enumerate(sorted({x.modality for x in self._datasets}))}
         import math
+
         features = []
         for d in self._datasets:
             feat = [
@@ -195,10 +207,16 @@ class DatasetAnalyzer:
         try:
             if method == "umap":
                 from umap import UMAP
-                reducer = UMAP(n_components=n_components, random_state=42, n_neighbors=15, min_dist=0.1)
+
+                reducer = UMAP(
+                    n_components=n_components, random_state=42, n_neighbors=15, min_dist=0.1
+                )
             else:
                 from sklearn.manifold import TSNE
-                reducer = TSNE(n_components=n_components, random_state=42, perplexity=min(30, len(X)-1))
+
+                reducer = TSNE(
+                    n_components=n_components, random_state=42, perplexity=min(30, len(X) - 1)
+                )
 
             embedding = reducer.fit_transform(X)
             logger.info("%s clustering complete: shape=%s", method.upper(), embedding.shape)
@@ -206,17 +224,27 @@ class DatasetAnalyzer:
             if save_path:
                 try:
                     import matplotlib.pyplot as plt
+
                     unique_domains = list(set(domains))
                     colors = plt.cm.tab20(np.linspace(0, 1, len(unique_domains)))
                     color_map = {d: colors[i] for i, d in enumerate(unique_domains)}
                     fig, ax = plt.subplots(figsize=(14, 10))
                     for domain in unique_domains:
                         idx = [i for i, dom in enumerate(domains) if dom == domain]
-                        ax.scatter(embedding[idx, 0], embedding[idx, 1],
-                                   c=[color_map[domain]], label=domain, alpha=0.7, s=40)
+                        ax.scatter(
+                            embedding[idx, 0],
+                            embedding[idx, 1],
+                            c=[color_map[domain]],
+                            label=domain,
+                            alpha=0.7,
+                            s=40,
+                        )
                     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
-                    ax.set_title(f"Dataset Embedding ({method.upper()}) — {len(self._datasets)} datasets")
-                    ax.set_xlabel(f"{method.upper()}-1"); ax.set_ylabel(f"{method.upper()}-2")
+                    ax.set_title(
+                        f"Dataset Embedding ({method.upper()}) — {len(self._datasets)} datasets"
+                    )
+                    ax.set_xlabel(f"{method.upper()}-1")
+                    ax.set_ylabel(f"{method.upper()}-2")
                     plt.tight_layout()
                     plt.savefig(save_path, dpi=150, bbox_inches="tight")
                     plt.close(fig)
@@ -263,12 +291,13 @@ class DatasetAnalyzer:
 
         def _features(d: Any) -> list[float]:
             return [
-                1.0 - min(math.log1p(d.resolution_m) / max_res_log, 1.0),  # Resolution (finer=higher)
-                math.log1p(d.n_samples) / max_log_samples,                 # Scale
-                min(d.n_classes / 50.0, 1.0),                              # Diversity
-                min(d.year - 2000, 24) / 24.0,                             # Recency
-                min(math.log1p(d.volume_gb) / max_log_vol, 1.0),           # Volume
-                1.0 if d.download_url else 0.0,                            # Accessibility
+                1.0
+                - min(math.log1p(d.resolution_m) / max_res_log, 1.0),  # Resolution (finer=higher)
+                math.log1p(d.n_samples) / max_log_samples,  # Scale
+                min(d.n_classes / 50.0, 1.0),  # Diversity
+                min(d.year - 2000, 24) / 24.0,  # Recency
+                min(math.log1p(d.volume_gb) / max_log_vol, 1.0),  # Volume
+                1.0 if d.download_url else 0.0,  # Accessibility
             ]
 
         dims = ["Resolution", "Scale", "Diversity", "Recency", "Volume", "Access"]
@@ -285,6 +314,7 @@ class DatasetAnalyzer:
 
         try:
             import matplotlib.pyplot as plt
+
             fig = plt.figure(figsize=(8, 8))
             ax = fig.add_subplot(111, projection="polar")
             colors = plt.cm.tab10(np.linspace(0, 0.8, len(datasets)))
@@ -320,7 +350,11 @@ class DatasetAnalyzer:
             "domain_distribution": self.domain_distribution(show=False),
             "modality_distribution": self.modality_distribution(show=False),
             "top_segmentation": [d.name for d in self.registry.top_for_task("segmentation", n=5)],
-            "top_detection":    [d.name for d in self.registry.top_for_task("detection", n=5)],
-            "top_classification": [d.name for d in self.registry.top_for_task("classification", n=5)],
-            "top_change_detection": [d.name for d in self.registry.top_for_task("change_detection", n=5)],
+            "top_detection": [d.name for d in self.registry.top_for_task("detection", n=5)],
+            "top_classification": [
+                d.name for d in self.registry.top_for_task("classification", n=5)
+            ],
+            "top_change_detection": [
+                d.name for d in self.registry.top_for_task("change_detection", n=5)
+            ],
         }

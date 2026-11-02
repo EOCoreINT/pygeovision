@@ -20,13 +20,10 @@ import os
 
 try:
     import torch
+    import torch.nn as nn
 except ImportError:
     torch = None  # type: ignore[assignment]
     nn = None  # type: ignore[assignment]
-if torch is not None:
-    import torch.nn as nn
-else:
-    nn = None
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +32,7 @@ def is_distributed() -> bool:
     """Return True if running inside a distributed process group."""
     if torch is None:
         return False
-    return (
-        torch.distributed.is_available()
-        and torch.distributed.is_initialized()
-    )
+    return torch.distributed.is_available() and torch.distributed.is_initialized()
 
 
 def get_rank() -> int:
@@ -102,7 +96,10 @@ def setup_ddp(
     torch.cuda.set_device(local_rank)
     logger.info(
         "DDP initialized: rank=%d / world_size=%d (local_rank=%d, backend=%s)",
-        rank, world_size, local_rank, backend,
+        rank,
+        world_size,
+        local_rank,
+        backend,
     )
 
 

@@ -6,6 +6,7 @@ multi-class map (1 building, 2 road, 3 water ...) and an ESA WorldCover map (10 
 are different alphabets: a vote between them is noise, so they are written side by side and **not**
 fused (``fusion_skipped_reason`` says why). SAM instance ids and foundation-model cluster ids are never fused.
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,8 +39,15 @@ class AutoLabelPipeline:
         result["fused_path"]        # the vote, on the grid of scene.tif
     """
 
-    SOURCES = ["osm", "microsoft_buildings", "google_buildings",
-               "esa_worldcover", "dynamic_world", "sam_auto", "foundation"]
+    SOURCES = [
+        "osm",
+        "microsoft_buildings",
+        "google_buildings",
+        "esa_worldcover",
+        "dynamic_world",
+        "sam_auto",
+        "foundation",
+    ]
 
     def __init__(
         self,
@@ -63,35 +71,56 @@ class AutoLabelPipeline:
         ref = self.reference_raster
         if source == "osm":
             from pygeovision.labeling.osm import OSMLabeler
+
             return OSMLabeler().label(
-                bbox, categories=categories or ["buildings", "roads", "water"],
-                output_path=f"{output_dir}/osm.tif", reference_raster=ref)
+                bbox,
+                categories=categories or ["buildings", "roads", "water"],
+                output_path=f"{output_dir}/osm.tif",
+                reference_raster=ref,
+            )
         if source == "microsoft_buildings":
             from pygeovision.labeling.buildings import MicrosoftBuildingsLabeler
+
             return MicrosoftBuildingsLabeler().label(
-                bbox, output_path=f"{output_dir}/ms_buildings.tif", reference_raster=ref)
+                bbox, output_path=f"{output_dir}/ms_buildings.tif", reference_raster=ref
+            )
         if source == "google_buildings":
             from pygeovision.labeling.buildings import GoogleBuildingsLabeler
+
             return GoogleBuildingsLabeler().label(
-                bbox, output_path=f"{output_dir}/google_buildings.tif", reference_raster=ref)
+                bbox, output_path=f"{output_dir}/google_buildings.tif", reference_raster=ref
+            )
         if source == "esa_worldcover":
             from pygeovision.labeling.landcover import ESAWorldCoverLabeler
+
             return ESAWorldCoverLabeler().label(
-                bbox, output_path=f"{output_dir}/esa_worldcover.tif", reference_raster=ref)
+                bbox, output_path=f"{output_dir}/esa_worldcover.tif", reference_raster=ref
+            )
         if source == "dynamic_world":
             from pygeovision.labeling.landcover import DynamicWorldLabeler
+
             return DynamicWorldLabeler().label(
-                bbox, output_path=f"{output_dir}/dynamic_world.tif", reference_raster=ref)
+                bbox, output_path=f"{output_dir}/dynamic_world.tif", reference_raster=ref
+            )
         if source in ("sam_auto", "foundation"):
             if not ref:
-                return {"success": False,
-                        "error": f"{source} requires reference_raster (it segments an actual image, not a bbox query)"}
+                return {
+                    "success": False,
+                    "error": f"{source} requires reference_raster (it segments an actual image, not a bbox query)",
+                }
             if source == "sam_auto":
                 from pygeovision.labeling.sam_auto import SAMAutoLabeler
+
                 return SAMAutoLabeler().auto_label(ref, output_path=f"{output_dir}/sam_auto.tif")
             from pygeovision.labeling.foundation import FoundationModelLabeler
-            return FoundationModelLabeler().pseudo_label(ref, output_path=f"{output_dir}/foundation.tif")
-        return {"success": False, "error": f"Unknown source: '{source}'. Choose from: {self.SOURCES}"}
+
+            return FoundationModelLabeler().pseudo_label(
+                ref, output_path=f"{output_dir}/foundation.tif"
+            )
+        return {
+            "success": False,
+            "error": f"Unknown source: '{source}'. Choose from: {self.SOURCES}",
+        }
 
     def run(
         self,
@@ -110,6 +139,7 @@ class AutoLabelPipeline:
             ``quality_by_source``.
         """
         import os
+
         os.makedirs(output_dir, exist_ok=True)
         partial_results: dict[str, dict] = {}
 
@@ -119,7 +149,10 @@ class AutoLabelPipeline:
                 partial_results[source] = r
                 logger.info("Source '%s': %s", source, "OK" if r.get("success") else r.get("error"))
             except Exception as exc:
-                partial_results[source] = {"success": False, "error": f"{type(exc).__name__}: {exc}"}
+                partial_results[source] = {
+                    "success": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
                 logger.warning("Source '%s' failed: %s", source, exc)
 
         # A source "succeeds" only when it left a raster on disk (Earth Engine exports to Drive instead).
@@ -158,6 +191,7 @@ class AutoLabelPipeline:
 
         if assess_quality and label_paths:
             from pygeovision.labeling.quality import LabelQualityAssessor
+
             qa = LabelQualityAssessor(num_classes=None)
             result["quality_by_source"] = {s: qa.assess(p) for s, p in zip(successful, label_paths)}
             if fused_path:
@@ -169,6 +203,7 @@ class AutoLabelPipeline:
     def _values(path: str):
         import numpy as np
         import rasterio
+
         with rasterio.open(path) as src:
             data = src.read(1)
             nd = src.nodata
@@ -181,16 +216,22 @@ class AutoLabelPipeline:
         """Why these rasters must not be fused, or ``None`` when they can."""
         never = [s for s in sources if s in _NEVER_FUSE]
         if never:
-            return (f"{never} produce arbitrary ids (SAM instances / foundation clusters) that mean nothing "
-                    "to another raster")
+            return (
+                f"{never} produce arbitrary ids (SAM instances / foundation clusters) that mean nothing "
+                "to another raster"
+            )
         value_sets = {s: sorted(self._values(p)) for s, p in zip(sources, paths)}
         if all(set(v) <= {0, 1} for v in value_sets.values()):
             return None
-        shown = "; ".join(f"{s} has values {v[:8]}{'...' if len(v) > 8 else ''}" for s, v in value_sets.items())
-        return (f"these sources use different label alphabets ({shown}). A vote between them would mix unrelated "
-                "classes (e.g. OSM 1=building, 2=road vs ESA 10=tree, 50=built-up). Label one target class from "
-                "each source (OSM categories=['buildings'] gives 0/1), or remap each source to a common scheme "
-                "first. The per-source rasters were still written.")
+        shown = "; ".join(
+            f"{s} has values {v[:8]}{'...' if len(v) > 8 else ''}" for s, v in value_sets.items()
+        )
+        return (
+            f"these sources use different label alphabets ({shown}). A vote between them would mix unrelated "
+            "classes (e.g. OSM 1=building, 2=road vs ESA 10=tree, 50=built-up). Label one target class from "
+            "each source (OSM categories=['buildings'] gives 0/1), or remap each source to a common scheme "
+            "first. The per-source rasters were still written."
+        )
 
     def _fuse(self, paths: list[str], output: str) -> str | None:
         """Fuse rasters on one grid. Binary modes: majority_vote, union, intersection, priority."""
@@ -203,15 +244,23 @@ class AutoLabelPipeline:
             with rasterio.open(grid_path) as g:
                 crs, tf, h, w = g.crs, g.transform, g.height, g.width
 
-            layers = []      # int32, -1 = abstain
+            layers = []  # int32, -1 = abstain
             for p in paths:
                 with rasterio.open(p) as src:
                     dst = np.full((h, w), -1, dtype=np.int32)
-                    reproject(rasterio.band(src, 1), dst, src_transform=src.transform, src_crs=src.crs,
-                              src_nodata=src.nodata, dst_transform=tf, dst_crs=crs, dst_nodata=-1,
-                              resampling=Resampling.nearest)
+                    reproject(
+                        rasterio.band(src, 1),
+                        dst,
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        src_nodata=src.nodata,
+                        dst_transform=tf,
+                        dst_crs=crs,
+                        dst_nodata=-1,
+                        resampling=Resampling.nearest,
+                    )
                 layers.append(dst)
-            stack = np.stack(layers)               # (n, H, W)
+            stack = np.stack(layers)  # (n, H, W)
             n = stack.shape[0]
             voted = stack >= 0
             any_vote = voted.any(0)
@@ -243,8 +292,19 @@ class AutoLabelPipeline:
                 raise ValueError("fused values exceed uint8")
 
             Path(output).parent.mkdir(parents=True, exist_ok=True)
-            with rasterio.open(output, "w", driver="GTiff", height=h, width=w, count=1, dtype="uint8",
-                               crs=crs, transform=tf, nodata=NODATA, compress="lzw") as dst:
+            with rasterio.open(
+                output,
+                "w",
+                driver="GTiff",
+                height=h,
+                width=w,
+                count=1,
+                dtype="uint8",
+                crs=crs,
+                transform=tf,
+                nodata=NODATA,
+                compress="lzw",
+            ) as dst:
                 dst.write(fused.astype(np.uint8)[np.newaxis])
                 dst.update_tags(fusion=self.fusion, sources=",".join(Path(p).name for p in paths))
             return output

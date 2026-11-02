@@ -19,10 +19,11 @@ write a repaired copy, and return its path in repaired_path.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import logging
 import os
-from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import rasterio
@@ -35,29 +36,31 @@ logger = logging.getLogger(__name__)
 # Geographic CRS (degrees): valid pixel size > 1e-7 deg (~1 cm at equator)
 GEO_MIN_PIXEL_DEG = 1e-7
 # Projected CRS (metres): valid pixel size >= 0.5 m
-PROJ_MIN_PIXEL_M  = 0.5
+PROJ_MIN_PIXEL_M = 0.5
 # Maximum sensible pixel size for projected CRS (> 10 km = almost certainly wrong)
-PROJ_MAX_PIXEL_M  = 10_000.0
+PROJ_MAX_PIXEL_M = 10_000.0
 # Minimum GCPs needed for reliable transform recovery
 MIN_GCPS_FOR_RECOVERY = 4
 
 
 # ── Result dataclass ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class GeoreferenceResult:
     """Return value of validate_sar_georeference() and validate_georeference()."""
-    valid:         bool
+
+    valid: bool
     repaired_path: str | None = None
-    errors:        list[str]     = field(default_factory=list)
-    warnings:      list[str]     = field(default_factory=list)
-    crs:           str | None = None
-    transform_a:   float | None = None
-    gcp_count:     int = 0
-    recovered:     bool = False
-    srid:          int | None = None
-    origin_x:      float | None = None
-    origin_y:      float | None = None
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    crs: str | None = None
+    transform_a: float | None = None
+    gcp_count: int = 0
+    recovered: bool = False
+    srid: int | None = None
+    origin_x: float | None = None
+    origin_y: float | None = None
 
     @property
     def repaired(self) -> bool:
@@ -72,13 +75,14 @@ class GeoreferenceResult:
 
 # ── Identity-transform detection ──────────────────────────────────────────────
 
+
 def _is_identity_transform(transform) -> bool:
     """Return True if transform is a pixel-space identity (a≈1, b=d=0, e≈±1)."""
     return (
-        abs(abs(transform.a) - 1.0) < 0.01 and
-        abs(transform.b) < 1e-6 and
-        abs(transform.d) < 1e-6 and
-        abs(abs(transform.e) - 1.0) < 0.01
+        abs(abs(transform.a) - 1.0) < 0.01
+        and abs(transform.b) < 1e-6
+        and abs(transform.d) < 1e-6
+        and abs(abs(transform.e) - 1.0) < 0.01
     )
 
 
@@ -91,6 +95,7 @@ def _is_geographic_crs(crs: CRS) -> bool:
 
 
 # ── GCP recovery ─────────────────────────────────────────────────────────────
+
 
 def _recover_via_gcps(src_path: str, dst_path: str) -> bool:
     """
@@ -113,9 +118,9 @@ def _recover_via_gcps(src_path: str, dst_path: str) -> bool:
                 logger.debug(f"GCP recovery: insufficient GCPs ({len(gcps) if gcps else 0})")
                 return False
 
-            data   = src.read()
-            meta   = src.meta.copy()
-            src_crs = src.crs   # the tagged CRS (may be EPSG:32630 even if transform is wrong)
+            data = src.read()
+            meta = src.meta.copy()
+            src_crs = src.crs  # the tagged CRS (may be EPSG:32630 even if transform is wrong)
 
         # Derive affine transform from GCPs
         # from_gcps() uses the GCP pixel/line coordinates and their
@@ -124,7 +129,9 @@ def _recover_via_gcps(src_path: str, dst_path: str) -> bool:
 
         # Sanity-check the recovered transform
         if _is_identity_transform(recovered_transform):
-            logger.warning("GCP recovery: derived transform is still identity — GCPs may be corrupt")
+            logger.warning(
+                "GCP recovery: derived transform is still identity — GCPs may be corrupt"
+            )
             return False
 
         # The GCP CRS may be WGS84 while the file is tagged EPSG:32630.
@@ -140,7 +147,9 @@ def _recover_via_gcps(src_path: str, dst_path: str) -> bool:
                 return False
         else:
             if a < PROJ_MIN_PIXEL_M or a > PROJ_MAX_PIXEL_M:
-                logger.warning(f"GCP recovery: recovered pixel size {a:.1f} m is outside [0.5, 10000] m")
+                logger.warning(
+                    f"GCP recovery: recovered pixel size {a:.1f} m is outside [0.5, 10000] m"
+                )
                 return False
 
         # Write the corrected file
@@ -162,7 +171,10 @@ def _recover_via_gcps(src_path: str, dst_path: str) -> bool:
 
 # ── Reprojection recovery (fallback when no GCPs) ────────────────────────────
 
-def _recover_via_bounds_heuristic(src_path: str, dst_path: str, target_crs: str = "EPSG:32630") -> bool:
+
+def _recover_via_bounds_heuristic(
+    src_path: str, dst_path: str, target_crs: str = "EPSG:32630"
+) -> bool:
     """
     Last-resort recovery: if the origin looks like pixel-row offset (y in 0–30000),
     attempt to reconstruct the transform from the CRS zone bounds + pixel count.
@@ -173,17 +185,15 @@ def _recover_via_bounds_heuristic(src_path: str, dst_path: str, target_crs: str 
         from rasterio.transform import from_bounds as affine_from_bounds
 
         with rasterio.open(src_path) as src:
-            data   = src.read()
-            meta   = src.meta.copy()
-            H, W   = data.shape[1], data.shape[2]
+            data = src.read()
+            meta = src.meta.copy()
+            H, W = data.shape[1], data.shape[2]
             # Use known Accra approximate bounds in EPSG:32630
             # Odaw bbox WGS84: lon (-0.30, -0.05) lat (5.50, 5.70)
             # UTM 30N approximate: E 630000-655000, N 608000-630000
             ACCRA_UTM_BOUNDS = (628000, 606000, 658000, 633000)
             crs_obj = RasterioCRS.from_epsg(32630)
-            recovered_transform = affine_from_bounds(
-                *ACCRA_UTM_BOUNDS, W, H
-            )
+            recovered_transform = affine_from_bounds(*ACCRA_UTM_BOUNDS, W, H)
 
         a = abs(recovered_transform.a)
         if a < PROJ_MIN_PIXEL_M or a > PROJ_MAX_PIXEL_M:
@@ -206,6 +216,7 @@ def _recover_via_bounds_heuristic(src_path: str, dst_path: str, target_crs: str 
 
 # ── Raw-reference recovery (repair using a separate known-good file) ─────────
 
+
 def _recover_via_raw_reference(corrupt_path: str, raw_path: str, dst_path: str) -> bool:
     """
     Repair a corrupt (identity-transform) raster using a separate raw file
@@ -219,7 +230,7 @@ def _recover_via_raw_reference(corrupt_path: str, raw_path: str, dst_path: str) 
     try:
         with rasterio.open(raw_path) as raw_src:
             raw_transform = raw_src.transform
-            raw_crs       = raw_src.crs
+            raw_crs = raw_src.crs
 
         if raw_crs is None or _is_identity_transform(raw_transform):
             logger.debug(f"Raw-reference recovery: raw file {raw_path} has no usable transform")
@@ -253,6 +264,7 @@ def _recover_via_raw_reference(corrupt_path: str, raw_path: str, dst_path: str) 
 
 
 # ── Core validation function ──────────────────────────────────────────────────
+
 
 def validate_georeference(
     path: str,
@@ -298,14 +310,14 @@ def validate_georeference(
     try:
         with rasterio.open(file_path_arg) as src:
             transform = src.transform
-            crs       = src.crs
-            gcps, _   = src.gcps
+            crs = src.crs
+            gcps, _ = src.gcps
             result.gcp_count = len(gcps) if gcps else 0
 
         if crs is None:
             result.errors.append("No CRS defined")
         else:
-            result.crs  = crs.to_string()
+            result.crs = crs.to_string()
             result.srid = crs.to_epsg()
 
         is_geo = _is_geographic_crs(crs) if crs else False
@@ -330,9 +342,7 @@ def validate_georeference(
                 f"This is the known PyGeoFetch post-reproject CRS corruption bug."
             )
         elif a < min_px:
-            result.errors.append(
-                f"Pixel size too small: a={a:.6f} (min={min_px})"
-            )
+            result.errors.append(f"Pixel size too small: a={a:.6f} (min={min_px})")
         elif not is_geo and a > PROJ_MAX_PIXEL_M:
             result.errors.append(
                 f"Pixel size too large for projected CRS: a={a:.1f} m (max={PROJ_MAX_PIXEL_M})"
@@ -363,29 +373,30 @@ def validate_georeference(
         return result
 
     src_path = str(file_path_arg)
-    stem     = Path(src_path).stem
-    suffix   = Path(src_path).suffix
+    stem = Path(src_path).stem
+    suffix = Path(src_path).suffix
     repair_dir = Path(src_path).parent / "_repaired"
     repair_dir.mkdir(exist_ok=True)
     dst_path = str(repair_dir / f"{stem}_repaired{suffix}")
 
     # Method 1: raw-reference recovery (explicit known-good source file)
-    if file_path:
-        if _recover_via_raw_reference(src_path, file_path, dst_path):
-            recovered_result = validate_georeference(
-                dst_path, expected_crs=expected_crs,
-                min_pixel_size=min_pixel_size, attempt_recovery=False,
+    if file_path and _recover_via_raw_reference(src_path, file_path, dst_path):
+        recovered_result = validate_georeference(
+            dst_path,
+            expected_crs=expected_crs,
+            min_pixel_size=min_pixel_size,
+            attempt_recovery=False,
+        )
+        if recovered_result.valid:
+            result.repaired_path = dst_path
+            result.recovered = True
+            result.warnings.append(
+                f"Georeference recovered from raw reference {Path(file_path).name} "
+                f"→ {Path(dst_path).name}"
             )
-            if recovered_result.valid:
-                result.repaired_path = dst_path
-                result.recovered     = True
-                result.warnings.append(
-                    f"Georeference recovered from raw reference {Path(file_path).name} "
-                    f"→ {Path(dst_path).name}"
-                )
-                result.valid = True
-                logger.info(f"Raw-reference recovery validated: {dst_path}")
-                return result
+            result.valid = True
+            logger.info(f"Raw-reference recovery validated: {dst_path}")
+            return result
 
     # Method 2: GCP recovery (uses embedded GCPs)
     if result.gcp_count >= MIN_GCPS_FOR_RECOVERY:
@@ -396,12 +407,14 @@ def validate_georeference(
         if _recover_via_gcps(src_path, dst_path):
             # Validate the recovered file
             recovered_result = validate_georeference(
-                dst_path, expected_crs=expected_crs,
-                min_pixel_size=min_pixel_size, attempt_recovery=False
+                dst_path,
+                expected_crs=expected_crs,
+                min_pixel_size=min_pixel_size,
+                attempt_recovery=False,
             )
             if recovered_result.valid:
                 result.repaired_path = dst_path
-                result.recovered     = True
+                result.recovered = True
                 result.warnings.append(
                     f"Georeference recovered from {result.gcp_count} GCPs → {Path(dst_path).name}"
                 )
@@ -417,8 +430,8 @@ def validate_georeference(
         dst_path_h = str(repair_dir / f"{stem}_repaired_heuristic{suffix}")
         if _recover_via_bounds_heuristic(src_path, dst_path_h):
             result.repaired_path = dst_path_h
-            result.recovered     = True
-            result.valid         = True
+            result.recovered = True
+            result.valid = True
             result.warnings.append(
                 f"Georeference recovered via Accra bounds heuristic (APPROXIMATE) → {Path(dst_path_h).name}"
             )
@@ -434,12 +447,16 @@ def validate_georeference(
 
 # ── Convenience alias used by the notebook and sar.py ────────────────────────
 
+
 def validate_sar_georeference(file_path: str, attempt_recovery: bool = True) -> GeoreferenceResult:
     """Validate SAR GeoTIFF georeference with automatic GCP recovery."""
-    return validate_georeference(file_path, expected_crs="EPSG:32630", attempt_recovery=attempt_recovery)
+    return validate_georeference(
+        file_path, expected_crs="EPSG:32630", attempt_recovery=attempt_recovery
+    )
 
 
 # ── check_download_complete ───────────────────────────────────────────────────
+
 
 def check_download_complete(
     file_path: str,
@@ -466,7 +483,7 @@ def check_download_complete(
         file_size_mb    (float)  — file size
         errors          (list)   — any errors encountered
     """
-    result = {
+    result: dict[str, Any] = {
         "complete": False,
         "readable_tiles": 0,
         "total_tiles": 0,
@@ -481,15 +498,17 @@ def check_download_complete(
     try:
         result["file_size_mb"] = os.path.getsize(file_path) / (1024 * 1024)
         if result["file_size_mb"] < 0.01:
-            result["errors"].append(f"File too small: {result['file_size_mb']:.3f} MB (likely incomplete download)")
+            result["errors"].append(
+                f"File too small: {result['file_size_mb']:.3f} MB (likely incomplete download)"
+            )
             return result
 
         with rasterio.open(file_path) as src:
-            H, W  = src.height, src.width
+            H, W = src.height, src.width
             # Sample tiles across the raster to verify readability
             tile_size = min(512, H, W)
-            tiles_y   = max(1, H // tile_size)
-            tiles_x   = max(1, W // tile_size)
+            tiles_y = max(1, H // tile_size)
+            tiles_x = max(1, W // tile_size)
             result["total_tiles"] = tiles_y * tiles_x
 
             readable = 0
@@ -498,7 +517,8 @@ def check_download_complete(
                     row_off = ty * tile_size
                     col_off = tx * tile_size
                     win = rasterio.windows.Window(
-                        col_off, row_off,
+                        col_off,
+                        row_off,
                         min(tile_size, W - col_off),
                         min(tile_size, H - row_off),
                     )
@@ -522,6 +542,7 @@ def check_download_complete(
 
 # ── reproject_bbox_to_raster_crs ─────────────────────────────────────────────
 
+
 def reproject_bbox_to_raster_crs(bbox_wgs84: tuple, raster_path: str) -> tuple:
     """
     Reproject a WGS84 bounding box (lon_min, lat_min, lon_max, lat_max)
@@ -543,16 +564,17 @@ def reproject_bbox_to_raster_crs(bbox_wgs84: tuple, raster_path: str) -> tuple:
             return bbox_wgs84  # already in degrees
 
         transformer = Transformer.from_crs(
-            "EPSG:4326", raster_crs.to_epsg() or raster_crs.to_wkt(),
-            always_xy=True
+            "EPSG:4326", raster_crs.to_epsg() or raster_crs.to_wkt(), always_xy=True
         )
         lon_min, lat_min, lon_max, lat_max = bbox_wgs84
         x_min, y_min = transformer.transform(lon_min, lat_min)
         x_max, y_max = transformer.transform(lon_max, lat_max)
         # Ensure correct ordering
         return (
-            min(x_min, x_max), min(y_min, y_max),
-            max(x_min, x_max), max(y_min, y_max),
+            min(x_min, x_max),
+            min(y_min, y_max),
+            max(x_min, x_max),
+            max(y_min, y_max),
         )
 
     except Exception as e:

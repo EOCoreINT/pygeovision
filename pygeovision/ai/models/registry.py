@@ -7,9 +7,9 @@ Provides a unified interface for model discovery, instantiation, and metadata.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -68,9 +68,7 @@ class ModelRegistry:
         A model with the same name is replaced, with a warning.
         """
         if info.name in self._models:
-            logger.warning(
-                "Model '%s' is already registered; overwriting.", info.name
-            )
+            logger.warning("Model '%s' is already registered; overwriting.", info.name)
         self._models[info.name] = info
         logger.debug("Registered model: %s (task=%s)", info.name, info.task)
 
@@ -89,8 +87,7 @@ class ModelRegistry:
         if name not in self._models:
             available = ", ".join(sorted(self._models.keys()))
             raise KeyError(
-                f"Model '{name}' not found in registry. "
-                f"Available models: {available}"
+                f"Model '{name}' not found in registry. " f"Available models: {available}"
             )
         return self._models[name]
 
@@ -155,9 +152,7 @@ class ModelRegistry:
         ]
         for m in sorted(self._models.values(), key=lambda x: (x.task, x.name)):
             pretrained = "✓" if m.pretrained_available else ""
-            lines.append(
-                f"{m.name:<35} {m.task:<22} {m.architecture:<30} {pretrained}"
-            )
+            lines.append(f"{m.name:<35} {m.task:<22} {m.architecture:<30} {pretrained}")
         return "\n".join(lines)
 
     def __len__(self) -> int:

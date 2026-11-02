@@ -8,11 +8,11 @@ metadata (CRS, affine transform, tile bounds) is preserved per tile.
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from dataclasses import dataclass
 import hashlib
 import logging
 import math
-from collections.abc import Generator
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -257,7 +257,10 @@ class TilingEngine:
                         data = src.read(band_indices, window=window)
 
                         # Handle edge tiles: pad to full tile_size
-                        if actual_height < self.config.tile_size or actual_width < self.config.tile_size:
+                        if (
+                            actual_height < self.config.tile_size
+                            or actual_width < self.config.tile_size
+                        ):
                             if self.config.padding_mode == "discard":
                                 skipped_count += 1
                                 continue
@@ -315,7 +318,6 @@ class TilingEngine:
 
         except rasterio.errors.RasterioIOError as exc:
             raise TilingError(f"Failed to open raster {raster_path}: {exc}") from exc
-
 
     def compute_grid(
         self,
@@ -420,8 +422,8 @@ class TilingEngine:
     ) -> Path:
         """Save a tile as a GeoTIFF."""
         try:
-            import rasterio  # noqa: PLC0415
             from affine import Affine  # noqa: PLC0415
+            import rasterio  # noqa: PLC0415
         except ImportError:
             return Path()  # Skip saving if rasterio unavailable
 
@@ -447,6 +449,7 @@ class TilingEngine:
             profile["nodata"] = nodata
 
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)

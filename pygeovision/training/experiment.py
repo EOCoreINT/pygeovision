@@ -1,11 +1,12 @@
 """
 Experiment tracking — MLflow / W&B / TensorBoard (Phase 4.1).
 """
+
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -36,9 +37,9 @@ class ExperimentTracker:
         self.experiment_name = experiment_name
         self.run_name = run_name or f"run_{int(time.time())}"
         self.backends = backends or ["tensorboard"]
-        self._mlflow_run = None
-        self._wandb_run = None
-        self._tb_writer = None
+        self._mlflow_run: Any = None
+        self._wandb_run: Any = None
+        self._tb_writer: Any = None
         self._mlflow_uri = mlflow_uri
         self._wandb_project = wandb_project
         self._tb_log_dir = tb_log_dir
@@ -50,6 +51,7 @@ class ExperimentTracker:
         if "mlflow" in self.backends:
             try:
                 import mlflow
+
                 mlflow.set_tracking_uri(self._mlflow_uri)
                 mlflow.set_experiment(self.experiment_name)
                 self._mlflow_run = mlflow.start_run(run_name=self.run_name)
@@ -64,6 +66,7 @@ class ExperimentTracker:
         if "wandb" in self.backends:
             try:
                 import wandb
+
                 self._wandb_run = wandb.init(
                     project=self._wandb_project,
                     name=self.run_name,
@@ -78,6 +81,7 @@ class ExperimentTracker:
         if "tensorboard" in self.backends:
             try:
                 from torch.utils.tensorboard import SummaryWriter
+
                 log_dir = Path(self._tb_log_dir) / self.experiment_name / self.run_name
                 self._tb_writer = SummaryWriter(log_dir=str(log_dir))
                 logger.info("TensorBoard writer: %s", log_dir)
@@ -94,6 +98,7 @@ class ExperimentTracker:
         if self._mlflow_run:
             try:
                 import mlflow
+
                 mlflow.log_metrics(metrics, step=step)
             except Exception as exc:
                 logger.warning("Experiment tracking call failed (continuing training): %s", exc)
@@ -101,6 +106,7 @@ class ExperimentTracker:
         if self._wandb_run:
             try:
                 import wandb
+
                 log_data = dict(metrics)
                 if step is not None:
                     log_data["_step"] = step
@@ -121,12 +127,14 @@ class ExperimentTracker:
         if self._mlflow_run:
             try:
                 import mlflow
+
                 mlflow.log_artifact(str(model_path), artifact_path=artifact_name)
             except Exception as exc:
                 logger.warning("Experiment tracking call failed (continuing training): %s", exc)
         if self._wandb_run:
             try:
                 import wandb
+
                 artifact = wandb.Artifact(artifact_name, type="model")
                 artifact.add_file(str(model_path))
                 wandb.log_artifact(artifact)
@@ -145,6 +153,7 @@ class ExperimentTracker:
         if self._wandb_run:
             try:
                 import wandb
+
                 wandb.log({key: wandb.Image(image)}, step=step)
             except Exception as exc:
                 logger.warning("Experiment tracking call failed (continuing training): %s", exc)
@@ -161,6 +170,7 @@ class ExperimentTracker:
         if self._mlflow_run:
             try:
                 import mlflow
+
                 mlflow.log_metric("duration_seconds", duration)
                 mlflow.end_run()
             except Exception as exc:
@@ -175,8 +185,9 @@ class ExperimentTracker:
                 self._tb_writer.close()
             except Exception as exc:
                 logger.warning("Experiment tracking call failed (continuing training): %s", exc)
-        logger.info("Experiment '%s/%s' completed in %.1fs",
-                    self.experiment_name, self.run_name, duration)
+        logger.info(
+            "Experiment '%s/%s' completed in %.1fs", self.experiment_name, self.run_name, duration
+        )
         return summary
 
     @property
@@ -186,5 +197,12 @@ class ExperimentTracker:
     @property
     def active_backends(self) -> list[str]:
         """The backends that actually started (a missing package or failed login leaves a backend out)."""
-        return [name for name, handle in (("mlflow", self._mlflow_run), ("wandb", self._wandb_run),
-                                          ("tensorboard", self._tb_writer)) if handle]
+        return [
+            name
+            for name, handle in (
+                ("mlflow", self._mlflow_run),
+                ("wandb", self._wandb_run),
+                ("tensorboard", self._tb_writer),
+            )
+            if handle
+        ]

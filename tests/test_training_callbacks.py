@@ -1,4 +1,5 @@
 """pygeovision.training.callbacks: the checkpoint callback must survive an epoch worse than the k best."""
+
 from __future__ import annotations
 
 import types
@@ -18,13 +19,15 @@ def _trainer():
 def test_checkpoint_keeps_top_k_and_last_even_when_an_epoch_is_worse(tmp_path):
     cb = ModelCheckpoint(str(tmp_path), monitor="score", mode="max", save_top_k=2, save_last=True)
     tr = _trainer()
-    for epoch, score in enumerate([0.5, 0.9, 0.8, 0.1, 0.2], start=1):    # epochs 4 and 5 are worse than the two best
+    for epoch, score in enumerate(
+        [0.5, 0.9, 0.8, 0.1, 0.2], start=1
+    ):  # epochs 4 and 5 are worse than the two best
         cb.on_epoch_end(tr, epoch, {"score": score})
     names = sorted(p.name for p in tmp_path.glob("*.pth"))
     assert names == ["epoch002.pth", "epoch003.pth", "last.pth"]
     assert cb.best_model_path.endswith("epoch002.pth")
     last = torch.load(tmp_path / "last.pth", weights_only=False)
-    assert last["epoch"] == 5                       # last.pth is the final epoch, not the best one
+    assert last["epoch"] == 5  # last.pth is the final epoch, not the best one
 
 
 def test_checkpoint_mode_min_keeps_lowest(tmp_path):
@@ -42,7 +45,7 @@ def test_early_stopping_restores_best_weights():
     best = {k: v.clone() for k, v in tr.model.state_dict().items()}
     with torch.no_grad():
         for p in tr.model.parameters():
-            p.add_(1.0)                              # the model drifts after the best epoch
+            p.add_(1.0)  # the model drifts after the best epoch
     cb.on_epoch_end(tr, 2, {"score": 0.4})
     cb.on_epoch_end(tr, 3, {"score": 0.3})
     assert cb.stop_training and cb.stopped_epoch == 3

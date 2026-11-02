@@ -1,8 +1,9 @@
 """Base classes for all PyGeoVision models."""
+
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
+import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -11,19 +12,20 @@ logger = logging.getLogger(__name__)
 @dataclass
 class GeoModelConfig:
     """Configuration for any PyGeoVision model."""
+
     name: str
-    task: str                        # segmentation|detection|classification|change|foundation
+    task: str  # segmentation|detection|classification|change|foundation
     backbone: str = "resnet50"
     num_classes: int = 2
-    in_channels: int = 4             # Multispectral default
+    in_channels: int = 4  # Multispectral default
     pretrained: bool = True
-    pretrained_source: str = "imagenet"   # imagenet|sentinel2|prithvi|none
+    pretrained_source: str = "imagenet"  # imagenet|sentinel2|prithvi|none
     input_size: tuple[int, int] = (512, 512)
     freeze_backbone: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return {k: v for k, v in self.__dict__.items()}
+        return dict(self.__dict__.items())
 
 
 class GeoModel:
@@ -64,22 +66,31 @@ class GeoModel:
         """Export model to ONNX."""
         try:
             import torch
+
             self.model.eval()
             dummy = torch.randn(*input_shape)
             from pygeovision._onnx import export_onnx
-            export_onnx(self.model, dummy, output_path,
-                               opset_version=17, input_names=["input"],
-                               output_names=["output"],
-                               dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}})
+
+            export_onnx(
+                self.model,
+                dummy,
+                output_path,
+                opset_version=17,
+                input_names=["input"],
+                output_names=["output"],
+                dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
+            )
             logger.info("ONNX exported: %s", output_path)
             return output_path
         except Exception as exc:
-            raise RuntimeError(f"ONNX export failed: {exc}")
+            raise RuntimeError(f"ONNX export failed: {exc}") from exc
 
     def __repr__(self) -> str:
         try:
             n_params = sum(p.numel() for p in self.model.parameters()) / 1e6
         except Exception:
             n_params = 0
-        return (f"GeoModel(name={self.config.name}, task={self.config.task}, "
-                f"classes={self.config.num_classes}, params={n_params:.1f}M)")
+        return (
+            f"GeoModel(name={self.config.name}, task={self.config.task}, "
+            f"classes={self.config.num_classes}, params={n_params:.1f}M)"
+        )

@@ -1,9 +1,10 @@
 """Model performance tracking over time."""
+
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> str:
     from datetime import timezone
+
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
@@ -27,8 +29,13 @@ class ModelPerformanceTracker:
             with open(self.storage_path) as f:
                 self._records = json.load(f)
 
-    def record(self, metrics: dict[str, float], split: str = "production",
-                n_samples: int = 0, notes: str = "") -> None:
+    def record(
+        self,
+        metrics: dict[str, float],
+        split: str = "production",
+        n_samples: int = 0,
+        notes: str = "",
+    ) -> None:
         entry = {
             "model": self.model_name,
             "timestamp": _utcnow(),
@@ -47,14 +54,18 @@ class ModelPerformanceTracker:
             return {"metric": metric, "n_records": 0}
         recent = vals[-window:]
         if len(vals) > 1:
-            direction = "improving" if vals[-1] > vals[-2] else "declining" if vals[-1] < vals[-2] else "stable"
+            direction = (
+                "improving"
+                if vals[-1] > vals[-2]
+                else "declining" if vals[-1] < vals[-2] else "stable"
+            )
         else:
             direction = "stable"
         return {
             "metric": metric,
             "n_records": len(vals),
             "current": round(vals[-1], 4) if vals else None,
-            "mean_recent": round(sum(recent)/len(recent), 4),
+            "mean_recent": round(sum(recent) / len(recent), 4),
             "direction": direction,
             "trend": direction,
             "min": round(min(vals), 4),
@@ -64,7 +75,11 @@ class ModelPerformanceTracker:
     def summary(self) -> dict[str, Any]:
         if not self._records:
             return {"n_records": 0}
-        metrics = [k for k in self._records[-1] if k not in ("model","timestamp","split","n_samples","notes")]
+        metrics = [
+            k
+            for k in self._records[-1]
+            if k not in ("model", "timestamp", "split", "n_samples", "notes")
+        ]
         return {
             "model": self.model_name,
             "n_records": len(self._records),

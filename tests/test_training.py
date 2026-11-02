@@ -9,6 +9,7 @@ class TestLosses:
     def test_dice_loss(self):
         torch = pytest.importorskip("torch", reason="torch not installed")
         from pygeovision.ai.training.losses import DiceLoss
+
         loss_fn = DiceLoss()
         logits = torch.randn(2, 1, 32, 32)
         targets = torch.randint(0, 2, (2, 32, 32)).float()
@@ -19,6 +20,7 @@ class TestLosses:
     def test_focal_loss(self):
         torch = pytest.importorskip("torch")
         from pygeovision.ai.training.losses import FocalLoss
+
         loss_fn = FocalLoss(alpha=0.25, gamma=2.0)
         logits = torch.randn(4, 1, 16, 16)
         targets = torch.randint(0, 2, (4, 16, 16)).float()
@@ -28,6 +30,7 @@ class TestLosses:
     def test_dice_focal_combined(self):
         torch = pytest.importorskip("torch")
         from pygeovision.ai.training.losses import DiceFocalLoss
+
         loss_fn = DiceFocalLoss()
         logits = torch.randn(2, 1, 32, 32)
         targets = torch.randint(0, 2, (2, 32, 32)).float()
@@ -37,6 +40,7 @@ class TestLosses:
     def test_get_loss_factory(self):
         pytest.importorskip("torch", reason="torch not installed")
         from pygeovision.ai.training.losses import get_loss
+
         dice = get_loss("dice")
         focal = get_loss("focal", alpha=0.5)
         ce = get_loss("cross_entropy")
@@ -47,6 +51,7 @@ class TestLosses:
     def test_get_loss_unknown(self):
         pytest.importorskip("torch", reason="torch not installed")
         from pygeovision.ai.training.losses import get_loss
+
         with pytest.raises(ValueError):
             get_loss("not_a_loss")
 
@@ -55,6 +60,7 @@ class TestMetrics:
     def test_confusion_matrix_basic(self):
         torch = pytest.importorskip("torch")
         from pygeovision.ai.training.metrics import ConfusionMatrix
+
         cm = ConfusionMatrix(num_classes=3)
         # Perfect predictions
         preds = torch.zeros(2, 3, 8, 8)  # logits with max at class 0
@@ -68,6 +74,7 @@ class TestMetrics:
     def test_confusion_matrix_reset(self):
         torch = pytest.importorskip("torch")
         from pygeovision.ai.training.metrics import ConfusionMatrix
+
         cm = ConfusionMatrix(num_classes=5)
         preds = torch.zeros(1, 5, 4, 4)
         targets = torch.zeros(1, 4, 4, dtype=torch.long)
@@ -78,6 +85,7 @@ class TestMetrics:
     def test_binary_metrics(self):
         torch = pytest.importorskip("torch")
         from pygeovision.ai.training.metrics import BinaryMetrics
+
         bm = BinaryMetrics(threshold=0.5)
         # Perfect binary prediction
         logits = torch.tensor([[[[10.0, -10.0], [-10.0, 10.0]]]])
@@ -89,6 +97,7 @@ class TestMetrics:
 
     def test_average_meter(self):
         from pygeovision.ai.training.metrics import AverageMeter
+
         m = AverageMeter("loss")
         m.update(1.0, n=2)
         m.update(3.0, n=2)
@@ -107,9 +116,14 @@ class TestCallbacks:
         cb = EarlyStopping(monitor="val_loss", patience=3, mode="min")
         trainer = MagicMock()
         trainer.should_stop = False
+
         class SimpleModel:
-            def state_dict(self): return {}
-            def load_state_dict(self, s, strict=True): pass
+            def state_dict(self):
+                return {}
+
+            def load_state_dict(self, s, strict=True):
+                pass
+
         trainer.model = SimpleModel()
 
         # Improving loss → no stop
@@ -139,10 +153,16 @@ class TestCallbacks:
             mode="min",
         )
         trainer = MagicMock()
+
         # Use a real tiny nn.Module so optimizer.Adam works
         class SimpleModel(nn.Module):
-            def __init__(self): super().__init__(); self.fc = nn.Linear(1,1)
-            def forward(self, x): return self.fc(x)
+            def __init__(self):
+                super().__init__()
+                self.fc = nn.Linear(1, 1)
+
+            def forward(self, x):
+                return self.fc(x)
+
         trainer.model = SimpleModel()
         trainer.optimizer = torch.optim.Adam(trainer.model.parameters())
 
@@ -163,13 +183,17 @@ class TestTrainerSilentFailureFixes:
         previously this was swallowed entirely, letting training proceed
         with the model in an unknown/partial device state."""
         from unittest.mock import MagicMock
+
+        pytest.importorskip("torch")
         import torch.nn as nn
+
         from pygeovision.training.trainer import GeoTrainer
 
         class BrokenModel(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.fc = nn.Linear(1, 1)
+
             def to(self, *a, **kw):
                 raise RuntimeError("simulated device failure")
 
@@ -205,6 +229,7 @@ class TestTrainerSilentFailureFixes:
         (continue), not silently passed through with partially-transferred
         or malformed data — reproduces the exact failure shape (a None
         target from a missing dict key) that used to fall through silently."""
+
         class FakeTensor:
             def to(self, device, non_blocking=True):
                 return self  # succeeds

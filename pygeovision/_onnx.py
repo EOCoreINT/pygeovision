@@ -6,6 +6,7 @@ The classic exporter is still available with ``dynamo=False`` and needs nothing 
 ``onnx``. Older PyTorch does not know the ``dynamo`` argument at all, so on a
 ``TypeError`` the call is repeated without it.
 """
+
 from __future__ import annotations
 
 from typing import Any

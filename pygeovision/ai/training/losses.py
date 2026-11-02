@@ -109,9 +109,8 @@ class DiceFocalLoss(nn.Module):
         self.focal_weight = focal_weight
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        return (
-            self.dice_weight * self.dice(logits, targets)
-            + self.focal_weight * self.focal(logits, targets)
+        return self.dice_weight * self.dice(logits, targets) + self.focal_weight * self.focal(
+            logits, targets
         )
 
 
@@ -236,7 +235,5 @@ def get_loss(name: str, **kwargs) -> nn.Module:
         "l1": nn.L1Loss,
     }
     if name not in _LOSSES:
-        raise ValueError(
-            f"Unknown loss '{name}'. Available: {list(_LOSSES.keys())}"
-        )
+        raise ValueError(f"Unknown loss '{name}'. Available: {list(_LOSSES.keys())}")
     return _LOSSES[name](**kwargs)

@@ -7,8 +7,8 @@ creating, running, validating and scheduling data pipelines.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineStep:
     """A single step in a PyGeoVision data pipeline."""
+
     type: str  # 'search', 'filter', 'download', 'export', 'ai'
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -196,11 +197,16 @@ class DataPipeline:
         Returns:
             Self (for chaining).
         """
-        self.steps.append(PipelineStep("export", {
-            "format": format,
-            "destination": destination,
-            "compress": compress,
-        }))
+        self.steps.append(
+            PipelineStep(
+                "export",
+                {
+                    "format": format,
+                    "destination": destination,
+                    "compress": compress,
+                },
+            )
+        )
         return self
 
     def ai_process(
@@ -227,12 +233,17 @@ class DataPipeline:
         """
         # NB: pygeofetch's runner has no "ai" step, so run() refuses pipelines that contain one. Run the model
         # on the downloaded files afterwards (``pygeovision infer`` or a pipeline).
-        self.steps.append(PipelineStep("ai", {
-            "model": model,
-            "task": task,
-            "output": output,
-            "num_classes": num_classes,
-        }))
+        self.steps.append(
+            PipelineStep(
+                "ai",
+                {
+                    "model": model,
+                    "task": task,
+                    "output": output,
+                    "num_classes": num_classes,
+                },
+            )
+        )
         return self
 
     def set_schedule(self, cron: str) -> DataPipeline:
@@ -286,7 +297,10 @@ class DataPipeline:
             logger.warning("Pipeline '%s' has no steps.", self.name)
             return False
         if any(st.type == "ai" for st in self.steps):
-            logger.error("Pipeline '%s' contains an 'ai' step, which the pygeofetch runner cannot execute.", self.name)
+            logger.error(
+                "Pipeline '%s' contains an 'ai' step, which the pygeofetch runner cannot execute.",
+                self.name,
+            )
             return False
 
         if fetcher and fetcher._has_pygeofetch():
@@ -324,22 +338,26 @@ class DataPipeline:
             )
         if fetcher is None:
             from pygeovision.data.fetch import SatelliteFetcher
+
             fetcher = SatelliteFetcher()
 
         doc = self.to_yaml()
         if output_dir is not None:
             import copy
+
             clone = copy.copy(self)
             clone.steps = [
-                PipelineStep(st.type, {**st.config, "output": str(output_dir)}) if st.type == "download" else st
+                (
+                    PipelineStep(st.type, {**st.config, "output": str(output_dir)})
+                    if st.type == "download"
+                    else st
+                )
                 for st in self.steps
             ]
             doc = clone.to_yaml()
 
         # Save to temp YAML and delegate to pygeofetch
-        with __import__("tempfile").NamedTemporaryFile(
-            suffix=".yaml", delete=False, mode="w"
-        ) as f:
+        with __import__("tempfile").NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as f:
             f.write(doc)
             tmp = Path(f.name)
 

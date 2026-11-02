@@ -24,11 +24,13 @@ pygeovision owns the AI intelligence layer only:
 This module is the ONLY place pygeovision calls pygeofetch.
 All other pygeovision modules import from here, never from pygeofetch directly.
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 import logging
 import pathlib
-from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -36,29 +38,31 @@ logger = logging.getLogger(__name__)
 
 # ── pygeofetch availability ────────────────────────────────────────────────────
 
+
 def _require_pgf():
     """Return PyGeoFetch client or raise ImportError."""
     try:
         from pygeofetch import PyGeoFetch
+
         return PyGeoFetch()
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
-            "pygeofetch is required for data acquisition. "
-            "Install it: pip install pygeofetch"
-        )
+            "pygeofetch is required for data acquisition. " "Install it: pip install pygeofetch"
+        ) from exc
 
 
 def _pgf_has_v2(client) -> bool:
     """True if pygeofetch has the v2 processing engine."""
     return (
-        hasattr(client, "preprocess") and
-        hasattr(client.preprocess, "atmos") and
-        hasattr(client, "sar") and
-        hasattr(client, "indices")
+        hasattr(client, "preprocess")
+        and hasattr(client.preprocess, "atmos")
+        and hasattr(client, "sar")
+        and hasattr(client, "indices")
     )
 
 
 # ── Result dataclasses (thin wrappers — preserve pygeofetch objects) ──────────
+
 
 @dataclass
 class SearchResult:
@@ -66,17 +70,18 @@ class SearchResult:
     A found satellite scene.
     Thin wrapper — the native pygeofetch SatelliteData is always in .native.
     """
-    id:           str
-    provider:     str
-    satellite:    str
-    datetime:     str
-    cloud_cover:  float | None
-    bbox:         tuple[float, float, float, float] | None
-    score:        float | None = None
-    collection:   str = ""
-    assets:       dict[str, Any] = field(default_factory=dict)
-    properties:   dict[str, Any] = field(default_factory=dict)
-    native:       Any = field(default=None, repr=False)  # pygeofetch SatelliteData
+
+    id: str
+    provider: str
+    satellite: str
+    datetime: str
+    cloud_cover: float | None
+    bbox: tuple[float, float, float, float] | None
+    score: float | None = None
+    collection: str = ""
+    assets: dict[str, Any] = field(default_factory=dict)
+    properties: dict[str, Any] = field(default_factory=dict)
+    native: Any = field(default=None, repr=False)  # pygeofetch SatelliteData
 
     @property
     def date(self) -> str:
@@ -96,14 +101,15 @@ class SearchResult:
 @dataclass
 class DownloadResult:
     """A downloaded file from pygeofetch."""
-    scene_id:          str
-    provider:          str
-    path:              pathlib.Path | None
-    success:           bool
-    bytes_downloaded:  int = 0
-    duration_seconds:  float = 0.0
+
+    scene_id: str
+    provider: str
+    path: pathlib.Path | None
+    success: bool
+    bytes_downloaded: int = 0
+    duration_seconds: float = 0.0
     checksum_verified: bool = False
-    error:             str = ""
+    error: str = ""
 
     @property
     def size_mb(self) -> float:
@@ -118,10 +124,11 @@ class DownloadResult:
 @dataclass
 class ProcessingResult:
     """Result of a pygeofetch processing operation."""
+
     output_path: str
-    success:     bool
-    metadata:    dict[str, Any] = field(default_factory=dict)
-    error:       str = ""
+    success: bool
+    metadata: dict[str, Any] = field(default_factory=dict)
+    error: str = ""
 
     def __str__(self):
         if self.success:
@@ -131,15 +138,16 @@ class ProcessingResult:
 
 # ── Type translation ───────────────────────────────────────────────────────────
 
+
 def _pgf_to_search_result(sd, provider_hint: str = "") -> SearchResult:
     """Convert pygeofetch SatelliteData → pygeovision SearchResult."""
     cloud = getattr(sd, "cloud_cover", None)
-    sat   = str(getattr(sd, "satellite", "") or "")
-    coll  = str(getattr(sd, "collection", "") or "")
-    bbox  = getattr(sd, "bbox", None)
+    sat = str(getattr(sd, "satellite", "") or "")
+    coll = str(getattr(sd, "collection", "") or "")
+    bbox = getattr(sd, "bbox", None)
     props = getattr(sd, "properties", {}) or {}
     score = float(getattr(sd, "score", 0.0) or 0.0)
-    prov  = str(getattr(sd, "provider", provider_hint) or provider_hint)
+    prov = str(getattr(sd, "provider", provider_hint) or provider_hint)
 
     dt = getattr(sd, "datetime", None) or getattr(sd, "start_datetime", None)
     datetime_str = dt.isoformat() if dt else ""
@@ -161,17 +169,17 @@ def _pgf_to_search_result(sd, provider_hint: str = "") -> SearchResult:
             assets[k] = {"key": k, "href": str(v), "roles": []}
 
     return SearchResult(
-        id          = str(getattr(sd, "id", "")),
-        provider    = prov,
-        satellite   = sat,
-        collection  = coll,
-        datetime    = datetime_str,
-        cloud_cover = float(cloud) if cloud is not None else None,
-        bbox        = tuple(bbox) if bbox else None,
-        score       = score,
-        assets      = assets,
-        properties  = props,
-        native      = sd,
+        id=str(getattr(sd, "id", "")),
+        provider=prov,
+        satellite=sat,
+        collection=coll,
+        datetime=datetime_str,
+        cloud_cover=float(cloud) if cloud is not None else None,
+        bbox=tuple(bbox) if bbox else None,
+        score=score,
+        assets=assets,
+        properties=props,
+        native=sd,
     )
 
 
@@ -179,29 +187,31 @@ def _pgf_to_download_result(dr) -> DownloadResult:
     """Convert pygeofetch DownloadResult → pygeovision DownloadResult."""
     try:
         from pygeofetch.models.download_task import DownloadStatus
-        status  = getattr(dr, "status", None)
+
+        status = getattr(dr, "status", None)
         success = (status == DownloadStatus.COMPLETED) if status else False
     except ImportError:
         success = bool(getattr(dr, "success", False))
 
-    output_path  = getattr(dr, "output_path", None)
+    output_path = getattr(dr, "output_path", None)
     output_paths = list(getattr(dr, "output_paths", None) or [])
     if output_path is None and output_paths:
         output_path = output_paths[0]
 
     return DownloadResult(
-        scene_id          = str(getattr(dr, "data_id", "")),
-        provider          = str(getattr(dr, "provider", "")),
-        path              = pathlib.Path(output_path) if output_path else None,
-        success           = success,
-        bytes_downloaded  = int(getattr(dr, "bytes_downloaded", 0) or 0),
-        duration_seconds  = float(getattr(dr, "duration_seconds", 0.0) or 0.0),
-        checksum_verified = bool(getattr(dr, "checksum_verified", False) or False),
-        error             = str(getattr(dr, "error", "") or ""),
+        scene_id=str(getattr(dr, "data_id", "")),
+        provider=str(getattr(dr, "provider", "")),
+        path=pathlib.Path(output_path) if output_path else None,
+        success=success,
+        bytes_downloaded=int(getattr(dr, "bytes_downloaded", 0) or 0),
+        duration_seconds=float(getattr(dr, "duration_seconds", 0.0) or 0.0),
+        checksum_verified=bool(getattr(dr, "checksum_verified", False) or False),
+        error=str(getattr(dr, "error", "") or ""),
     )
 
 
 # ── SatelliteAcquirer — the single acquisition class ──────────────────────────
+
 
 class SatelliteAcquirer:
     """
@@ -258,7 +268,7 @@ class SatelliteAcquirer:
 
     def __init__(self):
         self._pgf = _require_pgf()
-        self._v2  = _pgf_has_v2(self._pgf)
+        self._v2 = _pgf_has_v2(self._pgf)
         logger.info(
             "SatelliteAcquirer: pygeofetch v%s | processing_engine=%s",
             getattr(self._pgf, "__version__", "?"),
@@ -296,19 +306,19 @@ class SatelliteAcquirer:
 
     def search(
         self,
-        bbox:            tuple[float, float, float, float],
-        date_range:      tuple[str, str] | None = None,
-        satellite:       str | None = None,
-        providers:       list[str] | None = None,
+        bbox: tuple[float, float, float, float],
+        date_range: tuple[str, str] | None = None,
+        satellite: str | None = None,
+        providers: list[str] | None = None,
         cloud_cover_max: float = 100.0,
         cloud_cover_min: float = 0.0,
-        collections:     list[str] | None = None,
-        sar_product_type:str | None = None,   # "GRD" | "SLC"
-        polarisation:    str | None = None,   # "VV&VH" | "VV" | "VH"
-        max_results:     int = 100,
-        sort_by:         str = "cloud_cover",
-        use_cache:       bool = True,
-        geometry:        dict | None = None,  # GeoJSON polygon
+        collections: list[str] | None = None,
+        sar_product_type: str | None = None,  # "GRD" | "SLC"
+        polarisation: str | None = None,  # "VV&VH" | "VV" | "VH"
+        max_results: int = 100,
+        sort_by: str = "cloud_cover",
+        use_cache: bool = True,
+        geometry: dict | None = None,  # GeoJSON polygon
     ) -> list[SearchResult]:
         """
         Search satellite imagery via pygeofetch across multiple providers.
@@ -361,12 +371,12 @@ class SatelliteAcquirer:
         if date_range:
             try:
                 start_d = _date.fromisoformat(str(date_range[0])[:10])
-                end_d   = _date.fromisoformat(str(date_range[1])[:10])
+                end_d = _date.fromisoformat(str(date_range[1])[:10])
             except (ValueError, TypeError) as e:
                 logger.warning("date_range parse failed: %s", e)
 
         satellites = [satellite] if satellite else []
-        colls      = collections or []
+        colls = collections or []
 
         # SAR product type filter (uses pygeofetch's SearchQuery fields directly)
         extra_filters = {}
@@ -376,28 +386,26 @@ class SatelliteAcquirer:
             extra_filters["polarisation"] = polarisation
 
         query = SearchQuery(
-            bbox              = bbox_obj,
-            geometry          = geometry,        # GeoJSON polygon — now correctly wired
-            start_date        = start_d,
-            end_date          = end_d,
-            cloud_cover_min   = cloud_cover_min,
-            cloud_cover_max   = cloud_cover_max,
-            max_results       = max_results,
-            sort_by           = sort_by,
-            sort_ascending    = True,
-            collections       = colls,
-            satellites        = satellites,
-            sensors           = [],
-            processing_levels = [],
-            providers         = providers or [],
-            provider_filters  = extra_filters,
-            ids               = [],
+            bbox=bbox_obj,
+            geometry=geometry,  # GeoJSON polygon — now correctly wired
+            start_date=start_d,
+            end_date=end_d,
+            cloud_cover_min=cloud_cover_min,
+            cloud_cover_max=cloud_cover_max,
+            max_results=max_results,
+            sort_by=sort_by,
+            sort_ascending=True,
+            collections=colls,
+            satellites=satellites,
+            sensors=[],
+            processing_levels=[],
+            providers=providers or [],
+            provider_filters=extra_filters,
+            ids=[],
         )
 
         try:
-            pgf_results = self._pgf.search(
-                query, providers=providers, use_cache=use_cache
-            )
+            pgf_results = self._pgf.search(query, providers=providers, use_cache=use_cache)
         except Exception as e:
             logger.error("pygeofetch.search() failed: %s", e)
             return []
@@ -410,16 +418,16 @@ class SatelliteAcquirer:
 
     def download(
         self,
-        scenes:           list[SearchResult],
-        output_dir:       str | pathlib.Path,
-        bands:            list[str] | None = None,
-        post_process:     list[str] | None = None,
-        parallel:         int = 4,
-        verify_checksum:  bool = True,
-        resume:           bool = True,
-        retry_attempts:   int = 3,
-        overwrite:        bool = False,
-        on_failure:       str = "skip",
+        scenes: list[SearchResult],
+        output_dir: str | pathlib.Path,
+        bands: list[str] | None = None,
+        post_process: list[str] | None = None,
+        parallel: int = 4,
+        verify_checksum: bool = True,
+        resume: bool = True,
+        retry_attempts: int = 3,
+        overwrite: bool = False,
+        on_failure: str = "skip",
     ) -> list[DownloadResult]:
         """
         Download satellite scenes via pygeofetch.
@@ -468,7 +476,7 @@ class SatelliteAcquirer:
         from pygeofetch.models.download_task import DownloadOptions, PostProcessAction
 
         pp_actions = []
-        for step in (post_process or []):
+        for step in post_process or []:
             if ":" in step:
                 action, param = step.split(":", 1)
                 pp_actions.append(PostProcessAction(action=action, params={"value": param}))
@@ -476,14 +484,14 @@ class SatelliteAcquirer:
                 pp_actions.append(PostProcessAction(action=step, params={}))
 
         opts = DownloadOptions(
-            parallel            = parallel,
-            verify_checksum     = verify_checksum,
-            resume              = resume,
-            retry_attempts      = retry_attempts,
-            bandwidth_limit_mbps= 0,
-            on_failure          = on_failure,
-            overwrite           = overwrite,
-            post_process        = pp_actions,
+            parallel=parallel,
+            verify_checksum=verify_checksum,
+            resume=resume,
+            retry_attempts=retry_attempts,
+            bandwidth_limit_mbps=0,
+            on_failure=on_failure,
+            overwrite=overwrite,
+            post_process=pp_actions,
         )
 
         sat_data_list = []
@@ -492,19 +500,20 @@ class SatelliteAcquirer:
             if sd is None:
                 logger.warning("Scene %s has no native pygeofetch object — skipping", scene.id)
                 continue
-            if bands:
-                if hasattr(sd, "assets") and sd.assets:
-                    try:
-                        sd_copy = sd.model_copy(deep=True)
-                    except AttributeError:
-                        import copy
-                        sd_copy = copy.deepcopy(sd)
-                    sd_copy.assets = {
-                        k: v for k, v in sd.assets.items()
-                        if k in bands or any(b.lower() in k.lower() for b in bands)
-                    }
-                    sat_data_list.append(sd_copy)
-                    continue
+            if bands and hasattr(sd, "assets") and sd.assets:
+                try:
+                    sd_copy = sd.model_copy(deep=True)
+                except AttributeError:
+                    import copy
+
+                    sd_copy = copy.deepcopy(sd)
+                sd_copy.assets = {
+                    k: v
+                    for k, v in sd.assets.items()
+                    if k in bands or any(b.lower() in k.lower() for b in bands)
+                }
+                sat_data_list.append(sd_copy)
+                continue
             sat_data_list.append(sd)
 
         if not sat_data_list:
@@ -532,25 +541,25 @@ class SatelliteAcquirer:
 
     def preprocess(
         self,
-        input_path:       str | pathlib.Path,
-        clip_bbox:        tuple[float, float, float, float] | None = None,
-        clip_bbox_crs:    str = "EPSG:4326",
-        clip_geometry:    dict | None = None,
-        atmos_method:     str | None = None,    # "dos1"|"sen2cor"|"flaash"
-        cloud_mask_method:str | None = None,    # "scl"|"threshold"|"fmask"
-        scl_path:         str | None = None,
-        despeckle:        bool = False,             # SAR: Lee filter
+        input_path: str | pathlib.Path,
+        clip_bbox: tuple[float, float, float, float] | None = None,
+        clip_bbox_crs: str = "EPSG:4326",
+        clip_geometry: dict | None = None,
+        atmos_method: str | None = None,  # "dos1"|"sen2cor"|"flaash"
+        cloud_mask_method: str | None = None,  # "scl"|"threshold"|"fmask"
+        scl_path: str | None = None,
+        despeckle: bool = False,  # SAR: Lee filter
         despeckle_filter: str = "enhanced_lee",
         despeckle_window: int = 7,
-        calibrate_db:     bool = False,             # SAR: DN→sigma0 dB
-        calibrate_type:   str = "sigma0",
-        normalise:        str | None = None,     # "minmax"|"zscore"|"scale_factor"
-        scale_factor:     float = 10000.0,
-        resample_m:       float | None = None,
+        calibrate_db: bool = False,  # SAR: DN→sigma0 dB
+        calibrate_type: str = "sigma0",
+        normalise: str | None = None,  # "minmax"|"zscore"|"scale_factor"
+        scale_factor: float = 10000.0,
+        resample_m: float | None = None,
         resample_reference: str | None = None,  # grid-align to another raster
         topo_correct_dem: str | None = None,
-        pansharpen_pan:   str | None = None,
-        output_path:      str | None = None,
+        pansharpen_pan: str | None = None,
+        output_path: str | None = None,
     ) -> ProcessingResult:
         """
         Apply a preprocessing chain via pygeofetch.
@@ -613,14 +622,19 @@ class SatelliteAcquirer:
         """
         if not self._v2:
             return self._preprocess_fallback(
-                input_path, clip_bbox=clip_bbox, clip_bbox_crs=clip_bbox_crs,
-                despeckle=despeckle, calibrate_db=calibrate_db,
-                normalise=normalise, scale_factor=scale_factor,
-                resample_m=resample_m, output_path=output_path,
+                input_path,
+                clip_bbox=clip_bbox,
+                clip_bbox_crs=clip_bbox_crs,
+                despeckle=despeckle,
+                calibrate_db=calibrate_db,
+                normalise=normalise,
+                scale_factor=scale_factor,
+                resample_m=resample_m,
+                output_path=output_path,
             )
 
         current = str(input_path)
-        steps   = []
+        steps = []
 
         try:
             pre = self._pgf.preprocess
@@ -670,9 +684,7 @@ class SatelliteAcquirer:
                     r = pre.clip(current, geometry=clip_geometry)
                 else:
                     # Reproject bbox to raster CRS first
-                    bbox_native = _reproject_bbox_to_raster_crs(
-                        clip_bbox, clip_bbox_crs, current
-                    )
+                    bbox_native = _reproject_bbox_to_raster_crs(clip_bbox, clip_bbox_crs, current)
                     r = pre.clip(current, bbox=bbox_native)
                 current = str(r.output_path)
                 steps.append("clip")
@@ -699,23 +711,27 @@ class SatelliteAcquirer:
                     r = pre.atmos(current, method="dos1")
                 else:
                     # pygeofetch normalise / minmax / zscore
-                    r = pre.normalise(current, method=normalise,
-                                      scale_factor=scale_factor)
+                    r = pre.normalise(current, method=normalise, scale_factor=scale_factor)
                 current = str(r.output_path)
                 steps.append(f"normalise({normalise})")
 
             # Copy to final output path if specified
             if output_path and output_path != current:
                 import shutil
+
                 pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(current, output_path)
                 current = output_path
 
-            logger.info("preprocess: %s → %s  steps=%s",
-                        pathlib.Path(str(input_path)).name,
-                        pathlib.Path(current).name, steps)
+            logger.info(
+                "preprocess: %s → %s  steps=%s",
+                pathlib.Path(str(input_path)).name,
+                pathlib.Path(current).name,
+                steps,
+            )
             return ProcessingResult(
-                output_path=current, success=True,
+                output_path=current,
+                success=True,
                 metadata={"steps": steps},
             )
 
@@ -724,9 +740,17 @@ class SatelliteAcquirer:
             return ProcessingResult(output_path=str(input_path), success=False, error=str(e))
 
     def _preprocess_fallback(
-        self, input_path, *, clip_bbox=None, clip_bbox_crs="EPSG:4326",
-        despeckle=False, calibrate_db=False, normalise=None,
-        scale_factor=10000.0, resample_m=None, output_path=None,
+        self,
+        input_path,
+        *,
+        clip_bbox=None,
+        clip_bbox_crs="EPSG:4326",
+        despeckle=False,
+        calibrate_db=False,
+        normalise=None,
+        scale_factor=10000.0,
+        resample_m=None,
+        output_path=None,
     ) -> ProcessingResult:
         """
         Minimal fallback when pygeofetch v2 processing engine is not available.
@@ -738,10 +762,11 @@ class SatelliteAcquirer:
             "Install pygeofetch >= 2.0 for full preprocessing capability."
         )
         current = str(input_path)
-        steps   = []
+        steps = []
 
         # GCP recovery (pygeovision-specific fix for pygeofetch GRD downloads)
         from pygeovision.data.validators.georeference import validate_sar_georeference
+
         geo = validate_sar_georeference(current)
         if geo.recovered and geo.repaired_path:
             current = geo.repaired_path
@@ -776,7 +801,7 @@ class SatelliteAcquirer:
 
     def index(
         self,
-        name:        str,
+        name: str,
         output_path: str | None = None,
         **band_paths,
     ) -> ProcessingResult:
@@ -805,17 +830,20 @@ class SatelliteAcquirer:
         """
         if not self._v2 or not hasattr(self._pgf, "indices"):
             logger.warning("index() requires pygeofetch >= 2.0")
-            return ProcessingResult(output_path="", success=False,
-                                    error="pygeofetch v2 required for spectral indices")
+            return ProcessingResult(
+                output_path="", success=False, error="pygeofetch v2 required for spectral indices"
+            )
         try:
             fn = getattr(self._pgf.indices, name, None)
             if fn is None:
-                return ProcessingResult(output_path="", success=False,
-                                        error=f"Unknown index '{name}'")
+                return ProcessingResult(
+                    output_path="", success=False, error=f"Unknown index '{name}'"
+                )
             r = fn(**band_paths)
             out = str(r.output_path)
             if output_path and output_path != out:
                 import shutil
+
                 shutil.copy2(out, output_path)
                 out = output_path
             return ProcessingResult(output_path=out, success=True)
@@ -827,10 +855,10 @@ class SatelliteAcquirer:
 
     def extract_grd(
         self,
-        safe_zip:    str,
-        output_dir:  str,
+        safe_zip: str,
+        output_dir: str,
         polarisation: str = "VV",
-        subswath:    str | None = None,
+        subswath: str | None = None,
     ) -> ProcessingResult:
         """
         Extract and georeference a Sentinel-1 GRD band from a .SAFE.zip.
@@ -849,10 +877,12 @@ class SatelliteAcquirer:
             :class:`ProcessingResult`.
         """
         if not self._v2 or not hasattr(self._pgf, "sar"):
-            return ProcessingResult(output_path="", success=False,
-                                    error="GRDExtractor requires pygeofetch >= 2.0")
+            return ProcessingResult(
+                output_path="", success=False, error="GRDExtractor requires pygeofetch >= 2.0"
+            )
         try:
             from pygeofetch.sar import GRDExtractor
+
             extractor = GRDExtractor()
             r = extractor.extract(
                 safe_zip,
@@ -860,8 +890,9 @@ class SatelliteAcquirer:
                 polarisation=polarisation,
                 subswath=subswath,
             )
-            return ProcessingResult(output_path=str(r.output_path), success=True,
-                                    metadata=r.metadata or {})
+            return ProcessingResult(
+                output_path=str(r.output_path), success=True, metadata=r.metadata or {}
+            )
         except Exception as e:
             logger.error("extract_grd() failed: %s", e)
             return ProcessingResult(output_path="", success=False, error=str(e))
@@ -870,12 +901,12 @@ class SatelliteAcquirer:
 
     def build_time_series(
         self,
-        scenes:          list[SearchResult],
-        output_dir:      str,
-        index_name:      str = "ndvi",
-        bands:           list[str] | None = None,
-        bbox:            tuple[float, float, float, float] | None = None,
-        align_grids:     bool = True,  # pygeofetch fix: auto grid alignment
+        scenes: list[SearchResult],
+        output_dir: str,
+        index_name: str = "ndvi",
+        bands: list[str] | None = None,
+        bbox: tuple[float, float, float, float] | None = None,
+        align_grids: bool = True,  # pygeofetch fix: auto grid alignment
         composite_method: str = "median",
     ) -> dict[str, Any]:
         """
@@ -913,13 +944,15 @@ class SatelliteAcquirer:
 
             tsa = TimeSeriesAnalyzer(paths)
             stack = tsa.build_index_stack(
-                index_name, align_grids=align_grids,
-                bbox=bbox, composite_method=composite_method,
+                index_name,
+                align_grids=align_grids,
+                bbox=bbox,
+                composite_method=composite_method,
             )
             return {
-                "stack":  stack,
+                "stack": stack,
                 "values": stack.values,
-                "dates":  stack.dates,
+                "dates": stack.dates,
                 "xarray": stack.as_xarray() if hasattr(stack, "as_xarray") else None,
             }
         except Exception as e:
@@ -932,7 +965,7 @@ class SatelliteAcquirer:
         self,
         raster_path: str,
         output_path: str | None = None,
-        smooth:      bool = True,
+        smooth: bool = True,
     ) -> ProcessingResult:
         """
         Convert a raster mask to vector polygons via pygeofetch.
@@ -946,13 +979,15 @@ class SatelliteAcquirer:
             :class:`ProcessingResult`.
         """
         if not self._v2 or not hasattr(self._pgf, "post"):
-            return ProcessingResult(output_path="", success=False,
-                                    error="vectorize requires pygeofetch >= 2.0")
+            return ProcessingResult(
+                output_path="", success=False, error="vectorize requires pygeofetch >= 2.0"
+            )
         try:
             r = self._pgf.post.vectorize(raster_path, smooth=smooth)
             out = str(r.output_path)
             if output_path and output_path != out:
                 import shutil
+
                 shutil.copy2(out, output_path)
                 out = output_path
             return ProcessingResult(output_path=out, success=True)
@@ -963,8 +998,8 @@ class SatelliteAcquirer:
     def zonal_stats(
         self,
         raster_path: str,
-        zones_path:  str,
-        stats:       list[str] = ("mean", "std", "min", "max", "count"),
+        zones_path: str,
+        stats: Sequence[str] = ("mean", "std", "min", "max", "count"),
     ) -> dict[str, Any]:
         """
         Compute zonal statistics via pygeofetch.
@@ -996,20 +1031,23 @@ class SatelliteAcquirer:
                 logger.warning("to_cog via pygeofetch failed: %s", e)
         # Fallback: gdal_translate
         import subprocess
+
         out = output_path or input_path.replace(".tif", "_cog.tif")
         try:
             subprocess.run(
-                ["gdal_translate", "-of", "COG", "-co", "COMPRESS=LZW",
-                 input_path, out],
-                check=True, capture_output=True,
+                ["gdal_translate", "-of", "COG", "-co", "COMPRESS=LZW", input_path, out],
+                check=True,
+                capture_output=True,
             )
         except Exception:
             import shutil
+
             shutil.copy2(input_path, out)
         return out
 
 
 # ── Convenience helper ────────────────────────────────────────────────────────
+
 
 def _reproject_bbox_to_raster_crs(
     bbox: tuple[float, float, float, float],
@@ -1019,8 +1057,8 @@ def _reproject_bbox_to_raster_crs(
     """Reproject bbox to the native CRS of a raster file."""
     try:
         import rasterio
-        import rasterio.warp as rwarp
         from rasterio.crs import CRS
+        import rasterio.warp as rwarp
 
         with rasterio.open(raster_path) as src:
             raster_crs = src.crs

@@ -4,13 +4,14 @@ Times are **UTC**. A job fires at most once per matching minute. The scheduler r
 stops when the process stops. For a schedule that must survive a reboot use the operating system's cron (see the
 scheduling section of the YAML pipeline guide).
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime, timezone
 import logging
 import threading
 import time
-from collections.abc import Callable
-from datetime import datetime, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -54,11 +55,15 @@ def cron_matches(expression: str, when: datetime) -> bool:
     """
     fields = expression.split()
     if len(fields) != 5:
-        raise ValueError(f"a cron expression has five fields (minute hour day month weekday), got {expression!r}")
-    minute, hour, dom, month, dow = (_field_values(f, lo, hi) for f, (lo, hi) in zip(fields, _RANGES))
+        raise ValueError(
+            f"a cron expression has five fields (minute hour day month weekday), got {expression!r}"
+        )
+    minute, hour, dom, month, dow = (
+        _field_values(f, lo, hi) for f, (lo, hi) in zip(fields, _RANGES)
+    )
     if 7 in dow:
         dow = (dow - {7}) | {0}
-    weekday = (when.weekday() + 1) % 7                     # Python: Monday=0 -> cron: Sunday=0
+    weekday = (when.weekday() + 1) % 7  # Python: Monday=0 -> cron: Sunday=0
     dom_free, dow_free = fields[2] == "*", fields[4] == "*"
     if dom_free or dow_free:
         day_ok = when.day in dom and weekday in dow
@@ -85,8 +90,9 @@ class PipelineScheduler:
         self._thread: threading.Thread | None = None
         self._wake = threading.Event()
 
-    def add_job(self, name: str, fn: Callable, cron: str,
-                args: tuple = (), kwargs: dict | None = None) -> PipelineScheduler:
+    def add_job(
+        self, name: str, fn: Callable, cron: str, args: tuple = (), kwargs: dict | None = None
+    ) -> PipelineScheduler:
         """Add a scheduled job.
 
         Args:
@@ -98,12 +104,20 @@ class PipelineScheduler:
         Raises:
             ValueError: if ``cron`` is not a valid five-field expression.
         """
-        cron_matches(cron, datetime.now(timezone.utc))          # validate
-        self._jobs.append({
-            "name": name, "fn": fn, "cron": cron,
-            "args": args, "kwargs": kwargs or {},
-            "last_run": None, "n_runs": 0, "errors": 0, "_last_minute": None,
-        })
+        cron_matches(cron, datetime.now(timezone.utc))  # validate
+        self._jobs.append(
+            {
+                "name": name,
+                "fn": fn,
+                "cron": cron,
+                "args": args,
+                "kwargs": kwargs or {},
+                "last_run": None,
+                "n_runs": 0,
+                "errors": 0,
+                "_last_minute": None,
+            }
+        )
         logger.info("Scheduled: '%s' @ '%s' (UTC)", name, cron)
         return self
 
@@ -130,7 +144,9 @@ class PipelineScheduler:
     def _run_loop(self) -> None:
         while self._running:
             self._tick()
-            self._wake.wait(timeout=60 - time.time() % 60 + 0.5)     # to just after the next minute starts
+            self._wake.wait(
+                timeout=60 - time.time() % 60 + 0.5
+            )  # to just after the next minute starts
             self._wake.clear()
 
     def start(self) -> PipelineScheduler:
@@ -151,9 +167,16 @@ class PipelineScheduler:
 
     def status(self) -> list[dict]:
         """One dict per job: name, cron, number of runs, number of errors and the time of the last run."""
-        return [{"name": j["name"], "cron": j["cron"],
-                 "n_runs": j["n_runs"], "errors": j["errors"],
-                 "last_run": j["last_run"]} for j in self._jobs]
+        return [
+            {
+                "name": j["name"],
+                "cron": j["cron"],
+                "n_runs": j["n_runs"],
+                "errors": j["errors"],
+                "last_run": j["last_run"],
+            }
+            for j in self._jobs
+        ]
 
     def run_now(self, name: str) -> Any:
         """Run a scheduled job immediately and return what it returns."""

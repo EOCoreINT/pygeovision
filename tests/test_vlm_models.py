@@ -1,4 +1,5 @@
 """CLIP / RemoteCLIP / Moondream: one implementation, honest loading, no network."""
+
 import types
 
 import pytest
@@ -14,11 +15,13 @@ class TestSingleImplementation:
         from pygeovision.advanced.vlm.moondream_geo import MoondreamGeo as OldMoondream
         from pygeovision.models.vlm.clip import CLIPGeo
         from pygeovision.models.vlm.moondream import MoondreamGeo
+
         assert OldClip is CLIPGeo and OldMoondream is MoondreamGeo
 
     def test_registry_clip_entries_resolve_to_a_real_backend(self):
         from pygeovision.models.registry import get_model, model_registry
         from pygeovision.models.vlm.clip import CLIPGeo
+
         names = model_registry.list(family="clip")
         assert len(names) >= 5
         for name in names:
@@ -27,6 +30,7 @@ class TestSingleImplementation:
 
     def test_remoteclip_points_at_the_open_clip_repo_that_exists(self):
         from pygeovision.models.vlm.clip import CLIPGeo
+
         for name in ("remoteclip-b32", "remoteclip-l14"):
             arch, repo, fname = CLIPGeo.OPENCLIP_CHECKPOINTS[name]
             assert repo == "chendelong/RemoteCLIP" and fname.startswith("RemoteCLIP-")
@@ -41,8 +45,11 @@ class TestRemoteClipLoadingIsStrict:
         ckpt = tmp_path / "bad.pt"
         torch.save({"visual.class_embedding": torch.zeros(3)}, ckpt)
         monkeypatch.setattr("huggingface_hub.hf_hub_download", lambda *a, **k: str(ckpt))
-        monkeypatch.setattr(open_clip, "create_model_and_transforms",
-                            lambda arch, pretrained=False: (torch.nn.Linear(2, 2), None, None))
+        monkeypatch.setattr(
+            open_clip,
+            "create_model_and_transforms",
+            lambda arch, pretrained=False: (torch.nn.Linear(2, 2), None, None),
+        )
         with pytest.raises(ModelLoadError, match="randomly initialised"):
             CLIPGeo(model="remoteclip-b32")._load()
 
@@ -50,27 +57,31 @@ class TestRemoteClipLoadingIsStrict:
 class TestMoondream:
     def _loaded(self, model):
         from pygeovision.models.vlm.moondream import MoondreamGeo
+
         md = MoondreamGeo()
         md._model = model
-        md._load_pil = staticmethod(lambda p: "IMG")      # no raster needed
+        md._load_pil = staticmethod(lambda p: "IMG")  # no raster needed
         return md
 
     def test_revision_is_pinned(self):
         from pygeovision.models.vlm.moondream import MoondreamGeo
+
         assert MoondreamGeo.REVISION and MoondreamGeo.REVISION != "main"
         assert MoondreamGeo(revision="2024-01-01").revision == "2024-01-01"
 
     def test_current_api(self):
         m = types.SimpleNamespace(
             caption=lambda img, length: {"caption": f"cap:{img}:{length}"},
-            query=lambda img, q: {"answer": f"ans:{q}"})
+            query=lambda img, q: {"answer": f"ans:{q}"},
+        )
         md = self._loaded(m)
         assert md.caption("x.tif") == "cap:IMG:normal"
         assert md.vqa("x.tif", "how many?") == "ans:how many?"
 
     def test_legacy_api_still_works(self):
-        m = types.SimpleNamespace(encode_image=lambda img: "ENC",
-                                  answer_question=lambda enc, q, tok: f"{enc}|{q}|{tok}")
+        m = types.SimpleNamespace(
+            encode_image=lambda img: "ENC", answer_question=lambda enc, q, tok: f"{enc}|{q}|{tok}"
+        )
         md = self._loaded(m)
         md._tokenizer = "TOK"
         assert md.vqa("x.tif", "q?") == "ENC|q?|TOK"

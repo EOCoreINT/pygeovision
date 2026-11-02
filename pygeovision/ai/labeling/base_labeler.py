@@ -8,9 +8,9 @@ and writes label GeoTIFFs to an output directory.
 
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -88,9 +88,7 @@ class BaseLabeler(ABC):
         self.labeler_name = labeler_name or self.__class__.__name__.lower()
         self.num_workers = num_workers
         self.skip_existing = skip_existing
-        self._logger = logging.getLogger(
-            f"pygeovision.ai.labeling.{self.__class__.__name__}"
-        )
+        self._logger = logging.getLogger(f"pygeovision.ai.labeling.{self.__class__.__name__}")
 
     @property
     @abstractmethod
@@ -208,9 +206,7 @@ class BaseLabeler(ABC):
         skip_count = 0
         error_count = 0
 
-        self._logger.info(
-            "Labeling %d tiles with '%s' strategy", len(tiles), self.name
-        )
+        self._logger.info("Labeling %d tiles with '%s' strategy", len(tiles), self.name)
 
         # Process tiles (sequential for stability; subclasses can override with threads)
         for i, tile in enumerate(tiles):
@@ -283,12 +279,11 @@ class BaseLabeler(ABC):
             Written GeoTIFF path.
         """
         try:
-            import rasterio  # noqa: PLC0415
             from affine import Affine  # noqa: PLC0415
+            import rasterio  # noqa: PLC0415
         except ImportError as exc:
             raise LabelingError(
-                "rasterio is required for writing labels. "
-                "Install with: pip install rasterio"
+                "rasterio is required for writing labels. " "Install with: pip install rasterio"
             ) from exc
 
         output_path = output_dir / f"{tile.tile_id}.tif"
@@ -326,9 +321,11 @@ class BaseLabeler(ABC):
         object has no attribute 'tile_id'), not a naming nitpick.
         """
         import rasterio
+
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(mask.astype(profile.get("dtype", "uint8")), 1)

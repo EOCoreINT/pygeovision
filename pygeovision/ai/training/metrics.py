@@ -30,6 +30,7 @@ class SegmentationMetrics:
         recall_per_class: Recall per class.
         f1_per_class: F1 score per class.
     """
+
     iou_per_class: list[float] = field(default_factory=list)
     accuracy: float = 0.0
     mean_iou: float = 0.0
@@ -86,9 +87,9 @@ class ConfusionMatrix:
 
         # Compute histogram
         indices = self.num_classes * targets.long() + preds.long()
-        self.matrix += torch.bincount(
-            indices, minlength=self.num_classes ** 2
-        ).reshape(self.num_classes, self.num_classes)
+        self.matrix += torch.bincount(indices, minlength=self.num_classes**2).reshape(
+            self.num_classes, self.num_classes
+        )
 
     def reset(self) -> None:
         """Reset the confusion matrix."""

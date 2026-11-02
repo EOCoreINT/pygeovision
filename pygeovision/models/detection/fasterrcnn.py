@@ -1,4 +1,5 @@
 """Faster R-CNN (ResNet-50 FPN) for satellite object detection -- torchvision backed."""
+
 from __future__ import annotations
 
 from typing import Any

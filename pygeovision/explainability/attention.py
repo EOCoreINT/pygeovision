@@ -1,4 +1,5 @@
 """Attention map extraction for transformer-based geospatial models (G6)."""
+
 from __future__ import annotations
 
 import logging
@@ -36,14 +37,14 @@ class AttentionMapExtractor:
     def _model_device(model: Any) -> str:
         try:
             return str(next(model.parameters()).device)
-        except Exception:                      # no parameters, or not a torch module
+        except Exception:  # no parameters, or not a torch module
             return "cpu"
 
     @staticmethod
     def _as_probs(t: Any):
         """Return ``t`` as ``(B, heads, N, N)`` if it looks like attention weights, else None."""
         try:
-            if t.ndim == 3 and t.shape[-1] == t.shape[-2]:       # head-averaged (B, N, N)
+            if t.ndim == 3 and t.shape[-1] == t.shape[-2]:  # head-averaged (B, N, N)
                 return t.unsqueeze(1)
             if t.ndim == 4 and t.shape[-1] == t.shape[-2]:
                 return t
@@ -54,7 +55,7 @@ class AttentionMapExtractor:
     def _register_attention_hooks(self) -> list:
         """Hook attention modules; returns the hook handles so they can be removed."""
         self._attention_maps = []
-        seen: set = set()                      # nested attention modules can return the same weights
+        seen: set = set()  # nested attention modules can return the same weights
 
         def _keep(t):
             probs = self._as_probs(t)
@@ -75,9 +76,15 @@ class AttentionMapExtractor:
                 handles.append(module.register_forward_hook(_hook))
         return handles
 
-    def extract(self, image: Any, layer_idx: int = -1,
-                head_idx: int | None = None, *, forward_kwargs: dict | None = None,
-                strict: bool = False) -> Any:
+    def extract(
+        self,
+        image: Any,
+        layer_idx: int = -1,
+        head_idx: int | None = None,
+        *,
+        forward_kwargs: dict | None = None,
+        strict: bool = False,
+    ) -> Any:
         """Extract an attention map for an image.
 
         Args:
@@ -98,10 +105,12 @@ class AttentionMapExtractor:
             width is returned and the reason is logged as a warning.
         """
         import numpy as np
+
         handles: list = []
         shape_hw = (64, 64)
         try:
             import torch
+
             if isinstance(image, np.ndarray):
                 image = torch.tensor(image, dtype=torch.float32)
             if image.ndim == 3:
@@ -115,7 +124,11 @@ class AttentionMapExtractor:
 
             maps = list(self._attention_maps)
             if not maps and getattr(out, "attentions", None):
-                maps = [p.detach().cpu() for p in (self._as_probs(a) for a in out.attentions) if p is not None]
+                maps = [
+                    p.detach().cpu()
+                    for p in (self._as_probs(a) for a in out.attentions)
+                    if p is not None
+                ]
             if not maps:
                 raise RuntimeError(
                     "no attention weights were produced. Attention modules must return "
@@ -124,25 +137,28 @@ class AttentionMapExtractor:
                     "attn_implementation='eager'."
                 )
 
-            attn = maps[layer_idx]                       # (B, heads, N, N)
+            attn = maps[layer_idx]  # (B, heads, N, N)
             if head_idx is not None:
                 if not -attn.shape[1] <= head_idx < attn.shape[1]:
                     raise IndexError(
                         f"head_idx {head_idx} out of range: this layer's attention has "
                         f"{attn.shape[1]} head(s) (modules that return head-averaged weights "
-                        "report a single head)")
+                        "report a single head)"
+                    )
                 attn = attn[:, head_idx]
             else:
                 attn = attn.mean(dim=1)
-            attn = attn[0]                               # (N, N)
+            attn = attn[0]  # (N, N)
             n_tok = attn.shape[0]
-            side = int(round(n_tok ** 0.5))
+            side = int(round(n_tok**0.5))
             if side * side == n_tok:
                 return attn.mean(0).reshape(side, side).numpy()
             side = int(round((n_tok - 1) ** 0.5))
             if side * side == n_tok - 1:
-                return attn[0, 1:].reshape(side, side).numpy()     # class token -> patches
-            logger.warning("%d attention tokens do not form a square grid; returning a vector", n_tok)
+                return attn[0, 1:].reshape(side, side).numpy()  # class token -> patches
+            logger.warning(
+                "%d attention tokens do not form a square grid; returning a vector", n_tok
+            )
             return attn.mean(0).numpy()
         except Exception as exc:
             if strict:
@@ -153,18 +169,27 @@ class AttentionMapExtractor:
             for h in handles:
                 h.remove()
 
-    def visualise(self, image_path: str, attention: Any, output_path: str,
-                  alpha: float = 0.6, colormap: str = "jet") -> None:
+    def visualise(
+        self,
+        image_path: str,
+        attention: Any,
+        output_path: str,
+        alpha: float = 0.6,
+        colormap: str = "jet",
+    ) -> None:
         """Save a PNG with the input, the attention map and an overlay."""
         import numpy as np
+
         attn = np.asarray(attention, dtype=np.float32)
         if attn.ndim != 2:
-            raise ValueError("attention must be a 2-D map; got shape %s" % (attn.shape,))
+            raise ValueError(f"attention must be a 2-D map; got shape {attn.shape}")
         rng = attn.max() - attn.min()
         attn = (attn - attn.min()) / rng if rng > 0 else attn * 0
         try:
             from pygeovision.explainability.gradcam import _save_overlay
-            _save_overlay(image_path, attn, output_path, alpha=alpha,
-                          colormap=colormap, title="Attention")
+
+            _save_overlay(
+                image_path, attn, output_path, alpha=alpha, colormap=colormap, title="Attention"
+            )
         except ImportError as exc:
             logger.warning("matplotlib required for visualisation: %s", exc)

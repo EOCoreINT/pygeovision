@@ -19,19 +19,36 @@ features / classify``, and ``client.obia`` offers the download helpers.
 
 See ``docs/obia`` for the full tutorial sequence.
 """
-from .accuracy import (assess_classification, confusion_report, pixel_report,
-                       segmentation_quality)
-from .classify import (ClassificationResult, FuzzyClassifier, Gaussian, LargerThan,
-                       Membership, ObjectClassifier, RuleBasedClassifier, SmallerThan,
-                       Triangle, Trapezoid, samples_from_geometries, samples_from_raster)
-from .features import (class_context, extract_features, glcm_texture, parent_map,
-                       spectral_layers, sub_object_fraction, super_object_features)
+
+from .accuracy import assess_classification, confusion_report, pixel_report, segmentation_quality
+from .classify import (
+    ClassificationResult,
+    FuzzyClassifier,
+    Gaussian,
+    LargerThan,
+    Membership,
+    ObjectClassifier,
+    RuleBasedClassifier,
+    SmallerThan,
+    Trapezoid,
+    Triangle,
+    samples_from_geometries,
+    samples_from_raster,
+)
+from .features import (
+    class_context,
+    extract_features,
+    glcm_texture,
+    parent_map,
+    spectral_layers,
+    sub_object_fraction,
+    super_object_features,
+)
 from .io import RasterData, load_raster, save_raster, valid_mask
 from .merging import RegionMerger
 from .scale import scale_diagnostics, scale_vs_reference
 from .scene import fetch_osm_polygons, fetch_scene, fetch_worldcover
-from .segmentation import (METHODS, SegmentationResult, from_labels, segment,
-                           segment_levels)
+from .segmentation import METHODS, SegmentationResult, from_labels, segment, segment_levels
 from .vector import labels_to_gdf, rasterize_geometries
 
 __all__ = [n for n in dir() if not n.startswith("_")]

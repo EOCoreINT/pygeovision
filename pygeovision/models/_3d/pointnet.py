@@ -29,6 +29,7 @@ Architecture:
 This is NOT a registry stub — every module below is a real, working
 nn.Module with verified forward-pass shapes (see the test suite).
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,6 +43,7 @@ def _require_torch():
         import torch
         import torch.nn as nn
         import torch.nn.functional as F
+
         return torch, nn, F
     except ImportError:
         raise ImportError("torch required for PointNet++: pip install torch") from None
@@ -54,8 +56,8 @@ def square_distance(src, dst):
     B, N, _ = src.shape
     _, M, _ = dst.shape
     dist = -2 * torch.matmul(src, dst.permute(0, 2, 1))
-    dist += torch.sum(src ** 2, -1).view(B, N, 1)
-    dist += torch.sum(dst ** 2, -1).view(B, 1, M)
+    dist += torch.sum(src**2, -1).view(B, N, 1)
+    dist += torch.sum(dst**2, -1).view(B, 1, M)
     return dist
 
 
@@ -69,7 +71,9 @@ def index_points(points, idx):
     view_shape[1:] = [1] * (len(view_shape) - 1)
     repeat_shape = list(idx.shape)
     repeat_shape[0] = 1
-    batch_indices = torch.arange(B, dtype=torch.long, device=device).view(view_shape).repeat(repeat_shape)
+    batch_indices = (
+        torch.arange(B, dtype=torch.long, device=device).view(view_shape).repeat(repeat_shape)
+    )
     return points[batch_indices, idx, :]
 
 
@@ -103,7 +107,7 @@ def query_ball_point(radius, nsample, xyz, new_xyz):
     nsample = min(nsample, N)  # can't return more neighbors than points exist
     group_idx = torch.arange(N, dtype=torch.long, device=device).view(1, 1, N).repeat([B, S, 1])
     sqrdists = square_distance(new_xyz, xyz)
-    group_idx[sqrdists > radius ** 2] = N
+    group_idx[sqrdists > radius**2] = N
     group_idx = group_idx.sort(dim=-1)[0][:, :, :nsample]
     group_first = group_idx[:, :, 0].view(B, S, 1).repeat([1, 1, group_idx.shape[-1]])
     mask = group_idx == N
@@ -149,8 +153,9 @@ def sample_and_group_all(xyz, points):
 def _build_set_abstraction():
     torch, nn, F = _require_torch()
 
-    class PointNetSetAbstraction(nn.Module):
+    class PointNetSetAbstraction(nn.Module):  # type: ignore[name-defined]
         """Single-Scale Grouping (SSG) set abstraction layer."""
+
         def __init__(self, npoint, radius, nsample, in_channel, mlp, group_all):
             super().__init__()
             self.npoint = npoint
@@ -176,7 +181,11 @@ def _build_set_abstraction():
                 new_xyz, new_points = sample_and_group_all(xyz, points)
             else:
                 new_xyz, new_points = sample_and_group(
-                    self.npoint, self.radius, self.nsample, xyz, points,
+                    self.npoint,
+                    self.radius,
+                    self.nsample,
+                    xyz,
+                    points,
                 )
             # new_points: (B, npoint, nsample, C+D) -> (B, C+D, nsample, npoint)
             new_points = new_points.permute(0, 3, 2, 1)
@@ -186,11 +195,12 @@ def _build_set_abstraction():
             new_xyz = new_xyz.permute(0, 2, 1)
             return new_xyz, new_points
 
-    class PointNetSetAbstractionMsg(nn.Module):
+    class PointNetSetAbstractionMsg(nn.Module):  # type: ignore[name-defined]
         """Multi-Scale Grouping (MSG) set abstraction layer — runs several
         radius/nsample/mlp combinations in parallel and concatenates the
         results. More robust to the non-uniform point density typical of
         real airborne/terrestrial LiDAR scans."""
+
         def __init__(self, npoint, radius_list, nsample_list, in_channel, mlp_list):
             super().__init__()
             self.npoint = npoint
@@ -240,11 +250,12 @@ def _build_set_abstraction():
             new_points_concat = torch.cat(new_points_list, dim=1)
             return new_xyz, new_points_concat
 
-    class PointNetFeaturePropagation(nn.Module):
+    class PointNetFeaturePropagation(nn.Module):  # type: ignore[name-defined]
         """Upsamples features from a coarser (fewer-point) layer back to a
         finer layer via inverse-distance-weighted interpolation from the 3
         nearest coarse points, concatenated with the finer layer's own
         (skip-connected) features."""
+
         def __init__(self, in_channel, mlp):
             super().__init__()
             self.mlp_convs = nn.ModuleList()
@@ -275,7 +286,8 @@ def _build_set_abstraction():
                 norm = torch.sum(dist_recip, dim=2, keepdim=True)
                 weight = dist_recip / norm
                 interpolated_points = torch.sum(
-                    index_points(points2, idx) * weight.view(B, N, 3, 1), dim=2,
+                    index_points(points2, idx) * weight.view(B, N, 3, 1),
+                    dim=2,
                 )
 
             if points1 is not None:
@@ -302,20 +314,21 @@ class PointNet2SegModel:
         logits = model(xyz)  # xyz: (B, 3+extra, N) -> (B, num_classes, N)
     """
 
-    def __new__(cls, num_classes: int = 5, extra_feature_channels: int = 0,
-                msg: bool = False):
+    def __new__(cls, num_classes: int = 5, extra_feature_channels: int = 0, msg: bool = False):
         torch, nn, F = _require_torch()
         SA, SAMsg, FP = _build_set_abstraction()
 
-        class PointNet2Seg(nn.Module):
+        class PointNet2Seg(nn.Module):  # type: ignore[name-defined]
             def __init__(self):
                 super().__init__()
                 extra = extra_feature_channels
                 if msg:
-                    self.sa1 = SAMsg(1024, [0.05, 0.1], [16, 32], extra,
-                                      [[16, 16, 32], [32, 32, 64]])
-                    self.sa2 = SAMsg(256, [0.1, 0.2], [16, 32], 32 + 64,
-                                      [[64, 64, 128], [64, 96, 128]])
+                    self.sa1 = SAMsg(
+                        1024, [0.05, 0.1], [16, 32], extra, [[16, 16, 32], [32, 32, 64]]
+                    )
+                    self.sa2 = SAMsg(
+                        256, [0.1, 0.2], [16, 32], 32 + 64, [[64, 64, 128], [64, 96, 128]]
+                    )
                     sa2_out = 128 + 128
                 else:
                     self.sa1 = SA(1024, 0.1, 32, extra + 3, [32, 32, 64], False)
@@ -350,7 +363,8 @@ class PointNet2SegModel:
                 l2_points = self.fp3(l2_xyz, l3_xyz, l2_points, l3_points)
                 l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
                 l0_points = self.fp1(
-                    l0_xyz, l1_xyz,
+                    l0_xyz,
+                    l1_xyz,
                     l0_points if extra_feature_channels > 0 else None,
                     l1_points,
                 )

@@ -16,6 +16,7 @@ Three real, previously-hidden bugs found this pass:
      'bitemporal'/'changestar' but always silently built ChangeFormer
      regardless of what was actually requested.
 """
+
 import pytest
 
 torch = pytest.importorskip("torch", reason="torch not installed")
@@ -29,8 +30,17 @@ def _make_geotiff(path, bands=4, size=64, crs="EPSG:32630", seed=0):
     rng = np.random.default_rng(seed)
     transform = from_bounds(818000, 615000, 818000 + size * 10, 615000 + size * 10, size, size)
     data = rng.random((bands, size, size)).astype("float32")
-    with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=bands,
-                        dtype="float32", crs=crs, transform=transform) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=bands,
+        dtype="float32",
+        crs=crs,
+        transform=transform,
+    ) as dst:
         dst.write(data)
     return transform
 
@@ -75,8 +85,9 @@ class TestTiledInferenceLoudFailure:
         raster_path = tmp_path / "scene.tif"
         _make_geotiff(raster_path)
 
-        inf = TiledInference(IncompatibleModel(), chip_size=32, overlap=0, num_classes=2,
-                              tolerate_chip_failures=True)
+        inf = TiledInference(
+            IncompatibleModel(), chip_size=32, overlap=0, num_classes=2, tolerate_chip_failures=True
+        )
         result = inf.infer(str(raster_path), str(tmp_path / "out.tif"))
         assert result["success"] is True
 
@@ -89,12 +100,14 @@ class TestTiledInferenceHalfPrecisionDeviceBug:
         from pygeovision.ai.models.registry import registry as native_registry
         from pygeovision.inference.tiled import TiledInference
 
-        model = native_registry.build("unet_resnet50", num_classes=2, in_channels=4, pretrained=False)
+        model = native_registry.build(
+            "unet_resnet50", num_classes=2, in_channels=4, pretrained=False
+        )
         raster_path = tmp_path / "scene.tif"
         _make_geotiff(raster_path)
 
         # Default half_precision=True — this must NOT raise on CPU.
-        inf = TiledInference(model, chip_size=32, overlap=8, num_classes=2)
+        inf = TiledInference(model, chip_size=32, overlap=8, num_classes=2, device="cpu")
         assert inf._device == "cpu"
         result = inf.infer(str(raster_path), str(tmp_path / "out.tif"))
         assert result["success"] is True
@@ -108,7 +121,9 @@ class TestTiledInferenceHalfPrecisionDeviceBug:
         from pygeovision.ai.models.registry import registry as native_registry
         from pygeovision.inference.tiled import TiledInference
 
-        model = native_registry.build("unet_resnet50", num_classes=2, in_channels=4, pretrained=False)
+        model = native_registry.build(
+            "unet_resnet50", num_classes=2, in_channels=4, pretrained=False
+        )
         raster_path = tmp_path / "scene.tif"
         _make_geotiff(raster_path, size=96)
 
@@ -126,35 +141,41 @@ class TestChangeDetectionDispatch:
     a different architecture, not silently always build ChangeFormer."""
 
     def test_bit_variant_returns_bit_detector(self):
-        from pygeovision.models.change_detection.changeformer import ChangeDetection
         from pygeovision.models.change_detection.bit import BITChangeDetector
+        from pygeovision.models.change_detection.changeformer import ChangeDetection
+
         det = ChangeDetection(model_variant="bit", num_classes=2, in_channels=4)
         assert isinstance(det, BITChangeDetector)
 
     def test_bitemporal_alias_also_returns_bit_detector(self):
-        from pygeovision.models.change_detection.changeformer import ChangeDetection
         from pygeovision.models.change_detection.bit import BITChangeDetector
+        from pygeovision.models.change_detection.changeformer import ChangeDetection
+
         det = ChangeDetection(model_variant="bitemporal", num_classes=2, in_channels=4)
         assert isinstance(det, BITChangeDetector)
 
     def test_dsamnet_variant_returns_dsamnet_detector(self):
         from pygeovision.models.change_detection.changeformer import ChangeDetection
         from pygeovision.models.change_detection.dsamnet import DSAMNetChangeDetector
+
         det = ChangeDetection(model_variant="dsamnet", num_classes=2, in_channels=4)
         assert isinstance(det, DSAMNetChangeDetector)
 
     def test_changeformer_variant_still_works(self):
         from pygeovision.models.change_detection.changeformer import ChangeDetection, ChangeFormer
+
         det = ChangeDetection(model_variant="changeformer", num_classes=2, in_channels=4)
         assert isinstance(det, ChangeFormer)
 
     def test_changestar_raises_instead_of_silently_substituting(self):
         from pygeovision.models.change_detection.changeformer import ChangeDetection
+
         with pytest.raises(NotImplementedError):
             ChangeDetection(model_variant="changestar")
 
     def test_unknown_variant_raises_value_error(self):
         from pygeovision.models.change_detection.changeformer import ChangeDetection
+
         with pytest.raises(ValueError):
             ChangeDetection(model_variant="not_a_real_model")
 
@@ -229,7 +250,10 @@ class TestDSAMNetEndToEnd:
 
         detector = DSAMNetChangeDetector(num_classes=2, in_channels=4, backbone="resnet18")
         result = detector.detect(
-            str(before), str(after), str(tmp_path / "change.tif"), return_distance_map=True,
+            str(before),
+            str(after),
+            str(tmp_path / "change.tif"),
+            return_distance_map=True,
         )
         assert "distance_map_path" in result
         with rasterio.open(result["distance_map_path"]) as src:

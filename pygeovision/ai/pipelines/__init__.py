@@ -28,9 +28,9 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -45,9 +45,11 @@ class _IncompleteSceneError(Exception):
 # Result dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PipelineResult:
     """Result of one pipeline run (used by every pipeline in the catalogue)."""
+
     pipeline: str
     output_path: Path | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -71,7 +73,6 @@ class PipelineResult:
 
 class ModelWeightsRequired(RuntimeError):
     """Raised instead of running a network that has no trained weights."""
-
 
 
 # ---------------------------------------------------------------------------
@@ -121,9 +122,15 @@ class BasePipeline(ABC):
     # Shared result helpers
     # ------------------------------------------------------------------
 
-    def _ok(self, output_path: Any, stats: dict[str, Any] | None = None,
-            metadata: dict[str, Any] | None = None, t0: float | None = None) -> PipelineResult:
+    def _ok(
+        self,
+        output_path: Any,
+        stats: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        t0: float | None = None,
+    ) -> PipelineResult:
         import time
+
         stats = dict(stats or {})
         metadata = dict(metadata or {})
         log = getattr(self, "_coverage_log", [])
@@ -134,22 +141,30 @@ class BasePipeline(ABC):
             metadata.setdefault("input_coverage", list(log))
             self._coverage_log = []
         return PipelineResult(
-            pipeline=self.name, output_path=Path(output_path) if output_path else None,
-            stats=stats, metadata=metadata, success=True,
+            pipeline=self.name,
+            output_path=Path(output_path) if output_path else None,
+            stats=stats,
+            metadata=metadata,
+            success=True,
             duration_seconds=(time.time() - t0) if t0 is not None else 0.0,
         )
 
     def _fail(self, error: str, t0: float | None = None) -> PipelineResult:
         import time
+
         for e in getattr(self, "_coverage_log", []):
             if e.get("clear_fraction", 1.0) < self._MIN_CLEAR_FRACTION:
-                error += (f" The downloaded scene(s) {', '.join(e.get('scenes_used', []))} are clear over only "
-                          f"{100 * e['clear_fraction']:.0f}% of the requested area (the rest is cloud, shadow "
-                          f"or outside the scene); try another date.")
+                error += (
+                    f" The downloaded scene(s) {', '.join(e.get('scenes_used', []))} are clear over only "
+                    f"{100 * e['clear_fraction']:.0f}% of the requested area (the rest is cloud, shadow "
+                    f"or outside the scene); try another date."
+                )
                 break
         self._coverage_log = []
         return PipelineResult(
-            pipeline=self.name, success=False, error=error,
+            pipeline=self.name,
+            success=False,
+            error=error,
             duration_seconds=(time.time() - t0) if t0 is not None else 0.0,
         )
 
@@ -163,12 +178,20 @@ class BasePipeline(ABC):
     # separate public client.segmentation/client.classification API).
     from pygeovision.data.radiometric import (
         LANDSAT_ETM_TM_ALIASES as _LANDSAT_ETM_TM_ALIASES,
+    )
+    from pygeovision.data.radiometric import (
         LANDSAT_OLI_ALIASES as _LANDSAT_OLI_ALIASES,
+    )
+    from pygeovision.data.radiometric import (
         S2_BAND_ALIASES as _S2_BAND_ALIASES_DEFAULT,
+    )
+    from pygeovision.data.radiometric import (  # type: ignore[misc]
         landsat_mission_aliases as _landsat_mission_aliases_impl,
     )
 
-    _S2_BAND_ALIASES = dict(_S2_BAND_ALIASES_DEFAULT)  # a real, mutable per-class copy (some tests customise it)
+    _S2_BAND_ALIASES = dict(
+        _S2_BAND_ALIASES_DEFAULT
+    )  # a real, mutable per-class copy (some tests customise it)
 
     @staticmethod
     def _landsat_mission_aliases(scene_id: str) -> dict[str, tuple[str, ...]] | None:
@@ -195,8 +218,8 @@ class BasePipeline(ABC):
         which some tests rely on) rather than the module's fixed
         S2_BAND_ALIASES directly.
         """
-        from pygeovision.data.radiometric import stack_and_prepare_bands
         import pygeovision.data.radiometric as _radiometric_mod
+        from pygeovision.data.radiometric import stack_and_prepare_bands
 
         # Respect any instance-level customisation of _S2_BAND_ALIASES
         # (e.g. tests adding a custom "swir1" alias) by temporarily
@@ -205,12 +228,15 @@ class BasePipeline(ABC):
         try:
             _radiometric_mod.S2_BAND_ALIASES = self._S2_BAND_ALIASES
             return stack_and_prepare_bands(
-                asset_paths, output_path, bands=bands, scene_id=scene_id,
-                apply_scale=apply_scale, apply_cloud_mask=apply_cloud_mask,
+                asset_paths,
+                output_path,
+                bands=bands,
+                scene_id=scene_id,
+                apply_scale=apply_scale,
+                apply_cloud_mask=apply_cloud_mask,
             )
         finally:
             _radiometric_mod.S2_BAND_ALIASES = original_aliases
-
 
     def _download_and_prepare_scene(
         self,
@@ -234,13 +260,24 @@ class BasePipeline(ABC):
         """
         for fresh in (False, True):
             dl = self._download_scene_files(
-                result, output_dir, bands, apply_cloud_mask, post_process, subdir_name, fresh=fresh,
+                result,
+                output_dir,
+                bands,
+                apply_cloud_mask,
+                post_process,
+                subdir_name,
+                fresh=fresh,
             )
             if dl is None:
                 return None
             try:
                 return self._prepare_downloaded_scene(
-                    dl, output_dir, bands, apply_scale, apply_cloud_mask, subdir_name,
+                    dl,
+                    output_dir,
+                    bands,
+                    apply_scale,
+                    apply_cloud_mask,
+                    subdir_name,
                 )
             except _IncompleteSceneError as exc:
                 if fresh:
@@ -270,8 +307,11 @@ class BasePipeline(ABC):
         # Sentinel-2 and both Landsat families (their band numbering differs,
         # see LANDSAT_ETM_TM_ALIASES vs LANDSAT_OLI_ALIASES).
         from pygeovision.data.radiometric import (
-            S2_BAND_ALIASES, LANDSAT_ETM_TM_ALIASES, LANDSAT_OLI_ALIASES,
+            LANDSAT_ETM_TM_ALIASES,
+            LANDSAT_OLI_ALIASES,
+            S2_BAND_ALIASES,
         )
+
         expanded_bands: list[str] = []
         for b in bands:
             if b in _STAC_LANDSAT_KEYS:
@@ -290,18 +330,29 @@ class BasePipeline(ABC):
             expanded_bands.extend(("SCL", "QA_PIXEL"))
         expanded_bands = list(dict.fromkeys(expanded_bands))  # dedupe, preserve order
 
-        logger.info("_download_scene_files: downloading %s (%s, %d asset code(s) requested) -> %s",
-                    getattr(result, "id", "?"), getattr(result, "provider", "?"), len(expanded_bands),
-                    output_dir / subdir_name)
+        logger.info(
+            "_download_scene_files: downloading %s (%s, %d asset code(s) requested) -> %s",
+            getattr(result, "id", "?"),
+            getattr(result, "provider", "?"),
+            len(expanded_bands),
+            output_dir / subdir_name,
+        )
         downloads = self.pgv.download(
-            [result], output_dir=output_dir / subdir_name,
-            parallel=1, post_process=pp, verify_checksum=False,
+            [result],
+            output_dir=output_dir / subdir_name,
+            parallel=1,
+            post_process=pp,
+            verify_checksum=False,
             bands=expanded_bands,
             **({"resume": False, "overwrite": True} if fresh else {}),
         )
         if not (downloads and downloads[0].success):
-            logger.warning("_download_scene_files: download of %s failed (%s).", getattr(result, "id", "?"),
-                           (getattr(downloads[0], "error", None) if downloads else None) or "no result returned")
+            logger.warning(
+                "_download_scene_files: download of %s failed (%s).",
+                getattr(result, "id", "?"),
+                (getattr(downloads[0], "error", None) if downloads else None)
+                or "no result returned",
+            )
             return None
         return downloads[0]
 
@@ -327,9 +378,12 @@ class BasePipeline(ABC):
             safe_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(dl.scene_id))[:120] or "scene"
             try:
                 return self._stack_bands(
-                    dl.asset_paths, output_dir / subdir_name / f"stack_{safe_id}.tif",
-                    bands=bands, scene_id=dl.scene_id,
-                    apply_scale=apply_scale, apply_cloud_mask=apply_cloud_mask,
+                    dl.asset_paths,
+                    output_dir / subdir_name / f"stack_{safe_id}.tif",
+                    bands=bands,
+                    scene_id=dl.scene_id,
+                    apply_scale=apply_scale,
+                    apply_cloud_mask=apply_cloud_mask,
                 )
             except RuntimeError as exc:
                 raise _IncompleteSceneError(str(exc)) from exc
@@ -338,9 +392,11 @@ class BasePipeline(ABC):
         # with more or fewer bands than requested; passing it on would crash
         # the model later with a channel-count mismatch, so refuse it here.
         import rasterio
+
         with rasterio.open(dl.path) as _src:
             real_band_count = _src.count
-        from pygeovision.data.radiometric import identify_sensor, dn_to_reflectance
+        from pygeovision.data.radiometric import dn_to_reflectance, identify_sensor
+
         is_landsat, is_sentinel2 = identify_sensor(dl.scene_id)
         if real_band_count != len(bands):
             msg = (
@@ -349,9 +405,12 @@ class BasePipeline(ABC):
                 f"a mismatched band count"
             )
             if is_landsat or is_sentinel2:
-                raise _IncompleteSceneError(msg)     # these products ship one file per band
-            logger.error("_download_and_prepare_scene: %s. The provider probably delivered one "
-                         "already-combined file; use a collection that ships separate band files.", msg)
+                raise _IncompleteSceneError(msg)  # these products ship one file per band
+            logger.error(
+                "_download_and_prepare_scene: %s. The provider probably delivered one "
+                "already-combined file; use a collection that ships separate band files.",
+                msg,
+            )
             return None
 
         if not apply_scale:
@@ -362,9 +421,11 @@ class BasePipeline(ABC):
                 "_download_and_prepare_scene: single-asset download for a "
                 "recognised %s scene (%s) -- unusual. Applying real "
                 "DN->reflectance scaling directly (no cloud mask: no QA layer in this file).",
-                "Landsat" if is_landsat else "Sentinel-2", dl.scene_id,
+                "Landsat" if is_landsat else "Sentinel-2",
+                dl.scene_id,
             )
             from pygeovision.data._profile import writable_profile
+
             scaled_path = output_dir / subdir_name / f"single_asset_scaled_{dl.scene_id}.tif"
             scaled_path.parent.mkdir(parents=True, exist_ok=True)
             with rasterio.open(dl.path) as src:
@@ -393,17 +454,23 @@ class BasePipeline(ABC):
     def _scene_key(result: Any) -> tuple:
         """Identity of a scene across providers: (tile or path/row, acquisition date)."""
         import re
+
         sid = str(getattr(result, "id", "") or "")
         m_date = re.search(r"(?<!\d)((?:19|20)\d{6})(?!\d)", sid)
-        m_tile = re.search(r"_T?(\d{2}[A-Z]{3})(?:_|$)", sid)            # Sentinel-2 MGRS tile
-        m_wrs = re.search(r"_L\d{1}[A-Z]{2}?_?(\d{6})_((?:19|20)\d{6})", sid) or \
-            re.search(r"_(\d{6})_((?:19|20)\d{6})_", sid)                # Landsat path/row + date
+        m_tile = re.search(r"_T?(\d{2}[A-Z]{3})(?:_|$)", sid)  # Sentinel-2 MGRS tile
+        m_wrs = re.search(r"_L\d{1}[A-Z]{2}?_?(\d{6})_((?:19|20)\d{6})", sid) or re.search(
+            r"_(\d{6})_((?:19|20)\d{6})_", sid
+        )  # Landsat path/row + date
         if m_tile and m_date:
             return ("s2", m_tile.group(1), m_date.group(1))
         if m_wrs:
             return ("wrs", m_wrs.group(1), m_wrs.group(2))
         bbox = getattr(result, "bbox", None)
-        return ("bbox", tuple(round(v, 3) for v in bbox) if bbox else sid, str(getattr(result, "datetime", ""))[:10])
+        return (
+            "bbox",
+            tuple(round(v, 3) for v in bbox) if bbox else sid,
+            str(getattr(result, "datetime", ""))[:10],
+        )
 
     # Providers whose asset links can be downloaded without an AWS account, tried first when several providers
     # list the same scene. The Landsat copies on aws_earth / element84 are requester-pays S3 objects and fail
@@ -415,19 +482,24 @@ class BasePipeline(ABC):
         """Drop repeat listings of one scene (the same tile and date from several
         providers), keeping the best one. Scenes stay in their ranked order; among the listings of one
         scene a provider from ``_PREFERRED_PROVIDERS`` wins, otherwise the first. The other listings are
-        remembered in ``self._alternates`` so a failed download can be retried from another provider."""
+        remembered in ``self._alternates`` so a failed download can be retried from another provider.
+        """
         groups: dict[Any, list[Any]] = {}
         for r in results:
             groups.setdefault(self._scene_key(r), []).append(r)
 
         def rank(r: Any) -> int:
             prov = str(getattr(r, "provider", ""))
-            return self._PREFERRED_PROVIDERS.index(prov) if prov in self._PREFERRED_PROVIDERS else len(self._PREFERRED_PROVIDERS)
+            return (
+                self._PREFERRED_PROVIDERS.index(prov)
+                if prov in self._PREFERRED_PROVIDERS
+                else len(self._PREFERRED_PROVIDERS)
+            )
 
         out: list[Any] = []
         self._alternates = {}
         for listings in groups.values():
-            ordered = sorted(listings, key=rank)           # stable: ties keep the search order
+            ordered = sorted(listings, key=rank)  # stable: ties keep the search order
             out.append(ordered[0])
             self._alternates[id(ordered[0])] = ordered[1:]
         return out
@@ -457,7 +529,9 @@ class BasePipeline(ABC):
         from shapely.ops import unary_union
 
         aoi_geom = box(*bbox)
-        min_gain = aoi_geom.area * (self._MIN_GAIN_FRACTION if min_gain_fraction is None else min_gain_fraction)
+        min_gain = aoi_geom.area * (
+            self._MIN_GAIN_FRACTION if min_gain_fraction is None else min_gain_fraction
+        )
         candidates = [r for r in results if r.bbox is not None]
         if not candidates:
             # No footprint information for any candidate -- fall back to the
@@ -482,7 +556,9 @@ class BasePipeline(ABC):
                 break
             best, _, best_geom = next(t for t in gains if t[1] >= 0.95 * best_gain)
             selected.append(best)
-            covered_geom = best_geom if covered_geom is None else unary_union([covered_geom, best_geom])
+            covered_geom = (
+                best_geom if covered_geom is None else unary_union([covered_geom, best_geom])
+            )
             remaining = [r for r in remaining if r is not best]
 
         full_coverage = covered_geom is not None and aoi_geom.difference(covered_geom).area < 1e-9
@@ -490,7 +566,9 @@ class BasePipeline(ABC):
             selected = results[:1]
         return (selected, full_coverage)
 
-    def _footprint_coverage(self, bbox: tuple[float, float, float, float], results: list[Any]) -> float:
+    def _footprint_coverage(
+        self, bbox: tuple[float, float, float, float], results: list[Any]
+    ) -> float:
         """Share (0-1) of the AOI inside the union of the scenes' footprints."""
         from shapely.geometry import box
         from shapely.ops import unary_union
@@ -539,15 +617,18 @@ class BasePipeline(ABC):
         import numpy as np
         import rasterio
         from rasterio.merge import merge as rio_merge
+
         from pygeovision.data._profile import writable_profile
 
         if len({str(p) for p in image_paths}) != len(image_paths):
-            raise ValueError(f"_mosaic_scenes: the same file was passed more than once: {image_paths}")
+            raise ValueError(
+                f"_mosaic_scenes: the same file was passed more than once: {image_paths}"
+            )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         datasets = [rasterio.open(p) for p in image_paths]
         nodata = datasets[0].nodata
         if nodata is None and not np.issubdtype(np.dtype(datasets[0].dtypes[0]), np.floating):
-            nodata = 0          # DN 0 is "no data"; without it the first scene's empty corner would hide the next scene
+            nodata = 0  # DN 0 is "no data"; without it the first scene's empty corner would hide the next scene
         try:
             mosaic, out_transform = rio_merge(datasets, nodata=nodata)
         finally:
@@ -555,8 +636,12 @@ class BasePipeline(ABC):
                 ds.close()
         with rasterio.open(image_paths[0]) as ref:
             profile = writable_profile(
-                ref.profile, height=mosaic.shape[1], width=mosaic.shape[2],
-                transform=out_transform, compress="lzw", nodata=nodata,
+                ref.profile,
+                height=mosaic.shape[1],
+                width=mosaic.shape[2],
+                transform=out_transform,
+                compress="lzw",
+                nodata=nodata,
             )
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(mosaic)
@@ -571,6 +656,7 @@ class BasePipeline(ABC):
     def _aoi_grid(bbox: tuple[float, float, float, float], n: int = 600):
         """A coarse EPSG:4326 grid over the AOI, used to measure where imagery exists."""
         from rasterio.transform import from_bounds
+
         w, s_, e, n_ = bbox
         dx, dy = e - w, n_ - s_
         width = max(2, int(round(n * dx / max(dx, dy))))
@@ -585,39 +671,62 @@ class BasePipeline(ABC):
         import numpy as np
         import rasterio
         from rasterio.warp import Resampling, reproject
+
         from pygeovision.data.radiometric import footprint_path
 
         out = np.zeros(shape, dtype="uint8")
         fp = footprint_path(path)
         if fp.is_file():
             with rasterio.open(fp) as src:
-                reproject(rasterio.band(src, 1), out, src_transform=src.transform, src_crs=src.crs,
-                          dst_transform=transform, dst_crs="EPSG:4326", resampling=Resampling.nearest)
+                reproject(
+                    rasterio.band(src, 1),
+                    out,
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=transform,
+                    dst_crs="EPSG:4326",
+                    resampling=Resampling.nearest,
+                )
             return out.astype(bool)
         with rasterio.open(path) as src:
             f = max(1, int(np.ceil(max(src.height, src.width) / 4096)))
-            data = src.read(out_shape=(src.count, max(1, src.height // f), max(1, src.width // f)),
-                            resampling=Resampling.nearest)
+            data = src.read(
+                out_shape=(src.count, max(1, src.height // f), max(1, src.width // f)),
+                resampling=Resampling.nearest,
+            )
             ok = (np.isfinite(data) & (data != 0)).any(axis=0).astype("uint8")
-            reproject(ok, out, src_transform=src.transform * src.transform.scale(f, f), src_crs=src.crs,
-                      dst_transform=transform, dst_crs="EPSG:4326", resampling=Resampling.nearest)
+            reproject(
+                ok,
+                out,
+                src_transform=src.transform * src.transform.scale(f, f),
+                src_crs=src.crs,
+                dst_transform=transform,
+                dst_crs="EPSG:4326",
+                resampling=Resampling.nearest,
+            )
         return out.astype(bool)
 
     def _aoi_data_gap(self, bbox, paths: list[Path]):
         """(gap mask, transform, covered fraction): the part of the AOI none of ``paths`` has data for."""
         import numpy as np
+
         transform, shape = self._aoi_grid(bbox)
         covered = np.zeros(shape, dtype=bool)
         for p in paths:
             try:
                 covered |= self._data_footprint_on_grid(p, transform, shape)
-            except Exception as exc:  # noqa: BLE001 - a footprint we cannot read just does not count as coverage
-                logger.warning("_aoi_data_gap: could not read the data footprint of %s: %s", Path(p).name, exc)
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - a footprint we cannot read just does not count as coverage
+                logger.warning(
+                    "_aoi_data_gap: could not read the data footprint of %s: %s", Path(p).name, exc
+                )
         return ~covered, transform, float(covered.mean())
 
     def _pick_for_gap(self, gap, transform, candidates: list[Any], exclude: set[int]) -> Any | None:
         """The untried scene whose footprint covers most of the gap (earlier = clearer wins within 5%)."""
         import numpy as np
+
         h, w = gap.shape
         cols = np.arange(w)
         rows = np.arange(h)
@@ -634,27 +743,49 @@ class BasePipeline(ABC):
                 best, best_gain = r, gain
         return best
 
-    def _prepare_with_alternates(self, result, output_dir, bands, apply_scale, apply_cloud_mask, post_process):
+    def _prepare_with_alternates(
+        self, result, output_dir, bands, apply_scale, apply_cloud_mask, post_process
+    ):
         """Download and prepare one scene; on failure try the same scene from the other providers listing it."""
-        p = self._download_and_prepare_scene(result, output_dir, bands, apply_scale, apply_cloud_mask, post_process)
+        p = self._download_and_prepare_scene(
+            result, output_dir, bands, apply_scale, apply_cloud_mask, post_process
+        )
         for alt in ([] if p is not None else getattr(self, "_alternates", {}).get(id(result), [])):
             logger.warning(
                 "_search_and_download: scene %s failed from provider %s; trying the same scene from %s.",
-                getattr(result, "id", "?"), getattr(result, "provider", "?"), getattr(alt, "provider", "?"))
-            p = self._download_and_prepare_scene(alt, output_dir, bands, apply_scale, apply_cloud_mask, post_process)
+                getattr(result, "id", "?"),
+                getattr(result, "provider", "?"),
+                getattr(alt, "provider", "?"),
+            )
+            p = self._download_and_prepare_scene(
+                alt, output_dir, bands, apply_scale, apply_cloud_mask, post_process
+            )
             if p is not None:
                 break
         return p
 
-    def _fill_aoi_gaps(self, bbox, candidates, prepared_paths, prepared_results, tried, failed_ids,
-                       output_dir, bands, apply_scale, apply_cloud_mask, post_process) -> float:
+    def _fill_aoi_gaps(
+        self,
+        bbox,
+        candidates,
+        prepared_paths,
+        prepared_results,
+        tried,
+        failed_ids,
+        output_dir,
+        bands,
+        apply_scale,
+        apply_cloud_mask,
+        post_process,
+    ) -> float:
         """Close the parts of the AOI the downloaded scenes hold no data for.
 
         Scene footprints are bounding boxes, but a scene is a tilted swath with empty corners, so a footprint
         that "covers" the AOI can still leave a gap. The data really present is measured on the prepared
         rasters; while a gap remains, the candidate that covers most of it is downloaded, prepared like the
         others (each scene is corrected on its own, the mosaic is built afterwards) and added. A scene that
-        turns out to add nothing is dropped. Returns the share of the AOI the scenes have data for."""
+        turns out to add nothing is dropped. Returns the share of the AOI the scenes have data for.
+        """
         gap, transform, covered = self._aoi_data_gap(bbox, prepared_paths)
         added = 0
         while gap.mean() > self._GAP_TOLERANCE and added < self._MAX_GAP_SCENES:
@@ -662,23 +793,33 @@ class BasePipeline(ABC):
             if nxt is None:
                 break
             tried.add(id(nxt))
-            logger.info("_search_and_download: %.1f%% of the AOI has no imagery yet; adding scene %s.",
-                        100 * gap.mean(), getattr(nxt, "id", "?"))
-            p = self._prepare_with_alternates(nxt, output_dir, bands, apply_scale, apply_cloud_mask, post_process)
+            logger.info(
+                "_search_and_download: %.1f%% of the AOI has no imagery yet; adding scene %s.",
+                100 * gap.mean(),
+                getattr(nxt, "id", "?"),
+            )
+            p = self._prepare_with_alternates(
+                nxt, output_dir, bands, apply_scale, apply_cloud_mask, post_process
+            )
             if p is None:
                 failed_ids.append(str(getattr(nxt, "id", "?")))
                 continue
             new_gap, _, new_cov = self._aoi_data_gap(bbox, [*prepared_paths, p])
             if new_cov - covered < self._GAP_TOLERANCE / 2:
-                logger.info("_search_and_download: scene %s adds no new coverage; not used.", getattr(nxt, "id", "?"))
+                logger.info(
+                    "_search_and_download: scene %s adds no new coverage; not used.",
+                    getattr(nxt, "id", "?"),
+                )
                 continue
             prepared_paths.append(p)
             prepared_results.append(nxt)
             gap, covered = new_gap, new_cov
             added += 1
         if gap.mean() > self._GAP_TOLERANCE:
-            logger.warning("_search_and_download: %.1f%% of the AOI is not covered by any available scene.",
-                           100 * gap.mean())
+            logger.warning(
+                "_search_and_download: %.1f%% of the AOI is not covered by any available scene.",
+                100 * gap.mean(),
+            )
         return covered
 
     def _search_and_download(
@@ -716,6 +857,7 @@ class BasePipeline(ABC):
         """
         try:
             from pygeovision.data._dates import date_window
+
             start, end = date_window(date)
 
             # use_cache=False: cached search results are rebuilt from JSON and lose
@@ -739,32 +881,47 @@ class BasePipeline(ABC):
                 logger.warning(
                     "_search_and_download: the search found no scene for bbox=%s, %s to %s, cloud cover <= %s%%, "
                     "collections=%s, providers=%s. Check the network and credentials, or widen the dates / cloud limit.",
-                    bbox, start, end, cloud_cover_max, collections or ["sentinel-2-l2a"], providers or "default")
+                    bbox,
+                    start,
+                    end,
+                    cloud_cover_max,
+                    collections or ["sentinel-2-l2a"],
+                    providers or "default",
+                )
                 if not _skip_keys:
-                    self._explain_empty_search(bbox, start, end, collections, providers, cloud_cover_max)
+                    self._explain_empty_search(
+                        bbox, start, end, collections, providers, cloud_cover_max
+                    )
                 return None
             candidates = self._dedupe_scenes(results)
-            logger.info("_search_and_download: %d listing(s) -> %d distinct scene(s); clearest: %s (cloud cover %s%%).",
-                        len(results), len(candidates), getattr(candidates[0], "id", "?"),
-                        getattr(candidates[0], "cloud_cover", "?"))
+            logger.info(
+                "_search_and_download: %d listing(s) -> %d distinct scene(s); clearest: %s (cloud cover %s%%).",
+                len(results),
+                len(candidates),
+                getattr(candidates[0], "id", "?"),
+                getattr(candidates[0], "cloud_cover", "?"),
+            )
 
             from shapely.geometry import box as _shapely_box
+
             top_result = candidates[0]
-            single_scene_covers = (
-                top_result.bbox is not None
-                and _shapely_box(*top_result.bbox).covers(_shapely_box(*bbox))
-            )
+            single_scene_covers = top_result.bbox is not None and _shapely_box(
+                *top_result.bbox
+            ).covers(_shapely_box(*bbox))
 
             if single_scene_covers:
                 selected_results = [top_result]
                 full_coverage = True
             else:
-                selected_results, full_coverage = self._check_aoi_coverage(bbox, candidates, max_scenes=4)
+                selected_results, full_coverage = self._check_aoi_coverage(
+                    bbox, candidates, max_scenes=4
+                )
                 if len(selected_results) > 1:
                     logger.info(
                         "_search_and_download: no single scene fully covers the requested "
                         "AOI -- mosaicking %d scenes to achieve %s coverage.",
-                        len(selected_results), "full" if full_coverage else "partial (best available)",
+                        len(selected_results),
+                        "full" if full_coverage else "partial (best available)",
                     )
                 if not full_coverage:
                     logger.warning(
@@ -772,7 +929,8 @@ class BasePipeline(ABC):
                         "requested AOI %s is not fully covered -- proceeding with the best "
                         "available partial coverage. Set require_full_coverage=True to fail "
                         "clearly instead of silently returning a smaller-than-requested result.",
-                        len(selected_results), bbox,
+                        len(selected_results),
+                        bbox,
                     )
                     if require_full_coverage:
                         return None
@@ -787,7 +945,12 @@ class BasePipeline(ABC):
                 result = queue.pop(0)
                 tried.add(id(result))
                 p = self._prepare_with_alternates(
-                    result, output_dir, bands, apply_scale, apply_cloud_mask, post_process,
+                    result,
+                    output_dir,
+                    bands,
+                    apply_scale,
+                    apply_cloud_mask,
+                    post_process,
                 )
                 if p is not None:
                     prepared_paths.append(p)
@@ -796,7 +959,8 @@ class BasePipeline(ABC):
                 failed_ids.append(str(getattr(result, "id", "?")))
                 logger.warning(
                     "_search_and_download: scene %s could not be prepared; looking for another "
-                    "scene that covers its part of the AOI.", failed_ids[-1],
+                    "scene that covers its part of the AOI.",
+                    failed_ids[-1],
                 )
                 repl = self._pick_replacement(bbox, candidates, prepared_results + queue, tried)
                 if repl is not None:
@@ -807,8 +971,17 @@ class BasePipeline(ABC):
 
             # Footprints are bounding boxes; measure where the imagery really is and fetch more scenes for any gap.
             data_coverage = self._fill_aoi_gaps(
-                bbox, candidates, prepared_paths, prepared_results, tried, failed_ids,
-                output_dir, bands, apply_scale, apply_cloud_mask, post_process,
+                bbox,
+                candidates,
+                prepared_paths,
+                prepared_results,
+                tried,
+                failed_ids,
+                output_dir,
+                bands,
+                apply_scale,
+                apply_cloud_mask,
+                post_process,
             )
             if require_full_coverage and data_coverage < 1 - self._GAP_TOLERANCE:
                 return None
@@ -817,23 +990,29 @@ class BasePipeline(ABC):
                 image_path = prepared_paths[0]
             else:
                 image_path = self._mosaic_scenes(
-                    prepared_paths, output_dir / "imagery" / "mosaic.tif",
+                    prepared_paths,
+                    output_dir / "imagery" / "mosaic.tif",
                 )
 
             from pygeovision.data.radiometric import crop_to_bbox
+
             (output_dir / "imagery").mkdir(parents=True, exist_ok=True)
             try:
-                final_path = crop_to_bbox(image_path, bbox, output_dir / "imagery" / "stack_clipped.tif")
+                final_path = crop_to_bbox(
+                    image_path, bbox, output_dir / "imagery" / "stack_clipped.tif"
+                )
             except ValueError as exc:
                 logger.error(
                     "_search_and_download: %s — the search returned scene(s) that "
-                    "don't actually cover the requested bbox.", exc,
+                    "don't actually cover the requested bbox.",
+                    exc,
                 )
                 return None
 
             # Final, defense-in-depth check: the output must have len(bands) bands
             # whichever path (single asset, stacking, mosaic) produced it.
             import rasterio
+
             with rasterio.open(final_path) as _src:
                 actual_bands = _src.count
                 _b = _src.bounds
@@ -844,15 +1023,22 @@ class BasePipeline(ABC):
                     "were requested (%s) -- refusing to return a mismatched image "
                     "to the caller. This should not happen if band selection worked "
                     "correctly upstream; please report this as a bug.",
-                    actual_bands, len(bands), bands,
+                    actual_bands,
+                    len(bands),
+                    bands,
                 )
                 return None
 
             clear = self._clear_fraction(final_path)
             self._record_coverage(
-                label=output_dir.name, bbox=bbox, prepared=prepared_results,
-                failed_ids=failed_ids, raster_bounds=(_b.left, _b.bottom, _b.right, _b.top), raster_crs=_crs,
-                data_coverage=data_coverage, clear_fraction=clear,
+                label=output_dir.name,
+                bbox=bbox,
+                prepared=prepared_results,
+                failed_ids=failed_ids,
+                raster_bounds=(_b.left, _b.bottom, _b.right, _b.top),
+                raster_crs=_crs,
+                data_coverage=data_coverage,
+                clear_fraction=clear,
             )
             if clear < self._MIN_CLEAR_FRACTION and _attempt < self._MAX_ALTERNATIVE_ROUNDS:
                 # The best scene by scene-wide cloud cover can be cloudy exactly over the AOI (or empty there).
@@ -862,14 +1048,26 @@ class BasePipeline(ABC):
                 used = {self._scene_key(r) for r in prepared_results}
                 logger.warning(
                     "_search_and_download: only %.0f%% of the AOI is clear (not cloud, shadow or empty) in %s; "
-                    "looking for another scene in the date window.", 100 * clear,
-                    ", ".join(str(getattr(r, "id", "?")) for r in prepared_results))
+                    "looking for another scene in the date window.",
+                    100 * clear,
+                    ", ".join(str(getattr(r, "id", "?")) for r in prepared_results),
+                )
                 alt = self._search_and_download(
-                    bbox, date, output_dir, collections=collections, providers=providers,
-                    cloud_cover_max=cloud_cover_max, post_process=post_process, max_results=max_results,
-                    bands=bands, apply_scale=apply_scale, apply_cloud_mask=apply_cloud_mask,
+                    bbox,
+                    date,
+                    output_dir,
+                    collections=collections,
+                    providers=providers,
+                    cloud_cover_max=cloud_cover_max,
+                    post_process=post_process,
+                    max_results=max_results,
+                    bands=bands,
+                    apply_scale=apply_scale,
+                    apply_cloud_mask=apply_cloud_mask,
                     require_full_coverage=require_full_coverage,
-                    _skip_keys=frozenset(_skip_keys | used), _attempt=_attempt + 1)
+                    _skip_keys=frozenset(_skip_keys | used),
+                    _attempt=_attempt + 1,
+                )
                 alt_clear = self._clear_fraction(alt) if alt is not None else -1.0
                 if alt is not None and alt_clear > clear:
                     if ours in self._coverage_log:
@@ -882,7 +1080,9 @@ class BasePipeline(ABC):
             logger.error("_search_and_download failed: %s", exc)
         return None
 
-    def _explain_empty_search(self, bbox, start, end, collections, providers, cloud_cover_max) -> None:
+    def _explain_empty_search(
+        self, bbox, start, end, collections, providers, cloud_cover_max
+    ) -> None:
         """An empty result is often the cloud limit, not a missing archive: look again without it and say which.
 
         Providers return their scenes and the cloud limit then drops the cloudy ones, so a rainy-season month can show
@@ -893,9 +1093,16 @@ class BasePipeline(ABC):
             return
         try:
             probe = self.pgv.search(
-                bbox=bbox, date_range=(start, end), collections=collections or ["sentinel-2-l2a"], providers=providers,
-                cloud_cover_max=100, max_results=self._SEARCH_POOL, sort_by="cloud_cover", sort_order="asc",
-                use_cache=False)
+                bbox=bbox,
+                date_range=(start, end),
+                collections=collections or ["sentinel-2-l2a"],
+                providers=providers,
+                cloud_cover_max=100,
+                max_results=self._SEARCH_POOL,
+                sort_by="cloud_cover",
+                sort_order="asc",
+                use_cache=False,
+            )
         except Exception as exc:  # noqa: BLE001 - advisory only
             logger.debug("_explain_empty_search: probe failed: %s", exc)
             return
@@ -905,10 +1112,17 @@ class BasePipeline(ABC):
                 "_search_and_download: the cloud limit is the reason. %d scene(s) exist for this area and window, but the "
                 "clearest has %.0f%% scene cloud cover and the limit is %s%%. Raise cloud_cover_max to at least %d "
                 "(clouds are still masked pixel by pixel), or choose a clearer season (West Africa: December to February).",
-                len(probe), min(ccs), cloud_cover_max, int(min(ccs)) + 1)
+                len(probe),
+                min(ccs),
+                cloud_cover_max,
+                int(min(ccs)) + 1,
+            )
         elif probe:
-            logger.warning("_search_and_download: %d scene(s) exist for this area and window, but none reports a cloud "
-                           "cover, so the cloud limit removed them. Raise cloud_cover_max or set it to 100.", len(probe))
+            logger.warning(
+                "_search_and_download: %d scene(s) exist for this area and window, but none reports a cloud "
+                "cover, so the cloud limit removed them. Raise cloud_cover_max or set it to 100.",
+                len(probe),
+            )
 
     #: Below this share of clear pixels over the AOI another scene is tried.
     _MIN_CLEAR_FRACTION = 0.05
@@ -919,12 +1133,15 @@ class BasePipeline(ABC):
         """Share of the pixels of a prepared image that hold data (finite and not 0 in some band)."""
         import numpy as np
         import rasterio
+
         if path is None:
             return 0.0
         try:
             with rasterio.open(path) as src:
                 f = max(1, int(np.ceil(max(src.height, src.width) / 4096)))
-                data = src.read(out_shape=(src.count, max(1, src.height // f), max(1, src.width // f)))
+                data = src.read(
+                    out_shape=(src.count, max(1, src.height // f), max(1, src.width // f))
+                )
             ok = np.isfinite(data) & (data != 0)
             return float(ok.any(axis=0).mean())
         except Exception as exc:  # noqa: BLE001 - advisory only
@@ -950,6 +1167,7 @@ class BasePipeline(ABC):
         try:
             if raster_crs is not None and str(raster_crs).upper() not in ("EPSG:4326", "OGC:CRS84"):
                 from rasterio.warp import transform_bounds
+
                 raster_bounds = transform_bounds(raster_crs, "EPSG:4326", *raster_bounds)
             aoi = box(*bbox)
             extent = float(box(*raster_bounds).intersection(aoi).area / aoi.area)
@@ -957,7 +1175,9 @@ class BasePipeline(ABC):
             logger.debug("_record_coverage: raster extent check skipped: %s", exc)
         # The measured share of the AOI that holds imagery beats the footprint estimate (bounding boxes of
         # tilted scenes overstate coverage).
-        fraction = max(0.0, min(1.0, extent, data_coverage if data_coverage is not None else footprint))
+        fraction = max(
+            0.0, min(1.0, extent, data_coverage if data_coverage is not None else footprint)
+        )
         entry = {
             "image": label,
             "aoi_coverage_fraction": round(fraction, 4),
@@ -970,7 +1190,9 @@ class BasePipeline(ABC):
         if fraction < 0.999:
             logger.warning(
                 "_search_and_download: the %s image covers only %.0f%% of the requested bbox %s.",
-                label, 100 * fraction, bbox,
+                label,
+                100 * fraction,
+                bbox,
             )
 
     def _search_and_download_pair(
@@ -1013,23 +1235,40 @@ class BasePipeline(ABC):
         result for algorithms that need specific spectral bands.
         """
         before_path = self._search_and_download(
-            bbox, date_before, output_dir / "before",
-            collections=collections, providers=providers, cloud_cover_max=cloud_cover_max,
-            bands=bands, apply_scale=apply_scale, apply_cloud_mask=apply_cloud_mask,
+            bbox,
+            date_before,
+            output_dir / "before",
+            collections=collections,
+            providers=providers,
+            cloud_cover_max=cloud_cover_max,
+            bands=bands,
+            apply_scale=apply_scale,
+            apply_cloud_mask=apply_cloud_mask,
         )
         after_path = self._search_and_download(
-            bbox, date_after, output_dir / "after",
-            collections=collections, providers=providers, cloud_cover_max=cloud_cover_max,
-            bands=bands, apply_scale=apply_scale, apply_cloud_mask=apply_cloud_mask,
+            bbox,
+            date_after,
+            output_dir / "after",
+            collections=collections,
+            providers=providers,
+            cloud_cover_max=cloud_cover_max,
+            bands=bands,
+            apply_scale=apply_scale,
+            apply_cloud_mask=apply_cloud_mask,
         )
         if before_path is not None and after_path is not None:
             before_path, after_path = self._align_to_common_grid(
-                before_path, after_path, output_dir,
+                before_path,
+                after_path,
+                output_dir,
             )
         return before_path, after_path
 
     def _align_to_common_grid(
-        self, path_a: Path, path_b: Path, output_dir: Path,
+        self,
+        path_a: Path,
+        path_b: Path,
+        output_dir: Path,
     ) -> tuple[Path, Path]:
         """Crop both rasters to their real geographic intersection and
         resample both onto one shared pixel grid, at the finer of the
@@ -1055,6 +1294,7 @@ class BasePipeline(ABC):
             bounds_a = src_a.bounds
             if src_b.crs != crs:
                 from rasterio.warp import transform_bounds
+
                 bounds_b = transform_bounds(src_b.crs, crs, *src_b.bounds)
             else:
                 bounds_b = src_b.bounds
@@ -1067,7 +1307,8 @@ class BasePipeline(ABC):
                 logger.warning(
                     "_align_to_common_grid: %s and %s do not actually overlap -- "
                     "leaving both unchanged; downstream alignment check will report this.",
-                    path_a.name, path_b.name,
+                    path_a.name,
+                    path_b.name,
                 )
                 return path_a, path_b
 
@@ -1100,16 +1341,23 @@ class BasePipeline(ABC):
                 label = "a" if i == 0 else "b"
                 out_path = output_dir / f"aligned_{label}_{name.stem}.tif"
                 from pygeovision.data._profile import writable_profile
+
                 out_profile = writable_profile(
-                    src.profile, height=out_h, width=out_w, transform=out_transform, crs=crs,
+                    src.profile,
+                    height=out_h,
+                    width=out_w,
+                    transform=out_transform,
+                    crs=crs,
                 )
                 data = np.zeros((src.count, out_h, out_w), dtype=src.dtypes[0])
                 for band_i in range(1, src.count + 1):
                     reproject(
                         source=rasterio.band(src, band_i),
                         destination=data[band_i - 1],
-                        src_transform=src.transform, src_crs=src.crs,
-                        dst_transform=out_transform, dst_crs=crs,
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        dst_transform=out_transform,
+                        dst_crs=crs,
                         resampling=Resampling.bilinear,
                     )
                 output_dir.mkdir(parents=True, exist_ok=True)
@@ -1119,7 +1367,11 @@ class BasePipeline(ABC):
 
         logger.info(
             "_align_to_common_grid: %s + %s -> common %dx%d grid at %.6f res",
-            path_a.name, path_b.name, out_w, out_h, res,
+            path_a.name,
+            path_b.name,
+            out_w,
+            out_h,
+            res,
         )
         return aligned_paths[0], aligned_paths[1]
 
@@ -1128,8 +1380,11 @@ class BasePipeline(ABC):
     # ------------------------------------------------------------------
 
     def _load_trained_model(
-        self, model_name: str, checkpoint: str | Path | None,
-        num_classes: int, in_channels: int,
+        self,
+        model_name: str,
+        checkpoint: str | Path | None,
+        num_classes: int,
+        in_channels: int,
     ) -> Any:
         """Build ``model_name`` and load ``checkpoint`` into it, strictly.
 
@@ -1155,13 +1410,18 @@ class BasePipeline(ABC):
             raise FileNotFoundError(
                 f"checkpoint not found: {ckpt_path} -- pass the path of a trained .pth file for "
                 f"'{self.name}' (names such as buildings.pth in examples are placeholders; "
-                f"`pygeovision channel list` shows which pipelines need your own weights)")
+                f"`pygeovision channel list` shows which pipelines need your own weights)"
+            )
 
         import torch
+
         from pygeovision.ai.models.hub import ModelHub
 
         model = ModelHub().load(
-            model_name, num_classes=num_classes, in_channels=in_channels, pretrained=False,
+            model_name,
+            num_classes=num_classes,
+            in_channels=in_channels,
+            pretrained=False,
         )
         if getattr(model, "_pygeovision_fallback_used", False):
             raise RuntimeError(
@@ -1220,10 +1480,16 @@ class BasePipeline(ABC):
         engine = TiledInference(model, tile_size=tile_size, overlap=overlap)
         band_indices = list(range(1, in_channels + 1))
         if image_path_b is not None:
-            return engine.run_pair(image_path, image_path_b, output_path,
-                                   num_classes=num_classes, band_indices=band_indices)
-        return engine.run(image_path, output_path, num_classes=num_classes,
-                          band_indices=band_indices)
+            return engine.run_pair(
+                image_path,
+                image_path_b,
+                output_path,
+                num_classes=num_classes,
+                band_indices=band_indices,
+            )
+        return engine.run(
+            image_path, output_path, num_classes=num_classes, band_indices=band_indices
+        )
 
     # ------------------------------------------------------------------
     # A grid for products that need no imagery
@@ -1231,8 +1497,10 @@ class BasePipeline(ABC):
 
     @staticmethod
     def _template_raster(
-        bbox: tuple[float, float, float, float], path: Path,
-        resolution_m: float = 10.0, max_pixels: int = 100_000_000,
+        bbox: tuple[float, float, float, float],
+        path: Path,
+        resolution_m: float = 10.0,
+        max_pixels: int = 100_000_000,
     ) -> Path:
         """Write an empty ~10 m EPSG:4326 raster covering ``bbox``.
 
@@ -1260,8 +1528,16 @@ class BasePipeline(ABC):
         path.parent.mkdir(parents=True, exist_ok=True)
         transform = from_origin(west, north, (east - west) / width, (north - south) / height)
         with rasterio.open(
-            path, "w", driver="GTiff", height=height, width=width, count=1, dtype="uint8",
-            crs="EPSG:4326", transform=transform, compress="lzw",
+            path,
+            "w",
+            driver="GTiff",
+            height=height,
+            width=width,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:4326",
+            transform=transform,
+            compress="lzw",
         ) as dst:
             dst.write(np.zeros((1, height, width), dtype=np.uint8))
         return path
@@ -1297,6 +1573,7 @@ def _otsu_threshold(values: Any) -> float:
 # Pipelines that run out of the box
 # ---------------------------------------------------------------------------
 
+
 class LandCoverPipeline(BasePipeline):
     """Land cover for an area of interest.
 
@@ -1312,18 +1589,33 @@ class LandCoverPipeline(BasePipeline):
     Any other ``source`` is treated as a model name and needs
     ``checkpoint=`` (your trained weights).
     """
+
     name = "land_cover"
-    description = "ESA WorldCover 2021 reference map (or Dynamic World / your own model) for a bounding box"
+    description = (
+        "ESA WorldCover 2021 reference map (or Dynamic World / your own model) for a bounding box"
+    )
     domain = "land"
     kind = "ready"
     tags = ["land", "reference-product"]
 
-    def run(self, bbox, output_dir, date="2023-06", source="worldcover",
-            num_classes=11, bands=("red", "green", "blue"),
-            tile_size=512, overlap=64, checkpoint=None, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date="2023-06",
+        source="worldcover",
+        num_classes=11,
+        bands=("red", "green", "blue"),
+        tile_size=512,
+        overlap=64,
+        checkpoint=None,
+        **kwargs,
+    ):
         import time
+
         t0 = time.time()
-        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         providers = kwargs.pop("providers", None)
         logger.info("[%s] source=%s date=%s", self.name, source, date)
         try:
@@ -1334,41 +1626,67 @@ class LandCoverPipeline(BasePipeline):
             def _meta(path):
                 with rasterio.open(path) as src:
                     return TileMetadata(
-                        tile_id=Path(path).stem, source_file=Path(path),
-                        bounds=tuple(src.bounds), crs=str(src.crs), transform=list(src.transform)[:6],
-                        row_off=0, col_off=0, height=src.height, width=src.width,
+                        tile_id=Path(path).stem,
+                        source_file=Path(path),
+                        bounds=tuple(src.bounds),
+                        crs=str(src.crs),
+                        transform=list(src.transform)[:6],
+                        row_off=0,
+                        col_off=0,
+                        height=src.height,
+                        width=src.width,
                         bands=list(range(1, src.count + 1)),
                     )
 
             out = output_dir / "land_cover.tif"
             if source == "worldcover":
                 from pygeovision.ai.labeling.esa_worldcover import ESAWorldCoverLabeler
+
                 grid = self._template_raster(bbox, output_dir / "grid_template.tif")
                 r = ESAWorldCoverLabeler(year=2021).label_tile(grid, _meta(grid), out)
                 if not r.success:
                     return self._fail(r.error or "WorldCover labelling failed", t0)
-                return self._ok(out, r.class_distribution or {},
-                                {"source": source, "worldcover_year": 2021, "date_used": False,
-                                 "note": "Static 2021 reference map; the date argument does not select imagery."}, t0)
+                return self._ok(
+                    out,
+                    r.class_distribution or {},
+                    {
+                        "source": source,
+                        "worldcover_year": 2021,
+                        "date_used": False,
+                        "note": "Static 2021 reference map; the date argument does not select imagery.",
+                    },
+                    t0,
+                )
             if source == "dynamic_world":
                 img_path = self._search_and_download(bbox, date, output_dir, providers=providers)
                 if not img_path:
                     return self._fail("No imagery found to define the output grid.", t0)
                 from pygeovision.ai.labeling.dynamic_world import DynamicWorldLabeler
                 from pygeovision.data._dates import date_window as _date_window
-                lbl = DynamicWorldLabeler(start_date=_date_window(date)[0], end_date=_date_window(date)[1])
+
+                lbl = DynamicWorldLabeler(
+                    start_date=_date_window(date)[0], end_date=_date_window(date)[1]
+                )
                 r = lbl.label_tile(img_path, _meta(img_path), out)
                 if not r.success:
                     return self._fail(r.error or "Dynamic World labelling failed", t0)
-                return self._ok(out, r.class_distribution or {}, {"source": source, "date": date}, t0)
+                return self._ok(
+                    out, r.class_distribution or {}, {"source": source, "date": date}, t0
+                )
 
             net = self._load_trained_model(source, checkpoint, num_classes, len(bands))
-            img_path = self._search_and_download(bbox, date, output_dir, providers=providers, bands=bands)
+            img_path = self._search_and_download(
+                bbox, date, output_dir, providers=providers, bands=bands
+            )
             if not img_path:
                 return self._fail("No imagery found.", t0)
             self._run_model(img_path, out, net, num_classes, len(bands), tile_size, overlap)
-            return self._ok(out, {}, {"source": source, "date": date, "bands": bands,
-                                      "num_classes": num_classes}, t0)
+            return self._ok(
+                out,
+                {},
+                {"source": source, "date": date, "bands": bands, "num_classes": num_classes},
+                t0,
+            )
         except Exception as exc:
             return self._fail(str(exc), t0)
 
@@ -1387,40 +1705,76 @@ class WaterBodiesPipeline(BasePipeline):
     Outputs: ``ndwi.tif`` (continuous index, the returned ``output_path``)
     and ``water_mask.tif`` (1 = water, 0 = not water, 255 = nodata).
     """
+
     name = "water_bodies"
     description = "Surface water mask from NDWI (green, NIR); or your own trained model"
     domain = "water"
     kind = "ready"
     tags = ["water", "ndwi"]
 
-    def run(self, bbox, output_dir, date="2024-06", method="ndwi",
-            cloud_cover_max=10.0, ndwi_threshold=0.3, model="unet_resnet50",
-            checkpoint=None, bands=("red", "green", "blue"), num_classes=2,
-            tile_size=512, overlap=64, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date="2024-06",
+        method="ndwi",
+        cloud_cover_max=10.0,
+        ndwi_threshold=0.3,
+        model="unet_resnet50",
+        checkpoint=None,
+        bands=("red", "green", "blue"),
+        num_classes=2,
+        tile_size=512,
+        overlap=64,
+        **kwargs,
+    ):
         import time
 
         from pygeovision.ai.pipelines._raster import (
-            fraction, normalized_difference, read_stack, valid_mask, write_classes, write_float,
+            fraction,
+            normalized_difference,
+            read_stack,
+            valid_mask,
+            write_classes,
+            write_float,
         )
+
         t0 = time.time()
-        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         providers = kwargs.pop("providers", None)
         try:
             if method not in ("ndwi", "model"):
                 return self._fail(f"method must be 'ndwi' or 'model', got {method!r}.", t0)
             if method == "model":
                 net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
-                img = self._search_and_download(bbox, date, output_dir, providers=providers,
-                                                cloud_cover_max=cloud_cover_max, bands=bands)
+                img = self._search_and_download(
+                    bbox,
+                    date,
+                    output_dir,
+                    providers=providers,
+                    cloud_cover_max=cloud_cover_max,
+                    bands=bands,
+                )
                 if not img:
                     return self._fail("No clear imagery found.", t0)
                 out = output_dir / "water_mask.tif"
                 pred = self._run_model(img, out, net, num_classes, len(bands), tile_size, overlap)
-                return self._ok(out, {"water_coverage": float((pred == 1).mean())},
-                                {"date": date, "method": method, "model": model}, t0)
+                return self._ok(
+                    out,
+                    {"water_coverage": float((pred == 1).mean())},
+                    {"date": date, "method": method, "model": model},
+                    t0,
+                )
 
-            img = self._search_and_download(bbox, date, output_dir, providers=providers,
-                                            cloud_cover_max=cloud_cover_max, bands=("green", "nir"))
+            img = self._search_and_download(
+                bbox,
+                date,
+                output_dir,
+                providers=providers,
+                cloud_cover_max=cloud_cover_max,
+                bands=("green", "nir"),
+            )
             if not img:
                 return self._fail("No clear imagery found.", t0)
             data, profile = read_stack(img)
@@ -1428,15 +1782,31 @@ class WaterBodiesPipeline(BasePipeline):
             ndwi = normalized_difference(green, nir)
             valid = valid_mask(ndwi)
             water = (ndwi > ndwi_threshold) & valid
-            ndwi_path = write_float(output_dir / "ndwi.tif", ndwi, profile, ["NDWI (green-NIR)/(green+NIR)"])
-            write_classes(output_dir / "water_mask.tif", water, valid, profile,
-                          ["0=not water", "1=water", "255=nodata"])
+            ndwi_path = write_float(
+                output_dir / "ndwi.tif", ndwi, profile, ["NDWI (green-NIR)/(green+NIR)"]
+            )
+            write_classes(
+                output_dir / "water_mask.tif",
+                water,
+                valid,
+                profile,
+                ["0=not water", "1=water", "255=nodata"],
+            )
             return self._ok(
                 ndwi_path,
-                {"water_coverage": fraction(water, valid), "valid_fraction": float(valid.mean()),
-                 "ndwi_threshold": ndwi_threshold},
-                {"date": date, "method": method, "bands": ("green", "nir"),
-                 "mask_path": str(output_dir / "water_mask.tif")}, t0)
+                {
+                    "water_coverage": fraction(water, valid),
+                    "valid_fraction": float(valid.mean()),
+                    "ndwi_threshold": ndwi_threshold,
+                },
+                {
+                    "date": date,
+                    "method": method,
+                    "bands": ("green", "nir"),
+                    "mask_path": str(output_dir / "water_mask.tif"),
+                },
+                t0,
+            )
         except Exception as exc:
             return self._fail(str(exc), t0)
 
@@ -1460,56 +1830,99 @@ class ChangeDetectionPipeline(BasePipeline):
     Outputs: ``change_mask.tif`` (1 changed, 0 unchanged, 255 nodata) and
     ``change_magnitude.tif``.
     """
+
     name = "change_detection"
-    description = "Change vector analysis between two dates (Otsu threshold); or your own siamese model"
+    description = (
+        "Change vector analysis between two dates (Otsu threshold); or your own siamese model"
+    )
     domain = "change"
     kind = "ready"
     tags = ["change", "bitemporal"]
 
-    def run(self, bbox, output_dir, date_before="2022-06", date_after="2024-06",
-            method="cva", model="siamese_unet", checkpoint=None, cloud_cover_max=25.0,
-            bands=None, num_classes=2, tile_size=512, overlap=64,
-            min_magnitude=0.05, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date_before="2022-06",
+        date_after="2024-06",
+        method="cva",
+        model="siamese_unet",
+        checkpoint=None,
+        cloud_cover_max=25.0,
+        bands=None,
+        num_classes=2,
+        tile_size=512,
+        overlap=64,
+        min_magnitude=0.05,
+        **kwargs,
+    ):
         import time
 
         import numpy as np
         import rasterio
 
         from pygeovision.ai.pipelines._raster import (
-            area_ha, fraction, read_stack, write_classes, write_float,
+            area_ha,
+            fraction,
+            read_stack,
+            write_classes,
+            write_float,
         )
         from pygeovision.data.radiometric import real_pixel_area_ha
+
         t0 = time.time()
-        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         providers = kwargs.pop("providers", None)
         try:
             if method not in ("cva", "model"):
                 return self._fail(f"method must be 'cva' or 'model', got {method!r}.", t0)
             if bands is None:
-                bands = ("blue", "green", "red", "nir") if method == "cva" else ("red", "green", "blue")
+                bands = (
+                    ("blue", "green", "red", "nir") if method == "cva" else ("red", "green", "blue")
+                )
             net = None
             if method == "model":
                 net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
             before_path, after_path = self._search_and_download_pair(
-                bbox, date_before, date_after, output_dir, providers=providers,
-                cloud_cover_max=cloud_cover_max, bands=tuple(bands),
+                bbox,
+                date_before,
+                date_after,
+                output_dir,
+                providers=providers,
+                cloud_cover_max=cloud_cover_max,
+                bands=tuple(bands),
             )
             if not before_path or not after_path:
                 return self._fail("Could not acquire imagery for one or both dates.", t0)
 
-            meta = {"date_before": date_before, "date_after": date_after,
-                    "method": method, "bands": tuple(bands)}
+            meta = {
+                "date_before": date_before,
+                "date_after": date_after,
+                "method": method,
+                "bands": tuple(bands),
+            }
             if method == "model":
                 out = output_dir / "change_mask.tif"
-                pred = self._run_model(before_path, out, net, num_classes, len(bands),
-                                       tile_size, overlap, image_path_b=after_path)
+                pred = self._run_model(
+                    before_path,
+                    out,
+                    net,
+                    num_classes,
+                    len(bands),
+                    tile_size,
+                    overlap,
+                    image_path_b=after_path,
+                )
                 meta["model"] = model
                 return self._ok(out, {"change_fraction": float((pred > 0).mean())}, meta, t0)
 
             a, profile = read_stack(before_path)
             b, _ = read_stack(after_path)
             if a.shape != b.shape:
-                return self._fail(f"before/after rasters differ in shape ({a.shape} vs {b.shape}).", t0)
+                return self._fail(
+                    f"before/after rasters differ in shape ({a.shape} vs {b.shape}).", t0
+                )
             valid = np.isfinite(a).all(axis=0) & np.isfinite(b).all(axis=0)
             if not valid.any():
                 return self._fail("No pixel is cloud-free in both dates.", t0)
@@ -1519,16 +1932,27 @@ class ChangeDetectionPipeline(BasePipeline):
             threshold = max(otsu, float(min_magnitude))
             changed = (magnitude > threshold) & valid
 
-            mask_path = write_classes(output_dir / "change_mask.tif", changed, valid, profile,
-                                      ["0=unchanged", "1=changed", "255=nodata"])
-            write_float(output_dir / "change_magnitude.tif", magnitude, profile,
-                        ["change vector magnitude (reflectance units)"])
+            mask_path = write_classes(
+                output_dir / "change_mask.tif",
+                changed,
+                valid,
+                profile,
+                ["0=unchanged", "1=changed", "255=nodata"],
+            )
+            write_float(
+                output_dir / "change_magnitude.tif",
+                magnitude,
+                profile,
+                ["change vector magnitude (reflectance units)"],
+            )
             with rasterio.open(mask_path) as src:
                 px_ha = real_pixel_area_ha(src.bounds, src.width, src.height, src.crs)
             stats = {
                 "change_fraction": fraction(changed, valid),
                 "changed_area_ha": area_ha(changed, valid, px_ha),
-                "threshold": threshold, "otsu_threshold": otsu, "min_magnitude": float(min_magnitude),
+                "threshold": threshold,
+                "otsu_threshold": otsu,
+                "min_magnitude": float(min_magnitude),
                 "valid_fraction": float(valid.mean()),
             }
             return self._ok(mask_path, stats, meta, t0)
@@ -1540,8 +1964,10 @@ class ChangeDetectionPipeline(BasePipeline):
 # Pipelines that need your trained weights
 # ---------------------------------------------------------------------------
 
+
 class _NetworkPipeline(BasePipeline):
     """Shared shape of the pipelines that only run a trained network."""
+
     kind = "needs_weights"
 
 
@@ -1559,34 +1985,73 @@ class BuildingFootprintsPipeline(BasePipeline):
     Sentinel-2 imagery instead; output ``building_mask.tif`` (class map, 1 = building). At 10 m individual houses
     are not resolvable, so use this for dense built-up areas or with higher-resolution imagery.
     """
+
     name = "building_footprints"
-    description = ("Building footprints from Microsoft, Google or OpenStreetMap data (or segmentation with your "
-                   "own trained model)")
+    description = (
+        "Building footprints from Microsoft, Google or OpenStreetMap data (or segmentation with your "
+        "own trained model)"
+    )
     domain = "urban"
     kind = "ready"
     tags = ["urban", "buildings", "vector", "reference-product"]
 
-    def run(self, bbox, output_dir, date="2024-06", source="microsoft", checkpoint=None, cell_m=100.0,
-            min_confidence=0.65, model="unet_resnet50", cloud_cover_max=15.0, bands=("red", "green", "blue"),
-            num_classes=2, tile_size=512, overlap=64, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date="2024-06",
+        source="microsoft",
+        checkpoint=None,
+        cell_m=100.0,
+        min_confidence=0.65,
+        model="unet_resnet50",
+        cloud_cover_max=15.0,
+        bands=("red", "green", "blue"),
+        num_classes=2,
+        tile_size=512,
+        overlap=64,
+        **kwargs,
+    ):
         import time
+
         t0 = time.time()
-        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         if checkpoint is None:
             from pygeovision.ai.pipelines.vector_products import run_building_reference
-            return run_building_reference(self, bbox, output_dir, source, cell_m, min_confidence,
-                                          kwargs.get("cache_dir"), kwargs.get("session"), t0)
+
+            return run_building_reference(
+                self,
+                bbox,
+                output_dir,
+                source,
+                cell_m,
+                min_confidence,
+                kwargs.get("cache_dir"),
+                kwargs.get("session"),
+                t0,
+            )
         providers = kwargs.pop("providers", None)
         try:
             net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
-            img = self._search_and_download(bbox, date, output_dir, providers=providers,
-                                            cloud_cover_max=cloud_cover_max, bands=bands)
+            img = self._search_and_download(
+                bbox,
+                date,
+                output_dir,
+                providers=providers,
+                cloud_cover_max=cloud_cover_max,
+                bands=bands,
+            )
             if not img:
                 return self._fail("No imagery found.", t0)
             out = output_dir / "building_mask.tif"
             pred = self._run_model(img, out, net, num_classes, len(bands), tile_size, overlap)
-            return self._ok(out, {"building_coverage": float((pred == 1).mean())},
-                            {"model": model, "date": date, "bands": bands, "num_classes": num_classes}, t0)
+            return self._ok(
+                out,
+                {"building_coverage": float((pred == 1).mean())},
+                {"model": model, "date": date, "bands": bands, "num_classes": num_classes},
+                t0,
+            )
         except Exception as exc:
             return self._fail(str(exc), t0)
 
@@ -1597,32 +2062,61 @@ class CropMonitoringPipeline(_NetworkPipeline):
     ``crop_classes`` is the list of crop names you trained on;
     ``num_classes`` is ``len(crop_classes) + 1`` (background) unless given.
     """
+
     name = "crop_monitoring"
     description = "Crop-type segmentation with your trained model (checkpoint required)"
     domain = "agriculture"
     tags = ["agriculture", "segmentation", "needs-weights"]
 
-    def run(self, bbox, output_dir, date="2023-06", crop_classes=None, model="segformer_b2",
-            checkpoint=None, bands=("red", "green", "blue"), num_classes=None,
-            tile_size=512, overlap=64, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date="2023-06",
+        crop_classes=None,
+        model="segformer_b2",
+        checkpoint=None,
+        bands=("red", "green", "blue"),
+        num_classes=None,
+        tile_size=512,
+        overlap=64,
+        **kwargs,
+    ):
         import time
+
         t0 = time.time()
-        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         providers = kwargs.pop("providers", None)
         try:
             if num_classes is None:
                 if not crop_classes:
-                    return self._fail("Give crop_classes (your class names) or num_classes "
-                                      "matching the trained checkpoint.", t0)
+                    return self._fail(
+                        "Give crop_classes (your class names) or num_classes "
+                        "matching the trained checkpoint.",
+                        t0,
+                    )
                 num_classes = len(crop_classes) + 1
             net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
-            img = self._search_and_download(bbox, date, output_dir, providers=providers, bands=bands)
+            img = self._search_and_download(
+                bbox, date, output_dir, providers=providers, bands=bands
+            )
             if not img:
                 return self._fail("No imagery found.", t0)
             out = output_dir / "crop_map.tif"
             self._run_model(img, out, net, num_classes, len(bands), tile_size, overlap)
-            return self._ok(out, {}, {"date": date, "crop_classes": crop_classes, "bands": bands,
-                                      "model": model, "num_classes": num_classes}, t0)
+            return self._ok(
+                out,
+                {},
+                {
+                    "date": date,
+                    "crop_classes": crop_classes,
+                    "bands": bands,
+                    "model": model,
+                    "num_classes": num_classes,
+                },
+                t0,
+            )
         except Exception as exc:
             return self._fail(str(exc), t0)
 
@@ -1634,58 +2128,112 @@ class SolarDetectionPipeline(_NetworkPipeline):
     resolution only utility-scale arrays are resolvable; train and run on
     higher-resolution imagery for rooftop panels.
     """
+
     name = "solar_detection"
     description = "Solar-panel segmentation with your trained model (checkpoint required)"
     domain = "energy"
     tags = ["energy", "segmentation", "needs-weights"]
 
-    def run(self, bbox, output_dir, date="2024-06", cloud_cover_max=5.0,
-            model="unet_efficientnet_b4", checkpoint=None, bands=("red", "green", "blue"),
-            num_classes=2, tile_size=256, overlap=32, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date="2024-06",
+        cloud_cover_max=5.0,
+        model="unet_efficientnet_b4",
+        checkpoint=None,
+        bands=("red", "green", "blue"),
+        num_classes=2,
+        tile_size=256,
+        overlap=32,
+        **kwargs,
+    ):
         import time
+
         t0 = time.time()
-        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         providers = kwargs.pop("providers", None)
         try:
             net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
-            img = self._search_and_download(bbox, date, output_dir, providers=providers,
-                                            cloud_cover_max=cloud_cover_max, bands=bands)
+            img = self._search_and_download(
+                bbox,
+                date,
+                output_dir,
+                providers=providers,
+                cloud_cover_max=cloud_cover_max,
+                bands=bands,
+            )
             if not img:
                 return self._fail("No cloud-free imagery found.", t0)
             out = output_dir / "solar_mask.tif"
             pred = self._run_model(img, out, net, num_classes, len(bands), tile_size, overlap)
-            return self._ok(out, {"panel_coverage": float((pred == 1).mean())},
-                            {"date": date, "model": model, "bands": bands, "num_classes": num_classes}, t0)
+            return self._ok(
+                out,
+                {"panel_coverage": float((pred == 1).mean())},
+                {"date": date, "model": model, "bands": bands, "num_classes": num_classes},
+                t0,
+            )
         except Exception as exc:
             return self._fail(str(exc), t0)
 
 
 class _BitemporalNetworkPipeline(_NetworkPipeline):
     """Two-date siamese inference with a network you trained."""
+
     _default_model = "siamese_unet"
     _default_classes = 2
     _output_name = "change.tif"
     _collections: list[str] | None = None
     _cloud_max = 30.0
 
-    def _run_pair(self, bbox, output_dir, date_before, date_after, model, checkpoint,
-                  bands, num_classes, tile_size, overlap, kwargs, extra_meta):
+    def _run_pair(
+        self,
+        bbox,
+        output_dir,
+        date_before,
+        date_after,
+        model,
+        checkpoint,
+        bands,
+        num_classes,
+        tile_size,
+        overlap,
+        kwargs,
+        extra_meta,
+    ):
         import time
+
         t0 = time.time()
-        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         providers = kwargs.pop("providers", None)
         try:
             net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
             before, after = self._search_and_download_pair(
-                bbox, date_before, date_after, output_dir, collections=self._collections,
-                providers=providers, cloud_cover_max=self._cloud_max, bands=bands)
+                bbox,
+                date_before,
+                date_after,
+                output_dir,
+                collections=self._collections,
+                providers=providers,
+                cloud_cover_max=self._cloud_max,
+                bands=bands,
+            )
             if not before or not after:
                 return self._fail("Imagery not found for both dates.", t0)
             out = output_dir / self._output_name
-            pred = self._run_model(before, out, net, num_classes, len(bands), tile_size, overlap,
-                                   image_path_b=after)
-            meta = {"date_before": date_before, "date_after": date_after, "model": model,
-                    "bands": bands, "num_classes": num_classes, **extra_meta}
+            pred = self._run_model(
+                before, out, net, num_classes, len(bands), tile_size, overlap, image_path_b=after
+            )
+            meta = {
+                "date_before": date_before,
+                "date_after": date_after,
+                "model": model,
+                "bands": bands,
+                "num_classes": num_classes,
+                **extra_meta,
+            }
             return self._ok(out, {"changed_fraction": float((pred > 0).mean())}, meta, t0)
         except Exception as exc:
             return self._fail(str(exc), t0)
@@ -1697,20 +2245,48 @@ class DisasterAssessmentPipeline(_BitemporalNetworkPipeline):
     Dates: ``date_before`` (pre-event) and ``date_after`` (post-event).
     ``num_classes`` is the number of damage classes you trained on.
     """
+
     name = "disaster_assessment"
-    description = "Pre/post-event damage classes with your trained siamese model (checkpoint required)"
+    description = (
+        "Pre/post-event damage classes with your trained siamese model (checkpoint required)"
+    )
     domain = "disaster"
     tags = ["disaster", "change", "needs-weights"]
     _output_name = "damage_assessment.tif"
 
-    def run(self, bbox, output_dir, date_before=None, date_after=None, disaster_type="generic",
-            model="siamese_unet", checkpoint=None, bands=("red", "green", "blue"),
-            num_classes=4, tile_size=512, overlap=64, pre_date=None, post_date=None, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date_before=None,
+        date_after=None,
+        disaster_type="generic",
+        model="siamese_unet",
+        checkpoint=None,
+        bands=("red", "green", "blue"),
+        num_classes=4,
+        tile_size=512,
+        overlap=64,
+        pre_date=None,
+        post_date=None,
+        **kwargs,
+    ):
         date_before = date_before or pre_date or "2024-01"
         date_after = date_after or post_date or "2024-02"
-        return self._run_pair(bbox, output_dir, date_before, date_after, model, checkpoint,
-                              bands, num_classes, tile_size, overlap, kwargs,
-                              {"disaster_type": disaster_type})
+        return self._run_pair(
+            bbox,
+            output_dir,
+            date_before,
+            date_after,
+            model,
+            checkpoint,
+            bands,
+            num_classes,
+            tile_size,
+            overlap,
+            kwargs,
+            {"disaster_type": disaster_type},
+        )
 
 
 class DeforestationPipeline(_BitemporalNetworkPipeline):
@@ -1718,20 +2294,48 @@ class DeforestationPipeline(_BitemporalNetworkPipeline):
 
     Dates may be a year ("2020", meaning July of that year) or YYYY-MM.
     """
+
     name = "deforestation"
-    description = "Forest-loss classes between two dates with your trained model (checkpoint required)"
+    description = (
+        "Forest-loss classes between two dates with your trained model (checkpoint required)"
+    )
     domain = "forest"
     tags = ["forest", "change", "needs-weights"]
     _output_name = "deforestation_map.tif"
     _collections = ["sentinel-2-l2a"]
 
-    def run(self, bbox, output_dir, date_before=None, date_after=None, model="changeformer",
-            checkpoint=None, bands=("red", "green", "blue"), num_classes=3,
-            tile_size=512, overlap=64, baseline_year=None, analysis_year=None, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date_before=None,
+        date_after=None,
+        model="changeformer",
+        checkpoint=None,
+        bands=("red", "green", "blue"),
+        num_classes=3,
+        tile_size=512,
+        overlap=64,
+        baseline_year=None,
+        analysis_year=None,
+        **kwargs,
+    ):
         before = _month(date_before or baseline_year or "2020")
         after = _month(date_after or analysis_year or "2024")
-        return self._run_pair(bbox, output_dir, before, after, model, checkpoint,
-                              bands, num_classes, tile_size, overlap, kwargs, {})
+        return self._run_pair(
+            bbox,
+            output_dir,
+            before,
+            after,
+            model,
+            checkpoint,
+            bands,
+            num_classes,
+            tile_size,
+            overlap,
+            kwargs,
+            {},
+        )
 
 
 class UrbanGrowthPipeline(_BitemporalNetworkPipeline):
@@ -1739,20 +2343,48 @@ class UrbanGrowthPipeline(_BitemporalNetworkPipeline):
 
     Dates may be a year ("2018", meaning June of that year) or YYYY-MM.
     """
+
     name = "urban_growth"
-    description = "Urban expansion between two Landsat dates with your trained model (checkpoint required)"
+    description = (
+        "Urban expansion between two Landsat dates with your trained model (checkpoint required)"
+    )
     domain = "urban"
     tags = ["urban", "change", "needs-weights"]
     _output_name = "urban_growth.tif"
     _collections = ["landsat-c2-l2"]
 
-    def run(self, bbox, output_dir, date_before=None, date_after=None, model="siamese_unet",
-            checkpoint=None, bands=("red", "green", "blue"), num_classes=2,
-            tile_size=512, overlap=64, start_year=None, end_year=None, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date_before=None,
+        date_after=None,
+        model="siamese_unet",
+        checkpoint=None,
+        bands=("red", "green", "blue"),
+        num_classes=2,
+        tile_size=512,
+        overlap=64,
+        start_year=None,
+        end_year=None,
+        **kwargs,
+    ):
         before = _month(date_before or start_year or "2018", "06")
         after = _month(date_after or end_year or "2024", "06")
-        return self._run_pair(bbox, output_dir, before, after, model, checkpoint,
-                              bands, num_classes, tile_size, overlap, kwargs, {})
+        return self._run_pair(
+            bbox,
+            output_dir,
+            before,
+            after,
+            model,
+            checkpoint,
+            bands,
+            num_classes,
+            tile_size,
+            overlap,
+            kwargs,
+            {},
+        )
 
 
 class RoadExtractionPipeline(_NetworkPipeline):
@@ -1761,27 +2393,52 @@ class RoadExtractionPipeline(_NetworkPipeline):
     Roads are a few pixels wide at 10 m, so train on the imagery you will run it on (the ``road_network`` pipeline
     gives OpenStreetMap lines to rasterise as labels). Output ``road_mask.tif`` (class map, 1 = road).
     """
+
     name = "road_extraction"
     description = "Road segmentation with your trained model (checkpoint required)"
     domain = "infrastructure"
     tags = ["infrastructure", "roads", "segmentation", "needs-weights"]
 
-    def run(self, bbox, output_dir, date="2024-06", cloud_cover_max=10.0, model="unet_resnet50",
-            checkpoint=None, bands=("red", "green", "blue"), num_classes=2, tile_size=512, overlap=64, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date="2024-06",
+        cloud_cover_max=10.0,
+        model="unet_resnet50",
+        checkpoint=None,
+        bands=("red", "green", "blue"),
+        num_classes=2,
+        tile_size=512,
+        overlap=64,
+        **kwargs,
+    ):
         import time
+
         t0 = time.time()
-        output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         providers = kwargs.pop("providers", None)
         try:
             net = self._load_trained_model(model, checkpoint, num_classes, len(bands))
-            img = self._search_and_download(bbox, date, output_dir, providers=providers,
-                                            cloud_cover_max=cloud_cover_max, bands=bands)
+            img = self._search_and_download(
+                bbox,
+                date,
+                output_dir,
+                providers=providers,
+                cloud_cover_max=cloud_cover_max,
+                bands=bands,
+            )
             if not img:
                 return self._fail("No usable imagery found.", t0)
             out = output_dir / "road_mask.tif"
             pred = self._run_model(img, out, net, num_classes, len(bands), tile_size, overlap)
-            return self._ok(out, {"road_coverage": float((pred == 1).mean())},
-                            {"date": date, "model": model, "bands": bands, "num_classes": num_classes}, t0)
+            return self._ok(
+                out,
+                {"road_coverage": float((pred == 1).mean())},
+                {"date": date, "model": model, "bands": bands, "num_classes": num_classes},
+                t0,
+            )
         except Exception as exc:
             return self._fail(str(exc), t0)
 
@@ -1792,20 +2449,46 @@ class LandslideDetectionPipeline(_BitemporalNetworkPipeline):
     ``date_before`` and ``date_after`` bracket the event. The network sees only the two images; add a DEM or slope
     layer as extra channels when you train if you want terrain to inform it. Output ``landslide_map.tif``.
     """
+
     name = "landslide_detection"
     description = "Landslide scars from a before/after pair with your trained change model (checkpoint required)"
     domain = "disaster"
     tags = ["disaster", "landslide", "change", "needs-weights"]
     _output_name = "landslide_map.tif"
 
-    def run(self, bbox, output_dir, date_before=None, date_after=None, model="siamese_unet",
-            checkpoint=None, bands=("red", "green", "blue"), num_classes=2, tile_size=512, overlap=64, **kwargs):
+    def run(
+        self,
+        bbox,
+        output_dir,
+        date_before=None,
+        date_after=None,
+        model="siamese_unet",
+        checkpoint=None,
+        bands=("red", "green", "blue"),
+        num_classes=2,
+        tile_size=512,
+        overlap=64,
+        **kwargs,
+    ):
         if not date_before or not date_after:
             import time
+
             t0 = time.time()
             return self._fail("landslide_detection needs date_before and date_after.", t0)
-        return self._run_pair(bbox, output_dir, date_before, date_after, model, checkpoint,
-                              bands, num_classes, tile_size, overlap, kwargs, {})
+        return self._run_pair(
+            bbox,
+            output_dir,
+            date_before,
+            date_after,
+            model,
+            checkpoint,
+            bands,
+            num_classes,
+            tile_size,
+            overlap,
+            kwargs,
+            {},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1813,21 +2496,21 @@ class LandslideDetectionPipeline(_BitemporalNetworkPipeline):
 # ---------------------------------------------------------------------------
 
 _CORE_PIPELINES: dict[str, type] = {
-    "change_detection":    ChangeDetectionPipeline,
-    "land_cover":          LandCoverPipeline,
+    "change_detection": ChangeDetectionPipeline,
+    "land_cover": LandCoverPipeline,
     "building_footprints": BuildingFootprintsPipeline,
-    "crop_monitoring":     CropMonitoringPipeline,
+    "crop_monitoring": CropMonitoringPipeline,
     "disaster_assessment": DisasterAssessmentPipeline,
-    "deforestation":       DeforestationPipeline,
-    "urban_growth":        UrbanGrowthPipeline,
-    "water_bodies":        WaterBodiesPipeline,
-    "solar_detection":     SolarDetectionPipeline,
-    "road_extraction":     RoadExtractionPipeline,
+    "deforestation": DeforestationPipeline,
+    "urban_growth": UrbanGrowthPipeline,
+    "water_bodies": WaterBodiesPipeline,
+    "solar_detection": SolarDetectionPipeline,
+    "road_extraction": RoadExtractionPipeline,
     "landslide_detection": LandslideDetectionPipeline,
 }
 
 
-def pipeline_catalogue() -> dict[str, type]:
+def pipeline_catalogue() -> dict[str, type[BasePipeline]]:
     """Every pipeline (core + domain), keyed by name."""
     from pygeovision.ai.pipelines import domains
     from pygeovision.ai.pipelines.multisensor_flood import MULTISENSOR_PIPELINES
@@ -1836,9 +2519,17 @@ def pipeline_catalogue() -> dict[str, type]:
     from pygeovision.ai.pipelines.terrain import TERRAIN_PIPELINES
     from pygeovision.ai.pipelines.timeseries import TIMESERIES_PIPELINES
     from pygeovision.ai.pipelines.vector_products import VECTOR_PIPELINES
-    return {**_CORE_PIPELINES, **domains.DOMAIN_PIPELINES, **REFERENCE_PIPELINES, **VECTOR_PIPELINES,
-            **TERRAIN_PIPELINES, **TIMESERIES_PIPELINES, **SAR_PIPELINES,
-            **MULTISENSOR_PIPELINES}
+
+    return {
+        **_CORE_PIPELINES,
+        **domains.DOMAIN_PIPELINES,
+        **REFERENCE_PIPELINES,
+        **VECTOR_PIPELINES,
+        **TERRAIN_PIPELINES,
+        **TIMESERIES_PIPELINES,
+        **SAR_PIPELINES,
+        **MULTISENSOR_PIPELINES,
+    }
 
 
 def get_pipeline(name: str, pgv_client: Any) -> BasePipeline:
@@ -1869,9 +2560,20 @@ def pipeline_kinds() -> dict[str, str]:
 
 
 __all__ = [
-    "BasePipeline", "PipelineResult", "ModelWeightsRequired",
-    "get_pipeline", "list_pipelines", "pipeline_kinds", "pipeline_catalogue",
-    "ChangeDetectionPipeline", "LandCoverPipeline", "BuildingFootprintsPipeline",
-    "CropMonitoringPipeline", "DisasterAssessmentPipeline", "DeforestationPipeline",
-    "UrbanGrowthPipeline", "WaterBodiesPipeline", "SolarDetectionPipeline",
+    "BasePipeline",
+    "PipelineResult",
+    "ModelWeightsRequired",
+    "get_pipeline",
+    "list_pipelines",
+    "pipeline_kinds",
+    "pipeline_catalogue",
+    "ChangeDetectionPipeline",
+    "LandCoverPipeline",
+    "BuildingFootprintsPipeline",
+    "CropMonitoringPipeline",
+    "DisasterAssessmentPipeline",
+    "DeforestationPipeline",
+    "UrbanGrowthPipeline",
+    "WaterBodiesPipeline",
+    "SolarDetectionPipeline",
 ]

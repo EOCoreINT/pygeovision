@@ -15,9 +15,9 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -49,6 +49,7 @@ class TiledInferenceConfig:
         activation: Post-prediction activation ('softmax', 'sigmoid', None).
         blend_mode: Overlap blending strategy ('average' or 'gaussian').
     """
+
     tile_size: int = 512
     overlap: int = 64
     batch_size: int | None = None
@@ -133,6 +134,7 @@ class TiledInference:
         """
         try:
             import psutil
+
             available_mb = psutil.virtual_memory().available / 1e6
         except ImportError:
             logger.info(
@@ -155,7 +157,8 @@ class TiledInference:
         logger.info(
             "_auto_select_batch_size: %.0fMB available memory detected — "
             "using batch_size=%d. Pass batch_size= explicitly to override.",
-            available_mb, chosen,
+            available_mb,
+            chosen,
         )
         return chosen
 
@@ -185,9 +188,9 @@ class TiledInference:
         """
         try:
             import rasterio
-            from rasterio.transform import from_bounds
-        except ImportError:
-            raise ImportError("TiledInference requires rasterio. pip install rasterio")
+            from rasterio.transform import from_bounds  # noqa: F401
+        except ImportError as exc:
+            raise ImportError("TiledInference requires rasterio. pip install rasterio") from exc
 
         self.config.num_classes = num_classes
         input_path = Path(input_path)
@@ -203,7 +206,10 @@ class TiledInference:
 
             logger.info(
                 "Running tiled inference on %s (%dx%d, %d bands)…",
-                input_path.name, height, width, len(bands),
+                input_path.name,
+                height,
+                width,
+                len(bands),
             )
 
             # Real fix for a confirmed ~1.1GB memory cost on a realistic
@@ -222,7 +228,7 @@ class TiledInference:
 
             batch_tiles = []
             batch_coords = []
-            for (row, col, r1, r2, c1, c2, pr1, pr2, pc1, pc2) in tiles_info:
+            for _row, _col, r1, r2, c1, c2, pr1, pr2, pc1, pc2 in tiles_info:
                 window = Window(c1, r1, c2 - c1, r2 - r1)
                 tile = src.read(bands, window=window).astype(np.float32)
                 tile = self._apply_normalization_stats(tile, norm_stats)
@@ -232,11 +238,15 @@ class TiledInference:
                 batch_coords.append((r1, r2, c1, c2, pr1, pr2, pc1, pc2))
 
                 if len(batch_tiles) == self.config.batch_size:
-                    self._infer_batch(batch_tiles, batch_coords, accum, weight, blend_kernel, num_classes)
+                    self._infer_batch(
+                        batch_tiles, batch_coords, accum, weight, blend_kernel, num_classes
+                    )
                     batch_tiles, batch_coords = [], []
 
             if batch_tiles:
-                self._infer_batch(batch_tiles, batch_coords, accum, weight, blend_kernel, num_classes)
+                self._infer_batch(
+                    batch_tiles, batch_coords, accum, weight, blend_kernel, num_classes
+                )
 
         # Normalize accumulation
         eps = 1e-7
@@ -261,6 +271,7 @@ class TiledInference:
             "compress": "lzw",
         }
         from pygeovision.data._profile import writable_profile
+
         out_profile = writable_profile(out_profile)
         with rasterio.open(output_path, "w", **out_profile) as dst:
             dst.write(pred[np.newaxis, ...])
@@ -307,8 +318,8 @@ class TiledInference:
         """
         try:
             import rasterio
-        except ImportError:
-            raise ImportError("TiledInference requires rasterio. pip install rasterio")
+        except ImportError as exc:
+            raise ImportError("TiledInference requires rasterio. pip install rasterio") from exc
 
         self.config.num_classes = num_classes
         input_path_a = Path(input_path_a)
@@ -332,7 +343,11 @@ class TiledInference:
 
             logger.info(
                 "Running paired tiled inference on %s + %s (%dx%d, %d bands)…",
-                input_path_a.name, input_path_b.name, height, width, len(bands),
+                input_path_a.name,
+                input_path_b.name,
+                height,
+                width,
+                len(bands),
             )
 
             # Real fix, same as run(): this previously loaded TWO full
@@ -350,7 +365,7 @@ class TiledInference:
             from rasterio.windows import Window
 
             batch_a, batch_b, batch_coords = [], [], []
-            for (row, col, r1, r2, c1, c2, pr1, pr2, pc1, pc2) in tiles_info:
+            for _row, _col, r1, r2, c1, c2, pr1, pr2, pc1, pc2 in tiles_info:
                 window = Window(c1, r1, c2 - c1, r2 - r1)
                 tile_a = src_a.read(bands, window=window).astype(np.float32)
                 tile_b = src_b.read(bands, window=window).astype(np.float32)
@@ -364,11 +379,15 @@ class TiledInference:
                 batch_coords.append((r1, r2, c1, c2, pr1, pr2, pc1, pc2))
 
                 if len(batch_a) == self.config.batch_size:
-                    self._infer_batch_pair(batch_a, batch_b, batch_coords, accum, weight, blend_kernel, num_classes)
+                    self._infer_batch_pair(
+                        batch_a, batch_b, batch_coords, accum, weight, blend_kernel, num_classes
+                    )
                     batch_a, batch_b, batch_coords = [], [], []
 
             if batch_a:
-                self._infer_batch_pair(batch_a, batch_b, batch_coords, accum, weight, blend_kernel, num_classes)
+                self._infer_batch_pair(
+                    batch_a, batch_b, batch_coords, accum, weight, blend_kernel, num_classes
+                )
 
         eps = 1e-7
         weight = np.maximum(weight, eps)
@@ -380,10 +399,17 @@ class TiledInference:
             pred = accum.argmax(axis=0).astype(np.uint8)
 
         out_profile = {
-            "driver": "GTiff", "dtype": "uint8", "width": width, "height": height,
-            "count": 1, "crs": crs, "transform": transform, "compress": "lzw",
+            "driver": "GTiff",
+            "dtype": "uint8",
+            "width": width,
+            "height": height,
+            "count": 1,
+            "crs": crs,
+            "transform": transform,
+            "compress": "lzw",
         }
         from pygeovision.data._profile import writable_profile
+
         out_profile = writable_profile(out_profile)
         with rasterio.open(output_path, "w", **out_profile) as dst:
             dst.write(pred[np.newaxis, ...])
@@ -430,7 +456,10 @@ class TiledInference:
                 outputs = outputs.logits
             if outputs.shape[-2:] != (ts, ts):
                 outputs = torch.nn.functional.interpolate(
-                    outputs, size=(ts, ts), mode="bilinear", align_corners=False,
+                    outputs,
+                    size=(ts, ts),
+                    mode="bilinear",
+                    align_corners=False,
                 )
             if self.config.activation == "softmax":
                 outputs = torch.softmax(outputs, dim=1)
@@ -439,7 +468,7 @@ class TiledInference:
 
         preds_np = outputs.float().cpu().numpy()  # (N, C, H, W)
 
-        for i, (r1, r2, c1, c2, pr1, pr2, pc1, pc2) in enumerate(coords):
+        for i, (r1, r2, c1, c2, _pr1, _pr2, _pc1, _pc2) in enumerate(coords):
             h, w = r2 - r1, c2 - c1
             pred_crop = preds_np[i, :, :h, :w]
             kernel_crop = blend_kernel[:h, :w]
@@ -498,16 +527,22 @@ class TiledInference:
         batch_tensor = torch.from_numpy(batch_np).to(self.config.device)
 
         dev_type = "cuda" if "cuda" in self.config.device else "cpu"
-        with torch.inference_mode(), torch.autocast(
-            device_type=dev_type,
-            enabled=self.use_amp,
+        with (
+            torch.inference_mode(),
+            torch.autocast(
+                device_type=dev_type,
+                enabled=self.use_amp,
+            ),
         ):
             outputs = self.model(batch_tensor)
             if hasattr(outputs, "logits"):
                 outputs = outputs.logits
             if outputs.shape[-2:] != (ts, ts):
                 import torch.nn.functional as F
-                outputs = F.interpolate(outputs, size=(ts, ts), mode="bilinear", align_corners=False)
+
+                outputs = F.interpolate(
+                    outputs, size=(ts, ts), mode="bilinear", align_corners=False
+                )
             if self.config.activation == "softmax":
                 outputs = torch.softmax(outputs, dim=1)
             elif self.config.activation == "sigmoid":
@@ -515,7 +550,7 @@ class TiledInference:
 
         preds_np = outputs.float().cpu().numpy()  # (N, C, H, W)
 
-        for pred, (r1, r2, c1, c2, pr1, pr2, pc1, pc2), (oh, ow) in zip(
+        for pred, (r1, r2, c1, c2, _pr1, _pr2, _pc1, _pc2), (oh, ow) in zip(
             preds_np, coords, orig_shapes
         ):
             pred_crop = pred[:, :oh, :ow]
@@ -539,7 +574,9 @@ class TiledInference:
         return image
 
     @staticmethod
-    def _compute_normalization_stats(src, bands: list[int], max_dim: int = 1024) -> list[tuple[float, float]]:
+    def _compute_normalization_stats(
+        src, bands: list[int], max_dim: int = 1024
+    ) -> list[tuple[float, float]]:
         """Compute real per-band (p2, p98) percentiles for normalization
         from a cheap, decimated (downsampled) read, not a full-resolution
         one — statistically representative for percentile estimation
@@ -573,7 +610,9 @@ class TiledInference:
         return stats
 
     @staticmethod
-    def _apply_normalization_stats(tile: np.ndarray, stats: list[tuple[float, float]]) -> np.ndarray:
+    def _apply_normalization_stats(
+        tile: np.ndarray, stats: list[tuple[float, float]]
+    ) -> np.ndarray:
         """Apply precomputed per-band (p2, p98) stats to a single tile —
         the per-tile counterpart to _normalize(), used by the
         memory-efficient windowed-read path."""
@@ -602,7 +641,7 @@ class TiledInference:
         x = np.arange(tile_size) - center
         y = np.arange(tile_size) - center
         xx, yy = np.meshgrid(x, y)
-        kernel = np.exp(-(xx ** 2 + yy ** 2) / (2 * sigma ** 2)).astype(np.float32)
+        kernel = np.exp(-(xx**2 + yy**2) / (2 * sigma**2)).astype(np.float32)
         return kernel / kernel.max()
 
     @staticmethod

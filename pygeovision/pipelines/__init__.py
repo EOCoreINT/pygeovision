@@ -19,12 +19,6 @@ Example:
 
 from __future__ import annotations
 
-# Real fix: Pipeline was previously imported elsewhere in this codebase
-# as `from pygeovision.pipelines import Pipeline` but was never actually
-# re-exported here -- that import has been silently broken. Fixed by
-# genuinely re-exporting it from the real orchestrator module.
-from pygeovision.pipelines.orchestrator import Pipeline
-
 # Real fix: re-export the real, audited classes instead of maintaining
 # a separate, stale duplicate copy of all 10.
 from pygeovision.ai.pipelines import (
@@ -45,10 +39,27 @@ from pygeovision.ai.pipelines import (
     pipeline_kinds,
 )
 
+# Real fix: Pipeline was previously imported elsewhere in this codebase
+# as `from pygeovision.pipelines import Pipeline` but was never actually
+# re-exported here -- that import has been silently broken. Fixed by
+# genuinely re-exporting it from the real orchestrator module.
+from pygeovision.pipelines.orchestrator import Pipeline
+
 __all__ = [
-    "Pipeline", "BasePipeline", "PipelineResult", "ModelWeightsRequired",
-    "get_pipeline", "list_pipelines", "pipeline_kinds",
-    "ChangeDetectionPipeline", "LandCoverPipeline", "BuildingFootprintsPipeline",
-    "CropMonitoringPipeline", "DisasterAssessmentPipeline", "DeforestationPipeline",
-    "UrbanGrowthPipeline", "WaterBodiesPipeline", "SolarDetectionPipeline",
+    "Pipeline",
+    "BasePipeline",
+    "PipelineResult",
+    "ModelWeightsRequired",
+    "get_pipeline",
+    "list_pipelines",
+    "pipeline_kinds",
+    "ChangeDetectionPipeline",
+    "LandCoverPipeline",
+    "BuildingFootprintsPipeline",
+    "CropMonitoringPipeline",
+    "DisasterAssessmentPipeline",
+    "DeforestationPipeline",
+    "UrbanGrowthPipeline",
+    "WaterBodiesPipeline",
+    "SolarDetectionPipeline",
 ]

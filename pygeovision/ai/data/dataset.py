@@ -8,10 +8,10 @@ metadata (CRS, transform, bounds, tile coordinates).
 
 from __future__ import annotations
 
-import json
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Optional: PyTorch
 try:
-    import torch
+    import torch  # noqa: F401
     from torch.utils.data import Dataset as TorchDataset
 
     TORCH_AVAILABLE = True
@@ -459,10 +459,7 @@ class GeoDataset:
 
     def __repr__(self) -> str:
         counts = self.split_counts()
-        return (
-            f"GeoDataset(tiles={len(self.tiles)}, task={self.task!r}, "
-            f"splits={counts})"
-        )
+        return f"GeoDataset(tiles={len(self.tiles)}, task={self.task!r}, " f"splits={counts})"
 
 
 class TileDataset(TorchDataset if TORCH_AVAILABLE else object):  # type: ignore[misc]
@@ -580,8 +577,7 @@ def _load_tile_numpy(
         import rasterio  # noqa: PLC0415
     except ImportError as exc:
         raise ImportError(
-            "rasterio is required for tile loading. "
-            "Install with: pip install rasterio"
+            "rasterio is required for tile loading. " "Install with: pip install rasterio"
         ) from exc
 
     # Load image

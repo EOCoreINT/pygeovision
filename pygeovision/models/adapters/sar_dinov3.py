@@ -44,9 +44,11 @@ References
 * AFRL-DINOv2 SAR adaptation: Shermeyer et al. (2023) — SAR-DINO series
 * xView3: https://iuu.xview.us/ (vessel detection benchmark)
 """
+
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -62,7 +64,7 @@ logger = logging.getLogger("pygeovision.adapters.sar_dinov3")
 # DINOv3 (and all DINOv2 variants) expect inputs normalised with ImageNet stats.
 # These stats are applied AFTER building the pseudo-RGB channels from SAR data.
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-IMAGENET_STD  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
 def normalise_for_dino(rgb_array: np.ndarray) -> np.ndarray:
@@ -89,6 +91,7 @@ def normalise_for_dino(rgb_array: np.ndarray) -> np.ndarray:
 
 
 # ── SAR-specific augmentation (for self-supervised training) ──────────────────
+
 
 class SARSpeckleAugmentation:
     """Multiplicative speckle noise augmentation for self-supervised SAR training.
@@ -121,9 +124,7 @@ class SARSpeckleAugmentation:
         self.n_looks_range = n_looks_range
         self.noise_strength = noise_strength
 
-    def simulate_gamma_speckle(
-        self, image: np.ndarray, n_looks: int | None = None
-    ) -> np.ndarray:
+    def simulate_gamma_speckle(self, image: np.ndarray, n_looks: int | None = None) -> np.ndarray:
         """Apply multiplicative Gamma speckle noise to a linear-scale SAR array.
 
         Speckle in L-look SAR follows a Gamma(n_looks, 1/n_looks) distribution.
@@ -144,20 +145,19 @@ class SARSpeckleAugmentation:
             n_looks = np.random.randint(self.n_looks_range[0], self.n_looks_range[1] + 1)
 
         # Gamma(n_looks, 1/n_looks) has mean=1 and std=1/sqrt(n_looks)
-        noise = np.random.gamma(
-            shape=n_looks, scale=1.0 / n_looks, size=image.shape
-        ).astype(np.float32)
+        noise = np.random.gamma(shape=n_looks, scale=1.0 / n_looks, size=image.shape).astype(
+            np.float32
+        )
         return np.clip(image * noise, 0.0, None)
 
-    def simulate_multilook(
-        self, image: np.ndarray, n_looks: int = 4
-    ) -> np.ndarray:
+    def simulate_multilook(self, image: np.ndarray, n_looks: int = 4) -> np.ndarray:
         """Simulate multi-look averaging by applying a small-window mean filter.
 
         This simulates how ground range images are produced from SLC data
         by averaging n_looks adjacent range cells.
         """
         from scipy.ndimage import uniform_filter
+
         return uniform_filter(image, size=n_looks).astype(np.float32)
 
     def get_pytorch_transform_config(self) -> dict:
@@ -180,6 +180,7 @@ class SARSpeckleAugmentation:
 
 # ── Feature extraction ────────────────────────────────────────────────────────
 
+
 class SARDINOv3Adapter:
     """Domain-adapted DINOv3 for SAR feature extraction and classification.
 
@@ -196,14 +197,19 @@ class SARDINOv3Adapter:
     """
 
     MODEL_SIZES = {
-        "vits14":  {"embed_dim": 384,  "n_heads": 6,  "n_layers": 12},
-        "vitb14":  {"embed_dim": 768,  "n_heads": 12, "n_layers": 12},
-        "vitl14":  {"embed_dim": 1024, "n_heads": 16, "n_layers": 24},
-        "vitg14":  {"embed_dim": 1536, "n_heads": 24, "n_layers": 40},
+        "vits14": {"embed_dim": 384, "n_heads": 6, "n_layers": 12},
+        "vitb14": {"embed_dim": 768, "n_heads": 12, "n_layers": 12},
+        "vitl14": {"embed_dim": 1024, "n_heads": 16, "n_layers": 24},
+        "vitg14": {"embed_dim": 1536, "n_heads": 24, "n_layers": 40},
     }
 
-    TASKS = ["feature_extraction", "flood_detection", "vessel_detection",
-             "terrain_classification", "change_detection"]
+    TASKS = [
+        "feature_extraction",
+        "flood_detection",
+        "vessel_detection",
+        "terrain_classification",
+        "change_detection",
+    ]
 
     def __init__(
         self,
@@ -232,7 +238,7 @@ class SARDINOv3Adapter:
         #: When the backbone cannot be loaded, ``extract_features`` raises unless this is True, in which case it
         #: returns all-zero arrays of the right shape and sets ``result["is_mock"] = True`` (for plumbing tests only).
         self.allow_mock = allow_mock
-        self._model = None
+        self._model: Any = None
         self.embed_dim = self.MODEL_SIZES[model_size]["embed_dim"]
 
     def preprocess(
@@ -274,8 +280,10 @@ class SARDINOv3Adapter:
             "pseudo_rgb_range=[%.3f, %.3f]  "
             "normalised_range=[%.3f, %.3f]",
             self.pseudo_rgb_arrangement,
-            float(pseudo_rgb.min()), float(pseudo_rgb.max()),
-            float(normalised.min()), float(normalised.max()),
+            float(pseudo_rgb.min()),
+            float(pseudo_rgb.max()),
+            float(normalised.min()),
+            float(normalised.max()),
         )
         return normalised
 
@@ -308,6 +316,7 @@ class SARDINOv3Adapter:
         if self._model is not None:
             try:
                 import torch
+
                 h, w = preprocessed.shape[1], preprocessed.shape[2]
                 tensor = torch.from_numpy(preprocessed[None]).float().to(self.device)
                 with torch.no_grad():
@@ -324,7 +333,8 @@ class SARDINOv3Adapter:
                     "The DINO backbone could not be loaded (no network, or torch.hub could not fetch "
                     f"facebookresearch/dinov2 {self.model_size}), so there are no real features to return. "
                     "Fix the download, pass weights_path=, or construct the adapter with allow_mock=True to get "
-                    "all-zero placeholder arrays for plumbing tests (flagged result['is_mock'] = True).")
+                    "all-zero placeholder arrays for plumbing tests (flagged result['is_mock'] = True)."
+                )
             # Placeholder embedding (correct shape, zeros) so downstream
             # code can be validated without a real model installed
             result["is_mock"] = True
@@ -350,6 +360,7 @@ class SARDINOv3Adapter:
         """Load DINOv3 from torch.hub (zero-shot) or a local checkpoint."""
         try:
             import torch
+
             model_name = f"dinov2_{self.model_size}"
             if self.weights_path:
                 # Load custom SAR-adapted weights
@@ -457,6 +468,8 @@ asf.download_urls([r.properties['url'] for r in results], path='{data_root}')
         config["cli_instructions"] = cli_instructions.strip()
         logger.info(
             "Fine-tuning config prepared: strategy=%s  dataset=%s  epochs=%d",
-            strategy, dataset, epochs,
+            strategy,
+            dataset,
+            epochs,
         )
         return config

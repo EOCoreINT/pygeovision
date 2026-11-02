@@ -1,4 +1,5 @@
 """Shared timm construction for the classification builders."""
+
 from __future__ import annotations
 
 import logging
@@ -32,8 +33,13 @@ def build_timm_classifier(
     import timm
 
     def make(with_weights: bool) -> Any:
-        return timm.create_model(timm_id, pretrained=with_weights, num_classes=num_classes,
-                                 in_chans=in_channels, **kwargs)
+        return timm.create_model(
+            timm_id,
+            pretrained=with_weights,
+            num_classes=num_classes,
+            in_chans=in_channels,
+            **kwargs,
+        )
 
     if not pretrained:
         return make(False)
@@ -46,6 +52,6 @@ def build_timm_classifier(
             raise ModelLoadError(
                 f"Could not load pretrained weights for timm model '{timm_id}': {exc}",
                 details="Nothing was substituted. Pass pretrained=False for a randomly "
-                        "initialised model, or allow_random_init=True to fall back to one.",
+                "initialised model, or allow_random_init=True to fall back to one.",
             ) from exc
         return _adapt.mark_random_init(make(False), f"pretrained load failed: {exc}")

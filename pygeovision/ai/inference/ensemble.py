@@ -12,8 +12,8 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
+import logging
 
 try:
     import torch
@@ -64,9 +64,7 @@ class EnsembleInference:
 
         if strategy == "weighted_mean":
             if weights is None or len(weights) != len(models):
-                raise ValueError(
-                    "weighted_mean requires weights of the same length as models."
-                )
+                raise ValueError("weighted_mean requires weights of the same length as models.")
             total = sum(weights)
             self.weights = [w / total for w in weights]
         else:
@@ -78,7 +76,9 @@ class EnsembleInference:
         self.tta = tta
         logger.info(
             "EnsembleInference: %d models, strategy=%s, tta=%s",
-            len(models), strategy, tta,
+            len(models),
+            strategy,
+            tta,
         )
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
@@ -134,7 +134,9 @@ class EnsembleInference:
             if hasattr(aug_logits, "logits"):
                 aug_logits = aug_logits.logits
             if aug_logits.shape[-2:] != x.shape[-2:]:
-                aug_logits = F.interpolate(aug_logits, size=x.shape[-2:], mode="bilinear", align_corners=False)
+                aug_logits = F.interpolate(
+                    aug_logits, size=x.shape[-2:], mode="bilinear", align_corners=False
+                )
             # Undo the flip on predictions
             aug_probs = torch.flip(F.softmax(aug_logits, dim=1), dims=flip_dims)
             tta_preds.append(aug_probs)

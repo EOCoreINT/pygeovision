@@ -4,12 +4,14 @@ Scope: each image becomes **one number per date** (the mean of an index over the
 plus a spread (std, P10, P90). It is a summary of an area through time, not a per-pixel analysis; for
 per-pixel anomaly or trend maps use the ``vegetation_anomaly`` and ``water_extent_timeseries`` pipelines.
 """
+
 from __future__ import annotations
 
-import logging
-import warnings
+from collections.abc import Callable
 from datetime import datetime
+import logging
 from typing import Any
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +54,14 @@ class GeoTimeSeries:
     """
 
     #: index name -> (bands it needs, function of those bands in reflectance 0-1)
-    INDICES = {
+    INDICES: dict[str, tuple[tuple[str, ...], Callable[..., Any]]] = {
         "ndvi": (("nir", "red"), lambda n, r: (n - r) / (n + r + 1e-8)),
         "ndwi": (("green", "nir"), lambda g, n: (g - n) / (g + n + 1e-8)),
         "ndbi": (("swir", "nir"), lambda s, n: (s - n) / (s + n + 1e-8)),
-        "evi": (("nir", "red", "blue"), lambda n, r, b: 2.5 * (n - r) / (n + 6.0 * r - 7.5 * b + 1.0)),
+        "evi": (
+            ("nir", "red", "blue"),
+            lambda n, r, b: 2.5 * (n - r) / (n + 6.0 * r - 7.5 * b + 1.0),
+        ),
         "savi": (("nir", "red"), lambda n, r: 1.5 * (n - r) / (n + r + 0.5)),
     }
 
@@ -70,8 +75,10 @@ class GeoTimeSeries:
     def __init__(self, sensor: str = "sentinel2", band_map: dict[str, int] | None = None) -> None:
         """``band_map`` ({"red": 3, "nir": 4, ...}, 1-based) overrides the preset for ``sensor``."""
         if band_map is None and sensor not in self.BAND_PRESETS:
-            raise ValueError(f"unknown sensor {sensor!r}; choose from {sorted(self.BAND_PRESETS)} "
-                             "or pass band_map={'red': 3, 'nir': 4, ...}")
+            raise ValueError(
+                f"unknown sensor {sensor!r}; choose from {sorted(self.BAND_PRESETS)} "
+                "or pass band_map={'red': 3, 'nir': 4, ...}"
+            )
         self.sensor = sensor
         self.band_map = dict(band_map) if band_map else dict(self.BAND_PRESETS[sensor])
 
@@ -118,23 +125,34 @@ class GeoTimeSeries:
         import rasterio
 
         if cloud_mask is not None:
-            warnings.warn("cloud_mask has no effect and will be removed; pass mask_paths=[...] instead",
-                          DeprecationWarning, stacklevel=2)
+            warnings.warn(
+                "cloud_mask has no effect and will be removed; pass mask_paths=[...] instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if index not in self.INDICES:
             raise ValueError(f"unknown index {index!r}; choose from {list(self.INDICES)}")
         bands, fn = self.INDICES[index]
         missing = [b for b in bands if b not in self.band_map]
         if missing:
-            raise ValueError(f"index {index!r} needs band(s) {missing}, which sensor {self.sensor!r} does not "
-                             f"define; pass band_map= with their positions in your files")
+            raise ValueError(
+                f"index {index!r} needs band(s) {missing}, which sensor {self.sensor!r} does not "
+                f"define; pass band_map= with their positions in your files"
+            )
         n = len(image_paths)
         if date_strings is not None and len(date_strings) != n:
             raise ValueError(f"date_strings has {len(date_strings)} entries for {n} images")
         if mask_paths is not None and len(mask_paths) != n:
             raise ValueError(f"mask_paths has {len(mask_paths)} entries for {n} images")
 
-        series: dict[str, Any] = {"dates": list(date_strings) if date_strings is not None else list(range(n)),
-                                  "mean": [], "std": [], "p10": [], "p90": [], "valid_fraction": []}
+        series: dict[str, Any] = {
+            "dates": list(date_strings) if date_strings is not None else list(range(n)),
+            "mean": [],
+            "std": [],
+            "p10": [],
+            "p90": [],
+            "valid_fraction": [],
+        }
         errors: dict[str, str] = {}
         for i, path in enumerate(image_paths):
             try:
@@ -176,7 +194,9 @@ class GeoTimeSeries:
                         series[k].append(None)
             except Exception as exc:
                 errors[str(path)] = f"{type(exc).__name__}: {exc}"
-                logger.warning("Time series step failed for %s: %s: %s", path, type(exc).__name__, exc)
+                logger.warning(
+                    "Time series step failed for %s: %s: %s", path, type(exc).__name__, exc
+                )
                 for k in ("mean", "std", "p10", "p90", "valid_fraction"):
                     series[k].append(None)
         series["index"] = index
@@ -223,7 +243,9 @@ class GeoTimeSeries:
             threshold = 2.5 if method == "zscore" else 3.5
         dates = series.get("dates", [])
         means = series.get("mean", [])
-        pairs = [(i, dates[i] if i < len(dates) else i, v) for i, v in enumerate(means) if v is not None]
+        pairs = [
+            (i, dates[i] if i < len(dates) else i, v) for i, v in enumerate(means) if v is not None
+        ]
         if len(pairs) < 5:
             raise ValueError(f"need at least 5 dates with data, got {len(pairs)}")
         pos = np.array([p[0] for p in pairs])
@@ -232,12 +254,16 @@ class GeoTimeSeries:
         expected = np.empty_like(y)
         if period:
             if period < 2 or (pos.max() + 1) < 2 * period:
-                raise ValueError(f"period={period} needs at least two full cycles ({2 * period} dates)")
+                raise ValueError(
+                    f"period={period} needs at least two full cycles ({2 * period} dates)"
+                )
             resid = np.empty_like(y)
             for ph in range(period):
                 sel = (pos % period) == ph
                 if sel.sum() < 2:
-                    raise ValueError(f"cycle position {ph} has fewer than 2 observations; cannot judge anomalies there")
+                    raise ValueError(
+                        f"cycle position {ph} has fewer than 2 observations; cannot judge anomalies there"
+                    )
                 expected[sel] = np.median(y[sel]) if method == "mad" else y[sel].mean()
                 resid[sel] = y[sel] - expected[sel]
         else:
@@ -252,16 +278,24 @@ class GeoTimeSeries:
             mad = np.median(np.abs(centred))
             if mad > 1e-12:
                 scores = 0.6745 * centred / mad
-            else:       # more than half the values sit exactly on the expectation: use the mean deviation instead
+            else:  # more than half the values sit exactly on the expectation: use the mean deviation instead
                 mean_ad = np.mean(np.abs(centred))
                 scores = centred / (1.253314 * mean_ad) if mean_ad > 1e-12 else np.zeros_like(resid)
         return [
-            {"date": pairs[k][1], "value": float(y[k]), "expected": round(float(expected[k]), 4),
-             "zscore": round(float(scores[k]), 2), "type": "low" if scores[k] < 0 else "high"}
-            for k in range(len(pairs)) if abs(scores[k]) > threshold
+            {
+                "date": pairs[k][1],
+                "value": float(y[k]),
+                "expected": round(float(expected[k]), 4),
+                "zscore": round(float(scores[k]), 2),
+                "type": "low" if scores[k] < 0 else "high",
+            }
+            for k in range(len(pairs))
+            if abs(scores[k]) > threshold
         ]
 
-    def compute_trend(self, series: dict, stable_threshold: float = 0.001, period: int | None = None) -> dict[str, Any]:
+    def compute_trend(
+        self, series: dict, stable_threshold: float = 0.001, period: int | None = None
+    ) -> dict[str, Any]:
         """Least-squares line through the series.
 
         ``slope`` is the change **per time step** (steps count positions in the series, so a missing date
@@ -290,12 +324,16 @@ class GeoTimeSeries:
 
         if period:
             if period < 2 or len(means) < 2 * period:
-                raise ValueError(f"period={period} needs at least two full cycles ({2 * period} dates)")
-            phase = (x.astype(int) % period)
+                raise ValueError(
+                    f"period={period} needs at least two full cycles ({2 * period} dates)"
+                )
+            phase = x.astype(int) % period
             counts = np.bincount(phase, minlength=period)
             if (counts < 2).any():
-                raise ValueError("every position in the cycle needs at least 2 observations; "
-                                 f"positions {np.flatnonzero(counts < 2).tolist()} have fewer")
+                raise ValueError(
+                    "every position in the cycle needs at least 2 observations; "
+                    f"positions {np.flatnonzero(counts < 2).tolist()} have fewer"
+                )
             design = np.column_stack([(phase == k).astype("float64") for k in range(period)] + [x])
             beta, *_ = np.linalg.lstsq(design, y, rcond=None)
             slope = float(beta[-1])
@@ -307,9 +345,14 @@ class GeoTimeSeries:
             if dof > 0:
                 try:
                     from scipy import stats
+
                     cov = np.linalg.pinv(design.T @ design) * (ss_res / dof)
                     se = float(np.sqrt(cov[-1, -1]))
-                    p_value = 1.0 if se == 0 and slope == 0 else (0.0 if se == 0 else float(2 * stats.t.sf(abs(slope / se), dof)))
+                    p_value = (
+                        1.0
+                        if se == 0 and slope == 0
+                        else (0.0 if se == 0 else float(2 * stats.t.sf(abs(slope / se), dof)))
+                    )
                 except ImportError:
                     pass
             return {
@@ -318,7 +361,11 @@ class GeoTimeSeries:
                 "r_squared": round(0.0 if ss_tot < 1e-12 else 1.0 - ss_res / ss_tot, 4),
                 "p_value": None if p_value is None else round(p_value, 4),
                 "significant": None if p_value is None else p_value < 0.05,
-                "direction": "increasing" if slope > stable_threshold else "decreasing" if slope < -stable_threshold else "stable",
+                "direction": (
+                    "increasing"
+                    if slope > stable_threshold
+                    else "decreasing" if slope < -stable_threshold else "stable"
+                ),
                 "period": period,
             }
 
@@ -329,6 +376,7 @@ class GeoTimeSeries:
         p_value = None
         try:
             from scipy import stats
+
             if ss_tot >= 1e-12:
                 p_value = float(stats.linregress(x, y).pvalue)
         except ImportError:
@@ -339,7 +387,11 @@ class GeoTimeSeries:
             "r_squared": round(r2, 4),
             "p_value": None if p_value is None else round(p_value, 4),
             "significant": None if p_value is None else p_value < 0.05,
-            "direction": "increasing" if slope > stable_threshold else "decreasing" if slope < -stable_threshold else "stable",
+            "direction": (
+                "increasing"
+                if slope > stable_threshold
+                else "decreasing" if slope < -stable_threshold else "stable"
+            ),
         }
         parsed = [_parse_date(dates[i]) if i < len(dates) else None for i, _ in pts]
         if all(d is not None for d in parsed):
@@ -348,9 +400,16 @@ class GeoTimeSeries:
                 out["slope_per_year"] = round(float(np.polyfit(yrs, y, 1)[0]), 6)
         return out
 
-    def extract_point(self, image_paths: list[str], lon: float, lat: float, index: str = "ndvi",
-                      date_strings: list[str] | None = None, reflectance_scale: float | None = None,
-                      reflectance_offset: float = 0.0) -> dict[str, Any]:
+    def extract_point(
+        self,
+        image_paths: list[str],
+        lon: float,
+        lat: float,
+        index: str = "ndvi",
+        date_strings: list[str] | None = None,
+        reflectance_scale: float | None = None,
+        reflectance_offset: float = 0.0,
+    ) -> dict[str, Any]:
         """The index at one location (WGS84 ``lon``, ``lat``) for every image.
 
         Returns ``{"index", "dates", "mean", "location", "n_images", "errors"}`` where ``mean`` holds the
@@ -367,7 +426,9 @@ class GeoTimeSeries:
         bands, fn = self.INDICES[index]
         missing = [b for b in bands if b not in self.band_map]
         if missing:
-            raise ValueError(f"index {index!r} needs band(s) {missing}, which sensor {self.sensor!r} does not define")
+            raise ValueError(
+                f"index {index!r} needs band(s) {missing}, which sensor {self.sensor!r} does not define"
+            )
         n = len(image_paths)
         if date_strings is not None and len(date_strings) != n:
             raise ValueError(f"date_strings has {len(date_strings)} entries for {n} images")
@@ -383,20 +444,36 @@ class GeoTimeSeries:
                         continue
                     win = ((row, row + 1), (col, col + 1))
                     px = [src.read(self.band_map[b], window=win, masked=True) for b in bands]
-                    is_int = any(np.issubdtype(np.dtype(src.dtypes[self.band_map[b] - 1]), np.integer) for b in bands)
+                    is_int = any(
+                        np.issubdtype(np.dtype(src.dtypes[self.band_map[b] - 1]), np.integer)
+                        for b in bands
+                    )
                 if any(np.ma.getmaskarray(p).any() for p in px):
                     vals.append(None)
                     continue
                 v = [float(p[0, 0]) for p in px]
-                scale = reflectance_scale if reflectance_scale is not None else (
-                    10000.0 if (is_int or max(v) > 2.0) else 1.0)
-                value = float(fn(*[(x + reflectance_offset) / scale for x in v])) if any(x != 0 for x in v) else float("nan")
+                scale = (
+                    reflectance_scale
+                    if reflectance_scale is not None
+                    else (10000.0 if (is_int or max(v) > 2.0) else 1.0)
+                )
+                value = (
+                    float(fn(*[(x + reflectance_offset) / scale for x in v]))
+                    if any(x != 0 for x in v)
+                    else float("nan")
+                )
                 vals.append(round(value, 4) if np.isfinite(value) and -1 <= value <= 1 else None)
             except Exception as exc:
                 errors[str(path)] = f"{type(exc).__name__}: {exc}"
                 vals.append(None)
-        return {"index": index, "dates": list(date_strings) if date_strings is not None else list(range(n)),
-                "mean": vals, "location": {"lon": lon, "lat": lat}, "n_images": n, "errors": errors}
+        return {
+            "index": index,
+            "dates": list(date_strings) if date_strings is not None else list(range(n)),
+            "mean": vals,
+            "location": {"lon": lon, "lat": lat},
+            "n_images": n,
+            "errors": errors,
+        }
 
     def plot(self, series: dict, title: str | None = None, save_path: str | None = None) -> Any:
         """Line plot of the mean with the P10-P90 band. Returns the matplotlib figure.
@@ -409,7 +486,9 @@ class GeoTimeSeries:
 
         dates = series.get("dates", [])
         means = series.get("mean", [])
-        rows = [(i, dates[i] if i < len(dates) else i, m) for i, m in enumerate(means) if m is not None]
+        rows = [
+            (i, dates[i] if i < len(dates) else i, m) for i, m in enumerate(means) if m is not None
+        ]
         if not rows:
             raise ValueError("nothing to plot: no date has a value")
         xs = [r[0] for r in rows]
@@ -417,9 +496,17 @@ class GeoTimeSeries:
         label = str(series.get("index", "index")).upper()
         ax.plot(xs, [r[2] for r in rows], "b-o", linewidth=2, markersize=4, label=label)
         p10, p90 = series.get("p10", []), series.get("p90", [])
-        if len(p10) == len(means) == len(p90) and all(p10[i] is not None and p90[i] is not None for i in xs):
-            ax.fill_between(xs, [p10[i] for i in xs], [p90[i] for i in xs], alpha=0.2, color="blue",
-                            label="P10-P90 range")
+        if len(p10) == len(means) == len(p90) and all(
+            p10[i] is not None and p90[i] is not None for i in xs
+        ):
+            ax.fill_between(
+                xs,
+                [p10[i] for i in xs],
+                [p90[i] for i in xs],
+                alpha=0.2,
+                color="blue",
+                label="P10-P90 range",
+            )
         step = max(1, len(dates) // 12)
         ticks = list(range(0, len(dates), step))
         ax.set_xticks(ticks)

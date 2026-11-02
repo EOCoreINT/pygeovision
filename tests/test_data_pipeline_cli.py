@@ -1,10 +1,11 @@
 """``pygeovision data pipeline|auth`` wiring to the real pygeofetch API (these used to raise AttributeError)."""
+
 from __future__ import annotations
 
 import json
 
-import pytest
 from click.testing import CliRunner
+import pytest
 
 from pygeovision.cli.main import cli
 
@@ -20,6 +21,7 @@ steps:
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     from pathlib import Path
+
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     return tmp_path
 
@@ -30,17 +32,21 @@ def run(*args):
 
 @pytest.fixture()
 def yml(tmp_path):
-    p = tmp_path / "p.yaml"; p.write_text(GOOD)
+    p = tmp_path / "p.yaml"
+    p.write_text(GOOD)
     return p
 
 
 def test_validate_accepts_good_and_rejects_bad(home, yml, tmp_path):
     assert run("validate", yml).exit_code == 0
-    bad = tmp_path / "bad.yaml"; bad.write_text("name: x\nsteps:\n  - search\n")
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("name: x\nsteps:\n  - search\n")
     assert run("validate", bad).exit_code == 1
-    noname = tmp_path / "n.yaml"; noname.write_text("steps: []\n")
+    noname = tmp_path / "n.yaml"
+    noname.write_text("steps: []\n")
     assert run("validate", noname).exit_code == 1
-    empty = tmp_path / "e.yaml"; empty.write_text("name: e\nsteps: []\n")
+    empty = tmp_path / "e.yaml"
+    empty.write_text("name: e\nsteps: []\n")
     assert run("validate", empty).exit_code == 1
 
 
@@ -49,7 +55,9 @@ def test_schedule_list_roundtrip_uses_pygeofetch_registry(home, yml):
     r = run("schedule", yml, "--name", "nightly", "--cron", "0 2 * * *")
     assert r.exit_code == 0, r.output
     store = json.loads((home / ".pygeofetch" / "scheduled_pipelines.json").read_text())
-    assert store["nightly"]["schedule"] == "0 2 * * *"           # same file `pygeofetch pipeline schedule` writes
+    assert (
+        store["nightly"]["schedule"] == "0 2 * * *"
+    )  # same file `pygeofetch pipeline schedule` writes
     out = run("list").output
     assert "nightly" in out and "0 2 * * *" in out
 
@@ -73,6 +81,7 @@ def test_failed_step_exits_nonzero_and_is_logged(home, tmp_path):
 
 def test_auth_test_open_provider_checks_endpoint_and_closed_needs_credentials(home, monkeypatch):
     import requests
+
     seen = {}
 
     class R:
@@ -81,7 +90,7 @@ def test_auth_test_open_provider_checks_endpoint_and_closed_needs_credentials(ho
     monkeypatch.setattr(requests, "get", lambda url, timeout: seen.setdefault("url", url) and R())
     r = CliRunner().invoke(cli, ["data", "auth", "test", "planetary_computer"])
     assert r.exit_code == 0 and "planetarycomputer" in seen["url"]
-    r = CliRunner().invoke(cli, ["data", "auth", "test", "usgs"])         # needs credentials, none stored
+    r = CliRunner().invoke(cli, ["data", "auth", "test", "usgs"])  # needs credentials, none stored
     assert r.exit_code == 1
 
 
@@ -90,5 +99,6 @@ def test_auth_test_open_provider_unreachable_is_a_failure(home, monkeypatch):
 
     def boom(url, timeout):
         raise requests.ConnectionError("down")
+
     monkeypatch.setattr(requests, "get", boom)
     assert CliRunner().invoke(cli, ["data", "auth", "test", "planetary_computer"]).exit_code == 1

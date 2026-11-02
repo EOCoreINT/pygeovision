@@ -10,11 +10,12 @@ much* there is per cell, which is what a map of a large area can actually displa
 These are *published datasets*, not detections on your imagery: they are only as complete and as current as the
 source, which the stats and the report say.
 """
+
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 import numpy as np
@@ -28,18 +29,43 @@ logger = logging.getLogger(__name__)
 
 BUILDING_SOURCES = {
     "microsoft": "Microsoft Global ML Building Footprints: machine-learning detections on Bing/Maxar/Vexcel imagery of "
-                 "various dates (about 1% false positives reported by the project); building heights where available.",
+    "various dates (about 1% false positives reported by the project); building heights where available.",
     "google": "Google Open Buildings v3: machine-learning detections on 50 cm satellite imagery (mostly 2022-2023) with a "
-              "per-building confidence; the dataset keeps detections of 0.65 and above.",
+    "per-building confidence; the dataset keeps detections of 0.65 and above.",
     "osm": "OpenStreetMap: volunteered data. Completeness varies a great deal between places -- good in many towns, "
-           "thin in rural areas; buildings mapped as multipolygon relations are not included.",
+    "thin in rural areas; buildings mapped as multipolygon relations are not included.",
 }
 
 #: OpenStreetMap ``highway`` values grouped for reporting (definitions: wiki.openstreetmap.org/wiki/Key:highway)
 HIGHWAY_GROUPS = {
-    "major roads": ("motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link"),
-    "local roads": ("tertiary", "tertiary_link", "unclassified", "residential", "living_street", "service", "road"),
-    "tracks and paths": ("track", "path", "footway", "cycleway", "bridleway", "steps", "pedestrian"),
+    "major roads": (
+        "motorway",
+        "motorway_link",
+        "trunk",
+        "trunk_link",
+        "primary",
+        "primary_link",
+        "secondary",
+        "secondary_link",
+    ),
+    "local roads": (
+        "tertiary",
+        "tertiary_link",
+        "unclassified",
+        "residential",
+        "living_street",
+        "service",
+        "road",
+    ),
+    "tracks and paths": (
+        "track",
+        "path",
+        "footway",
+        "cycleway",
+        "bridleway",
+        "steps",
+        "pedestrian",
+    ),
 }
 NOT_BUILT_YET = ("proposed", "construction", "razed", "abandoned", "planned", "platform")
 
@@ -51,12 +77,14 @@ def _utm(bbox) -> str:
 def _aoi_km2(bbox) -> float:
     import geopandas as gpd
     from shapely.geometry import box
+
     return float(gpd.GeoSeries([box(*bbox)], crs="EPSG:4326").to_crs(_utm(bbox)).area.iloc[0]) / 1e6
 
 
 def _cells_inside(grid, bbox) -> np.ndarray:
     """True for grid cells whose centre lies inside the bounding box."""
     from pyproj import Transformer
+
     cols, rows = np.meshgrid(np.arange(grid.width) + 0.5, np.arange(grid.height) + 0.5)
     x = grid.transform.c + grid.transform.a * cols
     y = grid.transform.f + grid.transform.e * rows
@@ -73,6 +101,7 @@ def _cell_index(grid, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndar
 
 def _clip(gdf, bbox):
     from shapely.geometry import box
+
     aoi = box(*bbox)
     gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
     gdf = gdf[gdf.intersects(aoi)].copy()
@@ -84,18 +113,32 @@ def _clip(gdf, bbox):
 # Buildings
 # ═══════════════════════════════════════════════════════════════════════════
 
-def run_building_reference(pipeline: BasePipeline, bbox, out: Path, source: str, cell_m: float, min_confidence: float,
-                           cache_dir: Any, session: Any, t0: float) -> PipelineResult:
+
+def run_building_reference(
+    pipeline: BasePipeline,
+    bbox,
+    out: Path,
+    source: str,
+    cell_m: float,
+    min_confidence: float,
+    cache_dir: Any,
+    session: Any,
+    t0: float,
+) -> PipelineResult:
     """The ``building_footprints`` pipeline when no network checkpoint is given."""
     try:
         if source not in BUILDING_SOURCES:
-            return pipeline._fail(f"source must be one of {sorted(BUILDING_SOURCES)}, got {source!r}.", t0)
+            return pipeline._fail(
+                f"source must be one of {sorted(BUILDING_SOURCES)}, got {source!r}.", t0
+            )
         if cell_m <= 0:
             return pipeline._fail("cell_m must be positive.", t0)
         if source == "microsoft":
             raw = fp.microsoft_footprints(bbox, cache_dir=cache_dir, session=session)
         elif source == "google":
-            raw = fp.google_footprints(bbox, min_confidence=min_confidence, cache_dir=cache_dir, session=session)
+            raw = fp.google_footprints(
+                bbox, min_confidence=min_confidence, cache_dir=cache_dir, session=session
+            )
         else:
             raw = fp.osm_features(bbox, "building", session=session)
         gdf = _clip(raw, bbox)
@@ -115,19 +158,35 @@ def run_building_reference(pipeline: BasePipeline, bbox, out: Path, source: str,
             np.add.at(area_sum, (row[ok], col[ok]), gdf["area_m2"].to_numpy()[ok])
             np.add.at(count, (row[ok], col[ok]), 1.0)
         inside = _cells_inside(grid, bbox)
-        cover = np.where(inside, np.clip(area_sum / (cell_m * cell_m), 0.0, 1.0), np.nan).astype("float32")
-        path = write_float(out / "building_density.tif", cover, grid.profile(),
-                           [f"share of each {cell_m:g} m cell covered by building footprints"])
-        write_float(out / "building_count.tif", np.where(inside, count, np.nan).astype("float32"), grid.profile(),
-                    [f"buildings per {cell_m:g} m cell (by centroid)"])
+        cover = np.where(inside, np.clip(area_sum / (cell_m * cell_m), 0.0, 1.0), np.nan).astype(
+            "float32"
+        )
+        path = write_float(
+            out / "building_density.tif",
+            cover,
+            grid.profile(),
+            [f"share of each {cell_m:g} m cell covered by building footprints"],
+        )
+        write_float(
+            out / "building_count.tif",
+            np.where(inside, count, np.nan).astype("float32"),
+            grid.profile(),
+            [f"buildings per {cell_m:g} m cell (by centroid)"],
+        )
         aoi_km2 = _aoi_km2(bbox)
         areas = gdf["area_m2"].to_numpy() if len(gdf) else np.array([])
         stats: dict[str, Any] = {
-            "source": source, "source_note": BUILDING_SOURCES[source], "building_count": int(len(gdf)),
-            "building_area_ha": float(areas.sum()) / 1e4, "building_coverage": float(areas.sum()) / (aoi_km2 * 1e6),
-            "buildings_per_km2": len(gdf) / aoi_km2, "mean_building_area_m2": float(areas.mean()) if len(areas) else None,
-            "median_building_area_m2": float(np.median(areas)) if len(areas) else None, "aoi_area_km2": aoi_km2,
-            "cell_m": cell_m, "max_cell_coverage": float(np.nanmax(cover)) if inside.any() else None,
+            "source": source,
+            "source_note": BUILDING_SOURCES[source],
+            "building_count": int(len(gdf)),
+            "building_area_ha": float(areas.sum()) / 1e4,
+            "building_coverage": float(areas.sum()) / (aoi_km2 * 1e6),
+            "buildings_per_km2": len(gdf) / aoi_km2,
+            "mean_building_area_m2": float(areas.mean()) if len(areas) else None,
+            "median_building_area_m2": float(np.median(areas)) if len(areas) else None,
+            "aoi_area_km2": aoi_km2,
+            "cell_m": cell_m,
+            "max_cell_coverage": float(np.nanmax(cover)) if inside.any() else None,
             "footprints_file": str(gpkg) if len(gdf) else None,
         }
         if source == "google":
@@ -136,7 +195,7 @@ def run_building_reference(pipeline: BasePipeline, bbox, out: Path, source: str,
             h = gdf["height_m"].dropna()
             stats["buildings_with_height"] = int(len(h))
             stats["mean_height_m"] = float(h.mean()) if len(h) else None
-        meta = {"date": "n/a (published dataset)", "crs": utm}
+        meta: dict[str, Any] = {"date": "n/a (published dataset)", "crs": utm}
         if len(gdf):
             meta["vector_files"] = [{"name": "buildings", "path": str(Path(gpkg).resolve())}]
         return pipeline._ok(path, stats, meta, t0)
@@ -148,6 +207,7 @@ def run_building_reference(pipeline: BasePipeline, bbox, out: Path, source: str,
 # Roads
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _group_of(tag: str | None) -> str:
     for g, tags in HIGHWAY_GROUPS.items():
         if tag in tags:
@@ -158,6 +218,7 @@ def _group_of(tag: str | None) -> str:
 def length_per_cell(lines_utm, grid, step_m: float) -> np.ndarray:
     """Metres of line in each grid cell. Lines are cut every ``step_m`` and each piece goes to the cell of its midpoint."""
     import shapely
+
     acc = np.zeros((grid.height, grid.width), "float64")
     if len(lines_utm) == 0:
         return acc
@@ -183,12 +244,15 @@ class RoadNetworkPipeline(BasePipeline):
     similar. Use it to train a road segmentation model (rasterise the lines as labels), then run that model with the
     ``road_extraction`` pipeline.
     """
+
     name = "road_network"
     description = "Road network from OpenStreetMap: length by road class, road density and a GeoPackage of every road"
     domain = "infrastructure"
     tags = ["roads", "osm", "network", "reference-product"]
 
-    def run(self, bbox, output_dir="./output", cell_m=500.0, exclude=NOT_BUILT_YET, **kwargs) -> PipelineResult:
+    def run(
+        self, bbox, output_dir="./output", cell_m=500.0, exclude=NOT_BUILT_YET, **kwargs
+    ) -> PipelineResult:
         t0 = time.time()
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
@@ -208,22 +272,37 @@ class RoadNetworkPipeline(BasePipeline):
                 gdf.to_file(gpkg, layer="roads", driver="GPKG")
             acc = length_per_cell(lines, grid, max(cell_m / 5.0, 10.0))
             inside = _cells_inside(grid, bbox)
-            dens = np.where(inside, acc / 1000.0 / (cell_m * cell_m / 1e6), np.nan).astype("float32")
-            path = write_float(out / "road_density.tif", dens, grid.profile(), [f"km of road per km2, {cell_m:g} m cells"])
+            dens = np.where(inside, acc / 1000.0 / (cell_m * cell_m / 1e6), np.nan).astype(
+                "float32"
+            )
+            path = write_float(
+                out / "road_density.tif",
+                dens,
+                grid.profile(),
+                [f"km of road per km2, {cell_m:g} m cells"],
+            )
             aoi_km2 = _aoi_km2(bbox)
             total_km = float(gdf["length_m"].sum()) / 1000.0
             by_tag = gdf.groupby("highway")["length_m"].sum().sort_values(ascending=False) / 1000.0
             by_group = gdf.groupby("group")["length_m"].sum() / 1000.0
             stats = {
-                "total_length_km": total_km, "road_density_km_per_km2": total_km / aoi_km2, "segments": int(len(gdf)),
+                "total_length_km": total_km,
+                "road_density_km_per_km2": total_km / aoi_km2,
+                "segments": int(len(gdf)),
                 "km_by_highway": {k: round(float(v), 3) for k, v in by_tag.items()},
                 "km_by_group": {k: round(float(v), 3) for k, v in by_group.items()},
-                "unnamed_share_of_length": (float(gdf.loc[gdf["name"].isna(), "length_m"].sum()) / 1000.0 / total_km) if total_km else None,
-                "aoi_area_km2": aoi_km2, "cell_m": cell_m, "excluded_tags": list(exclude),
+                "unnamed_share_of_length": (
+                    (float(gdf.loc[gdf["name"].isna(), "length_m"].sum()) / 1000.0 / total_km)
+                    if total_km
+                    else None
+                ),
+                "aoi_area_km2": aoi_km2,
+                "cell_m": cell_m,
+                "excluded_tags": list(exclude),
                 "product_note": "OpenStreetMap highway ways (volunteered data); completeness of minor roads and tracks varies by place.",
                 "network_file": str(gpkg) if len(gdf) else None,
             }
-            meta = {"date": "n/a (published dataset)", "crs": utm}
+            meta: dict[str, Any] = {"date": "n/a (published dataset)", "crs": utm}
             if len(gdf):
                 meta["vector_files"] = [{"name": "roads", "path": str(Path(gpkg).resolve())}]
             return self._ok(path, stats, meta, t0)

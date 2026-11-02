@@ -5,6 +5,7 @@ All functions work on a 2-D integer label raster and use 4-connectivity
 Border length is counted in *pixel edges*: two objects that touch along a
 straight line of 10 pixels share a border of length 10.
 """
+
 from __future__ import annotations
 
 import numpy as np

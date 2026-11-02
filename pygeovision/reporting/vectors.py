@@ -11,11 +11,12 @@ large area), tiny patches are merged into their neighbours with a sieve filter
 of growing size until it fits; the layer's ``info`` says what was done, and the
 raster tables in the report are unaffected (they count pixels, not polygons).
 """
+
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -30,14 +31,26 @@ DEFAULT_MAX_POLYGONS = 300_000
 _DISSOLVE_LIMIT = 200_000
 VECTOR_FORMATS = ("gpkg", "geojson", "shp", "kml")
 #: attribute names <= 10 characters so the Shapefile keeps them intact
-ATTRS = ("patch_id", "class_id", "class_name", "color_hex", "area_ha", "area_m2", "pct_aoi", "cx", "cy", "pipeline", "period")
+ATTRS = (
+    "patch_id",
+    "class_id",
+    "class_name",
+    "color_hex",
+    "area_ha",
+    "area_m2",
+    "pct_aoi",
+    "cx",
+    "cy",
+    "pipeline",
+    "period",
+)
 
 
 @dataclass
 class VectorLayer:
     name: str
-    gdf: Any                               # geopandas.GeoDataFrame in EPSG:4326 (may be empty)
-    classes: Any = None                    # dissolved per-class GeoDataFrame (None if too large)
+    gdf: Any  # geopandas.GeoDataFrame in EPSG:4326 (may be empty)
+    classes: Any = None  # dissolved per-class GeoDataFrame (None if too large)
     source_layer: str = ""
     note: str = ""
     sieve_pixels: int = 0
@@ -50,16 +63,27 @@ class VectorLayer:
 
 def _count_patches(mask_by_value: Iterable[np.ndarray]) -> int:
     from scipy import ndimage
+
     total = 0
     for m in mask_by_value:
-        _, n = ndimage.label(m)          # default structure = 4-connectivity
+        _, n = ndimage.label(m)  # default structure = 4-connectivity
         total += int(n)
     return total
 
 
 def polygonise(
-    arr: np.ndarray, transform: Any, crs: Any, defs: Sequence[ClassDef], *, keep: Sequence[int] | None,
-    skip: Sequence[int] = (), name: str, source_layer: str, aoi_area_ha: float, pipeline: str, period: str,
+    arr: np.ndarray,
+    transform: Any,
+    crs: Any,
+    defs: Sequence[ClassDef],
+    *,
+    keep: Sequence[int] | None,
+    skip: Sequence[int] = (),
+    name: str,
+    source_layer: str,
+    aoi_area_ha: float,
+    pipeline: str,
+    period: str,
     max_polygons: int = DEFAULT_MAX_POLYGONS,
 ) -> VectorLayer:
     """Polygonise class array ``arr`` (NaN or negative = invalid).
@@ -78,10 +102,27 @@ def polygonise(
         keep_vals = [v for v in present if v not in set(skip)]
     else:
         keep_vals = [v for v in keep if v in present]
-    empty_cols = ["patch_id", "class_id", "class_name", "color_hex", "area_ha", "area_m2", "pct_aoi", "cx", "cy", "pipeline", "period", "geometry"]
+    empty_cols = [
+        "patch_id",
+        "class_id",
+        "class_name",
+        "color_hex",
+        "area_ha",
+        "area_m2",
+        "pct_aoi",
+        "cx",
+        "cy",
+        "pipeline",
+        "period",
+        "geometry",
+    ]
     if not keep_vals:
-        return VectorLayer(name, gpd.GeoDataFrame({c: [] for c in empty_cols}, geometry="geometry", crs="EPSG:4326"),
-                           source_layer=source_layer, note="no pixels of the selected classes")
+        return VectorLayer(
+            name,
+            gpd.GeoDataFrame({c: [] for c in empty_cols}, geometry="geometry", crs="EPSG:4326"),
+            source_layer=source_layer,
+            note="no pixels of the selected classes",
+        )
     if max(present) > 254:
         raise ValueError(f"class values above 254 cannot be polygonised (found {max(present)})")
 
@@ -100,12 +141,16 @@ def polygonise(
                 break
             min_px *= 2
         keep_mask = np.isin(work, keep_vals) & valid
-        note = (f"{raw:,} raw patches exceeded the {max_polygons:,}-polygon limit; patches smaller than "
-                f"{min_px} pixels were merged into their neighbours.")
+        note = (
+            f"{raw:,} raw patches exceeded the {max_polygons:,}-polygon limit; patches smaller than "
+            f"{min_px} pixels were merged into their neighbours."
+        )
         logger.warning("%s: %s", name, note)
 
     geoms, vals = [], []
-    for geom, val in shapes(work, mask=keep_mask.astype(np.uint8), transform=transform, connectivity=4):
+    for geom, val in shapes(
+        work, mask=keep_mask.astype(np.uint8), transform=transform, connectivity=4
+    ):
         geoms.append(shp_shape(geom))
         vals.append(int(val))
     gdf = gpd.GeoDataFrame({"class_id": vals}, geometry=geoms, crs=crs)
@@ -129,8 +174,16 @@ def polygonise(
 
     classes = None
     if len(gdf) <= _DISSOLVE_LIMIT:
-        d = gdf.dissolve(by="class_id", aggfunc={"class_name": "first", "color_hex": "first", "area_ha": "sum",
-                                                 "pipeline": "first", "period": "first"}).reset_index()
+        d = gdf.dissolve(
+            by="class_id",
+            aggfunc={
+                "class_name": "first",
+                "color_hex": "first",
+                "area_ha": "sum",
+                "pipeline": "first",
+                "period": "first",
+            },
+        ).reset_index()
         d["n_patches"] = d["class_id"].map(gdf.groupby("class_id").size()).astype(int)
         d["area_ha"] = d["area_ha"].round(4)
         d["pct_aoi"] = (d["area_ha"] / aoi_area_ha * 100.0).round(5) if aoi_area_ha > 0 else np.nan
@@ -138,8 +191,16 @@ def polygonise(
     return VectorLayer(name, gdf, classes, source_layer, note, min_px, raw)
 
 
-def load_vector_file(name: str, path: Path, *, pipeline: str, period: str, aoi_area_ha: float,
-                     max_features: int = DEFAULT_MAX_POLYGONS, layer: str | None = None) -> VectorLayer:
+def load_vector_file(
+    name: str,
+    path: Path,
+    *,
+    pipeline: str,
+    period: str,
+    aoi_area_ha: float,
+    max_features: int = DEFAULT_MAX_POLYGONS,
+    layer: str | None = None,
+) -> VectorLayer:
     """A vector layer that a pipeline already wrote (buildings, roads, streams, fire points) as a report deliverable.
 
     Geometries are kept as they are -- nothing is rasterised or merged. Attributes the exports expect are added
@@ -152,14 +213,21 @@ def load_vector_file(name: str, path: Path, *, pipeline: str, period: str, aoi_a
     path = Path(path)
     gdf = gpd.read_file(path, layer=layer or name)
     if len(gdf) > max_features:
-        return VectorLayer(name, gdf.iloc[0:0].copy(), None, name,
-                           f"{len(gdf):,} features exceed the {max_features:,}-feature limit for the report exports; "
-                           f"all of them are in {path.name}.")
+        return VectorLayer(
+            name,
+            gdf.iloc[0:0].copy(),
+            None,
+            name,
+            f"{len(gdf):,} features exceed the {max_features:,}-feature limit for the report exports; "
+            f"all of them are in {path.name}.",
+        )
     gdf = gdf.to_crs("EPSG:4326") if gdf.crs is not None else gdf.set_crs("EPSG:4326")
     if len(gdf) and gdf.geom_type.isin(["Polygon", "MultiPolygon"]).all():
         area_m2 = gdf.to_crs(EQUAL_AREA_CRS).area
         gdf["area_ha"] = (area_m2 / 1e4).round(4)
-        gdf["pct_aoi"] = (gdf["area_ha"] / aoi_area_ha * 100.0).round(5) if aoi_area_ha > 0 else np.nan
+        gdf["pct_aoi"] = (
+            (gdf["area_ha"] / aoi_area_ha * 100.0).round(5) if aoi_area_ha > 0 else np.nan
+        )
     if "class_id" not in gdf.columns:
         gdf["class_id"] = 0
     if "class_name" not in gdf.columns:
@@ -175,10 +243,11 @@ def load_vector_file(name: str, path: Path, *, pipeline: str, period: str, aoi_a
     return VectorLayer(name, gdf, None, name, "", 0, len(gdf))
 
 
-def aoi_frame(bbox: tuple[float, float, float, float], attrs: dict[str, Any]) -> Any:
+def aoi_frame(bbox: Sequence[float], attrs: dict[str, Any]) -> Any:
     """A one-row GeoDataFrame with the requested area of interest."""
     import geopandas as gpd
     from shapely.geometry import box
+
     clean = {k[:10]: (v if isinstance(v, (int, float, str)) else str(v)) for k, v in attrs.items()}
     return gpd.GeoDataFrame([clean], geometry=[box(*bbox)], crs="EPSG:4326")
 
@@ -186,6 +255,7 @@ def aoi_frame(bbox: tuple[float, float, float, float], attrs: dict[str, Any]) ->
 def _kml_available() -> bool:
     try:
         import pyogrio
+
         drivers = pyogrio.list_drivers()
     except Exception as exc:  # noqa: BLE001 - capability probe
         logger.debug("pyogrio driver probe failed: %s", exc)
@@ -193,8 +263,9 @@ def _kml_available() -> bool:
     return any(k in drivers and "w" in drivers[k] for k in ("LIBKML", "KML"))
 
 
-def write_vectors(layers: list[VectorLayer], aoi: Any, out_dir: Path, pipeline: str,
-                  formats: Sequence[str]) -> tuple[dict[str, list[Path]], list[str]]:
+def write_vectors(
+    layers: list[VectorLayer], aoi: Any, out_dir: Path, pipeline: str, formats: Sequence[str]
+) -> tuple[dict[str, list[Path]], list[str]]:
     """Write ``layers`` (+ the AOI) in each requested format under ``out_dir``.
 
     Returns ``({format: [paths]}, warnings)``. A format that cannot be written is
@@ -207,7 +278,9 @@ def write_vectors(layers: list[VectorLayer], aoi: Any, out_dir: Path, pipeline: 
     nonempty = [lyr for lyr in layers if lyr.n_features]
     for lyr in layers:
         if not lyr.n_features:
-            warnings.append(f"vector layer '{lyr.name}' has no features ({lyr.note or 'nothing to polygonise'}).")
+            warnings.append(
+                f"vector layer '{lyr.name}' has no features ({lyr.note or 'nothing to polygonise'})."
+            )
 
     for fmt in formats:
         try:
@@ -219,7 +292,9 @@ def write_vectors(layers: list[VectorLayer], aoi: Any, out_dir: Path, pipeline: 
                 for lyr in nonempty:
                     lyr.gdf.to_file(p, layer=lyr.name, driver="GPKG", engine="pyogrio")
                     if lyr.classes is not None:
-                        lyr.classes.to_file(p, layer=f"{lyr.name}_classes", driver="GPKG", engine="pyogrio")
+                        lyr.classes.to_file(
+                            p, layer=f"{lyr.name}_classes", driver="GPKG", engine="pyogrio"
+                        )
                 written["gpkg"] = [p]
             elif fmt == "geojson":
                 d = out_dir / "geojson"
@@ -249,14 +324,19 @@ def write_vectors(layers: list[VectorLayer], aoi: Any, out_dir: Path, pipeline: 
                 d.mkdir(exist_ok=True)
                 paths = []
                 import pyogrio
+
                 driver = "LIBKML" if "LIBKML" in pyogrio.list_drivers() else "KML"
                 for name, g in [("aoi", aoi)] + [(lyr.name, lyr.gdf) for lyr in nonempty]:
                     p = d / f"{pipeline}_{name}.kml"
-                    g.drop(columns=[c for c in ("cx", "cy") if c in g.columns]).to_file(p, driver=driver, engine="pyogrio")
+                    g.drop(columns=[c for c in ("cx", "cy") if c in g.columns]).to_file(
+                        p, driver=driver, engine="pyogrio"
+                    )
                     paths.append(p)
                 written["kml"] = paths
             else:
-                warnings.append(f"unknown vector format '{fmt}' (choose from {', '.join(VECTOR_FORMATS)}).")
+                warnings.append(
+                    f"unknown vector format '{fmt}' (choose from {', '.join(VECTOR_FORMATS)})."
+                )
         except Exception as exc:  # noqa: BLE001 - one format failing must not lose the others
             logger.warning("vector export '%s' failed: %s", fmt, exc, exc_info=True)
             warnings.append(f"vector export '{fmt}' failed: {exc}")

@@ -19,6 +19,7 @@ What this module does NOT own (delegated to pygeofetch):
   - Spectral index computation, time-series analysis
   - Vectorization, zonal statistics, COG conversion
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── 1. GCP Recovery (pygeofetch GRD download bug fix) ─────────────────────────
+
 
 def fix_georeference(file_path: str) -> str:
     """
@@ -54,26 +56,29 @@ def fix_georeference(file_path: str) -> str:
         # Always use the returned path, not the original
     """
     from pygeovision.data.validators.georeference import validate_sar_georeference
+
     geo = validate_sar_georeference(str(file_path))
 
     if geo.valid:
         return str(file_path)
 
     if geo.recovered and geo.repaired_path:
-        logger.info("GCP recovery: %s → %s (pixel_size=%s m)",
-                    pathlib.Path(file_path).name,
-                    pathlib.Path(geo.repaired_path).name,
-                    f"{geo.transform_a:.2f}" if geo.transform_a else "?")
+        logger.info(
+            "GCP recovery: %s → %s (pixel_size=%s m)",
+            pathlib.Path(file_path).name,
+            pathlib.Path(geo.repaired_path).name,
+            f"{geo.transform_a:.2f}" if geo.transform_a else "?",
+        )
         return geo.repaired_path
 
-    logger.error("Georeference invalid and unrecoverable for %s: %s",
-                 file_path, geo.errors)
+    logger.error("Georeference invalid and unrecoverable for %s: %s", file_path, geo.errors)
     raise ValueError(
         f"Georeference recovery failed for {pathlib.Path(file_path).name}: {geo.errors}"
     )
 
 
 # ── 2. DataValidator gate ─────────────────────────────────────────────────────
+
 
 class DataValidator:
     """
@@ -104,10 +109,10 @@ class DataValidator:
     def validate_for_ai(
         self,
         raster_path: str,
-        model_type:  str = "segmentation",
+        model_type: str = "segmentation",
         expected_bands: int | None = None,
         expected_range: tuple[float, float] = (0.0, 1.0),
-        auto_fix:    bool = True,
+        auto_fix: bool = True,
     ) -> tuple[np.ndarray | None, dict[str, Any]]:
         """
         Validate a raster and return an AI-ready float32 array.
@@ -126,7 +131,7 @@ class DataValidator:
         """
         import rasterio
 
-        report = {"valid": False, "warnings": [], "errors": [], "fixes_applied": []}
+        report: dict[str, Any] = {"valid": False, "warnings": [], "errors": [], "fixes_applied": []}
 
         if not pathlib.Path(raster_path).exists():
             report["errors"].append(f"File not found: {raster_path}")
@@ -135,8 +140,8 @@ class DataValidator:
         try:
             with rasterio.open(raster_path) as src:
                 data = src.read().astype("float32")
-                crs  = src.crs
-                t    = src.transform
+                crs = src.crs
+                t = src.transform
         except Exception as e:
             report["errors"].append(f"Cannot open file: {e}")
             return None, report
@@ -158,7 +163,9 @@ class DataValidator:
         # Pixel size check
         a = abs(t.a)
         # 0.5 m .. 10 km; a lon/lat raster measures pixels in degrees (1 degree ~ 111.32 km)
-        lo_px, hi_px = (0.5 / 111_320.0, 10_000 / 111_320.0) if crs.is_geographic else (0.5, 10_000.0)
+        lo_px, hi_px = (
+            (0.5 / 111_320.0, 10_000 / 111_320.0) if crs.is_geographic else (0.5, 10_000.0)
+        )
         if a < lo_px or a > hi_px:
             report["errors"].append(
                 f"Pixel size {a:.6f} is not physically plausible. "
@@ -213,25 +220,28 @@ class DataValidator:
                 f"Check normalisation step."
             )
 
-        report.update({
-            "valid":        True,
-            "shape":        (C, H, W),
-            "dtype":        "float32",
-            "crs":          str(crs),
-            "pixel_size_m": float(a * 111_320.0) if crs.is_geographic else float(a),
-            "value_range":  (actual_min, actual_max),
-            "model_type":   model_type,
-        })
+        report.update(
+            {
+                "valid": True,
+                "shape": (C, H, W),
+                "dtype": "float32",
+                "crs": str(crs),
+                "pixel_size_m": float(a * 111_320.0) if crs.is_geographic else float(a),
+                "value_range": (actual_min, actual_max),
+                "model_type": model_type,
+            }
+        )
         return data, report
 
 
 # ── 3. SAR → 6-channel HLS mapping (Prithvi/DINOv3 AI prep) ──────────────────
 
+
 def prepare_sar_for_ai(
-    file_path:       str,
+    file_path: str,
     channel_mapping: str = "physics_guided",
     fix_georeference_first: bool = True,
-    validate:        bool = True,
+    validate: bool = True,
 ) -> dict[str, Any]:
     """
     Complete SAR → AI pipeline:
@@ -277,7 +287,8 @@ def prepare_sar_for_ai(
             working_path = fix_georeference(file_path)
         except ValueError as e:
             return {
-                "ready": False, "error": str(e),
+                "ready": False,
+                "error": str(e),
                 "working_path": file_path,
             }
     else:
@@ -287,10 +298,11 @@ def prepare_sar_for_ai(
     with rasterio.open(working_path) as src:
         data = src.read().astype("float32")
         meta = {
-            "crs":       str(src.crs),
+            "crs": str(src.crs),
             "transform": src.transform,
-            "shape":     (src.count, src.height, src.width),
-            "pixel_m":   abs(src.transform.a) * (111_320.0 if src.crs and src.crs.is_geographic else 1.0),
+            "shape": (src.count, src.height, src.width),
+            "pixel_m": abs(src.transform.a)
+            * (111_320.0 if src.crs and src.crs.is_geographic else 1.0),
         }
 
     if data.shape[0] < 2:
@@ -300,8 +312,8 @@ def prepare_sar_for_ai(
             "working_path": working_path,
         }
 
-    vv = data[0:1]   # (1, H, W)
-    vh = data[1:2]   # (1, H, W)
+    vv = data[0:1]  # (1, H, W)
+    vh = data[1:2]  # (1, H, W)
 
     # Step 3: 6-channel mapping
     six_ch = sar_to_hls_6ch(vv, vh, mapping=channel_mapping)
@@ -314,12 +326,14 @@ def prepare_sar_for_ai(
         import tempfile
 
         import rasterio
+
         with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
             tmp_path = tmp.name
         with rasterio.open(working_path) as ref:
             profile = ref.profile.copy()
         profile.update(count=6, dtype="float32")
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(tmp_path, "w", **profile) as dst:
             dst.write(six_ch)
@@ -329,21 +343,21 @@ def prepare_sar_for_ai(
         pathlib.Path(tmp_path).unlink(missing_ok=True)
 
     return {
-        "six_channel":   six_ch,
-        "vv":            vv,
-        "vh":            vh,
-        "working_path":  working_path,
+        "six_channel": six_ch,
+        "vv": vv,
+        "vh": vh,
+        "working_path": working_path,
         "channel_mapping": channel_mapping,
-        "metadata":      meta,
-        "validation":    validation,
-        "ready":         validation.get("valid", False),
+        "metadata": meta,
+        "validation": validation,
+        "ready": validation.get("valid", False),
     }
 
 
 def prepare_optical_for_ai(
-    file_path:       str,
-    expected_bands:  int = 6,
-    expected_range:  tuple[float, float] = (0.0, 1.0),
+    file_path: str,
+    expected_bands: int = 6,
+    expected_range: tuple[float, float] = (0.0, 1.0),
     fix_georeference_first: bool = False,
 ) -> dict[str, Any]:
     """
@@ -371,7 +385,8 @@ def prepare_optical_for_ai(
             logger.warning(
                 "fix_georeference_first=True was requested but the fix "
                 "failed (%s) — proceeding with the ORIGINAL file, which "
-                "may still have a broken/corrupted georeference.", exc,
+                "may still have a broken/corrupted georeference.",
+                exc,
             )
 
     validator = DataValidator()
@@ -383,14 +398,15 @@ def prepare_optical_for_ai(
     )
 
     return {
-        "array":        arr,
+        "array": arr,
         "working_path": working_path,
-        "validation":   report,
-        "ready":        report.get("valid", False) and arr is not None,
+        "validation": report,
+        "ready": report.get("valid", False) and arr is not None,
     }
 
 
 # ── 4. Full acquisition → AI pipeline (convenience wrapper) ───────────────────
+
 
 class EOPipeline:
     """
@@ -423,9 +439,10 @@ class EOPipeline:
 
     def __init__(self, provider: str = "planetary_computer"):
         from pygeovision.data.acquire import SatelliteAcquirer
-        self._acq      = SatelliteAcquirer()
+
+        self._acq = SatelliteAcquirer()
         self._provider = provider
-        self._scenes:    list = []
+        self._scenes: list = []
         self._downloads: list = []
         self._current_path: str | None = None
 
@@ -435,17 +452,26 @@ class EOPipeline:
         return self
 
     def search(
-        self, bbox, date_range=None, satellite=None,
-        cloud_cover_max=100, collections=None,
-        sar_product_type=None, polarisation=None,
+        self,
+        bbox,
+        date_range=None,
+        satellite=None,
+        cloud_cover_max=100,
+        collections=None,
+        sar_product_type=None,
+        polarisation=None,
         providers=None,
     ) -> EOPipeline:
         """Search for scenes. Chainable."""
         self._scenes = self._acq.search(
-            bbox=bbox, date_range=date_range, satellite=satellite,
+            bbox=bbox,
+            date_range=date_range,
+            satellite=satellite,
             providers=providers or [self._provider],
-            cloud_cover_max=cloud_cover_max, collections=collections,
-            sar_product_type=sar_product_type, polarisation=polarisation,
+            cloud_cover_max=cloud_cover_max,
+            collections=collections,
+            sar_product_type=sar_product_type,
+            polarisation=polarisation,
         )
         logger.info("EOPipeline.search → %d scenes", len(self._scenes))
         return self
@@ -467,7 +493,8 @@ class EOPipeline:
         scenes = self._scenes
         if strategy == "best":
             scenes = sorted(
-                scenes, key=lambda s: s.cloud_cover if s.cloud_cover is not None else float("inf"),
+                scenes,
+                key=lambda s: s.cloud_cover if s.cloud_cover is not None else float("inf"),
             )
         elif strategy == "newest":
             scenes = sorted(scenes, key=lambda s: s.datetime or "", reverse=True)
@@ -476,28 +503,37 @@ class EOPipeline:
         elif strategy == "score":
             scenes = sorted(
                 scenes,
-                key=lambda s: s.score if s.score is not None
-                else -(s.cloud_cover if s.cloud_cover is not None else 100),
+                key=lambda s: (
+                    s.score
+                    if s.score is not None
+                    else -(s.cloud_cover if s.cloud_cover is not None else 100)
+                ),
                 reverse=True,
             )
         elif strategy != "as_is":
             logger.warning(
                 "EOPipeline.select: unrecognised strategy=%r — keeping "
                 "search-result order. Choose from: best, newest, oldest, "
-                "score, as_is.", strategy,
+                "score, as_is.",
+                strategy,
             )
         self._scenes = scenes[:n]
         return self
 
     def download(
-        self, scenes=None, output_dir="./eo_data/",
-        bands=None, post_process=None,
+        self,
+        scenes=None,
+        output_dir="./eo_data/",
+        bands=None,
+        post_process=None,
     ) -> EOPipeline:
         """Download scenes. Chainable."""
         target = scenes or self._scenes
         self._downloads = self._acq.download(
-            target, output_dir=output_dir,
-            bands=bands, post_process=post_process,
+            target,
+            output_dir=output_dir,
+            bands=bands,
+            post_process=post_process,
         )
         successful = [d for d in self._downloads if d.success and d.path]
         if successful:

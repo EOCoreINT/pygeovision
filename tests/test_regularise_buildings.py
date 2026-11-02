@@ -10,20 +10,29 @@ L-shaped footprint, and would be far worse for courtyards or multi-wing
 buildings — a serious data-quality issue for anyone using this for area
 statistics or ML training labels.
 """
+
 import pytest
 
 shapely = pytest.importorskip("shapely", reason="shapely not installed")
 
 import json
 import math
+
 from shapely.geometry import Polygon, shape
 
 
 def _write_geojson(path, coords_list):
-    gj = {"type": "FeatureCollection", "features": [
-        {"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [coords]}}
-        for coords in coords_list
-    ]}
+    gj = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {"type": "Polygon", "coordinates": [coords]},
+            }
+            for coords in coords_list
+        ],
+    }
     with open(path, "w") as f:
         json.dump(gj, f)
 
@@ -116,9 +125,9 @@ class TestRegulariseBuildingsActuallyRegularises:
         reg = shape(result["features"][0]["geometry"])
         reg_max_dev = max(abs(a - 90) for a in _corner_angles(reg))
 
-        assert reg_max_dev < orig_max_dev, (
-            f"corner-angle noise was not reduced: {orig_max_dev:.2f} -> {reg_max_dev:.2f}"
-        )
+        assert (
+            reg_max_dev < orig_max_dev
+        ), f"corner-angle noise was not reduced: {orig_max_dev:.2f} -> {reg_max_dev:.2f}"
         assert reg_max_dev < 1.0, f"corners still not close to 90 degrees: {reg_max_dev:.2f}"
 
     def test_min_area_filter_still_works(self, tmp_path):
@@ -143,14 +152,19 @@ class TestRegulariseBuildingsActuallyRegularises:
         building's own internal corner noise, it must not force every
         building to align with map north."""
         import math
+
         from pygeovision.data.postprocess import PostProcessor
 
         angle = math.radians(5)
         base = [(0, 0), (10, 0), (10, 6), (0, 6), (0, 0)]
+
         def rot(p):
             x, y = p
-            return [x * math.cos(angle) - y * math.sin(angle),
-                    x * math.sin(angle) + y * math.cos(angle)]
+            return [
+                x * math.cos(angle) - y * math.sin(angle),
+                x * math.sin(angle) + y * math.cos(angle),
+            ]
+
         rotated = [rot(p) for p in base]
 
         in_path = tmp_path / "in.geojson"

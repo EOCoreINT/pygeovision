@@ -6,6 +6,7 @@ re-exports it so ``pygeovision.training.GeoTrainer`` and
 diverging copies; fixes such as augmentation, detection mAP, backbone freezing and
 checkpoint resume only reached one of them.)
 """
+
 from pygeovision.ai.training.trainer import (  # noqa: F401
     CheckpointManager,
     EarlyStopping,

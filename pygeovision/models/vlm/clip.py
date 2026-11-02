@@ -19,6 +19,7 @@ wrong one for a given model silently fails or produces garbage:
     would have failed (or silently loaded the wrong thing) for every
     RemoteCLIP/GeoRSCLIP call.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,9 +31,9 @@ logger = logging.getLogger(__name__)
 
 # Standard transformers-compatible CLIP repos.
 _TRANSFORMERS_HF_MODELS = {
-    "clip-vit-b32":   "openai/clip-vit-base-patch32",
-    "openclip-b32":   "laion/CLIP-ViT-B-32-laion2B-s34B-b79K",
-    "openclip-l14":   "openai/clip-vit-large-patch14",
+    "clip-vit-b32": "openai/clip-vit-base-patch32",
+    "openclip-b32": "laion/CLIP-ViT-B-32-laion2B-s34B-b79K",
+    "openclip-l14": "openai/clip-vit-large-patch14",
 }
 
 # RemoteCLIP / GeoRSCLIP: (open_clip base architecture name, HF repo,
@@ -40,7 +41,7 @@ _TRANSFORMERS_HF_MODELS = {
 _OPENCLIP_CHECKPOINTS = {
     "remoteclip-b32": ("ViT-B-32", "chendelong/RemoteCLIP", "RemoteCLIP-ViT-B-32.pt"),
     "remoteclip-l14": ("ViT-L-14", "chendelong/RemoteCLIP", "RemoteCLIP-ViT-L-14.pt"),
-    "georsclip":      ("ViT-B-32", "Zilun/GeoRSCLIP", "RS5M_ViT-B-32.pt"),
+    "georsclip": ("ViT-B-32", "Zilun/GeoRSCLIP", "RS5M_ViT-B-32.pt"),
 }
 
 
@@ -69,18 +70,23 @@ class CLIPGeo:
     # open_clip-format checkpoints (RemoteCLIP, GeoRSCLIP): name -> (architecture, repo, file)
     OPENCLIP_CHECKPOINTS = dict(_OPENCLIP_CHECKPOINTS)
 
-    def __init__(self, model: str = "openclip-b32", device: str | None = None,
-                 cache_dir: str | None = None, bands: tuple[int, ...] | None = None) -> None:
+    def __init__(
+        self,
+        model: str = "openclip-b32",
+        device: str | None = None,
+        cache_dir: str | None = None,
+        bands: tuple[int, ...] | None = None,
+    ) -> None:
         """``bands``: file band numbers shown to the model as R, G, B (default: the first three)."""
         self.model_name = model
         self.bands = tuple(bands) if bands else None
         self.device = device or "cpu"
         self.cache_dir = cache_dir
         self._backend: str | None = None  # "transformers" | "open_clip"
-        self._model = None
-        self._processor = None       # transformers backend
-        self._preprocess = None       # open_clip backend (image transform)
-        self._tokenizer = None        # open_clip backend
+        self._model: Any = None
+        self._processor: Any = None  # transformers backend
+        self._preprocess: Any = None  # open_clip backend (image transform)
+        self._tokenizer: Any = None  # open_clip backend
 
     def _load(self):
         if self._model is not None:
@@ -110,8 +116,7 @@ class CLIPGeo:
             import open_clip
         except ImportError as exc:
             raise ImportError(
-                "open_clip_torch required for RemoteCLIP/GeoRSCLIP: "
-                "pip install open_clip_torch"
+                "open_clip_torch required for RemoteCLIP/GeoRSCLIP: " "pip install open_clip_torch"
             ) from exc
         try:
             from huggingface_hub import hf_hub_download
@@ -133,10 +138,15 @@ class CLIPGeo:
             raise ModelLoadError(
                 f"{self.model_name}: checkpoint does not match architecture {arch!r}; "
                 f"{len(msg.missing_keys)} layer(s) would stay randomly initialised "
-                f"(first: {msg.missing_keys[:3]}).")
+                f"(first: {msg.missing_keys[:3]})."
+            )
         if msg.unexpected_keys:
-            logger.warning("%s: %d unexpected checkpoint key(s) ignored (first: %s).",
-                           self.model_name, len(msg.unexpected_keys), msg.unexpected_keys[:3])
+            logger.warning(
+                "%s: %d unexpected checkpoint key(s) ignored (first: %s).",
+                self.model_name,
+                len(msg.unexpected_keys),
+                msg.unexpected_keys[:3],
+            )
         self._model = model.to(self.device).eval()
         self._preprocess = preprocess
         self._tokenizer = open_clip.get_tokenizer(arch)
@@ -145,6 +155,7 @@ class CLIPGeo:
     def _load_image(self, image_path: str):
         """The file as an 8-bit RGB picture (first three bands, shared percentile stretch, nodata black)."""
         from pygeovision.models.vlm._image import load_rgb_pil
+
         return load_rgb_pil(image_path, bands=self.bands)
 
     # ── Unified public API — works identically regardless of backend ──────────
@@ -152,12 +163,14 @@ class CLIPGeo:
     def zero_shot(self, image_path: str, categories: list[str]) -> dict[str, float]:
         """Zero-shot classify an image against text categories."""
         import torch
-        img = self._load_image(image_path)      # bad file or bands fail here, before any model download
+
+        img = self._load_image(image_path)  # bad file or bands fail here, before any model download
         self._load()
 
         if self._backend == "transformers":
-            inputs = self._processor(text=categories, images=img,
-                                      return_tensors="pt", padding=True).to(self.device)
+            inputs = self._processor(
+                text=categories, images=img, return_tensors="pt", padding=True
+            ).to(self.device)
             with torch.no_grad():
                 outputs = self._model(**inputs)
             probs = outputs.logits_per_image.softmax(dim=1)[0].cpu().tolist()
@@ -169,7 +182,7 @@ class CLIPGeo:
                 txt_feat = self._model.encode_text(text_t)
                 img_feat = img_feat / img_feat.norm(dim=-1, keepdim=True)
                 txt_feat = txt_feat / txt_feat.norm(dim=-1, keepdim=True)
-                logits = (100.0 * img_feat @ txt_feat.T)
+                logits = 100.0 * img_feat @ txt_feat.T
             probs = logits.softmax(dim=-1)[0].cpu().tolist()
 
         return {cat: round(p, 4) for cat, p in zip(categories, probs)}
@@ -182,6 +195,7 @@ class CLIPGeo:
         """Normalised embedding of a PIL image (``(D,)``), for callers that already hold pixels."""
         import torch
         import torch.nn.functional as F
+
         self._load()
 
         if self._backend == "transformers":
@@ -199,6 +213,7 @@ class CLIPGeo:
         """Get a normalised CLIP text embedding."""
         import torch
         import torch.nn.functional as F
+
         self._load()
 
         if self._backend == "transformers":
@@ -222,9 +237,10 @@ class CLIPGeo:
         import numpy as np
 
         from pygeovision.models.vlm._image import list_images
+
         image_paths = list_images(image_dir)
         query_emb = self.embed_text(query)
-        results = []
+        results: list[dict[str, Any]] = []
         for p in image_paths:
             try:
                 img_emb = self.embed_image(str(p))

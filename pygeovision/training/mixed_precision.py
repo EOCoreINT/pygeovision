@@ -1,4 +1,5 @@
 """Mixed precision training — FP16, BF16, and automatic loss scaling."""
+
 from __future__ import annotations
 
 import logging
@@ -30,6 +31,7 @@ class MixedPrecisionManager:
     def _setup(self) -> None:
         try:
             import torch
+
             if self.precision == "fp16":
                 self._dtype = torch.float16
                 if self.enabled:
@@ -45,19 +47,21 @@ class MixedPrecisionManager:
         """Return autocast context manager."""
         try:
             import torch
+
             return torch.cuda.amp.autocast(
                 enabled=self.enabled,
                 dtype=self._dtype,
             )
         except ImportError:
             import contextlib
+
             return contextlib.nullcontext()
 
-    def scale_and_step(self, loss: Any, optimizer: Any,
-                        clip_grad_norm: float = 1.0) -> None:
+    def scale_and_step(self, loss: Any, optimizer: Any, clip_grad_norm: float = 1.0) -> None:
         """Scale loss, clip gradients, and update parameters."""
         try:
             import torch
+
             if self._scaler and self.enabled:
                 self._scaler.scale(loss).backward()
                 self._scaler.unscale_(optimizer)
@@ -74,8 +78,8 @@ class MixedPrecisionManager:
                     clip_grad_norm,
                 )
                 optimizer.step()
-        except ImportError:
-            raise ImportError("torch required")
+        except ImportError as exc:
+            raise ImportError("torch required") from exc
 
     @property
     def scale(self) -> float:

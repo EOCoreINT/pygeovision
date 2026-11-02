@@ -1,12 +1,13 @@
 """The deployment scripts printed in the docs (docs/_examples/deploy) must actually serve a model."""
+
 from __future__ import annotations
 
 import importlib.util
 import json
+from pathlib import Path
 import sys
 import threading
 import urllib.request
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -31,8 +32,15 @@ def onnx_model(tmp_path):
     net = torch.nn.Sequential(torch.nn.Conv2d(4, 3, 1)).eval()
     path = tmp_path / "models" / "tiny.onnx"
     path.parent.mkdir()
-    torch.onnx.export(net, torch.zeros(1, 4, 16, 16), str(path), input_names=["input"], output_names=["logits"],
-                      dynamic_axes={"input": {0: "b", 2: "h", 3: "w"}, "logits": {0: "b", 2: "h", 3: "w"}}, dynamo=False)
+    torch.onnx.export(
+        net,
+        torch.zeros(1, 4, 16, 16),
+        str(path),
+        input_names=["input"],
+        output_names=["logits"],
+        dynamic_axes={"input": {0: "b", 2: "h", 3: "w"}, "logits": {0: "b", 2: "h", 3: "w"}},
+        dynamo=False,
+    )
     return path, net
 
 
@@ -59,8 +67,13 @@ def test_vertex_server_serves_health_and_predict(onnx_model, monkeypatch):
     try:
         assert json.load(urllib.request.urlopen(base + "/health"))["status"] == "ok"
         chip = np.random.default_rng(1).random((4, 16, 16)).astype("float32")
-        req = urllib.request.Request(base + "/predict", data=json.dumps({"instances": [chip.tolist()],
-                                     "parameters": {"argmax": True}}).encode(), method="POST")
+        req = urllib.request.Request(
+            base + "/predict",
+            data=json.dumps(
+                {"instances": [chip.tolist()], "parameters": {"argmax": True}}
+            ).encode(),
+            method="POST",
+        )
         got = json.load(urllib.request.urlopen(req))["predictions"]
         expected = net(torch.from_numpy(chip)[None]).argmax(1).numpy()
         assert np.array_equal(np.asarray(got), expected)

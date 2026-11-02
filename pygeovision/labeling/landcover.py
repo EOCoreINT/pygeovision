@@ -9,6 +9,7 @@ get the labels on the exact grid of your imagery, which is what training chips n
 Read ``docs/labeling/landcover.md`` for what these products are -- they are *model outputs at 10 m*,
 good for coarse land cover and wrong for small or changing things.
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,30 +22,52 @@ PC_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
 # ESA WorldCover (10 m, 11 classes; 0 = no data)
 ESA_WORLDCOVER_CLASSES = {
-    10: "Tree cover", 20: "Shrubland", 30: "Grassland",
-    40: "Cropland", 50: "Built-up", 60: "Bare/sparse vegetation",
-    70: "Snow and ice", 80: "Permanent water bodies",
-    90: "Herbaceous wetland", 95: "Mangroves", 100: "Moss and lichen",
+    10: "Tree cover",
+    20: "Shrubland",
+    30: "Grassland",
+    40: "Cropland",
+    50: "Built-up",
+    60: "Bare/sparse vegetation",
+    70: "Snow and ice",
+    80: "Permanent water bodies",
+    90: "Herbaceous wetland",
+    95: "Mangroves",
+    100: "Moss and lichen",
 }
 
 # Google Dynamic World label band (0-8). Only the Earth Engine backend returns these numbers.
 DW_CLASSES = {
-    0: "water", 1: "trees", 2: "grass", 3: "flooded_vegetation",
-    4: "crops", 5: "shrub_and_scrub", 6: "built", 7: "bare", 8: "snow_and_ice",
+    0: "water",
+    1: "trees",
+    2: "grass",
+    3: "flooded_vegetation",
+    4: "crops",
+    5: "shrub_and_scrub",
+    6: "built",
+    7: "bare",
+    8: "snow_and_ice",
 }
 
 # Impact Observatory / Esri "10m Annual Land Use Land Cover (9-class)" -- what the
 # Planetary Computer backend returns. NOT the same numbering as Dynamic World (1-based, no 0, 3, 6; adds
 # 10 = clouds and 11 = rangeland).
 IO_LULC_CLASSES = {
-    1: "water", 2: "trees", 4: "flooded_vegetation", 5: "crops",
-    7: "built", 8: "bare", 9: "snow_and_ice", 10: "clouds", 11: "rangeland",
+    1: "water",
+    2: "trees",
+    4: "flooded_vegetation",
+    5: "crops",
+    7: "built",
+    8: "bare",
+    9: "snow_and_ice",
+    10: "clouds",
+    11: "rangeland",
 }
 #: A partial, lossy bridge from IO LULC numbers to Dynamic World numbers (rangeland has no equal; clouds neither).
 IO_TO_DYNAMIC_WORLD = {1: 0, 2: 1, 4: 3, 5: 4, 7: 6, 8: 7, 9: 8}
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
+
 
 def _stac_search(collection: str, bbox, datetime: str, limit: int = 20):
     """POST a STAC search. Returns ``(items, error)``; exactly one of them is meaningful."""
@@ -68,8 +91,10 @@ def _sign(href: str) -> str:
     try:
         import planetary_computer as pc
     except ImportError:
-        logger.warning("planetary-computer is not installed; unsigned asset URLs usually return 403. "
-                       "pip install planetary-computer")
+        logger.warning(
+            "planetary-computer is not installed; unsigned asset URLs usually return 403. "
+            "pip install planetary-computer"
+        )
         return href
     return pc.sign(href)
 
@@ -82,8 +107,9 @@ def remap_array(arr, mapping: dict[int, int]):
     return out
 
 
-def mosaic_window(hrefs: list[str], bbox, output: Path, remap: dict[int, int] | None = None,
-                  nodata: int = 0) -> dict[str, Any]:
+def mosaic_window(
+    hrefs: list[str], bbox, output: Path, remap: dict[int, int] | None = None, nodata: int = 0
+) -> dict[str, Any]:
     """Mosaic the part of ``hrefs`` that lies in ``bbox`` (lon/lat) into one ``uint8`` GeoTIFF.
 
     The output CRS is that of the first source; sources in other CRSs (e.g. neighbouring UTM zones) are
@@ -111,9 +137,17 @@ def mosaic_window(hrefs: list[str], bbox, output: Path, remap: dict[int, int] | 
                 sources.append(ds)
         bounds = transform_bounds("EPSG:4326", dst_crs, *bbox, densify_pts=21)
         mosaic, transform = merge(sources, bounds=bounds, nodata=nodata, method="first")
-        profile = {"driver": "GTiff", "height": mosaic.shape[1], "width": mosaic.shape[2], "count": 1,
-                   "dtype": "uint8", "crs": dst_crs, "transform": transform, "nodata": nodata,
-                   "compress": "lzw"}
+        profile = {
+            "driver": "GTiff",
+            "height": mosaic.shape[1],
+            "width": mosaic.shape[2],
+            "count": 1,
+            "dtype": "uint8",
+            "crs": dst_crs,
+            "transform": transform,
+            "nodata": nodata,
+            "compress": "lzw",
+        }
     finally:
         for v in vrts:
             v.close()
@@ -131,8 +165,12 @@ def mosaic_window(hrefs: list[str], bbox, output: Path, remap: dict[int, int] | 
     return {"height": profile["height"], "width": profile["width"], "crs": str(dst_crs)}
 
 
-def align_to_reference(label_path: str | Path, reference_raster: str | Path, output_path: str | Path | None = None,
-                       nodata: int = 0) -> Path:
+def align_to_reference(
+    label_path: str | Path,
+    reference_raster: str | Path,
+    output_path: str | Path | None = None,
+    nodata: int = 0,
+) -> Path:
     """Resample a label raster onto ``reference_raster``'s exact grid and CRS (nearest-neighbour).
 
     Class values are never blended. Pixels of the reference that the label raster does not cover get
@@ -148,13 +186,32 @@ def align_to_reference(label_path: str | Path, reference_raster: str | Path, out
         ref_crs, ref_tf, h, w = ref.crs, ref.transform, ref.height, ref.width
     with rasterio.open(str(label_path)) as src:
         dst = np.full((h, w), nodata, dtype=np.uint8)
-        reproject(rasterio.band(src, 1), dst, src_transform=src.transform, src_crs=src.crs,
-                  src_nodata=src.nodata, dst_transform=ref_tf, dst_crs=ref_crs, dst_nodata=nodata,
-                  resampling=Resampling.nearest)
+        reproject(
+            rasterio.band(src, 1),
+            dst,
+            src_transform=src.transform,
+            src_crs=src.crs,
+            src_nodata=src.nodata,
+            dst_transform=ref_tf,
+            dst_crs=ref_crs,
+            dst_nodata=nodata,
+            resampling=Resampling.nearest,
+        )
         tags = src.tags()
     tmp = out.with_name(out.stem + "._aligned.tif")
-    with rasterio.open(str(tmp), "w", driver="GTiff", height=h, width=w, count=1, dtype="uint8",
-                       crs=ref_crs, transform=ref_tf, nodata=nodata, compress="lzw") as o:
+    with rasterio.open(
+        str(tmp),
+        "w",
+        driver="GTiff",
+        height=h,
+        width=w,
+        count=1,
+        dtype="uint8",
+        crs=ref_crs,
+        transform=ref_tf,
+        nodata=nodata,
+        compress="lzw",
+    ) as o:
         o.write(dst[np.newaxis])
         o.update_tags(**tags)
     tmp.replace(out)
@@ -164,6 +221,7 @@ def align_to_reference(label_path: str | Path, reference_raster: str | Path, out
 def _class_counts(path: str) -> dict[int, int]:
     import numpy as np
     import rasterio
+
     with rasterio.open(path) as src:
         data = src.read(1)
     unique, counts = np.unique(data, return_counts=True)
@@ -171,6 +229,7 @@ def _class_counts(path: str) -> dict[int, int]:
 
 
 # ── ESA WorldCover ─────────────────────────────────────────────────────────────
+
 
 class ESAWorldCoverLabeler:
     """Land-cover labels from ESA WorldCover 2020 (v100) or 2021 (v200).
@@ -225,9 +284,16 @@ class ESAWorldCoverLabeler:
         if err:
             return {"success": False, "error": err}
         if not items:
-            return {"success": False, "error": f"No ESA WorldCover {self.year} tiles found for bbox={tuple(bbox)} "
-                                               "-- check the bbox (lon_min, lat_min, lon_max, lat_max)."}
-        hrefs = [_sign(i["assets"]["map"]["href"]) for i in items if i.get("assets", {}).get("map", {}).get("href")]
+            return {
+                "success": False,
+                "error": f"No ESA WorldCover {self.year} tiles found for bbox={tuple(bbox)} "
+                "-- check the bbox (lon_min, lat_min, lon_max, lat_max).",
+            }
+        hrefs = [
+            _sign(i["assets"]["map"]["href"])
+            for i in items
+            if i.get("assets", {}).get("map", {}).get("href")
+        ]
         if not hrefs:
             return {"success": False, "error": "STAC items had no 'map' asset"}
 
@@ -237,7 +303,10 @@ class ESAWorldCoverLabeler:
                 align_to_reference(output_path, reference_raster, nodata=0)
         except Exception as exc:  # noqa: BLE001
             logger.error("ESA WorldCover read failed: %s", exc)
-            return {"success": False, "error": f"could not read WorldCover tiles: {type(exc).__name__}: {exc}"}
+            return {
+                "success": False,
+                "error": f"could not read WorldCover tiles: {type(exc).__name__}: {exc}",
+            }
 
         return {
             "success": True,
@@ -256,6 +325,7 @@ class ESAWorldCoverLabeler:
 
 
 # ── "Dynamic World" ────────────────────────────────────────────────────────────
+
 
 class DynamicWorldLabeler:
     """10 m, 9-class land-cover labels from one of two backends. **Read which one you get.**
@@ -315,27 +385,41 @@ class DynamicWorldLabeler:
         """
         output_path = Path(output_path)
         if label_mode != "most_likely":
-            return {"success": False,
-                    "error": f"label_mode={label_mode!r} is not supported: only 'most_likely' is implemented."}
+            return {
+                "success": False,
+                "error": f"label_mode={label_mode!r} is not supported: only 'most_likely' is implemented.",
+            }
         if self.backend == "planetary_computer":
-            return self._label_via_pc(bbox, date_range, output_path, remap_classes, reference_raster)
+            return self._label_via_pc(
+                bbox, date_range, output_path, remap_classes, reference_raster
+            )
         if self.backend == "earth_engine":
             if remap_classes or reference_raster:
-                return {"success": False, "error": "remap_classes / reference_raster are not supported by the "
-                                                   "earth_engine backend (it only starts a Drive export)."}
+                return {
+                    "success": False,
+                    "error": "remap_classes / reference_raster are not supported by the "
+                    "earth_engine backend (it only starts a Drive export).",
+                }
             return self._label_via_ee(bbox, date_range, output_path)
-        return {"success": False, "error": f"Unknown backend: {self.backend!r} "
-                                           "(use 'planetary_computer' or 'earth_engine')"}
+        return {
+            "success": False,
+            "error": f"Unknown backend: {self.backend!r} "
+            "(use 'planetary_computer' or 'earth_engine')",
+        }
 
     def _label_via_pc(self, bbox, date_range, output_path, remap_classes, reference_raster):
         items, err = _stac_search(self.PC_COLLECTION, bbox, f"{date_range[0]}/{date_range[1]}")
         if err:
             return {"success": False, "error": err}
         if not items:
-            return {"success": False,
-                    "error": (f"No annual land-cover map in collection '{self.PC_COLLECTION}' overlaps "
-                              f"{date_range[0]} to {date_range[1]} for bbox={tuple(bbox)} (the collection "
-                              "covers 2017-2023). Try an earlier year.")}
+            return {
+                "success": False,
+                "error": (
+                    f"No annual land-cover map in collection '{self.PC_COLLECTION}' overlaps "
+                    f"{date_range[0]} to {date_range[1]} for bbox={tuple(bbox)} (the collection "
+                    "covers 2017-2023). Try an earlier year."
+                ),
+            }
 
         def year_of(item) -> int:
             props = item.get("properties", {})
@@ -347,7 +431,11 @@ class DynamicWorldLabeler:
 
         year = max(year_of(i) for i in items)
         chosen = [i for i in items if year_of(i) == year] if year > 0 else items
-        hrefs = [_sign(i["assets"]["data"]["href"]) for i in chosen if i.get("assets", {}).get("data", {}).get("href")]
+        hrefs = [
+            _sign(i["assets"]["data"]["href"])
+            for i in chosen
+            if i.get("assets", {}).get("data", {}).get("href")
+        ]
         if not hrefs:
             return {"success": False, "error": "No data asset in the STAC items"}
 
@@ -356,7 +444,10 @@ class DynamicWorldLabeler:
             if reference_raster:
                 align_to_reference(output_path, reference_raster, nodata=0)
         except Exception as exc:  # noqa: BLE001
-            return {"success": False, "error": f"could not read land-cover tiles: {type(exc).__name__}: {exc}"}
+            return {
+                "success": False,
+                "error": f"could not read land-cover tiles: {type(exc).__name__}: {exc}",
+            }
 
         return {
             "success": True,
@@ -374,21 +465,30 @@ class DynamicWorldLabeler:
     def _label_via_ee(self, bbox, date_range, output_path):
         try:
             import ee
+
             lon_min, lat_min, lon_max, lat_max = bbox
             region = ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
-            col = (ee.ImageCollection(self.EE_COLLECTION)
-                   .filterBounds(region)
-                   .filterDate(*date_range))
+            col = (
+                ee.ImageCollection(self.EE_COLLECTION).filterBounds(region).filterDate(*date_range)
+            )
             label = col.select("label").mode().clip(region)
             task = ee.batch.Export.image.toDrive(
-                image=label, description="dynamic_world_label",
-                scale=10, region=region,
+                image=label,
+                description="dynamic_world_label",
+                scale=10,
+                region=region,
             )
             task.start()
-            return {"success": True, "submitted": True, "output_path": None,
-                    "note": "Export task started; the GeoTIFF will appear in your Google Drive when it finishes. "
-                            "Nothing was written to disk.",
-                    "ee_task": str(task.id), "class_map": DW_CLASSES, "n_classes": len(DW_CLASSES)}
+            return {
+                "success": True,
+                "submitted": True,
+                "output_path": None,
+                "note": "Export task started; the GeoTIFF will appear in your Google Drive when it finishes. "
+                "Nothing was written to disk.",
+                "ee_task": str(task.id),
+                "class_map": DW_CLASSES,
+                "n_classes": len(DW_CLASSES),
+            }
         except ImportError:
             return {"success": False, "error": "pip install earthengine-api"}
         except Exception as exc:

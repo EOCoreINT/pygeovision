@@ -15,8 +15,8 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +47,7 @@ WORLDCOVER_CLASSES: dict[int, str] = {
 # are not directly comparable (ESA says not to use them for change detection).
 _WORLDCOVER_VERSION = {2020: "v100", 2021: "v200"}
 _WORLDCOVER_S3_BASE = "s3://esa-worldcover/{version}/{year}/map"
-_WORLDCOVER_HTTP_BASE = (
-    "https://esa-worldcover.s3.amazonaws.com/{version}/{year}/map"
-)
+_WORLDCOVER_HTTP_BASE = "https://esa-worldcover.s3.amazonaws.com/{version}/{year}/map"
 
 # Tile grid: 3°×3° tiles named ESA_WorldCover_10m_{year}_v200_N{lat}E{lon}_Map.tif
 _TILE_SIZE_DEG = 3.0
@@ -113,9 +111,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
             skip_existing=skip_existing,
         )
         if year not in self.VALID_YEARS:
-            raise ValueError(
-                f"year must be one of {self.VALID_YEARS}, got {year}"
-            )
+            raise ValueError(f"year must be one of {self.VALID_YEARS}, got {year}")
 
         self.config = WorldCoverConfig(
             year=year,
@@ -130,17 +126,17 @@ class ESAWorldCoverLabeler(BaseLabeler):
 
     @property
     def name(self) -> str:
-        return 'esa_worldcover'
+        return "esa_worldcover"
 
     @property
     def supported_tasks(self) -> list:
-        return ['land_cover', 'segmentation']
+        return ["land_cover", "segmentation"]
 
     # ------------------------------------------------------------------
     # BaseLabeler interface
     # ------------------------------------------------------------------
 
-    def label_tile(
+    def label_tile(  # type: ignore[override]
         self,
         tile_path: Path,
         tile_metadata: Any,
@@ -175,11 +171,10 @@ class ESAWorldCoverLabeler(BaseLabeler):
 
             # Convert bounds to WGS-84 for tile discovery
             wgs84 = pyproj.CRS("EPSG:4326")
-            project_to_wgs84 = pyproj.Transformer.from_crs(
-                crs, wgs84, always_xy=True
-            ).transform
+            project_to_wgs84 = pyproj.Transformer.from_crs(crs, wgs84, always_xy=True).transform
             tile_box = box(bounds.left, bounds.bottom, bounds.right, bounds.top)
             from shapely.ops import transform as shp_transform
+
             tile_box_wgs84 = shp_transform(project_to_wgs84, tile_box)
             bbox_wgs84 = tile_box_wgs84.bounds
 
@@ -202,11 +197,12 @@ class ESAWorldCoverLabeler(BaseLabeler):
                 # Now explicitly signals failure via `error`.
                 logger.warning("No WorldCover tiles found for bbox %s", bbox_wgs84)
                 return LabelingResult(
-                    tile_id=str(tile_path), label_path=None,
+                    tile_id=str(tile_path),
+                    label_path=None,
                     source="esa_worldcover",
                     error=f"No real WorldCover reference tiles could be downloaded for "
-                          f"bbox {bbox_wgs84} -- check network access and AWS S3 reachability "
-                          f"(esa-worldcover public bucket). Not a real classification result.",
+                    f"bbox {bbox_wgs84} -- check network access and AWS S3 reachability "
+                    f"(esa-worldcover public bucket). Not a real classification result.",
                 )
 
             # Mosaic and reproject WorldCover data to tile CRS/extent
@@ -236,9 +232,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
             self._write_mask_geotiff(mask, output_path, meta)
 
             active_classes = {
-                v: WORLDCOVER_CLASSES.get(v, f"class_{v}")
-                for v in np.unique(mask)
-                if v != 0
+                v: WORLDCOVER_CLASSES.get(v, f"class_{v}") for v in np.unique(mask) if v != 0
             }
             if self.config.remap:
                 active_classes = {v: f"class_{v}" for v in np.unique(mask)}
@@ -246,7 +240,10 @@ class ESAWorldCoverLabeler(BaseLabeler):
 
             logger.info(
                 "ESAWorldCover labeling complete: year=%s num_classes=%d remapped=%s bbox_wgs84=%s",
-                self.config.year, len(active_classes), self.config.remap is not None, bbox_wgs84,
+                self.config.year,
+                len(active_classes),
+                self.config.remap is not None,
+                bbox_wgs84,
             )
             return LabelingResult(
                 tile_id=str(tile_path),
@@ -256,9 +253,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
             )
 
         except Exception as exc:
-            logger.error(
-                "ESAWorldCoverLabeler failed for %s: %s", tile_path, exc
-            )
+            logger.error("ESAWorldCoverLabeler failed for %s: %s", tile_path, exc)
             return LabelingResult(
                 tile_id=str(tile_path),
                 label_path=output_path,
@@ -270,9 +265,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_worldcover_tiles(
-        self, bbox_wgs84: tuple[float, float, float, float]
-    ) -> list[Path]:
+    def _get_worldcover_tiles(self, bbox_wgs84: tuple[float, float, float, float]) -> list[Path]:
         """Identify and download WorldCover tiles covering a bounding box.
 
         WorldCover uses a 3°×3° tile grid with filenames like:
@@ -331,10 +324,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
         lat_str = f"{'N' if lat >= 0 else 'S'}{abs(lat):02d}"
         lon_str = f"{'E' if lon >= 0 else 'W'}{abs(lon):03d}"
         version = _WORLDCOVER_VERSION[self.config.year]
-        filename = (
-            f"ESA_WorldCover_10m_{self.config.year}_{version}"
-            f"_{lat_str}{lon_str}_Map.tif"
-        )
+        filename = f"ESA_WorldCover_10m_{self.config.year}_{version}" f"_{lat_str}{lon_str}_Map.tif"
         local_path = self.config.cache_dir / filename
 
         if local_path.exists():
@@ -411,9 +401,7 @@ class ESAWorldCoverLabeler(BaseLabeler):
                 f.close()
 
     @staticmethod
-    def _remap_classes(
-        mask: np.ndarray, remap: dict[int, int]
-    ) -> np.ndarray:
+    def _remap_classes(mask: np.ndarray, remap: dict[int, int]) -> np.ndarray:
         """Apply class ID remapping to a label mask.
 
         Args:

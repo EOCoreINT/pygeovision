@@ -1,4 +1,5 @@
 """Tests for inference validation and vectorization."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -8,6 +9,7 @@ import pytest
 class TestValidationReport:
     def test_report_creation(self):
         from pygeovision.ai.inference.validation import ValidationReport
+
         r = ValidationReport(
             metrics={"mean_iou": 0.82, "accuracy": 0.94},
             per_class_iou=[0.90, 0.74],
@@ -18,6 +20,7 @@ class TestValidationReport:
 
     def test_report_summary(self):
         from pygeovision.ai.inference.validation import ValidationReport
+
         r = ValidationReport(
             metrics={"mean_iou": 0.75, "accuracy": 0.90},
             class_names=["bg", "tree"],
@@ -29,6 +32,7 @@ class TestValidationReport:
 
     def test_report_to_dict(self):
         from pygeovision.ai.inference.validation import ValidationReport
+
         r = ValidationReport(metrics={"accuracy": 0.95}, per_class_iou=[0.95])
         d = r.to_dict()
         assert d["metrics"]["accuracy"] == 0.95
@@ -36,10 +40,12 @@ class TestValidationReport:
 
     def test_report_save(self, tmp_path):
         from pygeovision.ai.inference.validation import ValidationReport
+
         r = ValidationReport(metrics={"mean_iou": 0.80})
         path = r.save(tmp_path / "report.json")
         assert path.exists()
         import json
+
         data = json.loads(path.read_text())
         assert data["metrics"]["mean_iou"] == 0.80
 
@@ -47,12 +53,14 @@ class TestValidationReport:
 class TestPredictionValidator:
     def test_init_defaults(self):
         from pygeovision.ai.inference.validation import PredictionValidator
+
         v = PredictionValidator(num_classes=5)
         assert v.num_classes == 5
         assert v.ignore_index == 255
 
     def test_validate_arrays_perfect(self):
         from pygeovision.ai.inference.validation import PredictionValidator
+
         v = PredictionValidator(num_classes=3)
         pred = np.array([[0, 1, 2], [0, 1, 2]], dtype=np.int64)
         gt = np.array([[0, 1, 2], [0, 1, 2]], dtype=np.int64)
@@ -62,6 +70,7 @@ class TestPredictionValidator:
 
     def test_validate_arrays_all_wrong(self):
         from pygeovision.ai.inference.validation import PredictionValidator
+
         v = PredictionValidator(num_classes=2)
         pred = np.ones((4, 4), dtype=np.int64)
         gt = np.zeros((4, 4), dtype=np.int64)
@@ -71,9 +80,10 @@ class TestPredictionValidator:
 
     def test_validate_arrays_ignore_index(self):
         from pygeovision.ai.inference.validation import PredictionValidator
+
         v = PredictionValidator(num_classes=2, ignore_index=255)
         pred = np.array([[0, 1, 255]], dtype=np.int64)
-        gt   = np.array([[0, 1, 255]], dtype=np.int64)
+        gt = np.array([[0, 1, 255]], dtype=np.int64)
         report = v.validate_arrays(pred, gt)
         # 255 pixels should be ignored — only 2 valid pixels
         assert report.num_pixels == 2
@@ -81,17 +91,19 @@ class TestPredictionValidator:
 
     def test_validate_arrays_with_class_names(self):
         from pygeovision.ai.inference.validation import PredictionValidator
+
         v = PredictionValidator(num_classes=3, class_names=["bg", "tree", "water"])
         pred = np.zeros((8, 8), dtype=np.int64)
-        gt   = np.zeros((8, 8), dtype=np.int64)
+        gt = np.zeros((8, 8), dtype=np.int64)
         report = v.validate_arrays(pred, gt)
         assert report.class_names == ["bg", "tree", "water"]
 
     def test_validate_arrays_no_valid_pixels(self):
         from pygeovision.ai.inference.validation import PredictionValidator
+
         v = PredictionValidator(num_classes=2, ignore_index=255)
         pred = np.full((4, 4), 255, dtype=np.int64)
-        gt   = np.full((4, 4), 255, dtype=np.int64)
+        gt = np.full((4, 4), 255, dtype=np.int64)
         report = v.validate_arrays(pred, gt)
         assert report.num_pixels == 0
         assert report.metrics.get("mean_iou", 0.0) == 0.0
@@ -104,16 +116,23 @@ class TestPredictionValidator:
         from pygeovision.ai.inference.validation import PredictionValidator
 
         transform = from_bounds(0, 0, 1, 1, 32, 32)
-        profile = {"driver": "GTiff", "dtype": "uint8", "count": 1,
-                   "width": 32, "height": 32, "crs": "EPSG:4326", "transform": transform}
+        profile = {
+            "driver": "GTiff",
+            "dtype": "uint8",
+            "count": 1,
+            "width": 32,
+            "height": 32,
+            "crs": "EPSG:4326",
+            "transform": transform,
+        }
 
         pred_path = tmp_path / "pred.tif"
-        gt_path   = tmp_path / "gt.tif"
+        gt_path = tmp_path / "gt.tif"
         data = np.random.randint(0, 3, (1, 32, 32), dtype=np.uint8)
 
         for p in (pred_path, gt_path):
             with rasterio.open(p, "w", **profile) as dst:
-                dst.write(data)   # identical → perfect score
+                dst.write(data)  # identical → perfect score
 
         v = PredictionValidator(num_classes=3)
         report = v.validate(pred_path, gt_path)
@@ -128,15 +147,24 @@ class TestPredictionValidator:
         from pygeovision.ai.inference.validation import PredictionValidator
 
         transform = from_bounds(0, 0, 1, 1, 16, 16)
-        profile = {"driver": "GTiff", "dtype": "uint8", "count": 1,
-                   "width": 16, "height": 16, "crs": "EPSG:4326", "transform": transform}
+        profile = {
+            "driver": "GTiff",
+            "dtype": "uint8",
+            "count": 1,
+            "width": 16,
+            "height": 16,
+            "crs": "EPSG:4326",
+            "transform": transform,
+        }
 
         pred = np.zeros((1, 16, 16), dtype=np.uint8)
-        gt   = np.ones((1, 16, 16), dtype=np.uint8)
+        gt = np.ones((1, 16, 16), dtype=np.uint8)
         pred_p = tmp_path / "pred.tif"
-        gt_p   = tmp_path / "gt.tif"
-        with rasterio.open(pred_p, "w", **profile) as dst: dst.write(pred)
-        with rasterio.open(gt_p,   "w", **profile) as dst: dst.write(gt)
+        gt_p = tmp_path / "gt.tif"
+        with rasterio.open(pred_p, "w", **profile) as dst:
+            dst.write(pred)
+        with rasterio.open(gt_p, "w", **profile) as dst:
+            dst.write(gt)
 
         err_p = tmp_path / "error.tif"
         v = PredictionValidator(num_classes=2)
@@ -151,8 +179,15 @@ class TestPredictionValidator:
         from pygeovision.ai.inference.validation import PredictionValidator
 
         transform = from_bounds(0, 0, 1, 1, 16, 16)
-        profile = {"driver": "GTiff", "dtype": "uint8", "count": 1,
-                   "width": 16, "height": 16, "crs": "EPSG:4326", "transform": transform}
+        profile = {
+            "driver": "GTiff",
+            "dtype": "uint8",
+            "count": 1,
+            "width": 16,
+            "height": 16,
+            "crs": "EPSG:4326",
+            "transform": transform,
+        }
 
         preds, gts = [], []
         for i in range(3):
@@ -162,7 +197,8 @@ class TestPredictionValidator:
             for p in (pp, gp):
                 with rasterio.open(p, "w", **profile) as dst:
                     dst.write(data)
-            preds.append(pp); gts.append(gp)
+            preds.append(pp)
+            gts.append(gp)
 
         v = PredictionValidator(num_classes=2)
         report = v.cross_validate(preds, gts)
@@ -173,6 +209,7 @@ class TestPredictionValidator:
 class TestVectorizer:
     def test_init_defaults(self):
         from pygeovision.ai.inference.vectorization import Vectorizer
+
         v = Vectorizer()
         assert v.config.output_crs == "EPSG:4326"
         assert v.config.simplify_tolerance == 1.0
@@ -185,12 +222,13 @@ class TestVectorizer:
         from pygeovision.ai.inference.vectorization import Vectorizer
 
         mask = np.zeros((64, 64), dtype=np.uint8)
-        mask[16:48, 16:48] = 1   # solid 32x32 square of class 1
+        mask[16:48, 16:48] = 1  # solid 32x32 square of class 1
         transform = from_bounds(0, 0, 1, 1, 64, 64)
 
         v = Vectorizer(simplify_tolerance=0.0, output_crs=None)
-        result = v.array_to_geojson(mask, transform, crs="EPSG:4326",
-                                    class_names=["bg", "building"])
+        result = v.array_to_geojson(
+            mask, transform, crs="EPSG:4326", class_names=["bg", "building"]
+        )
         assert result["type"] == "FeatureCollection"
         assert len(result["features"]) >= 1
         feat = result["features"][0]
@@ -225,8 +263,15 @@ class TestVectorizer:
         mask = np.zeros((32, 32), dtype=np.uint8)
         mask[8:24, 8:24] = 1
         transform = from_bounds(0, 0, 1, 1, 32, 32)
-        profile = {"driver": "GTiff", "dtype": "uint8", "count": 1,
-                   "width": 32, "height": 32, "crs": "EPSG:4326", "transform": transform}
+        profile = {
+            "driver": "GTiff",
+            "dtype": "uint8",
+            "count": 1,
+            "width": 32,
+            "height": 32,
+            "crs": "EPSG:4326",
+            "transform": transform,
+        }
         mask_path = tmp_path / "mask.tif"
         with rasterio.open(mask_path, "w", **profile) as dst:
             dst.write(mask[np.newaxis, ...])
@@ -244,20 +289,30 @@ class TestVectorizer:
         from pygeovision.ai.inference.vectorization import Vectorizer
 
         transform = from_bounds(0, 0, 1, 1, 32, 32)
-        profile = {"driver": "GTiff", "dtype": "uint8", "count": 1,
-                   "width": 32, "height": 32, "crs": "EPSG:4326", "transform": transform}
+        profile = {
+            "driver": "GTiff",
+            "dtype": "uint8",
+            "count": 1,
+            "width": 32,
+            "height": 32,
+            "crs": "EPSG:4326",
+            "transform": transform,
+        }
         ref_path = tmp_path / "ref.tif"
         with rasterio.open(ref_path, "w", **profile) as dst:
             dst.write(np.zeros((1, 32, 32), dtype=np.uint8))
 
         from shapely.geometry import box, mapping
+
         geojson = {
             "type": "FeatureCollection",
-            "features": [{
-                "type": "Feature",
-                "geometry": mapping(box(0.25, 0.25, 0.75, 0.75)),
-                "properties": {"class_id": 1},
-            }]
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": mapping(box(0.25, 0.25, 0.75, 0.75)),
+                    "properties": {"class_id": 1},
+                }
+            ],
         }
         v = Vectorizer()
         out_path = tmp_path / "out_mask.tif"
@@ -281,6 +336,7 @@ class TestVectorizer:
         v.array_to_geojson(mask, transform, crs="EPSG:4326", output_path=out)
         assert out.exists()
         import json
+
         loaded = json.loads(out.read_text())
         assert loaded["type"] == "FeatureCollection"
 
@@ -299,8 +355,11 @@ class TestDeadOptimizersModuleRemoved:
     def test_real_optimizer_module_used_by_both_trainers_still_works(self):
         """The real, actually-used module (singular 'optimizer', not
         'optimizers') that both GeoTrainer implementations share."""
-        import torch.nn as nn
+        pytest.importorskip("torch")
         from dataclasses import dataclass
+
+        import torch.nn as nn
+
         from pygeovision.training.optimizer import build_optimizer
 
         @dataclass

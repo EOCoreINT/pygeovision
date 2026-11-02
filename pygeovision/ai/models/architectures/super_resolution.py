@@ -1,4 +1,5 @@
 """Super-resolution model architectures for satellite imagery."""
+
 from __future__ import annotations
 
 import logging
@@ -14,10 +15,14 @@ def build_srcnn(in_channels: int = 3, scale_factor: int = 4, **kwargs: Any) -> A
     class SRCNN(nn.Module):
         def __init__(self):
             super().__init__()
-            self.upsample = nn.Upsample(scale_factor=scale_factor, mode="bicubic", align_corners=False)
+            self.upsample = nn.Upsample(
+                scale_factor=scale_factor, mode="bicubic", align_corners=False
+            )
             self.net = nn.Sequential(
-                nn.Conv2d(in_channels, 64, 9, padding=4), nn.ReLU(True),
-                nn.Conv2d(64, 32, 1, padding=0), nn.ReLU(True),
+                nn.Conv2d(in_channels, 64, 9, padding=4),
+                nn.ReLU(True),
+                nn.Conv2d(64, 32, 1, padding=0),
+                nn.ReLU(True),
                 nn.Conv2d(32, in_channels, 5, padding=2),
             )
 
@@ -29,7 +34,9 @@ def build_srcnn(in_channels: int = 3, scale_factor: int = 4, **kwargs: Any) -> A
     return model
 
 
-def build_esrgan_geo(in_channels: int = 3, scale_factor: int = 4, num_rrdb: int = 12, **kwargs: Any) -> Any:
+def build_esrgan_geo(
+    in_channels: int = 3, scale_factor: int = 4, num_rrdb: int = 12, **kwargs: Any
+) -> Any:
     """Build an ESRGAN generator adapted for satellite imagery."""
     import torch
     import torch.nn as nn
@@ -72,7 +79,11 @@ def build_esrgan_geo(in_channels: int = 3, scale_factor: int = 4, num_rrdb: int 
             # Pixel-shuffle upsampling
             ups = []
             for _ in range(scale_factor // 2):
-                ups += [nn.Conv2d(nf, nf * 4, 3, padding=1), nn.PixelShuffle(2), nn.LeakyReLU(0.2, True)]
+                ups += [
+                    nn.Conv2d(nf, nf * 4, 3, padding=1),
+                    nn.PixelShuffle(2),
+                    nn.LeakyReLU(0.2, True),
+                ]
             self.upsample = nn.Sequential(*ups)
             self.conv_last = nn.Conv2d(nf, in_channels, 3, padding=1)
 
@@ -83,5 +94,7 @@ def build_esrgan_geo(in_channels: int = 3, scale_factor: int = 4, num_rrdb: int 
             return self.conv_last(feat)
 
     model = ESRGANGeo()
-    logger.info("Built ESRGAN-Geo(in_channels=%d, scale=%dx, rrdb=%d)", in_channels, scale_factor, num_rrdb)
+    logger.info(
+        "Built ESRGAN-Geo(in_channels=%d, scale=%dx, rrdb=%d)", in_channels, scale_factor, num_rrdb
+    )
     return model

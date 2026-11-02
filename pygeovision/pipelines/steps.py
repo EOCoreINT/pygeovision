@@ -4,18 +4,27 @@ Every built-in step either does its work or raises :class:`StepError`; none retu
 that the orchestrator would count as success. The four YAML actions are ``search``, ``download``,
 ``infer`` and ``export``. Other behaviour is added from Python by giving a :class:`Step` a function.
 """
+
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # keyword arguments of TiledInference that a YAML ``infer`` step may set
-_TILED_KEYS = ("chip_size", "overlap", "blend_mode", "batch_tiles", "activation", "tta", "half_precision")
+_TILED_KEYS = (
+    "chip_size",
+    "overlap",
+    "blend_mode",
+    "batch_tiles",
+    "activation",
+    "tta",
+    "half_precision",
+)
 
 
 class StepError(RuntimeError):
@@ -32,19 +41,21 @@ class Step:
     timeout_s: int = 3600
     _fn: Callable | None = field(default=None, repr=False)
 
-    def run(self, context: dict) -> dict:
+    def run(self, context: dict) -> Any:
         """Execute this step (only steps given a function can run; there is no silent no-op)."""
         if self._fn:
             return self._fn(context, **self.params)
         raise StepError(
             f"step {self.name!r} has action {self.action!r}, which has no built-in implementation. "
             f"YAML supports search, download, infer and export; anything else needs "
-            f"Step(..., _fn=your_function) from Python.")
+            f"Step(..., _fn=your_function) from Python."
+        )
 
 
 @dataclass
 class SearchStep(Step):
     """``client.search(**params)``; an empty result is a failure (every later step needs scenes)."""
+
     action: str = "search"
 
     def run(self, context: dict) -> list:
@@ -53,9 +64,11 @@ class SearchStep(Step):
             raise StepError("search needs a client in the run context (PyGeoVision())")
         try:
             results = client.search(**self.params)
-        except TypeError as exc:     # bbox / date_range are required by client.search
-            raise StepError(f"search parameters are incomplete: {exc}. Set them in the YAML or with "
-                            f"--set {self.name}.bbox=... / --set {self.name}.date_range=...") from exc
+        except TypeError as exc:  # bbox / date_range are required by client.search
+            raise StepError(
+                f"search parameters are incomplete: {exc}. Set them in the YAML or with "
+                f"--set {self.name}.bbox=... / --set {self.name}.date_range=..."
+            ) from exc
         if not results:
             raise StepError("search returned no scenes")
         return list(results)
@@ -64,6 +77,7 @@ class SearchStep(Step):
 @dataclass
 class DownloadStep(Step):
     """``client.download(search_results, **params)``; fails unless at least one scene arrived."""
+
     action: str = "download"
 
     def run(self, context: dict) -> list:
@@ -76,7 +90,9 @@ class DownloadStep(Step):
         results = list(client.download(scenes, **self.params))
         ok = [r for r in results if getattr(r, "success", True) and getattr(r, "path", None)]
         if not ok:
-            errors = "; ".join(str(getattr(r, "error", "")) for r in results if getattr(r, "error", ""))
+            errors = "; ".join(
+                str(getattr(r, "error", "")) for r in results if getattr(r, "error", "")
+            )
             raise StepError(f"no scene was downloaded{': ' + errors if errors else ''}")
         return ok
 
@@ -90,6 +106,7 @@ class InferStep(Step):
     model can instead be passed as ``context["model"]``. Without trained weights the step fails: an
     untrained network's output looks like a result and is not one.
     """
+
     action: str = "infer"
 
     def run(self, context: dict) -> list:
@@ -110,11 +127,13 @@ class InferStep(Step):
                 raise StepError(
                     "infer needs your trained model: set 'model' (registry name) and 'checkpoint' "
                     "(a .pth trained with GeoTrainer on your area; PyGeoVision ships architectures, "
-                    f"not trained weights) -- e.g. --set {self.name}.checkpoint=best.pth")
+                    f"not trained weights) -- e.g. --set {self.name}.checkpoint=best.pth"
+                )
             if not Path(ckpt).is_file():
                 raise StepError(f"checkpoint not found: {ckpt}")
 
         from pygeovision.inference.tiled import TiledInference
+
         results = []
         for dl in downloads:
             path = Path(dl.path if hasattr(dl, "path") else dl)
@@ -123,15 +142,23 @@ class InferStep(Step):
                 import rasterio
 
                 from pygeovision.ai.models.hub import ModelHub
+
                 if in_channels is None:
                     with rasterio.open(path) as src:
                         bands = src.count
                 else:
                     bands = int(in_channels)
-                net = ModelHub().load(name, checkpoint=str(ckpt), num_classes=num_classes,
-                                      in_channels=bands, device="cpu")
+                net = ModelHub().load(
+                    name,
+                    checkpoint=str(ckpt),
+                    num_classes=num_classes,
+                    in_channels=bands,
+                    device="cpu",
+                )
             out = (Path(out_dir) if out_dir else path.parent) / f"{path.stem}_pred.tif"
-            res = TiledInference(model=net, num_classes=num_classes, **tiled).infer(str(path), str(out))
+            res = TiledInference(model=net, num_classes=num_classes, **tiled).infer(
+                str(path), str(out)
+            )
             if not res.get("success"):
                 raise StepError(f"inference on {path.name} failed: {res.get('error')}")
             results.append(res)
@@ -145,6 +172,7 @@ class ExportStep(Step):
     Params: ``format`` (default geojson), ``output_dir`` (default ./output/), ``target_class``
     (default: every class), ``min_area_m2``, ``simplify_tolerance``.
     """
+
     action: str = "export"
 
     def run(self, context: dict) -> list:
@@ -158,15 +186,19 @@ class ExportStep(Step):
         out_dir = Path(self.params.get("output_dir", "./output/"))
         out_dir.mkdir(parents=True, exist_ok=True)
         from pygeovision.data.postprocess import PostProcessor
+
         post = PostProcessor()
         written = []
         for pred in predictions:
             src = Path(pred["output_path"] if isinstance(pred, dict) else pred)
             geojson = out_dir / f"{src.stem}.geojson"
-            post.vectorise(str(src), str(geojson),
-                           target_class=self.params.get("target_class"),
-                           min_area_m2=float(self.params.get("min_area_m2", 0.0)),
-                           simplify_tolerance=float(self.params.get("simplify_tolerance", 0.0)))
+            post.vectorise(
+                str(src),
+                str(geojson),
+                target_class=self.params.get("target_class"),
+                min_area_m2=float(self.params.get("min_area_m2", 0.0)),
+                simplify_tolerance=float(self.params.get("simplify_tolerance", 0.0)),
+            )
             if ext != "geojson":
                 final = out_dir / f"{src.stem}.{ext}"
                 post.export(str(geojson), str(final), fmt=ext)

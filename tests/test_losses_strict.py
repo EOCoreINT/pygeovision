@@ -1,9 +1,14 @@
 """Losses must refuse names they would otherwise ignore, and class weights must follow the logits."""
+
 import pytest
 
 torch = pytest.importorskip("torch")
 
-from pygeovision.losses import BoundaryAwareLoss, ClassBalancedCrossEntropy, GeospatialMixedLoss  # noqa: E402
+from pygeovision.losses import (
+    BoundaryAwareLoss,
+    ClassBalancedCrossEntropy,
+    GeospatialMixedLoss,
+)  # noqa: E402
 
 
 def test_mixed_loss_rejects_unknown_component():
@@ -24,7 +29,7 @@ def test_boundary_loss_rejects_unknown_base():
 
 def test_class_balanced_ce_weights_the_rare_class_up():
     logits = torch.zeros(1, 2, 4, 4)
-    logits[:, 0] = 2.0                      # favours class 0, so the single class-1 pixel is wrong
+    logits[:, 0] = 2.0  # favours class 0, so the single class-1 pixel is wrong
     target = torch.zeros(1, 4, 4, dtype=torch.long)
     target[0, 0, 0] = 1
     plain = torch.nn.functional.cross_entropy(logits, target)

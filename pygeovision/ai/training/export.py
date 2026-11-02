@@ -13,8 +13,8 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
+import logging
 from pathlib import Path
 
 import torch
@@ -78,9 +78,7 @@ class ModelExporter:
         try:
             import onnx
         except ImportError as exc:
-            raise ImportError(
-                "ONNX export requires onnx. Install: pip install onnx"
-            ) from exc
+            raise ImportError("ONNX export requires onnx. Install: pip install onnx") from exc
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -104,6 +102,7 @@ class ModelExporter:
         with torch.no_grad():
             try:
                 from pygeovision._onnx import export_onnx
+
                 export_onnx(
                     self.model,
                     dummy,
@@ -134,6 +133,7 @@ class ModelExporter:
         if simplify:
             try:
                 from onnxsim import simplify as onnx_simplify
+
                 simplified, ok = onnx_simplify(onnx_model)
                 if ok:
                     onnx.save(simplified, str(output_path))
@@ -228,7 +228,10 @@ class ModelExporter:
         }
         logger.info(
             "Benchmark: %.2f ms ± %.2f ms | %.1f FPS | device=%s",
-            mean_ms, std_ms, fps, self.device,
+            mean_ms,
+            std_ms,
+            fps,
+            self.device,
         )
         return result
 

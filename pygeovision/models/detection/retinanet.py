@@ -1,4 +1,5 @@
 """RetinaNet (ResNet-50 FPN) with focal loss -- torchvision backed."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -31,6 +32,8 @@ def build_retinanet(
     widen_detector_for_bands(model, in_channels, pretrained, image_mean, image_std)
     head = model.head.classification_head
     model.head.classification_head = RetinaNetClassificationHead(
-        model.backbone.out_channels, head.num_anchors, num_classes + 1,
+        model.backbone.out_channels,
+        head.num_anchors,
+        num_classes + 1,
     )
     return model

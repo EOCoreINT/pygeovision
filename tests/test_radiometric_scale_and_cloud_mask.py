@@ -19,6 +19,7 @@ Verified against the real, documented conversion formulas:
   - Sentinel-2 SCL cloud classes (ESA spec): 3/8/9/10
     (cloud shadow / cloud medium / cloud high / thin cirrus)
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
@@ -49,14 +50,26 @@ class TestLandsatRadiometricScaling:
         asset_paths = {}
         for key in ["SR_B4", "SR_B3", "SR_B2"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), known_dn, dtype="uint16"), 1)
             asset_paths[key] = p
 
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="LC08_L2SP_014031_20240615_02_T1", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="LC08_L2SP_014031_20240615_02_T1",
+            apply_cloud_mask=False,
         )
         with rasterio.open(stack_path) as src:
             assert src.dtypes[0] == "float32"
@@ -70,14 +83,26 @@ class TestLandsatRadiometricScaling:
         asset_paths = {}
         for key in ["SR_B4", "SR_B3", "SR_B2"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 9091, dtype="uint16"), 1)
             asset_paths[key] = p
 
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="LC08_L2SP_014031_20240615_02_T1", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="LC08_L2SP_014031_20240615_02_T1",
+            apply_cloud_mask=False,
         )
         with rasterio.open(stack_path) as src:
             assert src.dtypes[0] == "float32"
@@ -92,15 +117,27 @@ class TestLandsatRadiometricScaling:
         asset_paths = {}
         for key in ["SR_B4", "SR_B3", "SR_B2"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), known_dn, dtype="uint16"), 1)
             asset_paths[key] = p
 
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
             scene_id="LC08_L2SP_014031_20240615_02_T1",
-            apply_scale=False, apply_cloud_mask=False,
+            apply_scale=False,
+            apply_cloud_mask=False,
         )
         with rasterio.open(stack_path) as src:
             data = src.read()
@@ -116,14 +153,26 @@ class TestSentinel2RadiometricScaling:
         asset_paths = {}
         for key in ["B04", "B03", "B02"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), known_dn, dtype="uint16"), 1)
             asset_paths[key] = p
 
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "s2_stack.tif", bands=("red", "green", "blue"),
-            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "s2_stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL",
+            apply_cloud_mask=False,
         )
         with rasterio.open(stack_path) as src:
             data = src.read()
@@ -139,27 +188,47 @@ class TestLandsatCloudMasking:
         asset_paths = {}
         for key in ["SR_B4", "SR_B3", "SR_B2"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), known_dn, dtype="uint16"), 1)
             asset_paths[key] = p
 
         qa_data = np.zeros((size, size), dtype="uint16")
-        qa_data[:20, :] = 8    # bit 3 (Cloud) set
-        qa_data[20:, :] = 64   # bit 6 (Clear) set, no cloud bits
+        qa_data[:20, :] = 8  # bit 3 (Cloud) set
+        qa_data[20:, :] = 64  # bit 6 (Clear) set, no cloud bits
         qa_path = tmp_path / "QA_PIXEL.tif"
-        with rasterio.open(qa_path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            qa_path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="uint16",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             dst.write(qa_data, 1)
         asset_paths["QA_PIXEL"] = qa_path
 
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
             scene_id="LC08_L2SP_014031_20240615_02_T1",
         )
         with rasterio.open(stack_path) as src:
             data = src.read()
-        assert np.isnan(data[0, 5, 0])    # cloud region
+        assert np.isnan(data[0, 5, 0])  # cloud region
         assert not np.isnan(data[0, 25, 0])  # clear region
 
     def test_dilated_cloud_and_cirrus_bits_are_also_masked(self, tmp_path):
@@ -171,28 +240,48 @@ class TestLandsatCloudMasking:
         asset_paths = {}
         for key in ["SR_B4", "SR_B3", "SR_B2"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 9091, dtype="uint16"), 1)
             asset_paths[key] = p
 
         qa_data = np.zeros((size, size), dtype="uint16")
-        qa_data[:10, :] = 2   # bit 1 (Dilated Cloud)
-        qa_data[10:, :] = 4   # bit 2 (Cirrus)
+        qa_data[:10, :] = 2  # bit 1 (Dilated Cloud)
+        qa_data[10:, :] = 4  # bit 2 (Cirrus)
         qa_path = tmp_path / "QA_PIXEL.tif"
-        with rasterio.open(qa_path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            qa_path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="uint16",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             dst.write(qa_data, 1)
         asset_paths["QA_PIXEL"] = qa_path
 
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
             scene_id="LC08_L2SP_014031_20240615_02_T1",
         )
         with rasterio.open(stack_path) as src:
             data = src.read()
-        assert np.isnan(data[0, 5, 0])    # dilated cloud region
-        assert np.isnan(data[0, 15, 0])   # cirrus region
+        assert np.isnan(data[0, 5, 0])  # dilated cloud region
+        assert np.isnan(data[0, 15, 0])  # cirrus region
 
     def test_missing_qa_band_warns_but_does_not_crash(self, tmp_path):
         pipeline = _make_pipeline()
@@ -201,13 +290,24 @@ class TestLandsatCloudMasking:
         asset_paths = {}
         for key in ["SR_B4", "SR_B3", "SR_B2"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 9091, dtype="uint16"), 1)
             asset_paths[key] = p
         # No QA_PIXEL asset present at all
         result = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
             scene_id="LC08_L2SP_014031_20240615_02_T1",
         )
         assert result is not None
@@ -221,22 +321,42 @@ class TestSentinel2CloudMasking:
         asset_paths = {}
         for key in ["B04", "B03", "B02"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 500, dtype="uint16"), 1)
             asset_paths[key] = p
 
         scl_data = np.zeros((size, size), dtype="uint8")
-        scl_data[:20, :] = 9   # cloud high probability
-        scl_data[20:, :] = 4   # vegetation (clear)
+        scl_data[:20, :] = 9  # cloud high probability
+        scl_data[20:, :] = 4  # vegetation (clear)
         scl_path = tmp_path / "SCL.tif"
-        with rasterio.open(scl_path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="uint8", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            scl_path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             dst.write(scl_data, 1)
         asset_paths["SCL"] = scl_path
 
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "s2_stack.tif", bands=("red", "green", "blue"),
+            asset_paths,
+            tmp_path / "s2_stack.tif",
+            bands=("red", "green", "blue"),
             scene_id="S2A_MSIL2A_20240615T153941_R011_T18TXL",
         )
         with rasterio.open(stack_path) as src:

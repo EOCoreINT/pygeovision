@@ -3,11 +3,12 @@ Tiled inference with Gaussian blending (B1, B4, B5).
 Handles arbitrarily large GeoTIFFs without memory overflow.
 Uses smooth Gaussian window weighting at tile boundaries.
 """
+
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class GaussianBlend:
     def window(size: int, sigma_ratio: float = 0.25) -> Any:
         """Generate a 2D Gaussian window of shape (size, size)."""
         import numpy as np
+
         sigma = size * sigma_ratio
         size // 2
         y, x = np.mgrid[:size, :size]
@@ -37,10 +39,11 @@ class GaussianBlend:
     def apply_to_prediction(pred: Any, size: int, sigma_ratio: float = 0.25) -> Any:
         """Weight a prediction array with the Gaussian window."""
         import numpy as np
+
         w = GaussianBlend.window(size, sigma_ratio)
         if pred.ndim == 3:  # (C, H, W)
-            return pred * w[np.newaxis, :pred.shape[1], :pred.shape[2]]
-        return pred * w[:pred.shape[0], :pred.shape[1]]
+            return pred * w[np.newaxis, : pred.shape[1], : pred.shape[2]]
+        return pred * w[: pred.shape[0], : pred.shape[1]]
 
 
 class TiledInference:
@@ -74,14 +77,14 @@ class TiledInference:
         model: Any,
         chip_size: int = 512,
         overlap: int = 128,
-        blend_mode: str = "gaussian",     # gaussian | linear | constant
+        blend_mode: str = "gaussian",  # gaussian | linear | constant
         batch_tiles: int = 4,
         device: str | None = None,
         num_classes: int = 2,
-        activation: str = "softmax",       # softmax | sigmoid | none
+        activation: str = "softmax",  # softmax | sigmoid | none
         sigma_ratio: float = 0.25,
         dtype: str = "float32",
-        tta: bool = False,                 # Test-time augmentation
+        tta: bool = False,  # Test-time augmentation
         half_precision: bool = True,
         tolerate_chip_failures: bool = False,
     ) -> None:
@@ -98,7 +101,9 @@ class TiledInference:
         self.half_precision = half_precision
         self.tolerate_chip_failures = tolerate_chip_failures
         if not 0 <= overlap < chip_size:
-            raise ValueError(f"overlap must be in [0, chip_size); got overlap={overlap}, chip_size={chip_size}")
+            raise ValueError(
+                f"overlap must be in [0, chip_size); got overlap={overlap}, chip_size={chip_size}"
+            )
         self._device = device or self._auto_device()
         self._model_loaded = False
         self._chip_failures = 0
@@ -107,6 +112,7 @@ class TiledInference:
     def _auto_device() -> str:
         try:
             import torch
+
             return "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
             return "cpu"
@@ -125,6 +131,7 @@ class TiledInference:
 
     def _get_blend_window(self, h: int, w: int) -> Any:
         import numpy as np
+
         if self.blend_mode == "gaussian":
             window = GaussianBlend.window(self.chip_size, self.sigma_ratio)
             return window[:h, :w]
@@ -132,12 +139,13 @@ class TiledInference:
             # Weights must stay above zero everywhere: a pixel covered by a single chip at the
             # scene border would otherwise get weight 0 and silently turn into class 0.
             def _ramp(n: int) -> Any:
-                return ((np.minimum(np.arange(n), np.arange(n)[::-1]) + 1) / (n / 2 + 0.5)).clip(0, 1)
+                return ((np.minimum(np.arange(n), np.arange(n)[::-1]) + 1) / (n / 2 + 0.5)).clip(
+                    0, 1
+                )
 
             return np.outer(_ramp(h), _ramp(w))
         else:  # constant
             return np.ones((h, w))
-
 
     @staticmethod
     def _extract_logits(output: Any) -> Any:
@@ -150,6 +158,7 @@ class TiledInference:
         shape the wrapped model produces.
         """
         import torch
+
         if isinstance(output, torch.Tensor):
             return output
         # Standard HF ModelOutput / SemanticSegmenterOutput: has .logits
@@ -179,6 +188,7 @@ class TiledInference:
             import numpy as np
             import torch
 
+            self._prepare_model()  # idempotent: moves/halves the model the same way infer() does
             if isinstance(chip, np.ndarray):
                 use_half = self.half_precision and self._device == "cuda"
                 chip_t = torch.tensor(chip, dtype=torch.float16 if use_half else torch.float32)
@@ -193,19 +203,23 @@ class TiledInference:
                 preds = []
                 for flip_h, flip_v in [(False, False), (True, False), (False, True), (True, True)]:
                     x = chip_t.clone()
-                    if flip_h: x = torch.flip(x, dims=[-1])
-                    if flip_v: x = torch.flip(x, dims=[-2])
+                    if flip_h:
+                        x = torch.flip(x, dims=[-1])
+                    if flip_v:
+                        x = torch.flip(x, dims=[-2])
                     with torch.no_grad():
                         p = self.model(x)
-                    p = self._extract_logits(p)   # <-- unwrap here
-                    if flip_h: p = torch.flip(p, dims=[-1])
-                    if flip_v: p = torch.flip(p, dims=[-2])
+                    p = self._extract_logits(p)  # <-- unwrap here
+                    if flip_h:
+                        p = torch.flip(p, dims=[-1])
+                    if flip_v:
+                        p = torch.flip(p, dims=[-2])
                     preds.append(p)
                 logits = torch.stack(preds).mean(0)
             else:
                 with torch.no_grad():
                     logits = self.model(chip_t)
-                logits = self._extract_logits(logits)   # <-- unwrap here too
+                logits = self._extract_logits(logits)  # <-- unwrap here too
 
             if self.activation == "softmax":
                 probs = torch.softmax(logits, dim=1)
@@ -224,7 +238,8 @@ class TiledInference:
                 "Detection models (Mask R-CNN, Faster R-CNN, FCOS, YOLO) and "
                 "change-detection models (BIT, DSAMNet, ChangeFormer) are NOT "
                 "compatible with TiledInference — they need a dedicated wrapper "
-                "with a different calling convention. Root cause: %s", exc,
+                "with a different calling convention. Root cause: %s",
+                exc,
                 exc_info=True,
             )
             self._chip_failures = getattr(self, "_chip_failures", 0) + 1
@@ -236,6 +251,7 @@ class TiledInference:
                     f"corrupts output)."
                 ) from exc
             import numpy as np
+
             return np.zeros((self.num_classes, self.chip_size, self.chip_size), dtype=np.float32)
 
     def _blend(self, image: Any) -> tuple[Any, int]:
@@ -254,12 +270,14 @@ class TiledInference:
         tile_batch: list[tuple] = []
 
         def _flush_batch(batch):
-            for (r, c, rh, cw, chip_data) in batch:
+            for r, c, rh, cw, chip_data in batch:
                 pred = self._predict_chip(chip_data)
                 weight = self._get_blend_window(rh, cw)
                 actual_h, actual_w = min(pred.shape[-2], rh), min(pred.shape[-1], cw)
-                accum[:, r:r+actual_h, c:c+actual_w] += pred[:, :actual_h, :actual_w] * weight[:actual_h, :actual_w]
-                counts[r:r+actual_h, c:c+actual_w] += weight[:actual_h, :actual_w]
+                accum[:, r : r + actual_h, c : c + actual_w] += (
+                    pred[:, :actual_h, :actual_w] * weight[:actual_h, :actual_w]
+                )
+                counts[r : r + actual_h, c : c + actual_w] += weight[:actual_h, :actual_w]
 
         for row in range(0, H, stride):
             for col in range(0, W, stride):
@@ -270,8 +288,10 @@ class TiledInference:
                 chip_data = image[:, row:r2, col:c2]
                 # Pad chip to chip_size if needed
                 if chip_data.shape[1] < self.chip_size or chip_data.shape[2] < self.chip_size:
-                    padded = np.zeros((image.shape[0], self.chip_size, self.chip_size), dtype=np.float32)
-                    padded[:, :chip_data.shape[1], :chip_data.shape[2]] = chip_data
+                    padded = np.zeros(
+                        (image.shape[0], self.chip_size, self.chip_size), dtype=np.float32
+                    )
+                    padded[:, : chip_data.shape[1], : chip_data.shape[2]] = chip_data
                     chip_data = padded
 
                 tile_batch.append((row, col, actual_h, actual_w, chip_data))
@@ -298,8 +318,13 @@ class TiledInference:
         import torch
 
         try:
+            try:
+                dtype = next(self.model.parameters()).dtype  # half on GPU when half_precision=True
+            except (AttributeError, StopIteration):
+                dtype = torch.float32
+            probe = torch.zeros(1, n_bands, self.chip_size, self.chip_size, dtype=dtype)
             with torch.no_grad():
-                self.model(torch.zeros(1, n_bands, self.chip_size, self.chip_size).to(self._device))
+                self.model(probe.to(self._device))
             return None
         except Exception as exc:
             return str(exc)
@@ -333,8 +358,10 @@ class TiledInference:
         self._prepare_model()
         problem = self._preflight(image.shape[0])
         if problem is not None and not self.tolerate_chip_failures:
-            raise ValueError(f"Model does not accept {image.shape[0]} input band(s) at "
-                             f"chip_size={self.chip_size}: {problem}")
+            raise ValueError(
+                f"Model does not accept {image.shape[0]} input band(s) at "
+                f"chip_size={self.chip_size}: {problem}"
+            )
         accum, _ = self._blend(image)
         return accum.astype(np.float32)
 
@@ -369,22 +396,22 @@ class TiledInference:
         try:
             import numpy as np
             import rasterio
-            import torch
+            import torch  # noqa: F401
         except ImportError as exc:
             return {"success": False, "error": f"rasterio + torch required: {exc}"}
 
-        image_path  = Path(image_path)
+        image_path = Path(image_path)
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._prepare_model()
         t_start = time.time()
         n_chips_total = 0
-        n_chips_ok    = 0
+        n_chips_ok = 0
 
         with rasterio.open(str(image_path)) as src:
             profile = src.profile.copy()
-            H, W    = src.height, src.width
+            H, W = src.height, src.width
             n_bands = src.count
 
             bands = band_selection or list(range(1, n_bands + 1))
@@ -406,17 +433,20 @@ class TiledInference:
                 return {
                     "success": False,
                     "error": f"Model does not accept {len(bands)} input band(s) at chip_size="
-                             f"{self.chip_size} (selected from {n_bands} real band(s) in {image_path}): "
-                             f"{problem}. Pass band_selection= explicitly if this file has more bands "
-                             f"than the model expects; if the message is about dimensions, the model "
-                             f"may only accept one chip size (an ONNX export with a fixed size).",
+                    f"{self.chip_size} (selected from {n_bands} real band(s) in {image_path}): "
+                    f"{problem}. Pass band_selection= explicitly if this file has more bands "
+                    f"than the model expects; if the message is about dimensions, the model "
+                    f"may only accept one chip size (an ONNX export with a fixed size).",
                 }
             logger.warning(
                 "Pre-flight check found the model does not accept %d input band(s) "
                 "(selected from %d real band(s) in %s): %s. tolerate_chip_failures=True "
                 "was explicitly set, so proceeding anyway -- every chip will likely "
                 "fail and be zero-filled per that setting's real, existing behavior.",
-                len(bands), n_bands, image_path, problem,
+                len(bands),
+                n_bands,
+                image_path,
+                problem,
             )
 
         # Pixels without data must neither be predicted nor distort the stretch (one NaN makes
@@ -451,11 +481,11 @@ class TiledInference:
             out_profile = profile.copy()
             out_profile.update(count=1, dtype="uint8", compress="lzw")
 
-        for _k in ("blockxsize", "blockysize", "tiled"):      # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             out_profile.pop(_k, None)
         _nd = out_profile.get("nodata")
         if _nd is not None and not (float(_nd).is_integer() and 0 <= _nd <= 255):
-            out_profile["nodata"] = None                       # the source's nodata does not fit uint8
+            out_profile["nodata"] = None  # the source's nodata does not fit uint8
         if not return_probabilities and not valid.all():
             out_profile["nodata"] = 255
         with rasterio.open(str(output_path), "w", **out_profile) as dst:
@@ -486,6 +516,7 @@ class TiledInference:
     def estimate_memory(self, H: int, W: int) -> dict[str, float]:
         """Estimate GPU memory usage for a given image size."""
         import math
+
         stride = self.chip_size - self.overlap
         n_chips_h = math.ceil(H / stride)
         n_chips_w = math.ceil(W / stride)

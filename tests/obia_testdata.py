@@ -4,16 +4,22 @@ This is a *test fixture*, not part of the package: five flat rectangles whose cl
 down below, so every expected value in the tests follows from the construction (an object that is a rectangle has the
 area of a rectangle). It makes no claim to look like imagery and nothing in ``pygeovision`` imports it.
 """
-import numpy as np
+
 from affine import Affine
+import numpy as np
 
 from pygeovision import obia
 
 BANDS = ["blue", "green", "red", "nir"]
 CLASSES = ["water", "cropland", "bare_field", "forest", "building"]
 # (blue, green, red, nir) of each rectangle
-MEANS = {"water": (55, 45, 30, 12), "cropland": (35, 80, 40, 170), "bare_field": (95, 115, 135, 125),
-         "forest": (25, 45, 28, 130), "building": (150, 160, 175, 90)}
+MEANS = {
+    "water": (55, 45, 30, 12),
+    "cropland": (35, 80, 40, 170),
+    "bare_field": (95, 115, 135, 125),
+    "forest": (25, 45, 28, 130),
+    "building": (150, 160, 175, 90),
+}
 PIXEL = 2.0
 CRS = "EPSG:32633"
 TRANSFORM = Affine(PIXEL, 0, 352000.0, 0, -PIXEL, 5297000.0)
@@ -28,11 +34,11 @@ class BlockScene:
         h = n // 2
         q = n // 8
         ref = np.zeros((n, n), np.int32)
-        ref[:h, :h] = 1                         # water        top left
-        ref[:h, h:] = 2                         # cropland     top right
-        ref[h:, :h] = 3                         # bare field   bottom left (a building is cut out of it)
-        ref[h:, h:] = 4                         # forest       bottom right
-        ref[h + q:h + 2 * q, q:2 * q] = 5       # building     (n/8) x (n/8) inside the bare field
+        ref[:h, :h] = 1  # water        top left
+        ref[:h, h:] = 2  # cropland     top right
+        ref[h:, :h] = 3  # bare field   bottom left (a building is cut out of it)
+        ref[h:, h:] = 4  # forest       bottom right
+        ref[h + q : h + 2 * q, q : 2 * q] = 5  # building     (n/8) x (n/8) inside the bare field
         img = np.zeros((4, n, n), np.float32)
         for i, cname in enumerate(CLASSES):
             m = ref == i + 1

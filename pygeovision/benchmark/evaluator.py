@@ -9,13 +9,14 @@ Provides:
 
 It evaluates on the loader you give it; it does not create train/val/test splits.
 """
+
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import json
 import logging
-import time
-from dataclasses import dataclass, field
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ def _sync(dev: Any) -> None:
     """Wait for queued GPU work so wall-clock timings measure the model, not just the kernel launch."""
     try:
         import torch
+
         if getattr(dev, "type", str(dev)).startswith("cuda"):
             torch.cuda.synchronize(dev)
     except Exception:  # noqa: BLE001
@@ -52,22 +54,28 @@ def _unpack(batch: Any, dev: Any) -> tuple[Any, Any]:
     images = batch.get("image", batch.get("images"))
     targets = batch.get("mask", batch.get("label"))
     if images is None or targets is None:
-        raise KeyError(f"batch dict needs 'image'/'images' and 'mask'/'label' keys; got {sorted(batch)}")
+        raise KeyError(
+            f"batch dict needs 'image'/'images' and 'mask'/'label' keys; got {sorted(batch)}"
+        )
     return images.to(dev), targets.to(dev)
 
 
 def _predict_classes(model: Any, images: Any, targets: Any) -> Any:
     """Argmax class map from the model, enlarged to the target size when the model outputs a coarser map."""
     import torch.nn.functional as F
+
     logits = _logits(model(images))
     if logits.ndim == 4 and targets.ndim == 3 and logits.shape[-2:] != targets.shape[-2:]:
-        logits = F.interpolate(logits, size=targets.shape[-2:], mode="bilinear", align_corners=False)
+        logits = F.interpolate(
+            logits, size=targets.shape[-2:], mode="bilinear", align_corners=False
+        )
     return logits.argmax(dim=1)
 
 
 @dataclass
 class BenchmarkResult:
     """Result from evaluating one model on one dataset split."""
+
     model_name: str
     dataset_name: str
     task: str
@@ -108,8 +116,10 @@ class BenchmarkResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "model": self.model_name, "dataset": self.dataset_name,
-            "task": self.task, "split": self.split,
+            "model": self.model_name,
+            "dataset": self.dataset_name,
+            "task": self.task,
+            "split": self.split,
             "mean_iou": round(self.mean_iou, 4),
             "mean_f1": round(self.mean_f1, 4),
             "accuracy": round(self.accuracy, 4),
@@ -156,13 +166,17 @@ class ModelEvaluator:
         """Evaluate a model on a DataLoader and return BenchmarkResult."""
         from pygeovision.training.metrics import DetectionMetrics, SegmentationMetrics
 
-        result = BenchmarkResult(model_name=model_name, dataset_name=dataset_name,
-                                 task=self.task, split=split)
+        result = BenchmarkResult(
+            model_name=model_name, dataset_name=dataset_name, task=self.task, split=split
+        )
         try:
             import torch
+
             dev = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
             model = model.to(dev).eval()
-            metrics_seg = SegmentationMetrics(self.num_classes) if self.task not in ("detection",) else None
+            metrics_seg = (
+                SegmentationMetrics(self.num_classes) if self.task not in ("detection",) else None
+            )
             metrics_det = DetectionMetrics(self.num_classes) if self.task == "detection" else None
 
             total_images = 0
@@ -196,11 +210,17 @@ class ModelEvaluator:
                         total_images += len(images_list)
 
                         preds_cpu = [
-                            {k: v.detach().cpu() if hasattr(v, "detach") else v for k, v in o.items()}
+                            {
+                                k: v.detach().cpu() if hasattr(v, "detach") else v
+                                for k, v in o.items()
+                            }
                             for o in outputs
                         ]
                         targets_cpu = [
-                            {k: v.detach().cpu() if hasattr(v, "detach") else v for k, v in t.items()}
+                            {
+                                k: v.detach().cpu() if hasattr(v, "detach") else v
+                                for k, v in t.items()
+                            }
                             for t in targets_list
                         ]
                         metrics_det.update(preds_cpu, targets_cpu)
@@ -217,10 +237,19 @@ class ModelEvaluator:
 
                     if metrics_seg is not None:
                         logits = _logits(outputs)
-                        if logits.ndim == 4 and targets.ndim == 3 and logits.shape[-2:] != targets.shape[-2:]:
+                        if (
+                            logits.ndim == 4
+                            and targets.ndim == 3
+                            and logits.shape[-2:] != targets.shape[-2:]
+                        ):
                             import torch.nn.functional as F
-                            logits = F.interpolate(logits, size=targets.shape[-2:], mode="bilinear",
-                                                   align_corners=False)
+
+                            logits = F.interpolate(
+                                logits,
+                                size=targets.shape[-2:],
+                                mode="bilinear",
+                                align_corners=False,
+                            )
                         metrics_seg.update(logits.argmax(dim=1), targets)
 
             result.duration_seconds = time.time() - t_start
@@ -231,10 +260,12 @@ class ModelEvaluator:
                 result.error = "the loader produced no batches"
             if metrics_seg is not None:
                 if metrics_seg.n_failed_updates:
-                    result.error = (f"{metrics_seg.n_failed_updates} batch(es) could not be scored "
-                                    "(prediction/target shape mismatch or class index >= num_classes); "
-                                    "metrics would be incomplete")
-                computed = metrics_seg.compute()
+                    result.error = (
+                        f"{metrics_seg.n_failed_updates} batch(es) could not be scored "
+                        "(prediction/target shape mismatch or class index >= num_classes); "
+                        "metrics would be incomplete"
+                    )
+                computed: dict[str, Any] = metrics_seg.compute()
                 result.mean_iou = computed.get("mean_iou", 0.0)
                 result.mean_f1 = computed.get("mean_f1", 0.0)
                 result.accuracy = computed.get("accuracy", 0.0)
@@ -246,7 +277,7 @@ class ModelEvaluator:
                 result.mAP50 = computed.get("mAP50", 0.0)
                 result.mAP50_95 = computed.get("mAP50_95", 0.0)
                 if "error" in computed or "note" in computed:
-                    result.error = computed.get("error") or computed.get("note", "")
+                    result.error = str(computed.get("error") or computed.get("note", ""))
                     result.notes = result.error
         except ImportError as exc:
             logger.warning("torch required for evaluation")
@@ -269,11 +300,18 @@ class ModelEvaluator:
         results = []
         for name, model in models.items():
             logger.info("Evaluating: %s on %s...", name, dataset_name)
-            r = self.evaluate(model, loader, dataset_name, model_name=name,
-                              split=split, device=device)
+            r = self.evaluate(
+                model, loader, dataset_name, model_name=name, split=split, device=device
+            )
             results.append(r)
-            logger.info("  %s: mIoU=%.4f  F1=%.4f  acc=%.4f  %.1fms/img",
-                        name, r.mean_iou, r.mean_f1, r.accuracy, r.inference_ms_per_image)
+            logger.info(
+                "  %s: mIoU=%.4f  F1=%.4f  acc=%.4f  %.1fms/img",
+                name,
+                r.mean_iou,
+                r.mean_f1,
+                r.accuracy,
+                r.inference_ms_per_image,
+            )
         results.sort(key=lambda x: (not x.failed, x.primary_metric), reverse=True)
         return results
 
@@ -292,17 +330,23 @@ class ModelEvaluator:
             print(f"  {'#':<3} {'Model':<30} {'mIoU':>8} {'F1':>8} {'Acc':>8} {'ms/img':>8}")
             print(f"  {'─'*70}")
             for i, r in enumerate(results, 1):
-                print(f"  {i:<3} {r.model_name:<30} {r.mean_iou:>8.4f} {r.mean_f1:>8.4f} {r.accuracy:>8.4f} {r.inference_ms_per_image:>8.1f}")
+                print(
+                    f"  {i:<3} {r.model_name:<30} {r.mean_iou:>8.4f} {r.mean_f1:>8.4f} {r.accuracy:>8.4f} {r.inference_ms_per_image:>8.1f}"
+                )
         elif task == "detection":
             print(f"  {'#':<3} {'Model':<30} {'mAP@50':>8} {'mAP50-95':>10} {'ms/img':>8}")
             print(f"  {'─'*65}")
             for i, r in enumerate(results, 1):
-                print(f"  {i:<3} {r.model_name:<30} {r.mAP50:>8.4f} {r.mAP50_95:>10.4f} {r.inference_ms_per_image:>8.1f}")
+                print(
+                    f"  {i:<3} {r.model_name:<30} {r.mAP50:>8.4f} {r.mAP50_95:>10.4f} {r.inference_ms_per_image:>8.1f}"
+                )
         elif task == "classification":
             print(f"  {'#':<3} {'Model':<30} {'Accuracy':>10} {'F1':>8} {'ms/img':>8}")
             print(f"  {'─'*65}")
             for i, r in enumerate(results, 1):
-                print(f"  {i:<3} {r.model_name:<30} {r.accuracy:>10.4f} {r.mean_f1:>8.4f} {r.inference_ms_per_image:>8.1f}")
+                print(
+                    f"  {i:<3} {r.model_name:<30} {r.accuracy:>10.4f} {r.mean_f1:>8.4f} {r.inference_ms_per_image:>8.1f}"
+                )
         for r in failed:
             print(f"  FAILED  {r.model_name:<30} {r.error}")
         print(f"{'═'*90}\n")
@@ -315,16 +359,21 @@ class ModelEvaluator:
             json.dump([r.to_dict() for r in results], f, indent=2)
         logger.info("Results saved → %s", path)
 
-    def confusion_matrix_plot(self, model: Any, loader: Any,
-                               class_names: list[str] | None = None,
-                               save_path: str | Path | None = None) -> Any:
+    def confusion_matrix_plot(
+        self,
+        model: Any,
+        loader: Any,
+        class_names: list[str] | None = None,
+        save_path: str | Path | None = None,
+    ) -> Any:
         """Generate and optionally save a confusion matrix plot."""
         try:
             import matplotlib.pyplot as plt
-            import numpy as np
+            import numpy as np  # noqa: F401
             import torch
 
             from pygeovision.training.metrics import SegmentationMetrics
+
             dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             model = model.to(dev).eval()
             metrics = SegmentationMetrics(self.num_classes)
@@ -339,15 +388,24 @@ class ModelEvaluator:
             im = ax.imshow(cm_norm, cmap="Blues", vmin=0, vmax=1)
             plt.colorbar(im)
             labels = class_names or [str(i) for i in range(self.num_classes)]
-            ax.set_xticks(range(self.num_classes)); ax.set_yticks(range(self.num_classes))
+            ax.set_xticks(range(self.num_classes))
+            ax.set_yticks(range(self.num_classes))
             ax.set_xticklabels(labels, rotation=45, ha="right")
             ax.set_yticklabels(labels)
-            ax.set_xlabel("Predicted"); ax.set_ylabel("True")
+            ax.set_xlabel("Predicted")
+            ax.set_ylabel("True")
             ax.set_title("Normalised Confusion Matrix")
             for i in range(self.num_classes):
                 for j in range(self.num_classes):
-                    ax.text(j, i, f"{cm_norm[i, j]:.2f}", ha="center", va="center",
-                            color="white" if cm_norm[i, j] > 0.5 else "black", fontsize=8)
+                    ax.text(
+                        j,
+                        i,
+                        f"{cm_norm[i, j]:.2f}",
+                        ha="center",
+                        va="center",
+                        color="white" if cm_norm[i, j] > 0.5 else "black",
+                        fontsize=8,
+                    )
             plt.tight_layout()
             if save_path:
                 plt.savefig(str(save_path), dpi=150, bbox_inches="tight")

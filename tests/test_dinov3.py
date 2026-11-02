@@ -4,7 +4,7 @@ No network or gated weights are available here, so layout tests use *tiny random
 the real transformers classes* (DINOv3ViTModel / DINOv3ConvNextModel), and content tests use deterministic
 stand-ins. Nothing here proves the pretrained checkpoints behave - only that the code reads them correctly.
 """
-import pathlib
+
 from types import SimpleNamespace
 
 import numpy as np
@@ -41,8 +41,14 @@ EXPECTED_REPOS = {
 
 
 def _tiny_vit(registers=4):
-    cfg = transformers.DINOv3ViTConfig(hidden_size=32, num_hidden_layers=2, num_attention_heads=2,
-                                       intermediate_size=64, patch_size=16, num_register_tokens=registers)
+    cfg = transformers.DINOv3ViTConfig(
+        hidden_size=32,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        intermediate_size=64,
+        patch_size=16,
+        num_register_tokens=registers,
+    )
     return transformers.DINOv3ViTModel(cfg).eval()
 
 
@@ -85,6 +91,7 @@ class TestRegistry:
 
     def test_transform_picks_stats_and_shape(self):
         from PIL import Image
+
         img = Image.fromarray(np.zeros((64, 64, 3), np.uint8))
         out = d3.get_transform("dinov3_vitl16_sat")(img)
         assert out.shape == (3, 224, 224)
@@ -109,9 +116,13 @@ class TestLoading:
     def test_success_attaches_preprocessor_statistics(self, monkeypatch):
         monkeypatch.setattr(transformers.AutoModel, "from_pretrained", lambda *a, **k: _tiny_vit())
         proc = SimpleNamespace(image_mean=[0.1, 0.2, 0.3], image_std=[0.4, 0.5, 0.6])
-        monkeypatch.setattr(transformers.AutoImageProcessor, "from_pretrained", lambda *a, **k: proc)
+        monkeypatch.setattr(
+            transformers.AutoImageProcessor, "from_pretrained", lambda *a, **k: proc
+        )
         m = load_dinov3_hf("dinov3_vits16")
-        assert m._pgv_mean == (0.1, 0.2, 0.3) and m._pgv_std == (0.4, 0.5, 0.6) and not m._pgv_is_sat
+        assert (
+            m._pgv_mean == (0.1, 0.2, 0.3) and m._pgv_std == (0.4, 0.5, 0.6) and not m._pgv_is_sat
+        )
 
     def test_missing_preprocessor_falls_back_to_documented_constants(self, monkeypatch):
         monkeypatch.setattr(transformers.AutoModel, "from_pretrained", lambda *a, **k: _tiny_vit())
@@ -142,7 +153,7 @@ class TestLoading:
         with pytest.raises(ValueError, match="snapshot directory"):
             load_dinov3_local("dinov3_vits16", str(f))
         with pytest.raises(ModelLoadError):
-            load_dinov3_local("dinov3_vits16", str(tmp_path))     # directory without config.json
+            load_dinov3_local("dinov3_vits16", str(tmp_path))  # directory without config.json
 
 
 # ---------------------------------------------------------------------------------------------- backbone
@@ -157,7 +168,7 @@ class TestBackbone:
         b = _backbone(model)
         img = _hwc(100, 70)
         feats = b.extract_features(img)
-        assert feats.shape == (7, 5, 32)                     # 100x70 padded to 112x80 -> 7x5 patches
+        assert feats.shape == (7, 5, 32)  # 100x70 padded to 112x80 -> 7x5 patches
         # same thing computed by hand, slicing past CLS + 4 registers
         x, gh, gw, _, _ = b._prepare(img)
         with torch.no_grad():
@@ -179,12 +190,14 @@ class TestBackbone:
     def test_patch_features_are_row_major_flattening(self):
         b = _backbone(_tiny_vit())
         img = _hwc(48, 80)
-        np.testing.assert_allclose(b.extract_patch_features(img), b.extract_features(img).reshape(-1, 32))
+        np.testing.assert_allclose(
+            b.extract_patch_features(img), b.extract_features(img).reshape(-1, 32)
+        )
 
     def test_convnext_layout(self):
         b = _backbone(_tiny_cnx(), "dinov3_convnext_tiny")
         feats = b.extract_features(_hwc(100, 70))
-        assert feats.shape == (4, 3, 64)                     # 128x96 padded / 32
+        assert feats.shape == (4, 3, 64)  # 128x96 padded / 32
         assert b.extract_embeddings(_hwc(64, 64)).shape == (1, 64)
 
     def test_geometry_registers_cells_with_source_pixels(self):
@@ -197,6 +210,7 @@ class TestBackbone:
     def test_dense_features_follow_the_image_not_a_centre_crop(self):
         """Brightness stand-in: a bright block in the left column of a wide image must show up in the
         left grid columns (a centre crop would drop it)."""
+
         class Bright(torch.nn.Module):
             config = SimpleNamespace(patch_size=16, hidden_size=1, num_register_tokens=0)
 
@@ -206,7 +220,12 @@ class TestBackbone:
 
             def forward(self, pixel_values):
                 b, _, h, w = pixel_values.shape
-                t = pixel_values.mean(1).reshape(b, h // 16, 16, w // 16, 16).mean((2, 4)).reshape(b, -1, 1)
+                t = (
+                    pixel_values.mean(1)
+                    .reshape(b, h // 16, 16, w // 16, 16)
+                    .mean((2, 4))
+                    .reshape(b, -1, 1)
+                )
                 return SimpleNamespace(last_hidden_state=torch.cat([torch.zeros(b, 1, 1), t], 1))
 
         img = np.zeros((32, 160, 3), "float32")
@@ -218,6 +237,7 @@ class TestBackbone:
     def test_ragged_edges_are_padded_by_replication(self):
         """A uniform image must give identical features in every cell, including the partly padded ones;
         zero padding would make the edge cells look like a different surface."""
+
         class Bright(torch.nn.Module):
             config = SimpleNamespace(patch_size=16, hidden_size=1, num_register_tokens=0)
 
@@ -227,7 +247,12 @@ class TestBackbone:
 
             def forward(self, pixel_values):
                 b, _, h, w = pixel_values.shape
-                t = pixel_values.mean(1).reshape(b, h // 16, 16, w // 16, 16).mean((2, 4)).reshape(b, -1, 1)
+                t = (
+                    pixel_values.mean(1)
+                    .reshape(b, h // 16, 16, w // 16, 16)
+                    .mean((2, 4))
+                    .reshape(b, -1, 1)
+                )
                 return SimpleNamespace(last_hidden_state=torch.cat([torch.zeros(b, 1, 1), t], 1))
 
         f = _backbone(Bright()).extract_features(np.ones((20, 20, 3), "float32"))[..., 0]
@@ -243,11 +268,22 @@ class TestBackbone:
     def test_raster_input_is_nodata_aware(self, tmp_path):
         rasterio = pytest.importorskip("rasterio")
         from rasterio.transform import from_origin
+
         arr = np.random.default_rng(1).random((3, 64, 64)).astype("float32") * 1000
         arr[:, :32] = -9999
         p = tmp_path / "a.tif"
-        with rasterio.open(p, "w", driver="GTiff", height=64, width=64, count=3, dtype="float32",
-                           crs="EPSG:32633", transform=from_origin(0, 640, 10, 10), nodata=-9999) as d:
+        with rasterio.open(
+            p,
+            "w",
+            driver="GTiff",
+            height=64,
+            width=64,
+            count=3,
+            dtype="float32",
+            crs="EPSG:32633",
+            transform=from_origin(0, 640, 10, 10),
+            nodata=-9999,
+        ) as d:
             d.write(arr)
         rgb, valid = d3._to_rgb01(str(p))
         assert valid[32:].all() and not valid[:32].any()
@@ -256,9 +292,15 @@ class TestBackbone:
             d3._to_rgb01(str(p), (1, 2, 7))
 
     def test_attention_maps(self):
-        cfg = transformers.DINOv3ViTConfig(hidden_size=32, num_hidden_layers=2, num_attention_heads=2,
-                                           intermediate_size=64, patch_size=16, num_register_tokens=4,
-                                           attn_implementation="eager")
+        cfg = transformers.DINOv3ViTConfig(
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            intermediate_size=64,
+            patch_size=16,
+            num_register_tokens=4,
+            attn_implementation="eager",
+        )
         b = _backbone(transformers.DINOv3ViTModel(cfg).eval())
         m = b.get_attention_maps(_hwc(64, 48), head_idx=1)
         assert m.shape == (4, 3) and (m >= 0).all()
@@ -302,7 +344,9 @@ class FakeCHM(torch.nn.Module):
     def __init__(self, mean, std):
         super().__init__()
         self.p = torch.nn.Parameter(torch.zeros(1))
-        self.mean, self.std = torch.tensor(mean).view(1, 3, 1, 1), torch.tensor(std).view(1, 3, 1, 1)
+        self.mean, self.std = torch.tensor(mean).view(1, 3, 1, 1), torch.tensor(std).view(
+            1, 3, 1, 1
+        )
         self.shapes = []
 
     def forward(self, pixel_values):
@@ -320,9 +364,20 @@ def _chm(**kw):
 def _write(path, arr, dtype, nodata=None, crs="EPSG:32633"):
     rasterio = pytest.importorskip("rasterio")
     from rasterio.transform import from_origin
+
     n, h, w = arr.shape
-    with rasterio.open(path, "w", driver="GTiff", height=h, width=w, count=n, dtype=dtype, crs=crs,
-                       transform=from_origin(500000, 4000000, 10, 10), nodata=nodata) as d:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=h,
+        width=w,
+        count=n,
+        dtype=dtype,
+        crs=crs,
+        transform=from_origin(500000, 4000000, 10, 10),
+        nodata=nodata,
+    ) as d:
         d.write(arr.astype(dtype))
     return str(path)
 
@@ -331,7 +386,11 @@ class TestCHMv2:
     def test_uses_the_released_checkpoint_and_no_random_decoder(self):
         assert d3.CHMV2_HF_ID == "facebook/dinov3-vitl16-chmv2-dpt-head"
         chm = CHMv2Model(device="cpu")
-        assert chm._model is None and not hasattr(chm, "_build_decoder") and not hasattr(chm, "_decoder")
+        assert (
+            chm._model is None
+            and not hasattr(chm, "_build_decoder")
+            and not hasattr(chm, "_decoder")
+        )
 
     def test_load_failure_is_reported_not_faked(self, tmp_path, monkeypatch):
         def boom(*a, **k):
@@ -339,7 +398,8 @@ class TestCHMv2:
 
         monkeypatch.setattr(transformers.AutoModelForDepthEstimation, "from_pretrained", boom)
         res = CHMv2Model(device="cpu").predict_canopy_height(
-            _write(tmp_path / "a.tif", np.full((3, 32, 32), 100), "uint8"))
+            _write(tmp_path / "a.tif", np.full((3, 32, 32), 100), "uint8")
+        )
         assert "height_map" not in res and "Nothing was substituted" in res["error"]
 
     def test_missing_file(self):
@@ -351,12 +411,15 @@ class TestCHMv2:
         rng = np.random.default_rng(0)
         img = rng.integers(0, 256, (3, 300, 500)).astype("uint8")
         chm = _chm()
-        res = chm.predict_canopy_height(_write(tmp_path / "a.tif", img, "uint8"), tmp_path / "h.tif")
+        res = chm.predict_canopy_height(
+            _write(tmp_path / "a.tif", img, "uint8"), tmp_path / "h.tif"
+        )
         expect = img.astype("float32").mean(0) / 255.0 * 10.0
         np.testing.assert_allclose(res["height_map"], expect, atol=1e-4)
         assert all(s[-2] % 16 == 0 and s[-1] % 16 == 0 for s in chm._model.shapes)
         assert len(chm._model.shapes) >= 2
         import rasterio
+
         with rasterio.open(tmp_path / "h.tif") as src:
             assert src.dtypes[0] == "float32" and src.crs.to_epsg() == 32633
             np.testing.assert_allclose(src.read(1), expect, atol=1e-4)
@@ -372,8 +435,8 @@ class TestCHMv2:
     def test_non_uint8_rasters_are_stretched_not_clipped(self, tmp_path):
         arr = np.random.default_rng(2).random((3, 48, 48)).astype("float32") * 5000
         res = _chm().predict_canopy_height(_write(tmp_path / "a.tif", arr, "float32"))
-        assert 0.0 <= np.nanmin(res["height_map"]) and np.nanmax(res["height_map"]) <= 10.0 + 1e-3
-        assert np.nanmax(res["height_map"]) > 9.0          # the 98th-percentile stretch reaches ~full scale
+        assert np.nanmin(res["height_map"]) >= 0.0 and np.nanmax(res["height_map"]) <= 10.0 + 1e-3
+        assert np.nanmax(res["height_map"]) > 9.0  # the 98th-percentile stretch reaches ~full scale
 
     def test_biomass_is_not_offered(self):
         with pytest.raises(NotImplementedError):
@@ -386,14 +449,18 @@ class TestCHMv2:
         assert "same grid" in _chm().detect_deforestation(a, b)["error"]
 
     def test_deforestation_mask_and_area_from_the_transform(self, tmp_path):
-        before = np.full((3, 32, 32), 255)                        # height 10
+        before = np.full((3, 32, 32), 255)  # height 10
         after = before.copy()
-        after[:, :16] = 0 + 25                                    # first half drops to ~1 (loss > 2)
-        a, b = _write(tmp_path / "a.tif", before, "uint8"), _write(tmp_path / "b.tif", after, "uint8")
+        after[:, :16] = 0 + 25  # first half drops to ~1 (loss > 2)
+        a, b = _write(tmp_path / "a.tif", before, "uint8"), _write(
+            tmp_path / "b.tif", after, "uint8"
+        )
         res = _chm().detect_deforestation(a, b, min_height_loss_m=2.0)
         assert res["deforestation_mask"][:16].all() and not res["deforestation_mask"][16:].any()
         assert res["deforested_pct"] == pytest.approx(50.0)
-        assert res["area_ha"] == pytest.approx(16 * 32 * 100 / 10000)     # 10 m pixels from the transform
+        assert res["area_ha"] == pytest.approx(
+            16 * 32 * 100 / 10000
+        )  # 10 m pixels from the transform
 
     def test_geographic_crs_gives_no_invented_area(self, tmp_path):
         a = _write(tmp_path / "a.tif", np.full((3, 16, 16), 255), "uint8", crs="EPSG:4326")
@@ -413,8 +480,13 @@ class TestRemoved:
                 finetune_dinov3(task=task)
 
     def test_finetune_prepares_a_trainable_classifier(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(DINOv3Backbone, "_load", lambda self: setattr(self, "_model", _tiny_vit()))
+        monkeypatch.setattr(
+            DINOv3Backbone, "_load", lambda self: setattr(self, "_model", _tiny_vit())
+        )
         res = finetune_dinov3("dinov3_vits16", num_classes=4, output_dir=str(tmp_path))
         assert res["status"] == "ready" and res["config"]["optimizer"] == "AdamW"
-        assert res["model"](torch.randn(1, 3, 32, 32)).shape == (1, 4)
-        assert any(p.requires_grad for p in res["model"].backbone.parameters())   # not frozen
+        model_device = next(
+            res["model"].parameters()
+        ).device  # the backbone's device, GPU if present
+        assert res["model"](torch.randn(1, 3, 32, 32, device=model_device)).shape == (1, 4)
+        assert any(p.requires_grad for p in res["model"].backbone.parameters())  # not frozen

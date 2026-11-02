@@ -1,4 +1,5 @@
 """VLM image loading, GeoImageRetrieval index handling and CLI error messages (no model downloads)."""
+
 import json
 
 import numpy as np
@@ -14,8 +15,18 @@ def _write(path, arr, nodata=None):
     arr = np.asarray(arr)
     if arr.ndim == 2:
         arr = arr[None]
-    with rasterio.open(path, "w", driver="GTiff", height=arr.shape[1], width=arr.shape[2], count=arr.shape[0],
-                       dtype=arr.dtype, crs="EPSG:32630", transform=from_origin(0, 64, 1, 1), nodata=nodata) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=arr.shape[1],
+        width=arr.shape[2],
+        count=arr.shape[0],
+        dtype=arr.dtype,
+        crs="EPSG:32630",
+        transform=from_origin(0, 64, 1, 1),
+        nodata=nodata,
+    ) as dst:
         dst.write(arr)
     return str(path)
 
@@ -51,7 +62,7 @@ class TestLoadRgb:
         a[:, 8, 8] = np.nan
         img = np.asarray(load_rgb_pil(_write(tmp_path / "n.tif", a, nodata=-9999)))
         assert (img[:4] == 0).all() and (img[8, 8] == 0).all()
-        assert img[4:].max() > 200      # valid area uses the full range
+        assert img[4:].max() > 200  # valid area uses the full range
 
     def test_all_nodata_image_is_black_not_an_error(self, tmp_path):
         a = np.full((3, 4, 4), -9999, "float32")
@@ -69,6 +80,7 @@ class TestLoadRgb:
 
 class _StubClip:
     """Deterministic embeddings: a file's vector comes from the digit in its name."""
+
     def __init__(self, dim=4):
         self.dim = dim
 
@@ -91,7 +103,9 @@ def retr(monkeypatch):
     from pygeovision.advanced.vlm import retrieval
     from pygeovision.models.vlm import clip
 
-    monkeypatch.setattr(clip, "CLIPGeo", lambda model="openclip-b32", device=None, bands=None: _StubClip())
+    monkeypatch.setattr(
+        clip, "CLIPGeo", lambda model="openclip-b32", device=None, bands=None: _StubClip()
+    )
     return retrieval.GeoImageRetrieval(model="openclip-b32")
 
 
@@ -105,7 +119,9 @@ class TestRetrieval:
     def test_build_search_and_skipped(self, retr, tmp_path):
         d = _folder(tmp_path)
         assert retr.build_index(str(d)) == 3
-        assert any("bad_img3" in k for k in retr.skipped) and "OSError" in next(iter(retr.skipped.values()))
+        assert any("bad_img3" in k for k in retr.skipped) and "OSError" in next(
+            iter(retr.skipped.values())
+        )
         top = retr.search_by_text("anything", top_k=2)
         assert top[0]["path"].endswith("img2.JPG") and top[0]["score"] == 1.0
         assert len(top) == 2
@@ -152,6 +168,7 @@ class TestCliVlmErrors:
         from click.testing import CliRunner
 
         from pygeovision.cli.main import cli
+
         r = CliRunner().invoke(cli, ["vlm", "search", "flood", "/nonexistent_dir_xyz"])
         assert r.exit_code != 0 and "Traceback" not in r.output
         assert "does not exist" in r.output.lower()
@@ -165,24 +182,31 @@ class TestCliVlmErrors:
 
         def boom(self, *a, **k):
             raise ModelLoadError("Could not load moondream: offline")
+
         monkeypatch.setattr(moondream.MoondreamGeo, "caption", boom)
         img = tmp_path / "a.tif"
         _write(img, np.ones((3, 4, 4), "uint8"))
         r = CliRunner().invoke(cli, ["vlm", "caption", str(img)])
-        assert r.exit_code != 0 and "Traceback" not in r.output and "Could not load moondream" in r.output
+        assert (
+            r.exit_code != 0
+            and "Traceback" not in r.output
+            and "Could not load moondream" in r.output
+        )
 
 
 class TestBands:
     def test_bands_select_and_reorder(self, tmp_path):
         a = np.zeros((4, 16, 16), "float32")
-        a[0] = 100 + np.random.default_rng(0).uniform(0, 5, (16, 16))     # B2 blue (dim)
-        a[1] = 400 + np.random.default_rng(1).uniform(0, 5, (16, 16))     # B3 green
-        a[2] = 900 + np.random.default_rng(2).uniform(0, 5, (16, 16))     # B4 red (bright)
+        a[0] = 100 + np.random.default_rng(0).uniform(0, 5, (16, 16))  # B2 blue (dim)
+        a[1] = 400 + np.random.default_rng(1).uniform(0, 5, (16, 16))  # B3 green
+        a[2] = 900 + np.random.default_rng(2).uniform(0, 5, (16, 16))  # B4 red (bright)
         a[3] = 3000
         p = _write(tmp_path / "s2.tif", a)
         default = np.asarray(load_rgb_pil(p))
         natural = np.asarray(load_rgb_pil(p, bands=(3, 2, 1)))
-        assert default[..., 0].mean() < default[..., 2].mean()            # first three bands: red channel is B2 (blue)
+        assert (
+            default[..., 0].mean() < default[..., 2].mean()
+        )  # first three bands: red channel is B2 (blue)
         assert natural[..., 0].mean() > natural[..., 2].mean()
 
     def test_bad_band_numbers(self, tmp_path):
@@ -198,7 +222,10 @@ class TestBands:
         from pygeovision.cli.main import cli
         from pygeovision.models.vlm.clip import CLIPGeo
         from pygeovision.models.vlm.moondream import MoondreamGeo
-        assert CLIPGeo(bands=(3, 2, 1)).bands == (3, 2, 1) and MoondreamGeo(bands=[3, 2, 1]).bands == (3, 2, 1)
+
+        assert CLIPGeo(bands=(3, 2, 1)).bands == (3, 2, 1) and MoondreamGeo(
+            bands=[3, 2, 1]
+        ).bands == (3, 2, 1)
         img = tmp_path / "a.tif"
         _write(img, np.ones((3, 4, 4), "uint8"))
         r = CliRunner().invoke(cli, ["vlm", "caption", str(img), "--bands", "1,x"])
@@ -207,9 +234,11 @@ class TestBands:
         assert r.exit_code != 0 and "does not fit" in r.output and "Traceback" not in r.output
 
 
-def test_search_by_image_excludes_itself_even_with_a_different_path_spelling(retr, tmp_path, monkeypatch):
+def test_search_by_image_excludes_itself_even_with_a_different_path_spelling(
+    retr, tmp_path, monkeypatch
+):
     d = _folder(tmp_path)
     monkeypatch.chdir(tmp_path)
-    retr.build_index(".")                                   # indexed as ./img0.tif style relative paths
-    res = retr.search_by_image(str(d / "img0.tif"), top_k=5)    # queried by absolute path
+    retr.build_index(".")  # indexed as ./img0.tif style relative paths
+    res = retr.search_by_image(str(d / "img0.tif"), top_k=5)  # queried by absolute path
     assert all(not r["path"].endswith("img0.tif") for r in res)

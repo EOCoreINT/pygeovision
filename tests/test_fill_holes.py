@@ -5,6 +5,7 @@ algorithm requiring scipy, but rio_fill() (rasterio's fillnodata, an
 inverse-distance-weighted method) was called unconditionally regardless
 of what method was requested — "bilinear" had zero effect.
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
@@ -24,8 +25,18 @@ def _make_holed_gradient(path, size=30):
     holed[10:20, 10:20] = -9999
 
     transform = from_bounds(0, 0, size * 10, size * 10, size, size)
-    with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=1,
-                        dtype="float32", crs="EPSG:32630", transform=transform, nodata=-9999) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=1,
+        dtype="float32",
+        crs="EPSG:32630",
+        transform=transform,
+        nodata=-9999,
+    ) as dst:
         dst.write(holed, 1)
     return true_data
 
@@ -33,6 +44,7 @@ def _make_holed_gradient(path, size=30):
 class TestFillHolesMethodsAreGenuinelyDifferent:
     def test_bilinear_differs_from_nearest(self, tmp_path):
         from pygeovision.data.postprocess import PostProcessor
+
         raster_path = tmp_path / "holed.tif"
         _make_holed_gradient(raster_path)
 
@@ -47,14 +59,15 @@ class TestFillHolesMethodsAreGenuinelyDifferent:
         with rasterio.open(out_bilinear) as src:
             bilinear = src.read(1)[10:20, 10:20]
 
-        assert np.abs(nearest - bilinear).mean() > 1e-4, (
-            "bilinear produces identical output to nearest — method has no effect"
-        )
+        assert (
+            np.abs(nearest - bilinear).mean() > 1e-4
+        ), "bilinear produces identical output to nearest — method has no effect"
 
     def test_bilinear_accurately_reconstructs_a_linear_gradient(self, tmp_path):
         """Linear interpolation should be near-exact on a genuinely
         linear function — a real, checkable correctness property."""
         from pygeovision.data.postprocess import PostProcessor
+
         raster_path = tmp_path / "holed.tif"
         true_data = _make_holed_gradient(raster_path)
 
@@ -70,12 +83,23 @@ class TestFillHolesMethodsAreGenuinelyDifferent:
 
     def test_no_holes_returns_data_unchanged(self, tmp_path):
         from pygeovision.data.postprocess import PostProcessor
+
         size = 10
         data = np.random.default_rng(0).random((size, size)).astype(np.float32)
         raster_path = tmp_path / "no_holes.tif"
         transform = from_bounds(0, 0, size * 10, size * 10, size, size)
-        with rasterio.open(raster_path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="float32", crs="EPSG:32630", transform=transform, nodata=-9999) as dst:
+        with rasterio.open(
+            raster_path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="float32",
+            crs="EPSG:32630",
+            transform=transform,
+            nodata=-9999,
+        ) as dst:
             dst.write(data, 1)
 
         post = PostProcessor()
@@ -88,15 +112,19 @@ class TestFillHolesMethodsAreGenuinelyDifferent:
 
     def test_missing_scipy_gives_clear_error_for_bilinear(self, tmp_path, monkeypatch):
         from pygeovision.data.postprocess import PostProcessor
+
         raster_path = tmp_path / "holed.tif"
         _make_holed_gradient(raster_path)
 
         import builtins
+
         real_import = builtins.__import__
+
         def blocking_import(name, *args, **kwargs):
             if name == "scipy.interpolate":
                 raise ImportError("simulated missing scipy")
             return real_import(name, *args, **kwargs)
+
         monkeypatch.setattr(builtins, "__import__", blocking_import)
 
         post = PostProcessor()

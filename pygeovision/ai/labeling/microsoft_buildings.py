@@ -67,7 +67,7 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
     def supported_tasks(self) -> list[str]:
         return ["segmentation", "detection"]
 
-    def label_tile(
+    def label_tile(  # type: ignore[override]
         self,
         tile: TileMetadata,
         output_dir: Path,
@@ -129,9 +129,7 @@ class MicrosoftBuildingsLabeler(BaseLabeler):
             return self._skip_tile(tile, "No building pixels after rasterization")
 
         label_path = self._write_label_geotiff(mask, tile, output_dir)
-        distribution = self._compute_class_distribution(
-            mask, ["background", "building"]
-        )
+        distribution = self._compute_class_distribution(mask, ["background", "building"])
 
         return LabelingResult(
             tile_id=tile.tile_id,

@@ -7,10 +7,10 @@ learning rate scheduling, MLflow/W&B logging, and custom hooks.
 
 from __future__ import annotations
 
-import logging
-import time
 from abc import ABC
+import logging
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,7 @@ class EarlyStopping(Callback):
 
     def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None:
         import copy
+
         value = metrics.get(self.monitor)
         if value is None:
             return
@@ -78,9 +79,7 @@ class EarlyStopping(Callback):
         else:
             self._wait += 1
             if self._wait >= self.patience:
-                logger.info(
-                    "EarlyStopping: no improvement for %d epochs. Stopping.", self.patience
-                )
+                logger.info("EarlyStopping: no improvement for %d epochs. Stopping.", self.patience)
                 trainer.should_stop = True
                 if self.restore_best_weights and self._best_weights:
                     trainer.model.load_state_dict(self._best_weights)
@@ -132,9 +131,7 @@ class ModelCheckpoint(Callback):
         import torch
 
         value = metrics.get(self.monitor, float("inf"))
-        improved = (
-            value < self._best if self.mode == "min" else value > self._best
-        )
+        improved = value < self._best if self.mode == "min" else value > self._best
 
         should_save = (
             not self.save_best_only
@@ -147,19 +144,20 @@ class ModelCheckpoint(Callback):
 
         name = self.filename.format(epoch=epoch, **metrics) + ".pth"
         path = self.dirpath / name
-        torch.save({
-            "epoch": epoch,
-            "model_state_dict": trainer.model.state_dict(),
-            "optimizer_state_dict": trainer.optimizer.state_dict(),
-            "metrics": metrics,
-        }, path)
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": trainer.model.state_dict(),
+                "optimizer_state_dict": trainer.optimizer.state_dict(),
+                "metrics": metrics,
+            },
+            path,
+        )
 
         if improved:
             self._best = value
             self.best_model_path = path
-            logger.info(
-                "ModelCheckpoint: saved best model (%.5f) → %s", value, path
-            )
+            logger.info("ModelCheckpoint: saved best model (%.5f) → %s", value, path)
         else:
             logger.debug("ModelCheckpoint: saved checkpoint → %s", path)
 
@@ -188,11 +186,12 @@ class MLflowLogger(Callback):
         self.run_name = run_name
         self.tracking_uri = tracking_uri
         self.log_model = log_model
-        self._run = None
+        self._run: Any = None
 
     def on_train_begin(self, trainer: Any) -> None:
         try:
             import mlflow
+
             mlflow.set_tracking_uri(self.tracking_uri)
             mlflow.set_experiment(self.experiment_name)
             self._run = mlflow.start_run(run_name=self.run_name)
@@ -205,6 +204,7 @@ class MLflowLogger(Callback):
             return
         try:
             import mlflow
+
             mlflow.log_metrics(metrics, step=epoch)
         except Exception as exc:
             logger.warning("MLflow log_metrics failed: %s", exc)
@@ -214,6 +214,7 @@ class MLflowLogger(Callback):
             return
         try:
             import mlflow
+
             if self.log_model:
                 mlflow.pytorch.log_model(trainer.model, "model")
             mlflow.end_run()
@@ -286,19 +287,25 @@ class CallbackList:
         self.callbacks = callbacks
 
     def on_train_begin(self, trainer: Any) -> None:
-        for cb in self.callbacks: cb.on_train_begin(trainer)
+        for cb in self.callbacks:
+            cb.on_train_begin(trainer)
 
     def on_train_end(self, trainer: Any) -> None:
-        for cb in self.callbacks: cb.on_train_end(trainer)
+        for cb in self.callbacks:
+            cb.on_train_end(trainer)
 
     def on_epoch_begin(self, trainer: Any, epoch: int) -> None:
-        for cb in self.callbacks: cb.on_epoch_begin(trainer, epoch)
+        for cb in self.callbacks:
+            cb.on_epoch_begin(trainer, epoch)
 
     def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict[str, float]) -> None:
-        for cb in self.callbacks: cb.on_epoch_end(trainer, epoch, metrics)
+        for cb in self.callbacks:
+            cb.on_epoch_end(trainer, epoch, metrics)
 
     def on_batch_begin(self, trainer: Any, batch_idx: int) -> None:
-        for cb in self.callbacks: cb.on_batch_begin(trainer, batch_idx)
+        for cb in self.callbacks:
+            cb.on_batch_begin(trainer, batch_idx)
 
     def on_batch_end(self, trainer: Any, batch_idx: int, loss: float) -> None:
-        for cb in self.callbacks: cb.on_batch_end(trainer, batch_idx, loss)
+        for cb in self.callbacks:
+            cb.on_batch_end(trainer, batch_idx, loss)

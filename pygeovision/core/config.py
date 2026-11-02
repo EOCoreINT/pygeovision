@@ -15,12 +15,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-import yaml
 from pydantic import BaseModel, Field, field_validator
+import yaml
 
 
 class GPUConfig(BaseModel):
     """GPU/compute device configuration."""
+
     device: str = Field("auto", description="'auto', 'cuda', 'mps', or 'cpu'")
     mixed_precision: Any = Field("auto", description="True/False/'auto'")
     memory_fraction: float = Field(0.9, gt=0, le=1.0)
@@ -37,6 +38,7 @@ class GPUConfig(BaseModel):
 
 class TrainingDefaultsConfig(BaseModel):
     """Default training hyperparameters."""
+
     batch_size: int = Field(16, gt=0)
     learning_rate: float = Field(1e-4, gt=0)
     max_epochs: int = Field(100, gt=0)
@@ -47,14 +49,14 @@ class TrainingDefaultsConfig(BaseModel):
 
 class ModelHubConfig(BaseModel):
     """Model hub / checkpoint cache configuration."""
-    cache_dir: Path = Field(
-        default_factory=lambda: Path.home() / ".pygeovision" / "models"
-    )
+
+    cache_dir: Path = Field(default_factory=lambda: Path.home() / ".pygeovision" / "models")
     checksum_verify: bool = True
 
 
 class PyGeoFetchConfig(BaseModel):
     """PyGeoFetch pass-through configuration."""
+
     default_providers: list[str] = Field(
         default_factory=lambda: ["planetary_computer", "aws_earth", "element84"],
         description="Default providers for open-access searches",
@@ -118,10 +120,13 @@ class PyGeoVisionConfig(BaseModel):
                             data[k] = v
                 except Exception as exc:
                     import logging
+
                     logging.getLogger(__name__).warning(
                         "Failed to load config file %s (%s) — its settings "
                         "will NOT be applied. Check the file for YAML syntax "
-                        "errors.", path, exc,
+                        "errors.",
+                        path,
+                        exc,
                     )
 
         # Apply environment overrides

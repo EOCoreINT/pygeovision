@@ -3,11 +3,12 @@ SAM Auto-Labeler (E2) — Segment Anything Model for automated label generation.
 Generates segmentation masks without any manual annotation.
 Fully native — uses HuggingFace transformers directly.
 """
+
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -79,16 +80,16 @@ class SAMAutoLabeler:
     """
 
     HF_MODELS = {
-        "sam-vit-huge":   "facebook/sam-vit-huge",
-        "sam-vit-large":  "facebook/sam-vit-large",
-        "sam-vit-base":   "facebook/sam-vit-base",
-        "sam2-hiera-l":   "facebook/sam2-hiera-large-hf",
-        "sam2-hiera-b":   "facebook/sam2-hiera-base-plus-hf",
+        "sam-vit-huge": "facebook/sam-vit-huge",
+        "sam-vit-large": "facebook/sam-vit-large",
+        "sam-vit-base": "facebook/sam-vit-base",
+        "sam2-hiera-l": "facebook/sam2-hiera-large-hf",
+        "sam2-hiera-b": "facebook/sam2-hiera-base-plus-hf",
     }
     # Names that used to be accepted but point at repositories that do not exist.
     _REMOVED = {
         "geosam-vit-h": "'wangyi111/GeoSAM' is not a Hugging Face repository. Use a SAM name from "
-                        "HF_MODELS, or SamGeoLabeler (segment-geospatial) for remote-sensing SAM.",
+        "HF_MODELS, or SamGeoLabeler (segment-geospatial) for remote-sensing SAM.",
     }
 
     def __init__(
@@ -105,19 +106,20 @@ class SAMAutoLabeler:
         self.model_id = self.HF_MODELS.get(model, model)
         self.device = device or self._auto_device()
         self.cache_dir = cache_dir
-        self._model = None
-        self._processor = None
-        self._mask_generator = None
+        self._model: Any = None
+        self._processor: Any = None
+        self._mask_generator: Any = None
         self._chip_errors: list[str] = []
         # GroundingDINO (used by grounded_label) -- lazily loaded and cached.
         self._gdino_config_path = gdino_config_path
         self._gdino_checkpoint_path = gdino_checkpoint_path
-        self._gdino_model = None
+        self._gdino_model: Any = None
 
     @staticmethod
     def _auto_device() -> str:
         try:
             import torch
+
             return "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
             return "cpu"
@@ -128,10 +130,14 @@ class SAMAutoLabeler:
         try:
             from transformers import AutoModelForMaskGeneration, AutoProcessor
         except ImportError as exc:
-            raise ImportError(f"transformers + torch required: pip install transformers torch ({exc})") from exc
+            raise ImportError(
+                f"transformers + torch required: pip install transformers torch ({exc})"
+            ) from exc
         logger.info("Loading SAM: %s -> %s", self.model_name, self.device)
         self._processor = AutoProcessor.from_pretrained(self.model_id, cache_dir=self.cache_dir)
-        self._model = AutoModelForMaskGeneration.from_pretrained(self.model_id, cache_dir=self.cache_dir)
+        self._model = AutoModelForMaskGeneration.from_pretrained(
+            self.model_id, cache_dir=self.cache_dir
+        )
         self._model.to(self.device).eval()
         logger.info("SAM loaded")
 
@@ -145,6 +151,7 @@ class SAMAutoLabeler:
             return self._mask_generator
         self._load()
         from transformers import pipeline
+
         self._mask_generator = pipeline(
             task="mask-generation",
             model=self._model,
@@ -218,7 +225,9 @@ class SAMAutoLabeler:
         if chip_size < 64:
             raise ValueError(f"chip_size must be >= 64, got {chip_size}")
         if not 0 <= overlap < chip_size:
-            raise ValueError(f"overlap must satisfy 0 <= overlap < chip_size, got {overlap} / {chip_size}")
+            raise ValueError(
+                f"overlap must satisfy 0 <= overlap < chip_size, got {overlap} / {chip_size}"
+            )
         if points_per_side < 1:
             raise ValueError(f"points_per_side must be >= 1, got {points_per_side}")
 
@@ -247,10 +256,18 @@ class SAMAutoLabeler:
         n_tiles = 0
         for row in _tile_origins(H, chip_size, overlap):
             for col in _tile_origins(W, chip_size, overlap):
-                chip = rgb[row:row + chip_size, col:col + chip_size]
+                chip = rgb[row : row + chip_size, col : col + chip_size]
                 n_tiles += 1
-                all_masks.extend(self._process_chip(
-                    chip, points_per_side, pred_iou_thresh, stability_score_thresh, row=row, col=col))
+                all_masks.extend(
+                    self._process_chip(
+                        chip,
+                        points_per_side,
+                        pred_iou_thresh,
+                        stability_score_thresh,
+                        row=row,
+                        col=col,
+                    )
+                )
 
         if merge_overlapping and overlap > 0:
             all_masks = self._merge_overlapping_masks(all_masks)
@@ -274,11 +291,13 @@ class SAMAutoLabeler:
 
         out_profile = profile.copy()
         out_profile.update(count=1, dtype="uint32", compress="lzw", nodata=None)
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             out_profile.pop(_k, None)
         with rasterio.open(str(output_path), "w", **out_profile) as dst:
             dst.write(label[np.newaxis])
-            dst.update_tags(source="SAM_AutoLabel", model=self.model_name, n_masks=str(len(filtered)))
+            dst.update_tags(
+                source="SAM_AutoLabel", model=self.model_name, n_masks=str(len(filtered))
+            )
 
         vector_error = None
         if output_vector:
@@ -292,10 +311,13 @@ class SAMAutoLabeler:
         if n_failed:
             error: str | None = (
                 f"{n_failed} of {n_tiles} tile(s) failed and are missing from the labels; "
-                f"first error: {self._chip_errors[0]}")
+                f"first error: {self._chip_errors[0]}"
+            )
         elif not filtered:
-            error = (f"SAM found {len(all_masks)} raw mask(s) but 0 survived quality/area "
-                     f"filtering -- the output raster contains no real labels.")
+            error = (
+                f"SAM found {len(all_masks)} raw mask(s) but 0 survived quality/area "
+                f"filtering -- the output raster contains no real labels."
+            )
         else:
             error = None
         n = max(len(filtered), 1)
@@ -360,7 +382,7 @@ class SAMAutoLabeler:
             for m in (a, b):
                 c = np.zeros((y2 - y1, x2 - x1), dtype=bool)
                 mx1, my1, mx2, my2 = m["bbox_full"]
-                c[my1 - y1:my2 - y1, mx1 - x1:mx2 - x1] = m["mask"]
+                c[my1 - y1 : my2 - y1, mx1 - x1 : mx2 - x1] = m["mask"]
                 out.append(c)
             return out[0], out[1], (x1, y1, x2, y2)
 
@@ -384,19 +406,26 @@ class SAMAutoLabeler:
                     current["mask"] = np.logical_or(ca, cb)
                     current["bbox_full"] = box
                     current["predicted_iou"] = max(
-                        current.get("predicted_iou", 0), candidate.get("predicted_iou", 0))
+                        current.get("predicted_iou", 0), candidate.get("predicted_iou", 0)
+                    )
                     merged_flags[j] = True
             result.append(current)
 
         if len(masks) > len(result):
-            logger.info("SAM: merged %d duplicate mask(s) from tile overlap regions",
-                        len(masks) - len(result))
+            logger.info(
+                "SAM: merged %d duplicate mask(s) from tile overlap regions",
+                len(masks) - len(result),
+            )
         return result
 
     def _process_chip(
-        self, chip: Any, points_per_side: int,
-        pred_iou_thresh: float, stability_thresh: float,
-        row: int = 0, col: int = 0,
+        self,
+        chip: Any,
+        points_per_side: int,
+        pred_iou_thresh: float,
+        stability_thresh: float,
+        row: int = 0,
+        col: int = 0,
     ) -> list[dict]:
         """Run SAM "segment everything" on one tile and return masks in scene coordinates.
 
@@ -408,10 +437,14 @@ class SAMAutoLabeler:
         """
         try:
             from PIL import Image
+
             generator = self._load_mask_generator()
             outputs = generator(
-                Image.fromarray(chip), points_per_batch=64, points_per_crop=points_per_side,
-                pred_iou_thresh=pred_iou_thresh, stability_score_thresh=stability_thresh,
+                Image.fromarray(chip),
+                points_per_batch=64,
+                points_per_crop=points_per_side,
+                pred_iou_thresh=pred_iou_thresh,
+                stability_score_thresh=stability_thresh,
             )
             entries = []
             for seg, score in zip(outputs["masks"], outputs["scores"]):
@@ -442,12 +475,15 @@ class SAMAutoLabeler:
         config_path = self._gdino_config_path
         if config_path is None:
             import groundingdino
+
             config_path = str(
-                Path(groundingdino.__file__).parent / "config" / "GroundingDINO_SwinT_OGC.py")
+                Path(groundingdino.__file__).parent / "config" / "GroundingDINO_SwinT_OGC.py"
+            )
 
         checkpoint_path = self._gdino_checkpoint_path
         if checkpoint_path is None:
             from huggingface_hub import hf_hub_download
+
             checkpoint_path = hf_hub_download(
                 repo_id="ShilongLiu/GroundingDINO",
                 filename="groundingdino_swint_ogc.pth",
@@ -468,11 +504,13 @@ class SAMAutoLabeler:
         import groundingdino.datasets.transforms as GT
         from PIL import Image
 
-        transform = GT.Compose([
-            GT.RandomResize([800], max_size=1333),
-            GT.ToTensor(),
-            GT.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        ])
+        transform = GT.Compose(
+            [
+                GT.RandomResize([800], max_size=1333),
+                GT.ToTensor(),
+                GT.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
         tensor, _ = transform(Image.fromarray(rgb), None)
         return tensor
 
@@ -481,31 +519,40 @@ class SAMAutoLabeler:
         """GroundingDINO returns normalised ``cx, cy, w, h``; SAM wants pixel ``x1, y1, x2, y2``."""
         import numpy as np
 
-        b = np.asarray(boxes.detach().cpu().numpy() if hasattr(boxes, "detach") else boxes,
-                       dtype="float64").reshape(-1, 4)
+        b = np.asarray(
+            boxes.detach().cpu().numpy() if hasattr(boxes, "detach") else boxes, dtype="float64"
+        ).reshape(-1, 4)
         cx, cy, w, h = b[:, 0] * width, b[:, 1] * height, b[:, 2] * width, b[:, 3] * height
         return np.stack([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], axis=1)
 
     def _segment_box(self, rgb: Any, box_xyxy: Any) -> Any | None:
         """Best SAM mask (H, W bool) for one pixel-space box, or ``None``."""
         import numpy as np
-        import torch
         from PIL import Image
+        import torch
 
         self._load()
         inputs = self._processor(
-            images=Image.fromarray(rgb), input_boxes=[[[float(v) for v in box_xyxy]]],
-            return_tensors="pt").to(self.device)
+            images=Image.fromarray(rgb),
+            input_boxes=[[[float(v) for v in box_xyxy]]],
+            return_tensors="pt",
+        ).to(self.device)
         with torch.no_grad():
-            outputs = self._model(**{k: v for k, v in inputs.items()
-                                     if k in ("pixel_values", "input_boxes")}, multimask_output=True)
+            outputs = self._model(
+                **{k: v for k, v in inputs.items() if k in ("pixel_values", "input_boxes")},
+                multimask_output=True,
+            )
         if "reshaped_input_sizes" in inputs:  # SAM v1
             masks = self._processor.post_process_masks(
-                outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(),
-                inputs["reshaped_input_sizes"].cpu())
+                outputs.pred_masks.cpu(),
+                inputs["original_sizes"].cpu(),
+                inputs["reshaped_input_sizes"].cpu(),
+            )
         else:  # SAM2
-            masks = self._processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu())
-        cand = masks[0]                      # (point_batch, n_masks, H, W)
+            masks = self._processor.post_process_masks(
+                outputs.pred_masks.cpu(), inputs["original_sizes"].cpu()
+            )
+        cand = masks[0]  # (point_batch, n_masks, H, W)
         cand = cand.reshape(-1, *cand.shape[-2:])
         iou = outputs.iou_scores.reshape(-1).cpu().numpy()
         if cand.shape[0] == 0:
@@ -538,7 +585,10 @@ class SAMAutoLabeler:
         except ImportError as exc:
             return {"success": False, "error": f"GroundingDINO not available: {exc}"}
         except Exception as exc:
-            return {"success": False, "error": f"Failed to load GroundingDINO model/checkpoint: {exc}"}
+            return {
+                "success": False,
+                "error": f"Failed to load GroundingDINO model/checkpoint: {exc}",
+            }
 
         logger.info("GroundedSAM: prompts=%s", prompts)
         image_path = Path(image_path)
@@ -561,9 +611,13 @@ class SAMAutoLabeler:
             detections: list[tuple[Any, int]] = []
             for class_idx, prompt in enumerate(prompts, start=1):
                 boxes, _logits, _phrases = gdino_predict(
-                    model=gdino_model, image=tensor, caption=prompt,
-                    box_threshold=box_threshold, text_threshold=text_threshold,
-                    device=self.device)
+                    model=gdino_model,
+                    image=tensor,
+                    caption=prompt,
+                    box_threshold=box_threshold,
+                    text_threshold=text_threshold,
+                    device=self.device,
+                )
                 for box in self._gdino_boxes_to_pixels(boxes, W, H):
                     detections.append((box, class_idx))
 
@@ -580,7 +634,7 @@ class SAMAutoLabeler:
 
             out_profile = profile.copy()
             out_profile.update(count=1, dtype="uint8", compress="lzw", nodata=None)
-            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
                 out_profile.pop(_k, None)
             with rasterio.open(str(output_path), "w", **out_profile) as dst:
                 dst.write(label[np.newaxis])
@@ -595,13 +649,20 @@ class SAMAutoLabeler:
 
             return {
                 "success": len(kept) > 0,
-                "n_prompts": len(prompts), "n_boxes_detected": len(detections),
-                "n_masks_applied": len(kept), "output_path": str(output_path),
+                "n_prompts": len(prompts),
+                "n_boxes_detected": len(detections),
+                "n_masks_applied": len(kept),
+                "output_path": str(output_path),
                 "output_vector": None if (vector_error or not output_vector) else output_vector,
                 "vector_error": vector_error,
-                "error": None if kept else (
-                    f"0 masks applied for prompts={prompts} -- Grounding DINO found "
-                    f"{len(detections)} box(es), none produced a usable SAM mask."),
+                "error": (
+                    None
+                    if kept
+                    else (
+                        f"0 masks applied for prompts={prompts} -- Grounding DINO found "
+                        f"{len(detections)} box(es), none produced a usable SAM mask."
+                    )
+                ),
             }
         except Exception as exc:
             logger.exception("GroundedSAM failed")
@@ -628,15 +689,18 @@ class SAMAutoLabeler:
                 if val == 1:
                     if reproject:
                         geom = transform_geom(crs, "EPSG:4326", geom)
-                    features.append({
-                        "type": "Feature", "geometry": geom,
-                        "properties": {
-                            "mask_id": m.get("instance_id", i),
-                            "class_id": m.get("class_id"),
-                            "area_m2": m.get("area_m2", 0),
-                            "pred_iou": m.get("predicted_iou", 0),
-                        },
-                    })
+                    features.append(
+                        {
+                            "type": "Feature",
+                            "geometry": geom,
+                            "properties": {
+                                "mask_id": m.get("instance_id", i),
+                                "class_id": m.get("class_id"),
+                                "area_m2": m.get("area_m2", 0),
+                                "pred_iou": m.get("predicted_iou", 0),
+                            },
+                        }
+                    )
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
             json.dump({"type": "FeatureCollection", "features": features}, f)
@@ -663,12 +727,16 @@ class SamGeoLabeler:
         result = labeler.label("scene.tif", output_path="./labels/sam_mask.tif")
     """
 
-    def __init__(self, model_type: str = "vit_h", device: str | None = None,
-                 checkpoint_dir: str | None = None) -> None:
+    def __init__(
+        self,
+        model_type: str = "vit_h",
+        device: str | None = None,
+        checkpoint_dir: str | None = None,
+    ) -> None:
         self.model_type = model_type
         self.device = device
         self.checkpoint_dir = checkpoint_dir
-        self._sam = None
+        self._sam: Any = None
 
     def _load(self):
         if self._sam is not None:
@@ -677,12 +745,13 @@ class SamGeoLabeler:
             from samgeo import SamGeo
         except ImportError as exc:
             raise ImportError(
-                "SamGeoLabeler requires segment-geospatial: "
-                "pip install segment-geospatial"
+                "SamGeoLabeler requires segment-geospatial: " "pip install segment-geospatial"
             ) from exc
         self._sam = SamGeo(
-            model_type=self.model_type, automatic=True,
-            device=self.device, checkpoint_dir=self.checkpoint_dir,
+            model_type=self.model_type,
+            automatic=True,
+            device=self.device,
+            checkpoint_dir=self.checkpoint_dir,
         )
         return self._sam
 
@@ -718,17 +787,24 @@ class SamGeoLabeler:
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             sam.generate(
-                str(image_path), str(output_path), foreground=foreground,
-                min_size=min_size, **generate_kwargs,
+                str(image_path),
+                str(output_path),
+                foreground=foreground,
+                min_size=min_size,
+                **generate_kwargs,
             )
         except Exception as exc:
-            return {"success": False, "error": str(exc), "duration_seconds": round(time.time() - t0, 1)}
+            return {
+                "success": False,
+                "error": str(exc),
+                "duration_seconds": round(time.time() - t0, 1),
+            }
 
         if not output_path.exists():
             return {
                 "success": False,
                 "error": f"samgeo.generate() completed without raising, but produced no "
-                         f"real output file at {output_path} -- treat as a failed run.",
+                f"real output file at {output_path} -- treat as a failed run.",
                 "duration_seconds": round(time.time() - t0, 1),
             }
 

@@ -41,6 +41,7 @@ What is *not* here
   that no weight matched).
 * Allometric biomass from canopy height (the coefficients had no source).
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,30 +57,46 @@ logger = logging.getLogger(__name__)
 
 # ── Registry ──────────────────────────────────────────────────────────────────
 
+
 def _vit(arch: str, params_m: int, embed: int, repo: str, *, sat: bool = False) -> dict:
-    return {"arch": arch, "family": "vit", "params_m": params_m, "patch": 16, "embed": embed,
-            "dataset": "SAT-493M" if sat else "LVD-1689M", "hf_id": f"facebook/{repo}",
-            "gated": True, **({"sat": True} if sat else {})}
+    return {
+        "arch": arch,
+        "family": "vit",
+        "params_m": params_m,
+        "patch": 16,
+        "embed": embed,
+        "dataset": "SAT-493M" if sat else "LVD-1689M",
+        "hf_id": f"facebook/{repo}",
+        "gated": True,
+        **({"sat": True} if sat else {}),
+    }
 
 
 def _cnx(params_m: int, embed: int, size: str) -> dict:
-    return {"arch": "convnext", "family": "convnext", "params_m": params_m, "patch": 32, "embed": embed,
-            "dataset": "LVD-1689M", "hf_id": f"facebook/dinov3-convnext-{size}-pretrain-lvd1689m",
-            "gated": True}
+    return {
+        "arch": "convnext",
+        "family": "convnext",
+        "params_m": params_m,
+        "patch": 32,
+        "embed": embed,
+        "dataset": "LVD-1689M",
+        "hf_id": f"facebook/dinov3-convnext-{size}-pretrain-lvd1689m",
+        "gated": True,
+    }
 
 
 DINOV3_MODELS: dict[str, dict] = {
-    "dinov3_vits16":      _vit("vit_small", 21, 384, "dinov3-vits16-pretrain-lvd1689m"),
-    "dinov3_vits16plus":  _vit("vit_small", 29, 384, "dinov3-vits16plus-pretrain-lvd1689m"),
-    "dinov3_vitb16":      _vit("vit_base", 86, 768, "dinov3-vitb16-pretrain-lvd1689m"),
-    "dinov3_vitl16":      _vit("vit_large", 300, 1024, "dinov3-vitl16-pretrain-lvd1689m"),
-    "dinov3_vith16plus":  _vit("vit_huge", 840, 1280, "dinov3-vith16plus-pretrain-lvd1689m"),
-    "dinov3_vit7b16":     _vit("vit_7b", 6700, 4096, "dinov3-vit7b16-pretrain-lvd1689m"),
-    "dinov3_vitl16_sat":  _vit("vit_large", 300, 1024, "dinov3-vitl16-pretrain-sat493m", sat=True),
+    "dinov3_vits16": _vit("vit_small", 21, 384, "dinov3-vits16-pretrain-lvd1689m"),
+    "dinov3_vits16plus": _vit("vit_small", 29, 384, "dinov3-vits16plus-pretrain-lvd1689m"),
+    "dinov3_vitb16": _vit("vit_base", 86, 768, "dinov3-vitb16-pretrain-lvd1689m"),
+    "dinov3_vitl16": _vit("vit_large", 300, 1024, "dinov3-vitl16-pretrain-lvd1689m"),
+    "dinov3_vith16plus": _vit("vit_huge", 840, 1280, "dinov3-vith16plus-pretrain-lvd1689m"),
+    "dinov3_vit7b16": _vit("vit_7b", 6700, 4096, "dinov3-vit7b16-pretrain-lvd1689m"),
+    "dinov3_vitl16_sat": _vit("vit_large", 300, 1024, "dinov3-vitl16-pretrain-sat493m", sat=True),
     "dinov3_vit7b16_sat": _vit("vit_7b", 6700, 4096, "dinov3-vit7b16-pretrain-sat493m", sat=True),
-    "dinov3_convnext_tiny":  _cnx(29, 768, "tiny"),
+    "dinov3_convnext_tiny": _cnx(29, 768, "tiny"),
     "dinov3_convnext_small": _cnx(50, 768, "small"),
-    "dinov3_convnext_base":  _cnx(89, 1024, "base"),
+    "dinov3_convnext_base": _cnx(89, 1024, "base"),
     "dinov3_convnext_large": _cnx(196, 1536, "large"),
 }
 
@@ -87,17 +104,21 @@ DINOV3_MODELS: dict[str, dict] = {
 # heads ship only with the original torch.hub code and are not wired here.)
 CHMV2_HF_ID = "facebook/dinov3-vitl16-chmv2-dpt-head"
 DINOV3_HEADS: dict[str, dict] = {
-    "chmv2": {"dataset": "global_chm", "task": "canopy_height", "hf_id": CHMV2_HF_ID,
-              "backbone": "dinov3_vitl16_sat"},
+    "chmv2": {
+        "dataset": "global_chm",
+        "task": "canopy_height",
+        "hf_id": CHMV2_HF_ID,
+        "backbone": "dinov3_vitl16_sat",
+    },
 }
 
 
 # ── Transforms ────────────────────────────────────────────────────────────────
 
-WEB_MEAN = (0.485, 0.456, 0.406)    # ImageNet statistics (LVD-1689M models)
+WEB_MEAN = (0.485, 0.456, 0.406)  # ImageNet statistics (LVD-1689M models)
 WEB_STD = (0.229, 0.224, 0.225)
 
-SAT_MEAN = (0.430, 0.411, 0.296)    # SAT-493M statistics. Different from web!
+SAT_MEAN = (0.430, 0.411, 0.296)  # SAT-493M statistics. Different from web!
 SAT_STD = (0.213, 0.156, 0.143)
 
 
@@ -106,12 +127,14 @@ def _transform(mean: tuple, std: tuple, resize_size: int, crop_size: int) -> Any
         from torchvision import transforms
     except ImportError as exc:  # pragma: no cover
         raise ImportError("pip install torchvision") from exc
-    return transforms.Compose([
-        transforms.Resize(resize_size, interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.CenterCrop(crop_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=list(mean), std=list(std)),
-    ])
+    return transforms.Compose(
+        [
+            transforms.Resize(resize_size, interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.CenterCrop(crop_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=list(mean), std=list(std)),
+        ]
+    )
 
 
 def dinov3_web_transform(resize_size: int = 256, crop_size: int = 224) -> Any:
@@ -135,6 +158,7 @@ def get_transform(model_name: str, **kwargs) -> Any:
 
 # ── Loading ───────────────────────────────────────────────────────────────────
 
+
 def _spec(model_name: str) -> dict:
     spec = DINOV3_MODELS.get(model_name)
     if spec is None:
@@ -154,8 +178,9 @@ def _attach(model: Any, model_name: str, spec: dict, processor: Any | None) -> A
     return model
 
 
-def load_dinov3_hf(model_name: str = "dinov3_vitl16", device: str = "cpu",
-                   attn_implementation: str | None = None) -> Any:
+def load_dinov3_hf(
+    model_name: str = "dinov3_vitl16", device: str = "cpu", attn_implementation: str | None = None
+) -> Any:
     """Load a real DINOv3 backbone from Hugging Face.
 
     Raises
@@ -168,12 +193,15 @@ def load_dinov3_hf(model_name: str = "dinov3_vitl16", device: str = "cpu",
     hf_id = spec["hf_id"]
     try:
         from transformers import AutoImageProcessor, AutoModel
+
         kw = {"attn_implementation": attn_implementation} if attn_implementation else {}
         model = AutoModel.from_pretrained(hf_id, **kw).to(device).eval()
         try:
             processor = AutoImageProcessor.from_pretrained(hf_id)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("No preprocessor for %s (%s); using the documented constants", hf_id, exc)
+            logger.warning(
+                "No preprocessor for %s (%s); using the documented constants", hf_id, exc
+            )
             processor = None
     except Exception as exc:  # noqa: BLE001
         raise ModelLoadError(
@@ -181,15 +209,19 @@ def load_dinov3_hf(model_name: str = "dinov3_vitl16", device: str = "cpu",
             "gated - accept the licence on the model page and authenticate (huggingface-cli login / "
             "HF_TOKEN). Nothing was substituted."
         ) from exc
-    logger.info("DINOv3 loaded: %s (%s, ~%dM params) on %s", model_name, hf_id, spec["params_m"], device)
+    logger.info(
+        "DINOv3 loaded: %s (%s, ~%dM params) on %s", model_name, hf_id, spec["params_m"], device
+    )
     return _attach(model, model_name, spec, processor)
 
 
 def load_dinov3_hub(*_: Any, **__: Any) -> Any:
     """Removed. The old implementation called ``torch.hub.load('facebookresearch/dinov2', ...)`` and so
     returned DINOv2. Use :func:`load_dinov3_hf` or :func:`load_dinov3_local`."""
-    raise NotImplementedError("torch.hub loading was removed (it loaded DINOv2). "
-                              "Use load_dinov3_hf() or load_dinov3_local().")
+    raise NotImplementedError(
+        "torch.hub loading was removed (it loaded DINOv2). "
+        "Use load_dinov3_hf() or load_dinov3_local()."
+    )
 
 
 def load_dinov3_local(model_name: str, weights_path: str, device: str = "cpu") -> Any:
@@ -204,7 +236,9 @@ def load_dinov3_local(model_name: str, weights_path: str, device: str = "cpu") -
     spec = _spec(model_name)
     path = Path(weights_path)
     if not path.is_dir():
-        raise ValueError(f"weights_path must be a transformers snapshot directory, got {weights_path!r}")
+        raise ValueError(
+            f"weights_path must be a transformers snapshot directory, got {weights_path!r}"
+        )
     cfg_file = path / "config.json"
     if not cfg_file.exists():
         raise ModelLoadError(f"{path} has no config.json - not a transformers snapshot")
@@ -214,9 +248,12 @@ def load_dinov3_local(model_name: str, weights_path: str, device: str = "cpu") -
         raise ModelLoadError(f"{path} holds a '{model_type}' model but {model_name} needs '{want}'")
     try:
         from transformers import AutoImageProcessor, AutoModel
+
         model = AutoModel.from_pretrained(str(path)).to(device).eval()
     except Exception as exc:  # noqa: BLE001
-        raise ModelLoadError(f"Could not load {model_name} from {path}: {type(exc).__name__}: {exc}") from exc
+        raise ModelLoadError(
+            f"Could not load {model_name} from {path}: {type(exc).__name__}: {exc}"
+        ) from exc
     try:
         processor = AutoImageProcessor.from_pretrained(str(path))
     except Exception:  # noqa: BLE001
@@ -226,7 +263,10 @@ def load_dinov3_local(model_name: str, weights_path: str, device: str = "cpu") -
 
 # ── Image preparation ─────────────────────────────────────────────────────────
 
-def _to_rgb01(image: Any, rgb_bands: tuple[int, int, int] | None = None) -> tuple[np.ndarray, np.ndarray]:
+
+def _to_rgb01(
+    image: Any, rgb_bands: tuple[int, int, int] | None = None
+) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(rgb, valid)``: float32 ``(3, H, W)`` in [0, 1] and a bool ``(H, W)`` validity mask.
 
     * path: rasters are read nodata-aware and stretched 2-98 % over the valid pixels (``rgb_bands`` are
@@ -236,10 +276,13 @@ def _to_rgb01(image: Any, rgb_bands: tuple[int, int, int] | None = None) -> tupl
     """
     if isinstance(image, (str, Path)):
         import rasterio
+
         with rasterio.open(str(image)) as src:
             bands = list(rgb_bands or ((1, 2, 3) if src.count >= 3 else (1, 1, 1)))
             if min(bands) < 1 or max(bands) > src.count:
-                raise ValueError(f"rgb_bands {tuple(bands)} not available in a {src.count}-band raster")
+                raise ValueError(
+                    f"rgb_bands {tuple(bands)} not available in a {src.count}-band raster"
+                )
             data = src.read(bands).astype(np.float32)
             valid = np.ones(data.shape[1:], bool)
             for b in set(bands):
@@ -253,7 +296,7 @@ def _to_rgb01(image: Any, rgb_bands: tuple[int, int, int] | None = None) -> tupl
             out[k] = np.clip((data[k] - lo) / (hi - lo + 1e-8), 0.0, 1.0)
         out[:, ~valid] = 0.0
         return out, valid
-    if hasattr(image, "convert"):                       # PIL
+    if hasattr(image, "convert"):  # PIL
         image = np.asarray(image.convert("RGB"))
     arr = np.asarray(image)
     if arr.ndim == 2:
@@ -261,11 +304,16 @@ def _to_rgb01(image: Any, rgb_bands: tuple[int, int, int] | None = None) -> tupl
     if arr.ndim != 3 or arr.shape[-1] < 3:
         raise ValueError(f"expected an (H, W, >=3) array, got shape {arr.shape}")
     arr = arr[..., :3]
-    arr = arr.astype(np.float32) / 255.0 if arr.dtype == np.uint8 else np.clip(arr.astype(np.float32), 0, 1)
+    arr = (
+        arr.astype(np.float32) / 255.0
+        if arr.dtype == np.uint8
+        else np.clip(arr.astype(np.float32), 0, 1)
+    )
     return arr.transpose(2, 0, 1), np.ones(arr.shape[:2], bool)
 
 
 # ── DINOv3Backbone ────────────────────────────────────────────────────────────
+
 
 class DINOv3Backbone:
     """Real DINOv3 feature extractor with registered dense features.
@@ -282,9 +330,15 @@ class DINOv3Backbone:
         emb = backbone.extract_embeddings("scene.tif")      # (1, D)
     """
 
-    def __init__(self, model_name: str = "dinov3_vitl16_sat", method: str = "hf",
-                 device: str | None = None, weights_path: str | None = None,
-                 max_size: int = 1024, rgb_bands: tuple[int, int, int] | None = None) -> None:
+    def __init__(
+        self,
+        model_name: str = "dinov3_vitl16_sat",
+        method: str = "hf",
+        device: str | None = None,
+        weights_path: str | None = None,
+        max_size: int = 1024,
+        rgb_bands: tuple[int, int, int] | None = None,
+    ) -> None:
         self.model_name = model_name
         self.method = method
         self.device = device or self._auto_device()
@@ -300,6 +354,7 @@ class DINOv3Backbone:
     def _auto_device() -> str:
         try:
             import torch
+
             if torch.cuda.is_available():
                 return "cuda"
             if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -344,7 +399,9 @@ class DINOv3Backbone:
         return (SAT_MEAN, SAT_STD) if self._is_sat else (WEB_MEAN, WEB_STD)
 
     def _is_convnext(self) -> bool:
-        return self._spec.get("family") == "convnext" or "convnext" in str(getattr(self._cfg(), "model_type", ""))
+        return self._spec.get("family") == "convnext" or "convnext" in str(
+            getattr(self._cfg(), "model_type", "")
+        )
 
     # -- forward
     def _prepare(self, image: Any) -> tuple[Any, int, int, float, tuple[int, int]]:
@@ -358,8 +415,13 @@ class DINOv3Backbone:
         scale = 1.0
         if max(h0, w0) > self.max_size:
             scale = self.max_size / max(h0, w0)
-            x = F.interpolate(x, size=(max(1, round(h0 * scale)), max(1, round(w0 * scale))),
-                              mode="bilinear", antialias=True, align_corners=False)
+            x = F.interpolate(
+                x,
+                size=(max(1, round(h0 * scale)), max(1, round(w0 * scale))),
+                mode="bilinear",
+                antialias=True,
+                align_corners=False,
+            )
         patch = self._patch()
         h1, w1 = x.shape[-2:]
         ph, pw = (-h1) % patch, (-w1) % patch
@@ -379,7 +441,7 @@ class DINOv3Backbone:
         with torch.no_grad():
             out = self._model(pixel_values=x)
         hs = out.last_hidden_state
-        if hs.ndim == 4:                                       # (1, C, h, w) feature map
+        if hs.ndim == 4:  # (1, C, h, w) feature map
             grid = hs[0].permute(1, 2, 0)
             gh, gw = grid.shape[:2]
             pooled = getattr(out, "pooler_output", None)
@@ -392,9 +454,14 @@ class DINOv3Backbone:
             if tok.shape[0] < 1 + gh * gw:
                 raise RuntimeError(f"backbone returned {tok.shape[0]} tokens for a {gh}x{gw} grid")
             cls = tok[0]
-            grid = tok[-gh * gw:].reshape(gh, gw, -1)
+            grid = tok[-gh * gw :].reshape(gh, gw, -1)
             cell = x.shape[-2] / gh / scale
-        geometry = {"cell_px": cell, "scale": scale, "grid": (int(gh), int(gw)), "source_size": (h0, w0)}
+        geometry = {
+            "cell_px": cell,
+            "scale": scale,
+            "grid": (int(gh), int(gw)),
+            "source_size": (h0, w0),
+        }
         self.last_geometry = geometry
         return cls, grid, geometry
 
@@ -430,18 +497,23 @@ class DINOv3Backbone:
                 return self._model(pixel_values=x, output_attentions=True)
 
         out = _forward()
-        if (not getattr(out, "attentions", None) or out.attentions[-1] is None) \
-                and hasattr(self._model, "set_attn_implementation"):
+        if (not getattr(out, "attentions", None) or out.attentions[-1] is None) and hasattr(
+            self._model, "set_attn_implementation"
+        ):
             self._model.set_attn_implementation("eager")
             out = _forward()
         if not getattr(out, "attentions", None) or out.attentions[-1] is None:
-            raise RuntimeError("this model does not return attention weights; load it with "
-                               "attn_implementation='eager'")
-        attn = out.attentions[-1][0]                           # (heads, T, T)
+            raise RuntimeError(
+                "this model does not return attention weights; load it with "
+                "attn_implementation='eager'"
+            )
+        attn = out.attentions[-1][0]  # (heads, T, T)
         n_reg = int(getattr(self._cfg(), "num_register_tokens", 0) or 0)
-        cls_to_patch = attn[:, 0, 1 + n_reg:]
+        cls_to_patch = attn[:, 0, 1 + n_reg :]
         if cls_to_patch.shape[-1] != gh * gw:
-            raise RuntimeError(f"attention covers {cls_to_patch.shape[-1]} patches, expected {gh * gw}")
+            raise RuntimeError(
+                f"attention covers {cls_to_patch.shape[-1]} patches, expected {gh * gw}"
+            )
         maps = cls_to_patch.reshape(-1, gh, gw).float().cpu().numpy()
         return maps[head_idx] if head_idx is not None else maps.mean(0)
 
@@ -452,8 +524,13 @@ class DINOv3Backbone:
 
         self._load()
         dim = self._embed_dim()
-        head = nn.Sequential(nn.LayerNorm(dim), nn.Linear(dim, 512), nn.GELU(), nn.Dropout(0.1),
-                             nn.Linear(512, num_classes))
+        head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, 512),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(512, num_classes),
+        )
         if freeze_backbone:
             for p in self._model.parameters():
                 p.requires_grad = False
@@ -468,7 +545,7 @@ class DINOv3Backbone:
             def forward(self, x):
                 out = backbone(pixel_values=x)
                 hs = out.last_hidden_state
-                g = hs.mean((2, 3)) if hs.ndim == 4 else hs[:, 0]       # CLS / pooled token
+                g = hs.mean((2, 3)) if hs.ndim == 4 else hs[:, 0]  # CLS / pooled token
                 return self.head(g)
 
         return GeoClassifier()
@@ -476,19 +553,27 @@ class DINOv3Backbone:
     def finetune_config(self) -> dict:
         """Starting hyper-parameters for fine-tuning (a sensible default, not a published recipe)."""
         return {
-            "optimizer": "AdamW", "learning_rate": 1e-4, "weight_decay": 0.05, "warmup_epochs": 10,
-            "scheduler": "cosine_annealing", "mixed_precision": "bf16", "batch_size": 16,
+            "optimizer": "AdamW",
+            "learning_rate": 1e-4,
+            "weight_decay": 0.05,
+            "warmup_epochs": 10,
+            "scheduler": "cosine_annealing",
+            "mixed_precision": "bf16",
+            "batch_size": 16,
             "note": "Use a lower LR (about 1e-5) for the SAT-493M backbones and when unfreezing.",
         }
 
     def __repr__(self) -> str:
         s = self._spec
-        return (f"DINOv3Backbone(model={self.model_name!r}, params={s.get('params_m', 0)}M, "
-                f"dataset={s.get('dataset', '?')!r}, embed={s.get('embed', 768)}, sat={self._is_sat}, "
-                f"device={self.device})")
+        return (
+            f"DINOv3Backbone(model={self.model_name!r}, params={s.get('params_m', 0)}M, "
+            f"dataset={s.get('dataset', '?')!r}, embed={s.get('embed', 768)}, sat={self._is_sat}, "
+            f"device={self.device})"
+        )
 
 
 # ── CHMv2 - canopy height ─────────────────────────────────────────────────────
+
 
 class CHMv2Model:
     """Canopy-height regression with Meta's released CHMv2 head (``facebook/dinov3-vitl16-chmv2-dpt-head``:
@@ -507,8 +592,13 @@ class CHMv2Model:
       not a radiometric calibration).
     """
 
-    def __init__(self, device: str | None = None, hf_id: str = CHMV2_HF_ID,
-                 tile_size: int = 384, overlap: int = 32) -> None:
+    def __init__(
+        self,
+        device: str | None = None,
+        hf_id: str = CHMV2_HF_ID,
+        tile_size: int = 384,
+        overlap: int = 32,
+    ) -> None:
         self.device = device or DINOv3Backbone._auto_device()
         self.hf_id = hf_id
         if tile_size % 16 or not 0 <= overlap < tile_size:
@@ -523,7 +613,10 @@ class CHMv2Model:
             return
         try:
             from transformers import AutoImageProcessor, AutoModelForDepthEstimation
-            self._model = AutoModelForDepthEstimation.from_pretrained(self.hf_id).to(self.device).eval()
+
+            self._model = (
+                AutoModelForDepthEstimation.from_pretrained(self.hf_id).to(self.device).eval()
+            )
             proc = AutoImageProcessor.from_pretrained(self.hf_id)
             self._mean, self._std = tuple(proc.image_mean), tuple(proc.image_std)
         except Exception as exc:  # noqa: BLE001
@@ -550,7 +643,7 @@ class CHMv2Model:
         for y0 in ys:
             for x0 in xs:
                 y0c, x0c = max(0, min(y0, h - t)), max(0, min(x0, w - t))
-                tile = rgb255[:, y0c:y0c + t, x0c:x0c + t]
+                tile = rgb255[:, y0c : y0c + t, x0c : x0c + t]
                 th, tw = tile.shape[1:]
                 ph, pw = (-th) % 16, (-tw) % 16
                 if ph or pw:
@@ -559,12 +652,16 @@ class CHMv2Model:
                 with torch.no_grad():
                     pred = self._model(pixel_values=x.float().to(self.device)).predicted_depth
                 pred = pred[0, :th, :tw].float().cpu().numpy()
-                acc[y0c:y0c + th, x0c:x0c + tw] += pred
-                cnt[y0c:y0c + th, x0c:x0c + tw] += 1
+                acc[y0c : y0c + th, x0c : x0c + tw] += pred
+                cnt[y0c : y0c + th, x0c : x0c + tw] += 1
         return (acc / np.maximum(cnt, 1)).astype(np.float32)
 
-    def predict_canopy_height(self, image_path: str, output_path: str | None = None,
-                              rgb_bands: tuple[int, int, int] | None = None) -> dict[str, Any]:
+    def predict_canopy_height(
+        self,
+        image_path: str,
+        output_path: str | None = None,
+        rgb_bands: tuple[int, int, int] | None = None,
+    ) -> dict[str, Any]:
         """Predict a canopy-height map for a raster.
 
         Returns ``{"height_map", "output_path", "statistics", "model", "image_path"}`` or
@@ -598,36 +695,58 @@ class CHMv2Model:
         heights = np.where(valid, np.maximum(heights, 0.0), np.nan).astype(np.float32)
         v = heights[valid]
         stats = {
-            "mean_m": float(v.mean()), "max_m": float(v.max()), "p95_m": float(np.percentile(v, 95)),
-            "coverage_pct": float((v > 2.0).mean() * 100),     # share of valid pixels taller than 2
+            "mean_m": float(v.mean()),
+            "max_m": float(v.max()),
+            "p95_m": float(np.percentile(v, 95)),
+            "coverage_pct": float((v > 2.0).mean() * 100),  # share of valid pixels taller than 2
         }
         if output_path:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             profile.update(count=1, dtype="float32", nodata=float("nan"), compress="lzw")
-            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
                 profile.pop(_k, None)
             with rasterio.open(output_path, "w", **profile) as dst:
                 dst.write(heights[None])
-        return {"height_map": heights, "output_path": output_path, "statistics": stats,
-                "model": f"CHMv2 ({self.hf_id})", "image_path": str(image_path)}
+        return {
+            "height_map": heights,
+            "output_path": output_path,
+            "statistics": stats,
+            "model": f"CHMv2 ({self.hf_id})",
+            "image_path": str(image_path),
+        }
 
     def estimate_biomass(self, *_: Any, **__: Any) -> dict[str, Any]:
         """Removed: the allometric coefficients (``0.112 * H**2.40``) had no source and the equation is not
         a height-only biomass model. Bring a calibrated height-to-AGB relation for your biome."""
-        raise NotImplementedError("estimate_biomass was removed: no validated height->biomass relation ships "
-                                  "with PyGeoVision")
+        raise NotImplementedError(
+            "estimate_biomass was removed: no validated height->biomass relation ships "
+            "with PyGeoVision"
+        )
 
-    def detect_deforestation(self, before_path: str, after_path: str, min_height_loss_m: float = 2.0,
-                             output_path: str | None = None) -> dict[str, Any]:
+    def detect_deforestation(
+        self,
+        before_path: str,
+        after_path: str,
+        min_height_loss_m: float = 2.0,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
         """Flag pixels whose predicted height dropped by more than ``min_height_loss_m`` between two
         co-registered rasters of the same grid. Differences of two noisy predictions are noisy: treat the
         result as a screening layer, not a measurement."""
         try:
             import rasterio
+
             with rasterio.open(before_path) as a, rasterio.open(after_path) as b:
-                if (a.height, a.width, a.crs, a.transform) != (b.height, b.width, b.crs, b.transform):
-                    return {"error": "before/after rasters must share the same grid (size, CRS, transform); "
-                                     "reproject one onto the other first"}
+                if (a.height, a.width, a.crs, a.transform) != (
+                    b.height,
+                    b.width,
+                    b.crs,
+                    b.transform,
+                ):
+                    return {
+                        "error": "before/after rasters must share the same grid (size, CRS, transform); "
+                        "reproject one onto the other first"
+                    }
                 profile, transform, crs = a.profile.copy(), a.transform, a.crs
         except Exception as exc:  # noqa: BLE001
             return {"error": f"{type(exc).__name__}: {exc}"}
@@ -639,7 +758,9 @@ class CHMv2Model:
         hb, ha = before["height_map"], after["height_map"]
         ok = np.isfinite(hb) & np.isfinite(ha)
         mask = (ok & ((hb - ha) > min_height_loss_m)).astype(np.uint8)
-        pixel_area_m2 = abs(transform.a * transform.e) if crs is not None and crs.is_projected else None
+        pixel_area_m2 = (
+            abs(transform.a * transform.e) if crs is not None and crs.is_projected else None
+        )
         result = {
             "deforestation_mask": mask,
             "deforested_pct": float(mask[ok].mean() * 100) if ok.any() else 0.0,
@@ -649,7 +770,7 @@ class CHMv2Model:
         if output_path:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             profile.update(count=1, dtype="uint8", nodata=None, compress="lzw")
-            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
                 profile.pop(_k, None)
             with rasterio.open(output_path, "w", **profile) as dst:
                 dst.write(mask[None])
@@ -658,11 +779,13 @@ class CHMv2Model:
 
 # ── dino.txt ──────────────────────────────────────────────────────────────────
 
+
 class DINOv3Text:
     """Not available. Zero-shot text alignment needs the ``dino.txt`` checkpoint, which is not in the public
     model index; the earlier class compared DINOv3 patch features with CLIP *text* embeddings, which live in
     unrelated spaces, so its masks were arbitrary. Use ``pygeovision.models.vlm.clip.CLIPGeo`` or
-    ``FoundationModelLabeler(model='remote_clip', text_prompts=[...])`` for prompt-based labelling."""
+    ``FoundationModelLabeler(model='remote_clip', text_prompts=[...])`` for prompt-based labelling.
+    """
 
     def __init__(self, *_: Any, **__: Any) -> None:
         raise NotImplementedError(
@@ -671,6 +794,7 @@ class DINOv3Text:
 
 
 # ── Fine-tuning ───────────────────────────────────────────────────────────────
+
 
 def finetune_dinov3(
     model_name: str = "dinov3_vitl16_sat",
@@ -710,14 +834,23 @@ def finetune_dinov3(
     ckpt_mgr = CheckpointManager(output_dir, monitor="val_loss", mode="min")
     if distributed:
         from pygeovision.training.distributed import wrap_ddp
+
         model = wrap_ddp(model)
     model = model.to(backbone.device)
-    return {"model": model, "optimizer": optimizer, "scheduler": scheduler, "mp_manager": mp_manager,
-            "ckpt_manager": ckpt_mgr, "config": backbone.finetune_config(), "status": "ready",
-            "note": "Objects are prepared, not trained: run your loop or GeoTrainer.fit()."}
+    return {
+        "model": model,
+        "optimizer": optimizer,
+        "scheduler": scheduler,
+        "mp_manager": mp_manager,
+        "ckpt_manager": ckpt_mgr,
+        "config": backbone.finetune_config(),
+        "status": "ready",
+        "note": "Objects are prepared, not trained: run your loop or GeoTrainer.fit().",
+    }
 
 
 # ── Convenience ───────────────────────────────────────────────────────────────
+
 
 def list_dinov3_models() -> list[str]:
     """All DINOv3 model names."""
@@ -732,14 +865,35 @@ def list_satellite_models() -> list[str]:
 def get_dinov3_info(model_name: str) -> dict:
     """Spec for one model, plus the transform it needs."""
     spec = _spec(model_name)
-    return {**spec, "name": model_name,
-            "transform": "satellite stats (SAT-493M)" if spec.get("sat") else "ImageNet web stats (LVD-1689M)",
-            "gated": True}
+    return {
+        **spec,
+        "name": model_name,
+        "transform": (
+            "satellite stats (SAT-493M)" if spec.get("sat") else "ImageNet web stats (LVD-1689M)"
+        ),
+        "gated": True,
+    }
 
 
 __all__ = [
-    "CHMV2_HF_ID", "CHMv2Model", "DINOV3_HEADS", "DINOV3_MODELS", "DINOv3Backbone", "DINOv3Text", "SAT_MEAN",
-    "SAT_STD", "WEB_MEAN", "WEB_STD", "dinov3_sat_transform", "dinov3_web_transform", "finetune_dinov3",
-    "get_dinov3_info", "get_transform", "list_dinov3_models", "list_satellite_models", "load_dinov3_hf",
-    "load_dinov3_hub", "load_dinov3_local",
+    "CHMV2_HF_ID",
+    "CHMv2Model",
+    "DINOV3_HEADS",
+    "DINOV3_MODELS",
+    "DINOv3Backbone",
+    "DINOv3Text",
+    "SAT_MEAN",
+    "SAT_STD",
+    "WEB_MEAN",
+    "WEB_STD",
+    "dinov3_sat_transform",
+    "dinov3_web_transform",
+    "finetune_dinov3",
+    "get_dinov3_info",
+    "get_transform",
+    "list_dinov3_models",
+    "list_satellite_models",
+    "load_dinov3_hf",
+    "load_dinov3_hub",
+    "load_dinov3_local",
 ]

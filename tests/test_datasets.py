@@ -2,17 +2,25 @@
 Tests for Phase 1 & 5: DatasetRegistry, DatasetAnalyzer, BenchmarkBuilder.
 All tests are pure-Python, no network, no GPU, no optional dependencies.
 """
+
 from __future__ import annotations
+
+import pathlib
+import sys
+
 import pytest
-import sys; import pathlib; sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
 # ── DatasetRegistry ───────────────────────────────────────────────────────────
+
 
 class TestDatasetRegistry:
     @pytest.fixture(autouse=True)
     def _reg(self):
         from pygeovision.datasets.registry import DatasetRegistry
+
         self.reg = DatasetRegistry()
 
     def test_registry_size(self):
@@ -38,8 +46,7 @@ class TestDatasetRegistry:
         results = self.reg.search("flood")
         assert len(results) >= 1
         names = [d.name for d in results]
-        assert any("lood" in n or "lood" in d.description.lower()
-                   for n, d in zip(names, results))
+        assert any("lood" in n or "lood" in d.description.lower() for n, d in zip(names, results))
 
     def test_search_empty_returns_empty(self):
         results = self.reg.search("xyzzy_nonexistent_term_9999")
@@ -134,10 +141,12 @@ class TestDatasetRegistry:
 
 # ── DatasetAnalyzer ───────────────────────────────────────────────────────────
 
+
 class TestDatasetAnalyzer:
     @pytest.fixture(autouse=True)
     def _ana(self):
         from pygeovision.datasets.analysis import DatasetAnalyzer
+
         self.ana = DatasetAnalyzer()
 
     def test_volume_trend_returns_dict(self):
@@ -154,6 +163,7 @@ class TestDatasetAnalyzer:
         assert isinstance(dist, dict)
         total = sum(dist.values())
         from pygeovision.datasets.registry import dataset_registry
+
         assert total == len(dataset_registry), "All datasets must fall in a resolution bin"
 
     def test_domain_distribution(self):
@@ -203,10 +213,12 @@ class TestDatasetAnalyzer:
 
 # ── BenchmarkBuilder ─────────────────────────────────────────────────────────
 
+
 class TestBenchmarkBuilder:
     @pytest.fixture(autouse=True)
     def _builder(self):
         from pygeovision.datasets.benchmark import BenchmarkBuilder
+
         self.builder = BenchmarkBuilder()
 
     def test_build_segmentation(self):
@@ -245,7 +257,7 @@ class TestBenchmarkBuilder:
         multi = matrix["multi_task"]
         # Some datasets should appear in multiple tasks
         if multi:
-            for name, tasks in multi.items():
+            for _name, tasks in multi.items():
                 assert len(tasks) >= 2
 
     def test_recommended_for_paper(self):
@@ -271,6 +283,7 @@ class TestBenchmarkBuilder:
         assert len(saved) >= 3
         for path in saved:
             import json
+
             with open(path) as f:
                 data = json.load(f)
             assert "task" in data

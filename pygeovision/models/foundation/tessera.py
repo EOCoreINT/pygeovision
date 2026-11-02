@@ -22,6 +22,7 @@ GeoTessera; help(GeoTessera)"`.):
     GeoTessera.sample_embeddings_at_points(points, year) -> (N, 128) array
     GeoTessera.export_pca_geotiffs(...) -> real 3-band PCA visualisation
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,10 +61,10 @@ class TesseraGeo:
             return self._client
         try:
             from geotessera import GeoTessera
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
                 "geotessera required for TESSERA embeddings: pip install geotessera"
-            )
+            ) from exc
         self._client = GeoTessera(dataset_version=self.dataset_version, cache_dir=self.cache_dir)
         return self._client
 
@@ -86,7 +87,9 @@ class TesseraGeo:
         client = self._load()
         try:
             embedding, transform, crs = client.fetch_mosaic_for_region(
-                bbox=bbox, year=year, target_crs=target_crs,
+                bbox=bbox,
+                year=year,
+                target_crs=target_crs,
             )
         except Exception as exc:
             return {"success": False, "error": str(exc)}
@@ -94,13 +97,17 @@ class TesseraGeo:
         # geotessera returns (H, W, C); pygeovision's convention elsewhere
         # is channel-first (C, H, W) for raster stacks.
         import numpy as np
+
         arr = embedding
         if arr.ndim == 3 and arr.shape[-1] in (128,):
             arr = np.transpose(arr, (2, 0, 1))
 
         result: dict[str, Any] = {
-            "success": True, "shape": tuple(arr.shape), "year": year,
-            "n_channels": arr.shape[0], "crs": str(crs),
+            "success": True,
+            "shape": tuple(arr.shape),
+            "year": year,
+            "n_channels": arr.shape[0],
+            "crs": str(crs),
             # Real fix, confirmed necessary by direct inspection: the real
             # embedding array itself was never included here before --
             # calling this without output_path gave a dict describing the
@@ -110,15 +117,24 @@ class TesseraGeo:
 
         if output_path:
             import rasterio
+
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with rasterio.open(
-                output_path, "w", driver="GTiff",
-                height=arr.shape[1], width=arr.shape[2], count=arr.shape[0],
-                dtype=arr.dtype, crs=crs, transform=transform, compress="lzw",
+                output_path,
+                "w",
+                driver="GTiff",
+                height=arr.shape[1],
+                width=arr.shape[2],
+                count=arr.shape[0],
+                dtype=arr.dtype,
+                crs=crs,
+                transform=transform,
+                compress="lzw",
             ) as dst:
                 dst.write(arr)
-                dst.update_tags(source="TESSERA", year=str(year),
-                                 dataset_version=self.dataset_version)
+                dst.update_tags(
+                    source="TESSERA", year=str(year), dataset_version=self.dataset_version
+                )
             result["output_path"] = output_path
 
         return result
@@ -166,6 +182,7 @@ class TesseraGeo:
             return {"success": False, "error": "pip install scikit-learn"}
 
         import numpy as np
+
         H, W, C = embedding.shape
         flat = embedding.reshape(-1, C)
         valid = np.isfinite(flat).all(axis=1)
@@ -181,19 +198,31 @@ class TesseraGeo:
         for c in range(n_components):
             band = pca_img[..., c]
             lo, hi = np.nanpercentile(band, 2), np.nanpercentile(band, 98)
-            pca_img_norm[..., c] = np.clip((band - lo) / (hi - lo + 1e-8) * 255, 0, 255).astype(np.uint8)
+            pca_img_norm[..., c] = np.clip((band - lo) / (hi - lo + 1e-8) * 255, 0, 255).astype(
+                np.uint8
+            )
 
         import rasterio
+
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(
-            output_path, "w", driver="GTiff",
-            height=H, width=W, count=n_components,
-            dtype="uint8", crs=crs, transform=transform, compress="lzw",
+            output_path,
+            "w",
+            driver="GTiff",
+            height=H,
+            width=W,
+            count=n_components,
+            dtype="uint8",
+            crs=crs,
+            transform=transform,
+            compress="lzw",
         ) as dst:
             dst.write(np.transpose(pca_img_norm, (2, 0, 1)))
 
         return {
-            "success": True, "output_path": output_path,
-            "explained_variance_ratio": pca.explained_variance_ratio_.tolist()
-                if valid.sum() > n_components else None,
+            "success": True,
+            "output_path": output_path,
+            "explained_variance_ratio": (
+                pca.explained_variance_ratio_.tolist() if valid.sum() > n_components else None
+            ),
         }

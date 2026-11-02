@@ -13,6 +13,7 @@ arbitrary single asset path (observed to be a QA_PIXEL quality band
 used as if it were reflectance imagery) instead of failing clearly at
 the point where the real problem was.
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
@@ -36,8 +37,17 @@ def _make_landsat_assets(tmp_path, band_keys, size=40):
     asset_paths = {}
     for key, value in band_keys.items():
         p = tmp_path / f"{key}.tif"
-        with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            p,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="uint16",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             dst.write(np.full((size, size), value, dtype="uint16"), 1)
         asset_paths[key] = p
     return asset_paths
@@ -49,11 +59,15 @@ class TestMissionAwareLandsatBandMapping:
         SR_B3=red, SR_B4=nir."""
         pipeline = _make_pipeline()
         asset_paths = _make_landsat_assets(
-            tmp_path, {"SR_B1": 111, "SR_B2": 222, "SR_B3": 333, "SR_B4": 444},
+            tmp_path,
+            {"SR_B1": 111, "SR_B2": 222, "SR_B3": 333, "SR_B4": 444},
         )
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "l7.tif", bands=("red", "green", "blue"),
-            scene_id="LE07_L2SP_013032_20180616_02_T1", apply_scale=False,
+            asset_paths,
+            tmp_path / "l7.tif",
+            bands=("red", "green", "blue"),
+            scene_id="LE07_L2SP_013032_20180616_02_T1",
+            apply_scale=False,
         )
         with rasterio.open(stack_path) as src:
             data = src.read()
@@ -66,11 +80,15 @@ class TestMissionAwareLandsatBandMapping:
         SR_B4=red, SR_B5=nir -- shifted by one band vs ETM+/TM."""
         pipeline = _make_pipeline()
         asset_paths = _make_landsat_assets(
-            tmp_path, {"SR_B2": 222, "SR_B3": 333, "SR_B4": 444, "SR_B5": 555},
+            tmp_path,
+            {"SR_B2": 222, "SR_B3": 333, "SR_B4": 444, "SR_B5": 555},
         )
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "l8.tif", bands=("red", "green", "blue"),
-            scene_id="LC08_L2SP_014031_20240615_02_T1", apply_scale=False,
+            asset_paths,
+            tmp_path / "l8.tif",
+            bands=("red", "green", "blue"),
+            scene_id="LC08_L2SP_014031_20240615_02_T1",
+            apply_scale=False,
         )
         with rasterio.open(stack_path) as src:
             data = src.read()
@@ -81,11 +99,15 @@ class TestMissionAwareLandsatBandMapping:
     def test_landsat9_uses_the_same_oli_mapping_as_landsat8(self, tmp_path):
         pipeline = _make_pipeline()
         asset_paths = _make_landsat_assets(
-            tmp_path, {"SR_B2": 222, "SR_B3": 333, "SR_B4": 444},
+            tmp_path,
+            {"SR_B2": 222, "SR_B3": 333, "SR_B4": 444},
         )
         stack_path = pipeline._stack_bands(
-            asset_paths, tmp_path / "l9.tif", bands=("red", "green", "blue"),
-            scene_id="LC09_L2SP_014032_20240607_02_T1", apply_scale=False,
+            asset_paths,
+            tmp_path / "l9.tif",
+            bands=("red", "green", "blue"),
+            scene_id="LC09_L2SP_014032_20240607_02_T1",
+            apply_scale=False,
         )
         with rasterio.open(stack_path) as src:
             data = src.read()
@@ -104,7 +126,9 @@ class TestLoudFailureInsteadOfSilentSubstitution:
         asset_paths = _make_landsat_assets(tmp_path, {"QA_PIXEL": 1})
         with pytest.raises(RuntimeError, match="no asset found for band"):
             pipeline._stack_bands(
-                asset_paths, tmp_path / "bad.tif", bands=("red", "green", "blue"),
+                asset_paths,
+                tmp_path / "bad.tif",
+                bands=("red", "green", "blue"),
                 scene_id="LC08_L2SP_014031_20240615_02_T1",
             )
 
@@ -113,7 +137,9 @@ class TestLoudFailureInsteadOfSilentSubstitution:
         asset_paths = _make_landsat_assets(tmp_path, {"QA_PIXEL": 1})
         with pytest.raises(RuntimeError) as exc_info:
             pipeline._stack_bands(
-                asset_paths, tmp_path / "bad.tif", bands=("red",),
+                asset_paths,
+                tmp_path / "bad.tif",
+                bands=("red",),
                 scene_id="LC08_L2SP_014031_20240615_02_T1",
             )
         msg = str(exc_info.value)

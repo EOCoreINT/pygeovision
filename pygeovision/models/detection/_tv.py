@@ -1,4 +1,5 @@
 """Shared pieces for the torchvision detectors (Faster R-CNN, Mask R-CNN, FCOS)."""
+
 from __future__ import annotations
 
 import logging

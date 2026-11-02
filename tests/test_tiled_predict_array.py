@@ -1,4 +1,5 @@
 """TiledInference.predict_array: in-memory tiled inference that leaves features untouched."""
+
 import numpy as np
 import pytest
 
@@ -19,21 +20,27 @@ def pointwise_model(in_ch=5, classes=2, seed=0):
 def whole_image(model, image, activation="softmax"):
     with torch.no_grad():
         logits = model(torch.from_numpy(image)[None])
-    return (torch.softmax(logits, 1) if activation == "softmax" else torch.sigmoid(logits))[0].numpy()
+    return (torch.softmax(logits, 1) if activation == "softmax" else torch.sigmoid(logits))[
+        0
+    ].numpy()
 
 
-@pytest.mark.parametrize("shape,chip,overlap", [
-    ((5, 70, 90), 32, 8),      # ragged edges
-    ((5, 64, 64), 64, 0),      # exactly one chip
-    ((5, 20, 25), 32, 8),      # smaller than a chip
-    ((5, 100, 37), 32, 16),
-])
+@pytest.mark.parametrize(
+    "shape,chip,overlap",
+    [
+        ((5, 70, 90), 32, 8),  # ragged edges
+        ((5, 64, 64), 64, 0),  # exactly one chip
+        ((5, 20, 25), 32, 8),  # smaller than a chip
+        ((5, 100, 37), 32, 16),
+    ],
+)
 def test_matches_a_single_forward_pass_for_any_tiling(shape, chip, overlap):
     rs = np.random.RandomState(1)
     image = rs.randn(*shape).astype("float32")
     model = pointwise_model(shape[0])
-    got = TiledInference(model, chip_size=chip, overlap=overlap, num_classes=2, half_precision=False,
-                         device="cpu").predict_array(image)
+    got = TiledInference(
+        model, chip_size=chip, overlap=overlap, num_classes=2, half_precision=False, device="cpu"
+    ).predict_array(image)
     assert got.shape == (2, shape[1], shape[2]) and got.dtype == np.float32
     np.testing.assert_allclose(got, whole_image(model, image), atol=1e-5)
 
@@ -41,9 +48,13 @@ def test_matches_a_single_forward_pass_for_any_tiling(shape, chip, overlap):
 def test_features_are_not_percentile_stretched():
     """infer() stretches every band to its 2-98 percentile range; predict_array must not."""
     rs = np.random.RandomState(2)
-    image = (rs.rand(5, 40, 40) * 1000 + 5000).astype("float32")     # large offset: a stretch changes everything
+    image = (rs.rand(5, 40, 40) * 1000 + 5000).astype(
+        "float32"
+    )  # large offset: a stretch changes everything
     model = pointwise_model()
-    got = TiledInference(model, chip_size=32, overlap=8, half_precision=False, device="cpu").predict_array(image)
+    got = TiledInference(
+        model, chip_size=32, overlap=8, half_precision=False, device="cpu"
+    ).predict_array(image)
     np.testing.assert_allclose(got, whole_image(model, image), atol=1e-5)
 
 
@@ -67,8 +78,15 @@ def test_sigmoid_single_channel_model():
     rs = np.random.RandomState(4)
     image = rs.randn(5, 50, 50).astype("float32")
     model = pointwise_model(classes=1)
-    got = TiledInference(model, chip_size=32, overlap=8, num_classes=1, activation="sigmoid",
-                         half_precision=False, device="cpu").predict_array(image)
+    got = TiledInference(
+        model,
+        chip_size=32,
+        overlap=8,
+        num_classes=1,
+        activation="sigmoid",
+        half_precision=False,
+        device="cpu",
+    ).predict_array(image)
     assert got.shape == (1, 50, 50)
     np.testing.assert_allclose(got, whole_image(model, image, "sigmoid"), atol=1e-5)
 
@@ -76,11 +94,21 @@ def test_sigmoid_single_channel_model():
 def test_agrees_with_the_geotiff_path(tmp_path):
     """predict_array and infer(normalise=False) run the same blending."""
     from rasterio.transform import from_bounds
+
     rs = np.random.RandomState(5)
     image = rs.rand(5, 70, 90).astype("float32")
     path = tmp_path / "in.tif"
-    with rasterio.open(path, "w", driver="GTiff", height=70, width=90, count=5, dtype="float32",
-                       crs="EPSG:4326", transform=from_bounds(0, 0, 1, 1, 90, 70)) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=70,
+        width=90,
+        count=5,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_bounds(0, 0, 1, 1, 90, 70),
+    ) as dst:
         dst.write(image)
     model = pointwise_model()
     ti = TiledInference(model, chip_size=32, overlap=8, half_precision=False, device="cpu")
@@ -98,7 +126,9 @@ def test_wrong_band_count_is_a_clear_error():
 
 
 def test_rejects_non_3d_input_and_bad_overlap():
-    ti = TiledInference(pointwise_model(), chip_size=16, overlap=4, half_precision=False, device="cpu")
+    ti = TiledInference(
+        pointwise_model(), chip_size=16, overlap=4, half_precision=False, device="cpu"
+    )
     with pytest.raises(ValueError, match=r"\(bands, H, W\)"):
         ti.predict_array(np.zeros((20, 20), dtype="float32"))
     with pytest.raises(ValueError, match="overlap"):
@@ -109,5 +139,7 @@ def test_rejects_non_3d_input_and_bad_overlap():
 
 def test_does_not_modify_the_callers_array():
     image = np.full((5, 20, 20), np.nan, dtype="float32")
-    TiledInference(pointwise_model(), chip_size=16, overlap=4, half_precision=False, device="cpu").predict_array(image)
+    TiledInference(
+        pointwise_model(), chip_size=16, overlap=4, half_precision=False, device="cpu"
+    ).predict_array(image)
     assert np.isnan(image).all()

@@ -15,7 +15,6 @@ tracking-literature heuristic for initial velocity variance (2*R/dt^2,
 from a two-point finite-difference argument) instead of an arbitrary
 small multiple of the steady-state process noise.
 """
-import pytest
 
 import numpy as np
 
@@ -36,13 +35,13 @@ class TestKalmanAreaTrackerRecoversTrueRate:
         true_areas = 2000.0 + true_rate * np.arange(n_epochs)
         noisy_areas = true_areas + rng.normal(0, 800, n_epochs)
 
-        tracker = KalmanAreaTracker(measurement_noise_m2=800.0 ** 2)
+        tracker = KalmanAreaTracker(measurement_noise_m2=800.0**2)
         result = tracker.track(list(range(n_epochs)), list(noisy_areas))
 
         final_rate = result.rate_m2_per_epoch[-1]
-        assert abs(final_rate - true_rate) < true_rate * 0.5, (
-            f"rate estimate {final_rate:.1f} too far from true rate {true_rate}"
-        )
+        assert (
+            abs(final_rate - true_rate) < true_rate * 0.5
+        ), f"rate estimate {final_rate:.1f} too far from true rate {true_rate}"
 
     def test_filtered_trajectory_is_not_worse_than_raw_measurements(self):
         """The specific real bug this catches: the original defaults
@@ -57,7 +56,7 @@ class TestKalmanAreaTrackerRecoversTrueRate:
         true_areas = 2000.0 + true_rate * np.arange(n_epochs)
         noisy_areas = true_areas + rng.normal(0, 800, n_epochs)
 
-        tracker = KalmanAreaTracker(measurement_noise_m2=800.0 ** 2)
+        tracker = KalmanAreaTracker(measurement_noise_m2=800.0**2)
         result = tracker.track(list(range(n_epochs)), list(noisy_areas))
 
         raw_error = np.abs(noisy_areas - true_areas).mean()
@@ -75,7 +74,7 @@ class TestKalmanAreaTrackerRecoversTrueRate:
         true_areas = np.full(n_epochs, 3000.0)
         noisy_areas = true_areas + rng.normal(0, 800, n_epochs)
 
-        tracker = KalmanAreaTracker(measurement_noise_m2=800.0 ** 2)
+        tracker = KalmanAreaTracker(measurement_noise_m2=800.0**2)
         result = tracker.track(list(range(n_epochs)), list(noisy_areas))
 
         assert abs(result.rate_m2_per_epoch[-1]) < 200.0
@@ -84,14 +83,22 @@ class TestKalmanAreaTrackerRecoversTrueRate:
 class TestClassifySiteActivity:
     def test_expanding_classification(self):
         from pygeovision.monitoring.site_tracker import classify_site_activity
-        assert classify_site_activity(400.0, 30.0, stable_threshold_m2_per_epoch=100.0) == "expanding"
+
+        assert (
+            classify_site_activity(400.0, 30.0, stable_threshold_m2_per_epoch=100.0) == "expanding"
+        )
 
     def test_recovering_classification(self):
         from pygeovision.monitoring.site_tracker import classify_site_activity
-        assert classify_site_activity(-400.0, 30.0, stable_threshold_m2_per_epoch=100.0) == "recovering"
+
+        assert (
+            classify_site_activity(-400.0, 30.0, stable_threshold_m2_per_epoch=100.0)
+            == "recovering"
+        )
 
     def test_stable_classification(self):
         from pygeovision.monitoring.site_tracker import classify_site_activity
+
         assert classify_site_activity(20.0, 30.0, stable_threshold_m2_per_epoch=100.0) == "stable"
 
     def test_high_uncertainty_widens_the_stable_band(self):
@@ -99,9 +106,12 @@ class TestClassifySiteActivity:
         confidently classified as expanding/recovering — the whole point
         of using the filter's own uncertainty estimate."""
         from pygeovision.monitoring.site_tracker import classify_site_activity
+
         # A rate just above threshold, but with uncertainty large enough
         # that it's not confidently distinguishable from noise
-        result = classify_site_activity(150.0, 100.0, stable_threshold_m2_per_epoch=100.0, n_sigma=1.0)
+        result = classify_site_activity(
+            150.0, 100.0, stable_threshold_m2_per_epoch=100.0, n_sigma=1.0
+        )
         assert result == "stable"
 
 
@@ -110,7 +120,7 @@ class TestExtractSites:
         from pygeovision.monitoring.site_tracker import extract_sites
 
         mask = np.zeros((50, 50), dtype=bool)
-        mask[5:15, 5:15] = True    # site 1: 100 px
+        mask[5:15, 5:15] = True  # site 1: 100 px
         mask[30:35, 30:35] = True  # site 2: 25 px
         sites = extract_sites(mask, epoch_index=0, pixel_area_m2=100.0, min_area_m2=100.0)
 
@@ -122,8 +132,8 @@ class TestExtractSites:
         from pygeovision.monitoring.site_tracker import extract_sites
 
         mask = np.zeros((50, 50), dtype=bool)
-        mask[5:15, 5:15] = True   # 100 px -> 10000 m2, kept
-        mask[30, 30] = True       # 1 px -> 100 m2, dropped by threshold
+        mask[5:15, 5:15] = True  # 100 px -> 10000 m2, kept
+        mask[30, 30] = True  # 1 px -> 100 m2, dropped by threshold
         sites = extract_sites(mask, epoch_index=0, pixel_area_m2=100.0, min_area_m2=500.0)
 
         assert len(sites) == 1
@@ -138,8 +148,10 @@ class TestMatchSitesAcrossEpochs:
         for epoch in range(5):
             mask = np.zeros((50, 50), dtype=bool)
             growth = epoch
-            mask[10:10 + 8 + growth, 10:10 + 8 + growth] = True
-            sites_per_epoch.append(extract_sites(mask, epoch, pixel_area_m2=100.0, min_area_m2=100.0))
+            mask[10 : 10 + 8 + growth, 10 : 10 + 8 + growth] = True
+            sites_per_epoch.append(
+                extract_sites(mask, epoch, pixel_area_m2=100.0, min_area_m2=100.0)
+            )
 
         tracks = match_sites_across_epochs(sites_per_epoch, iou_threshold=0.1)
         assert len(tracks) == 1  # one growing site, same identity throughout
@@ -152,9 +164,11 @@ class TestMatchSitesAcrossEpochs:
         sites_per_epoch = []
         for epoch in range(3):
             mask = np.zeros((50, 50), dtype=bool)
-            mask[5:15, 5:15] = True    # site A, constant
+            mask[5:15, 5:15] = True  # site A, constant
             mask[35:45, 35:45] = True  # site B, constant, far away
-            sites_per_epoch.append(extract_sites(mask, epoch, pixel_area_m2=100.0, min_area_m2=100.0))
+            sites_per_epoch.append(
+                extract_sites(mask, epoch, pixel_area_m2=100.0, min_area_m2=100.0)
+            )
 
         tracks = match_sites_across_epochs(sites_per_epoch, iou_threshold=0.1)
         assert len(tracks) == 2
@@ -171,15 +185,18 @@ class TestTrackAndClassifySitesEndToEnd:
         for epoch in range(n_epochs):
             mask = np.zeros((size, size), dtype=bool)
             growth = epoch
-            mask[20:20 + 10 + growth, 20:20 + 10 + growth] = True  # growing
+            mask[20 : 20 + 10 + growth, 20 : 20 + 10 + growth] = True  # growing
             mask[70:78, 70:78] = True  # static
             noise_mask = rng.random((size, size)) < 0.002
             mask = mask ^ (noise_mask & ~mask)
             binary_masks.append(mask)
 
         results = track_and_classify_sites(
-            binary_masks, epoch_indices=list(range(n_epochs)),
-            pixel_area_m2=100.0, min_area_m2=500.0, measurement_noise_m2=3000.0 ** 2,
+            binary_masks,
+            epoch_indices=list(range(n_epochs)),
+            pixel_area_m2=100.0,
+            min_area_m2=500.0,
+            measurement_noise_m2=3000.0**2,
         )
 
         assert len(results) == 2
@@ -199,7 +216,10 @@ class TestTrackAndClassifySitesEndToEnd:
         masks[2][10:15, 10:15] = True  # appears only at epoch 2
 
         results = track_and_classify_sites(
-            masks, epoch_indices=list(range(5)), pixel_area_m2=100.0, min_area_m2=100.0,
+            masks,
+            epoch_indices=list(range(5)),
+            pixel_area_m2=100.0,
+            min_area_m2=100.0,
         )
         assert len(results) == 1
         site = next(iter(results.values()))

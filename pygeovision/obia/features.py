@@ -18,6 +18,7 @@ Class-dependent context (``rel_border_<class>``) and hierarchy features
 (``parent_*``, sub-object fractions) need a first classification or a second
 segmentation level, so they have their own functions below.
 """
+
 from __future__ import annotations
 
 import re
@@ -56,8 +57,15 @@ def _layers(image, band_names, extra_layers):
     return layers, n_bands
 
 
-def glcm_texture(labels, layer, levels: int = 16, distance: int = 1,
-                 min_pixels: int = 9, ids=None, prefix: str = "glcm") -> pd.DataFrame:
+def glcm_texture(
+    labels,
+    layer,
+    levels: int = 16,
+    distance: int = 1,
+    min_pixels: int = 9,
+    ids=None,
+    prefix: str = "glcm",
+) -> pd.DataFrame:
     """Per-object Haralick GLCM texture.
 
     The layer is quantised to ``levels`` grey levels using global 2-98 %
@@ -73,8 +81,13 @@ def glcm_texture(labels, layer, levels: int = 16, distance: int = 1,
     if not finite.any():
         raise ValueError("the texture layer has no finite pixels")
     lo, hi = np.percentile(layer[finite], [2, 98])
-    q = np.zeros(layer.shape, dtype=np.uint8) if hi <= lo else \
-        np.clip((np.nan_to_num(layer - lo, nan=0.0) / (hi - lo)) * levels, 0, levels - 1).astype(np.uint8)
+    q = (
+        np.zeros(layer.shape, dtype=np.uint8)
+        if hi <= lo
+        else np.clip(
+            (np.nan_to_num(layer - lo, nan=0.0) / (hi - lo)) * levels, 0, levels - 1
+        ).astype(np.uint8)
+    )
     ids = np.unique(lab[lab > 0]) if ids is None else np.asarray(ids)
     slices = ndi.find_objects(lab.astype(np.int64))
     i_idx, j_idx = np.indices((levels, levels))
@@ -100,13 +113,15 @@ def glcm_texture(labels, layer, levels: int = 16, distance: int = 1,
         mi, mj = (gi * pi).sum(), (gi * pj).sum()
         si = np.sqrt(((gi - mi) ** 2 * pi).sum())
         sj = np.sqrt(((gi - mj) ** 2 * pj).sum())
-        corr = 1.0 if si * sj < 1e-12 else float(((i_idx - mi) * (j_idx - mj) * p).sum() / (si * sj))
+        corr = (
+            1.0 if si * sj < 1e-12 else float(((i_idx - mi) * (j_idx - mj) * p).sum() / (si * sj))
+        )
         nz = p > 0
         rows[oid] = {
-            "contrast": float((p * diff ** 2).sum()),
+            "contrast": float((p * diff**2).sum()),
             "dissimilarity": float((p * np.abs(diff)).sum()),
-            "homogeneity": float((p / (1.0 + diff ** 2)).sum()),
-            "energy": float(np.sqrt((p ** 2).sum())),
+            "homogeneity": float((p / (1.0 + diff**2)).sum()),
+            "energy": float(np.sqrt((p**2).sum())),
             "entropy": float(-(p[nz] * np.log2(p[nz])).sum()),
             "correlation": corr,
         }
@@ -115,9 +130,20 @@ def glcm_texture(labels, layer, levels: int = 16, distance: int = 1,
     return df.add_prefix(f"{prefix}_")
 
 
-def extract_features(labels, image, band_names=None, *, extra_layers=None,
-                     transform=None, pixel_area=None, spectral=True, geometry=True,
-                     texture_layers=None, texture_levels=16, context=True) -> pd.DataFrame:
+def extract_features(
+    labels,
+    image,
+    band_names=None,
+    *,
+    extra_layers=None,
+    transform=None,
+    pixel_area=None,
+    spectral=True,
+    geometry=True,
+    texture_layers=None,
+    texture_levels=16,
+    context=True,
+) -> pd.DataFrame:
     """Build the object feature table.
 
     Parameters
@@ -166,9 +192,17 @@ def extract_features(labels, image, band_names=None, *, extra_layers=None,
     if geometry:
         props = regionprops_table(
             lab.astype(np.int32),
-            properties=("label", "area", "solidity", "extent",
-                        "orientation", "major_axis_length", "minor_axis_length",
-                        "centroid"))
+            properties=(
+                "label",
+                "area",
+                "solidity",
+                "extent",
+                "orientation",
+                "major_axis_length",
+                "minor_axis_length",
+                "centroid",
+            ),
+        )
         g = pd.DataFrame(props).set_index("label").reindex(ids)
         g.index.name = "obj_id"
         out["area_px"] = g["area"]
@@ -177,14 +211,16 @@ def extract_features(labels, image, band_names=None, *, extra_layers=None,
         # Exact boundary length in pixel edges (4-connected), image frame included.
         # Same unit as the border lengths used in context features and merging.
         pa, pb, pl = border_pairs(lab)
-        per_full = (np.bincount(pa, weights=pl, minlength=n_max + 1)
-                    + np.bincount(pb, weights=pl, minlength=n_max + 1)
-                    + image_edge_lengths(lab, n_max + 1))
+        per_full = (
+            np.bincount(pa, weights=pl, minlength=n_max + 1)
+            + np.bincount(pb, weights=pl, minlength=n_max + 1)
+            + image_edge_lengths(lab, n_max + 1)
+        )
         per = pd.Series(per_full[ids].astype(np.float64), index=out.index).clip(lower=1.0)
         out["perimeter_px"] = per
         # 4*pi*A/P^2.  Continuous disc = 1; a pixel-aligned square = pi/4 = 0.785;
         # staircase edges of raster discs lower it further.  Lower = more ragged/elongated.
-        out["compactness"] = 4.0 * np.pi * g["area"] / (per ** 2)
+        out["compactness"] = 4.0 * np.pi * g["area"] / (per**2)
         # P / (4*sqrt(A)): exactly 1.0 for a square, larger for ragged or elongated
         # shapes (the "shape index" used in eCognition).
         out["shape_index"] = per / (4.0 * np.sqrt(g["area"]))
@@ -195,8 +231,10 @@ def extract_features(labels, image, band_names=None, *, extra_layers=None,
         out["centroid_row"] = g["centroid-0"]
         out["centroid_col"] = g["centroid-1"]
         if transform is not None:
-            xs, ys = transform * (g["centroid-1"].to_numpy() + 0.5,
-                                  g["centroid-0"].to_numpy() + 0.5)
+            xs, ys = transform * (
+                g["centroid-1"].to_numpy() + 0.5,
+                g["centroid-0"].to_numpy() + 0.5,
+            )
             out["centroid_x"], out["centroid_y"] = xs, ys
 
     if texture_layers:
@@ -215,8 +253,9 @@ def extract_features(labels, image, band_names=None, *, extra_layers=None,
         keep = a > 0
         a, b, ln = a[keep], b[keep], ln[keep]
         edge = image_edge_lengths(lab, n_max + 1)[ids].astype(np.float64) + nodata_border[ids]
-        total = np.bincount(a, weights=ln, minlength=n_max + 1) \
-            + np.bincount(b, weights=ln, minlength=n_max + 1)
+        total = np.bincount(a, weights=ln, minlength=n_max + 1) + np.bincount(
+            b, weights=ln, minlength=n_max + 1
+        )
         total_all = total[ids] + edge
         nn = np.bincount(a, minlength=n_max + 1) + np.bincount(b, minlength=n_max + 1)
         out["n_neighbors"] = nn[ids]
@@ -225,9 +264,12 @@ def extract_features(labels, image, band_names=None, *, extra_layers=None,
             m_full = np.zeros(n_max + 1)
             m_full[ids] = means[name]
             d = np.abs(m_full[a] - m_full[b]) * ln
-            acc = np.bincount(a, weights=d, minlength=n_max + 1) \
-                + np.bincount(b, weights=d, minlength=n_max + 1)
-            out[f"diff_to_neighbors_{name}"] = np.where(total[ids] > 0, acc[ids] / np.maximum(total[ids], 1), 0.0)
+            acc = np.bincount(a, weights=d, minlength=n_max + 1) + np.bincount(
+                b, weights=d, minlength=n_max + 1
+            )
+            out[f"diff_to_neighbors_{name}"] = np.where(
+                total[ids] > 0, acc[ids] / np.maximum(total[ids], 1), 0.0
+            )
     return out
 
 
@@ -242,19 +284,27 @@ def class_context(labels, classes: pd.Series, class_names=None) -> pd.DataFrame:
     lab = np.asarray(labels).astype(np.int64)
     n_max = int(lab.max())
     cls = pd.Series(classes).reindex(range(n_max + 1))
-    names = list(class_names) if class_names is not None else sorted(c for c in cls.dropna().unique())
+    names = (
+        list(class_names) if class_names is not None else sorted(c for c in cls.dropna().unique())
+    )
     a, b, ln = border_pairs(lab)
     ids = np.unique(lab[lab > 0])
-    total = np.bincount(a, weights=ln, minlength=n_max + 1) + np.bincount(b, weights=ln, minlength=n_max + 1)
+    total = np.bincount(a, weights=ln, minlength=n_max + 1) + np.bincount(
+        b, weights=ln, minlength=n_max + 1
+    )
     out = pd.DataFrame(index=pd.Index(ids, name="obj_id"))
     ca, cb = cls.to_numpy()[a], cls.to_numpy()[b]
     for c in names:
         key = clean_name(c)
-        shared = (np.bincount(a, weights=ln * (cb == c), minlength=n_max + 1)
-                  + np.bincount(b, weights=ln * (ca == c), minlength=n_max + 1))
-        cnt = (np.bincount(a, weights=(cb == c).astype(float), minlength=n_max + 1)
-               + np.bincount(b, weights=(ca == c).astype(float), minlength=n_max + 1))
-        out[f"rel_border_{key}"] = np.where(total[ids] > 0, shared[ids] / np.maximum(total[ids], 1), 0.0)
+        shared = np.bincount(a, weights=ln * (cb == c), minlength=n_max + 1) + np.bincount(
+            b, weights=ln * (ca == c), minlength=n_max + 1
+        )
+        cnt = np.bincount(a, weights=(cb == c).astype(float), minlength=n_max + 1) + np.bincount(
+            b, weights=(ca == c).astype(float), minlength=n_max + 1
+        )
+        out[f"rel_border_{key}"] = np.where(
+            total[ids] > 0, shared[ids] / np.maximum(total[ids], 1), 0.0
+        )
         out[f"n_nb_{key}"] = cnt[ids].astype(int)
     return out
 
@@ -273,8 +323,9 @@ def parent_map(fine_labels, coarse_labels) -> pd.Series:
     return s[s.index > 0]
 
 
-def super_object_features(fine_labels, coarse_labels, image, band_names=None,
-                          extra_layers=None) -> pd.DataFrame:
+def super_object_features(
+    fine_labels, coarse_labels, image, band_names=None, extra_layers=None
+) -> pd.DataFrame:
     """Features describing how a fine object relates to its super-object.
 
     ``parent_id``, ``parent_area_px``, ``rel_area_of_parent`` and, per layer,
@@ -294,18 +345,23 @@ def super_object_features(fine_labels, coarse_labels, image, band_names=None,
     out["rel_area_of_parent"] = fa / ca[pm.to_numpy()]
     for name, arr in layers.items():
         fm = np.bincount(fine.ravel(), weights=arr.ravel(), minlength=int(fine.max()) + 1)[ids] / fa
-        cm = (np.bincount(coarse.ravel(), weights=arr.ravel(), minlength=int(coarse.max()) + 1) / np.maximum(ca, 1))
+        cm = np.bincount(
+            coarse.ravel(), weights=arr.ravel(), minlength=int(coarse.max()) + 1
+        ) / np.maximum(ca, 1)
         out[f"diff_to_parent_{name}"] = fm - cm[pm.to_numpy()]
     return out
 
 
-def sub_object_fraction(fine_classes: pd.Series, fine_area: pd.Series,
-                        parents: pd.Series, class_name) -> pd.Series:
+def sub_object_fraction(
+    fine_classes: pd.Series, fine_area: pd.Series, parents: pd.Series, class_name
+) -> pd.Series:
     """Area fraction of each super-object covered by sub-objects of one class."""
-    df = pd.DataFrame({"cls": fine_classes, "area": fine_area, "parent": parents}).dropna(subset=["parent"])
+    df = pd.DataFrame({"cls": fine_classes, "area": fine_area, "parent": parents}).dropna(
+        subset=["parent"]
+    )
     tot = df.groupby("parent")["area"].sum()
     hit = df[df["cls"] == class_name].groupby("parent")["area"].sum()
-    frac = (hit.reindex(tot.index).fillna(0.0) / tot)
+    frac = hit.reindex(tot.index).fillna(0.0) / tot
     frac.index.name = "parent_id"
     return frac
 

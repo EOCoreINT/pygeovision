@@ -1,19 +1,27 @@
 """Tests for Phase 4: GeoTrainer, metrics, HPO, ModelOptimizer, ExperimentTracker."""
+
 from __future__ import annotations
+
+import contextlib
 
 # Skip this file if PyTorch is not installed
 import pytest
 
 torch = pytest.importorskip("torch", reason="torch not installed — pip install torch")
 
+import pathlib
+import sys
+
 import pytest
-import sys; import pathlib; sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
 # ── TrainingConfig ────────────────────────────────────────────────────────────
 class TestTrainingConfig:
     def test_defaults(self):
         from pygeovision.training import TrainingConfig
+
         cfg = TrainingConfig()
         assert cfg.max_epochs == 100
         assert cfg.batch_size == 16
@@ -23,6 +31,7 @@ class TestTrainingConfig:
 
     def test_custom(self):
         from pygeovision.training import TrainingConfig
+
         cfg = TrainingConfig(max_epochs=50, batch_size=32, optimizer="sgd", precision="fp16")
         assert cfg.max_epochs == 50
         assert cfg.batch_size == 32
@@ -30,6 +39,7 @@ class TestTrainingConfig:
 
     def test_to_dict(self):
         from pygeovision.training import TrainingConfig
+
         cfg = TrainingConfig(max_epochs=25)
         d = cfg.to_dict()
         assert isinstance(d, dict)
@@ -41,6 +51,7 @@ class TestTrainingConfig:
         import yaml
 
         from pygeovision.training import TrainingConfig
+
         data = {"max_epochs": 77, "batch_size": 8, "optimizer": "adam"}
         p = tmp_path / "cfg.yaml"
         p.write_text(yaml.dump(data))
@@ -52,6 +63,7 @@ class TestTrainingConfig:
         import yaml
 
         from pygeovision.training import TrainingConfig
+
         cfg = TrainingConfig(max_epochs=33)
         p = tmp_path / "out.yaml"
         cfg.save(str(p))
@@ -67,9 +79,10 @@ class TestSegmentationMetrics:
             import torch
 
             from pygeovision.training.metrics import SegmentationMetrics
+
             m = SegmentationMetrics(num_classes=3)
-            targets = torch.tensor([[0,1,2,1]])
-            preds   = torch.tensor([[0,1,2,1]])
+            targets = torch.tensor([[0, 1, 2, 1]])
+            preds = torch.tensor([[0, 1, 2, 1]])
             m.update(preds, targets)
             result = m.compute()
             assert abs(result["mean_iou"] - 1.0) < 1e-5
@@ -82,9 +95,10 @@ class TestSegmentationMetrics:
             import torch
 
             from pygeovision.training.metrics import SegmentationMetrics
+
             m = SegmentationMetrics(num_classes=2)
             targets = torch.tensor([[0, 0, 0, 0]])
-            preds   = torch.tensor([[1, 1, 1, 1]])
+            preds = torch.tensor([[1, 1, 1, 1]])
             m.update(preds, targets)
             result = m.compute()
             assert result["mean_iou"] < 0.5
@@ -96,6 +110,7 @@ class TestSegmentationMetrics:
             import torch
 
             from pygeovision.training.metrics import SegmentationMetrics
+
             m = SegmentationMetrics(num_classes=2)
             targets = preds = torch.tensor([[0, 1]])
             m.update(preds, targets)
@@ -110,9 +125,10 @@ class TestSegmentationMetrics:
             import torch
 
             from pygeovision.training.metrics import SegmentationMetrics
+
             m = SegmentationMetrics(num_classes=2, ignore_index=255)
             targets = torch.tensor([[0, 255, 1, 255]])
-            preds   = torch.tensor([[0, 1,   1, 0  ]])
+            preds = torch.tensor([[0, 1, 1, 0]])
             m.update(preds, targets)
             result = m.compute()
             assert "mean_iou" in result
@@ -121,17 +137,20 @@ class TestSegmentationMetrics:
 
     def test_no_error_on_empty(self):
         from pygeovision.training.metrics import SegmentationMetrics
+
         m = SegmentationMetrics(num_classes=5)
         result = m.compute()
         assert result["mean_iou"] == 0.0
 
     def test_per_class_iou_keys(self):
         from pygeovision.training.metrics import SegmentationMetrics
+
         m = SegmentationMetrics(num_classes=4)
         result = m.compute()
         # Per-class IoU keys are only present when torch is available
         try:
             import torch
+
             for i in range(4):
                 assert f"iou_class_{i}" in result
         except ImportError:
@@ -141,6 +160,7 @@ class TestSegmentationMetrics:
 class TestChangeDetectionMetrics:
     def test_keys(self):
         from pygeovision.training.metrics import ChangeDetectionMetrics
+
         m = ChangeDetectionMetrics()
         result = m.compute()
         assert "iou_change" in result
@@ -152,6 +172,7 @@ class TestChangeDetectionMetrics:
 class TestEarlyStopping:
     def test_stops_after_patience(self):
         from pygeovision.training.trainer import EarlyStopping
+
         es = EarlyStopping(patience=3, metric="val_iou", mode="max")
         es.update({"val_iou": 0.5})
         es.update({"val_iou": 0.4})
@@ -161,6 +182,7 @@ class TestEarlyStopping:
 
     def test_resets_on_improvement(self):
         from pygeovision.training.trainer import EarlyStopping
+
         es = EarlyStopping(patience=3, metric="val_iou", mode="max")
         es.update({"val_iou": 0.5})
         es.update({"val_iou": 0.3})
@@ -171,6 +193,7 @@ class TestEarlyStopping:
 
     def test_min_mode(self):
         from pygeovision.training.trainer import EarlyStopping
+
         es = EarlyStopping(patience=2, metric="val_loss", mode="min")
         improved = es.update({"val_loss": 0.9})
         assert improved
@@ -179,6 +202,7 @@ class TestEarlyStopping:
 
     def test_best_tracked(self):
         from pygeovision.training.trainer import EarlyStopping
+
         es = EarlyStopping(patience=5, metric="val_iou", mode="max")
         es.update({"val_iou": 0.6})
         es.update({"val_iou": 0.8})
@@ -192,11 +216,12 @@ class TestCheckpointManager:
         from unittest.mock import MagicMock
 
         from pygeovision.training.trainer import CheckpointManager
+
         mgr = CheckpointManager(tmp_path, top_k=2, metric="val_iou", mode="max")
         model = MagicMock()
         model.state_dict.return_value = {}
         for i in range(4):
-            mgr.save(model, epoch=i+1, metrics={"val_iou": 0.1 * (i+1)})
+            mgr.save(model, epoch=i + 1, metrics={"val_iou": 0.1 * (i + 1)})
         checkpoints = list(tmp_path.glob("checkpoints/epoch_*.pth"))
         assert len(checkpoints) <= 2
 
@@ -208,12 +233,13 @@ class TestCheckpointManager:
         from unittest.mock import MagicMock
 
         from pygeovision.training.trainer import CheckpointManager
+
         mgr = CheckpointManager(tmp_path, top_k=3, metric="val_iou", mode="max")
         model = MagicMock()
         model.state_dict.return_value = {}
         scores = [0.5, 0.9, 0.7]
         for i, s in enumerate(scores):
-            mgr.save(model, epoch=i+1, metrics={"val_iou": s})
+            mgr.save(model, epoch=i + 1, metrics={"val_iou": s})
         best = mgr.best_path()
         assert best is not None
         assert "0.9000" in str(best)
@@ -223,6 +249,7 @@ class TestCheckpointManager:
 class TestExperimentTracker:
     def test_log_history(self):
         from pygeovision.training.experiment import ExperimentTracker
+
         t = ExperimentTracker("test_exp", backends=[])
         t.log({"loss": 0.5, "iou": 0.8}, step=1)
         t.log({"loss": 0.4, "iou": 0.85}, step=2)
@@ -232,6 +259,7 @@ class TestExperimentTracker:
 
     def test_end_run_returns_summary(self):
         from pygeovision.training.experiment import ExperimentTracker
+
         t = ExperimentTracker("test_exp", backends=[])
         t.log({"acc": 0.9})
         summary = t.end_run()
@@ -241,6 +269,7 @@ class TestExperimentTracker:
 
     def test_start_run_no_backends(self):
         from pygeovision.training.experiment import ExperimentTracker
+
         t = ExperimentTracker("test_exp", backends=[])
         result = t.start_run(config={"lr": 0.001})
         assert result is t  # returns self
@@ -255,6 +284,7 @@ class TestOptimizerScheduler:
             import torch.nn as nn
 
             from pygeovision.training import TrainingConfig, build_optimizer
+
             model = nn.Linear(10, 2)
             cfg = TrainingConfig(optimizer=opt_name, learning_rate=1e-3)
             opt = build_optimizer(model, cfg)
@@ -270,6 +300,7 @@ class TestOptimizerScheduler:
             import torch.nn as nn
 
             from pygeovision.training import TrainingConfig, build_optimizer, build_scheduler
+
             model = nn.Linear(10, 2)
             cfg = TrainingConfig(scheduler=sched_name, max_epochs=10)
             opt = build_optimizer(model, cfg)
@@ -283,14 +314,12 @@ class TestOptimizerScheduler:
         from unittest.mock import MagicMock
 
         from pygeovision.training.optimizer import build_scheduler
+
         cfg = MagicMock()
         cfg.scheduler = "cosine"
         cfg.max_epochs = 10
         cfg.min_lr = 1e-6
         cfg.learning_rate = 1e-3
         # If torch not installed this returns None; if installed it returns object
-        try:
+        with contextlib.suppress(Exception):  # acceptable: either None or a real scheduler
             build_scheduler(MagicMock(), cfg, steps_per_epoch=10)
-            # Either None or a real scheduler
-        except Exception:
-            pass  # acceptable

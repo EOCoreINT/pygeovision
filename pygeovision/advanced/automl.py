@@ -1,10 +1,11 @@
 """
 AutoML for geospatial models (D6) — automated architecture search and HPO.
 """
+
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ class GeoAutoML:
         self.study_name = study_name or "pgv_automl"
         self.seed = seed
         self.show_progress_bar = show_progress_bar
-        self._study = None
+        self._study: Any = None
         self.errors: list[str] = []
 
     def search(
@@ -114,12 +115,18 @@ class GeoAutoML:
         for name, spec in search_space.items():
             kinds = {"float": 3, "int": 3, "categorical": 2, "constant": 2}
             if not isinstance(spec, (tuple, list)) or not spec or spec[0] not in kinds:
-                raise ValueError(f"search_space[{name!r}] = {spec!r}: expected a tuple starting with one of "
-                                 f"{list(kinds)}")
+                raise ValueError(
+                    f"search_space[{name!r}] = {spec!r}: expected a tuple starting with one of "
+                    f"{list(kinds)}"
+                )
             if len(spec) < kinds[spec[0]]:
-                raise ValueError(f"search_space[{name!r}] = {spec!r}: too few elements for {spec[0]!r}")
+                raise ValueError(
+                    f"search_space[{name!r}] = {spec!r}: too few elements for {spec[0]!r}"
+                )
             if spec[0] in ("float", "int") and not spec[1] < spec[2]:
-                raise ValueError(f"search_space[{name!r}]: low ({spec[1]}) must be below high ({spec[2]})")
+                raise ValueError(
+                    f"search_space[{name!r}]: low ({spec[1]}) must be below high ({spec[2]})"
+                )
             if spec[0] == "categorical" and not len(spec[1]):
                 raise ValueError(f"search_space[{name!r}]: no choices")
 
@@ -136,20 +143,24 @@ class GeoAutoML:
         if sampler_key not in self.SAMPLERS:
             raise ValueError(f"sampler must be one of {list(self.SAMPLERS)}; got {sampler!r}")
         pruner_obj = {
-            "median":    lambda: optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5),
+            "median": lambda: optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5),
             "hyperband": lambda: optuna.pruners.HyperbandPruner(),
-            "none":      lambda: optuna.pruners.NopPruner(),
+            "none": lambda: optuna.pruners.NopPruner(),
         }[pruner_key]()
         sampler_obj = {
-            "tpe":    lambda: optuna.samplers.TPESampler(seed=self.seed),
-            "cmaes":  lambda: optuna.samplers.CmaEsSampler(seed=self.seed),
+            "tpe": lambda: optuna.samplers.TPESampler(seed=self.seed),
+            "cmaes": lambda: optuna.samplers.CmaEsSampler(seed=self.seed),
             "random": lambda: optuna.samplers.RandomSampler(seed=self.seed),
         }[sampler_key]()
 
         import inspect
+
         try:
-            positional = [p for p in inspect.signature(train_fn).parameters.values()
-                          if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+            positional = [
+                p
+                for p in inspect.signature(train_fn).parameters.values()
+                if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+            ]
         except (TypeError, ValueError):
             positional = []
         wants_trial = len(positional) >= 2
@@ -161,8 +172,9 @@ class GeoAutoML:
             for name, spec in search_space.items():
                 kind = spec[0]
                 if kind == "float":
-                    config[name] = trial.suggest_float(name, spec[1], spec[2],
-                                                       log=len(spec) > 3 and spec[3] == "log")
+                    config[name] = trial.suggest_float(
+                        name, spec[1], spec[2], log=len(spec) > 3 and spec[3] == "log"
+                    )
                 elif kind == "int":
                     config[name] = trial.suggest_int(name, spec[1], spec[2])
                 elif kind == "categorical":
@@ -215,9 +227,14 @@ class GeoAutoML:
         n_pruned = sum(t.state == states.PRUNED for t in trials)
         n_failed = sum(t.state == states.FAIL for t in trials)
         if n_ok == 0:
-            return {"success": False,
-                    "error": "no trial completed" + (f"; first error: {self.errors[0]}" if self.errors else ""),
-                    "n_trials_pruned": n_pruned, "n_trials_failed": n_failed, "errors": list(self.errors)}
+            return {
+                "success": False,
+                "error": "no trial completed"
+                + (f"; first error: {self.errors[0]}" if self.errors else ""),
+                "n_trials_pruned": n_pruned,
+                "n_trials_failed": n_failed,
+                "errors": list(self.errors),
+            }
 
         best = self._study.best_trial
         return {
@@ -235,7 +252,7 @@ class GeoAutoML:
 
     def _search_ray(self, train_fn, search_space) -> dict[str, Any]:
         try:
-            from ray import air, tune
+            from ray import air, tune  # noqa: F401
         except ImportError:
             return {"success": False, "error": "pip install ray[tune]"}
 
@@ -243,7 +260,11 @@ class GeoAutoML:
         for name, spec in search_space.items():
             kind = spec[0]
             if kind == "float":
-                ray_space[name] = tune.loguniform(spec[1], spec[2]) if (len(spec) > 3 and spec[3] == "log") else tune.uniform(spec[1], spec[2])
+                ray_space[name] = (
+                    tune.loguniform(spec[1], spec[2])
+                    if (len(spec) > 3 and spec[3] == "log")
+                    else tune.uniform(spec[1], spec[2])
+                )
             elif kind == "int":
                 ray_space[name] = tune.randint(spec[1], spec[2] + 1)
             elif kind == "categorical":
@@ -280,6 +301,7 @@ class GeoAutoML:
             return {}
         try:
             import optuna
+
             imp = optuna.importance.get_param_importances(self._study)
             return {k: round(v, 4) for k, v in imp.items()}
         except Exception:
@@ -296,6 +318,7 @@ class GeoAutoML:
             raise RuntimeError("no study yet: call search() first")
         try:
             import optuna.visualization as viz
+
             fig = viz.plot_optimization_history(self._study)
         except ImportError as exc:
             raise ImportError("plotting needs plotly: pip install plotly") from exc
@@ -303,5 +326,5 @@ class GeoAutoML:
             if str(save_path).lower().endswith(".html"):
                 fig.write_html(save_path)
             else:
-                fig.write_image(save_path)       # raises with a clear message if kaleido is missing
+                fig.write_image(save_path)  # raises with a clear message if kaleido is missing
         return fig

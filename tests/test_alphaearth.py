@@ -15,6 +15,7 @@ query chain (filterBounds/filterDate/mosaic/sampleRegions/export) are
 built correctly, the same discipline used for the Groq/TESSERA tests
 elsewhere in this suite.
 """
+
 import pytest
 
 ee = pytest.importorskip("ee", reason="earthengine-api not installed")
@@ -23,11 +24,13 @@ ee = pytest.importorskip("ee", reason="earthengine-api not installed")
 class TestRegistryWiring:
     def test_alphaearth_spec_exists_in_registry(self):
         from pygeovision.models.registry import _REGISTRY
+
         assert "alphaearth" in _REGISTRY
 
     def test_get_model_returns_real_alphaearthgeo(self):
-        from pygeovision.models.registry import get_model
         from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
+        from pygeovision.models.registry import get_model
+
         model = get_model("alphaearth")
         assert isinstance(model, AlphaEarthGeo)
 
@@ -35,10 +38,12 @@ class TestRegistryWiring:
 class TestAlphaEarthGeoConstants:
     def test_real_collection_id(self):
         from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
+
         assert AlphaEarthGeo.COLLECTION == "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL"
 
     def test_64_bands_named_a00_to_a63(self):
         from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
+
         assert len(AlphaEarthGeo.BANDS) == 64
         assert AlphaEarthGeo.BANDS[0] == "A00"
         assert AlphaEarthGeo.BANDS[-1] == "A63"
@@ -49,12 +54,14 @@ class TestEmbeddingsAtPointsRequestConstruction:
     ee module (no real EE credentials available in this environment)."""
 
     def test_builds_correct_collection_and_date_filter(self, monkeypatch):
-        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         from unittest.mock import MagicMock
 
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
+
         mock_ee = MagicMock()
-        mock_ee.ImageCollection.return_value.filterDate.return_value.mosaic.return_value \
-            .sampleRegions.return_value.getInfo.return_value = {"features": []}
+        mock_ee.ImageCollection.return_value.filterDate.return_value.mosaic.return_value.sampleRegions.return_value.getInfo.return_value = {
+            "features": []
+        }
 
         ae = AlphaEarthGeo()
         monkeypatch.setattr(ae, "_ee", lambda: mock_ee)
@@ -63,23 +70,25 @@ class TestEmbeddingsAtPointsRequestConstruction:
 
         mock_ee.ImageCollection.assert_called_once_with("GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL")
         mock_ee.ImageCollection.return_value.filterDate.assert_called_once_with(
-            "2024-01-01", "2024-12-31",
+            "2024-01-01",
+            "2024-12-31",
         )
 
     def test_returns_nan_for_points_with_no_matching_feature(self, monkeypatch):
         """Points outside coverage (no feature returned by EE) must come
         back as NaN rows, not silently zero or misaligned."""
-        import numpy as np
-        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         from unittest.mock import MagicMock
+
+        import numpy as np
+
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
 
         mock_ee = MagicMock()
         # Only point index 0 gets a real feature back; index 1 is "missing"
         fake_props = {"idx": 0, **{f"A{i:02d}": float(i) for i in range(64)}}
-        mock_ee.ImageCollection.return_value.filterDate.return_value.mosaic.return_value \
-            .sampleRegions.return_value.getInfo.return_value = {
-                "features": [{"properties": fake_props}]
-            }
+        mock_ee.ImageCollection.return_value.filterDate.return_value.mosaic.return_value.sampleRegions.return_value.getInfo.return_value = {
+            "features": [{"properties": fake_props}]
+        }
 
         ae = AlphaEarthGeo()
         monkeypatch.setattr(ae, "_ee", lambda: mock_ee)
@@ -93,8 +102,9 @@ class TestEmbeddingsAtPointsRequestConstruction:
 
 class TestEmbeddingsForBboxRequestConstruction:
     def test_starts_real_export_task(self, monkeypatch):
-        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
         from unittest.mock import MagicMock
+
+        from pygeovision.models.foundation.alphaearth_geo import AlphaEarthGeo
 
         mock_ee = MagicMock()
         mock_task = MagicMock()
@@ -118,6 +128,7 @@ class TestEmbeddingsForBboxRequestConstruction:
 
         def raise_import_error():
             raise ImportError("no ee")
+
         monkeypatch.setattr(ae, "_ee", raise_import_error)
 
         result = ae.embeddings_for_bbox((-0.25, 5.52, -0.20, 5.60))

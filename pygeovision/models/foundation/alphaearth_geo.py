@@ -22,10 +22,10 @@ IS synchronous via ee.Image.sampleRegions()+getInfo(), which this wrapper
 uses to give genuinely immediate results for the common "get embeddings
 at labelled training points" workflow.
 """
+
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -66,11 +66,11 @@ class AlphaEarthGeo:
     def _ee(self):
         try:
             import ee
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
                 "earthengine-api required for AlphaEarth: pip install earthengine-api "
                 "(and run ee.Authenticate() + ee.Initialize(project=...) once)"
-            )
+            ) from exc
         return ee
 
     def embeddings_at_points(
@@ -88,10 +88,12 @@ class AlphaEarthGeo:
         ee = self._ee()
         import numpy as np
 
-        fc = ee.FeatureCollection([
-            ee.Feature(ee.Geometry.Point([lon, lat]), {"idx": i})
-            for i, (lon, lat) in enumerate(points)
-        ])
+        fc = ee.FeatureCollection(
+            [
+                ee.Feature(ee.Geometry.Point([lon, lat]), {"idx": i})
+                for i, (lon, lat) in enumerate(points)
+            ]
+        )
 
         image = (
             ee.ImageCollection(self.COLLECTION)
@@ -140,16 +142,22 @@ class AlphaEarthGeo:
             )
 
             task = ee.batch.Export.image.toDrive(
-                image=image, description=description,
-                folder=drive_folder, scale=10, region=region,
+                image=image,
+                description=description,
+                folder=drive_folder,
+                scale=10,
+                region=region,
                 maxPixels=1e10,
             )
             task.start()
             return {
-                "success": True, "ee_task_id": str(task.id),
-                "status": "started", "n_bands": N_BANDS, "year": year,
+                "success": True,
+                "ee_task_id": str(task.id),
+                "status": "started",
+                "n_bands": N_BANDS,
+                "year": year,
                 "note": "Async Earth Engine export — poll task status or "
-                        "check the Earth Engine Tasks tab / Google Drive.",
+                "check the Earth Engine Tasks tab / Google Drive.",
             }
         except ImportError:
             return {"success": False, "error": "pip install earthengine-api"}
@@ -185,18 +193,25 @@ class AlphaEarthGeo:
             # components which map to coordinates on a 64-dimensional
             # sphere"), so a plain dot product IS the cosine similarity
             # here without a separate normalisation step.
-            dot = image.multiply(ee.Image.constant(ref_vector.toArray(BAND_NAMES))) \
-                        .reduce(ee.Reducer.sum())
+            dot = image.multiply(ee.Image.constant(ref_vector.toArray(BAND_NAMES))).reduce(
+                ee.Reducer.sum()
+            )
 
             clipped = dot.clip(region)
             task = ee.batch.Export.image.toDrive(
-                image=clipped, description=description, scale=10, region=region,
+                image=clipped,
+                description=description,
+                scale=10,
+                region=region,
                 maxPixels=1e10,
             )
             task.start()
             return {
-                "success": True, "ee_task_id": str(task.id), "status": "started",
-                "reference_point": reference_point, "year": year,
+                "success": True,
+                "ee_task_id": str(task.id),
+                "status": "started",
+                "reference_point": reference_point,
+                "year": year,
             }
         except ImportError:
             return {"success": False, "error": "pip install earthengine-api"}

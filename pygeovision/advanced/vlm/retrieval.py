@@ -1,4 +1,5 @@
 """Geo image retrieval using CLIP embeddings."""
+
 from __future__ import annotations
 
 import json
@@ -24,10 +25,15 @@ class GeoImageRetrieval:
         r.search_by_image("./tiles/a.tif")
     """
 
-    def __init__(self, model: str = "openclip-b32", device: str | None = None,
-                 bands: tuple[int, ...] | None = None) -> None:
+    def __init__(
+        self,
+        model: str = "openclip-b32",
+        device: str | None = None,
+        bands: tuple[int, ...] | None = None,
+    ) -> None:
         """``bands``: file band numbers shown to the model as R, G, B (default: the first three)."""
         from pygeovision.models.vlm.clip import CLIPGeo
+
         self.model = model
         self._clip = CLIPGeo(model=model, device=device, bands=bands)
         self._index: dict[str, Any] = {}
@@ -64,8 +70,10 @@ class GeoImageRetrieval:
             data = json.load(f)
         if isinstance(data, dict) and "embeddings" in data:
             if data.get("model") not in (None, self.model):
-                raise ValueError(f"index {path} was built with model {data['model']!r}, but this retriever "
-                                 f"uses {self.model!r}; create GeoImageRetrieval(model={data['model']!r})")
+                raise ValueError(
+                    f"index {path} was built with model {data['model']!r}, but this retriever "
+                    f"uses {self.model!r}; create GeoImageRetrieval(model={data['model']!r})"
+                )
             self._index = data["embeddings"]
         else:
             self._index = data
@@ -76,16 +84,21 @@ class GeoImageRetrieval:
 
     def _rank(self, query_emb: Any, exclude: str | None, top_k: int) -> list[dict]:
         import numpy as np
+
         self._require_index()
         out = []
         skip = os.path.abspath(exclude) if exclude else None
         for p, emb in self._index.items():
-            if skip is not None and os.path.abspath(p) == skip:      # the query itself, however its path is spelled
+            if (
+                skip is not None and os.path.abspath(p) == skip
+            ):  # the query itself, however its path is spelled
                 continue
             vec = np.asarray(emb)
             if vec.shape != query_emb.shape:
-                raise ValueError(f"index vectors have {vec.shape[0]} values but the query has "
-                                 f"{query_emb.shape[0]}: the index was built with a different model")
+                raise ValueError(
+                    f"index vectors have {vec.shape[0]} values but the query has "
+                    f"{query_emb.shape[0]}: the index was built with a different model"
+                )
             out.append((p, float(np.dot(query_emb, vec))))
         out.sort(key=lambda x: x[1], reverse=True)
         return [{"path": p, "score": round(s, 4)} for p, s in out[:top_k]]

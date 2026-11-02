@@ -25,7 +25,7 @@ except ImportError:
 try:
     from pygeovision.ai.labeling.label_studio import LabelStudioLabeler as LabelStudioIntegration
 except ImportError:
-    LabelStudioIntegration = None
+    LabelStudioIntegration = None  # type: ignore[misc]
 
 
 class LabelingOrchestrator:
@@ -58,5 +58,6 @@ __all__ = [
     "DynamicWorldLabeler",
     "SAMLabeler",
     "FoundationModelLabeler",
-    "LabelStudioLabeler", "LabelStudioIntegration",
+    "LabelStudioLabeler",
+    "LabelStudioIntegration",
 ]

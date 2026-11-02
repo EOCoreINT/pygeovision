@@ -26,8 +26,8 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -63,7 +63,7 @@ _FOUNDATION_MODELS: dict[str, dict[str, Any]] = {
         "clip_name": "remoteclip-l14",
         "hub_id": "chendelong/RemoteCLIP",
         "input_bands": 3,
-        "patch_size": 224,   # one embedding per tile
+        "patch_size": 224,  # one embedding per tile
         "image_size": 224,
         "description": "RemoteCLIP ViT-L/14 vision-language model for remote sensing",
     },
@@ -148,7 +148,8 @@ class FoundationModelLabeler(BaseLabeler):
             )
         if task != "land_cover":
             raise NotImplementedError(
-                f"task {task!r} is not implemented; only 'land_cover' (clustering / text matching) is.")
+                f"task {task!r} is not implemented; only 'land_cover' (clustering / text matching) is."
+            )
         if text_prompts and model != "remote_clip":
             raise ValueError("text_prompts are only used with model='remote_clip'")
         if num_classes < 2:
@@ -173,17 +174,17 @@ class FoundationModelLabeler(BaseLabeler):
 
     @property
     def name(self) -> str:
-        return 'foundation'
+        return "foundation"
 
     @property
     def supported_tasks(self) -> list:
-        return ['segmentation', 'classification']
+        return ["segmentation", "classification"]
 
     # ------------------------------------------------------------------
     # BaseLabeler interface
     # ------------------------------------------------------------------
 
-    def label_tile(
+    def label_tile(  # type: ignore[override]
         self,
         tile_path: Path,
         tile_metadata: Any,
@@ -215,8 +216,11 @@ class FoundationModelLabeler(BaseLabeler):
                 patch_labels = self._cluster_embeddings(embeddings)
 
             mask = self._upsample_patch_labels(
-                patch_labels=patch_labels, patch_grid=patch_grid, cell_px=cell_px,
-                height=height, width=width,
+                patch_labels=patch_labels,
+                patch_grid=patch_grid,
+                cell_px=cell_px,
+                height=height,
+                width=width,
             )
 
             meta = {
@@ -270,6 +274,7 @@ class FoundationModelLabeler(BaseLabeler):
     def _detect_device() -> str:
         try:
             import torch
+
             if torch.cuda.is_available():
                 return "cuda"
             if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -287,11 +292,18 @@ class FoundationModelLabeler(BaseLabeler):
         try:
             if info["backend"] == "prithvi":
                 from pygeovision.models.foundation.prithvi import Prithvi
-                self._model = Prithvi(info["variant"], device=self.config.device, num_frames=1).load()
+
+                self._model = Prithvi(
+                    info["variant"], device=self.config.device, num_frames=1
+                ).load()
             else:
                 from pygeovision.models.vlm.clip import CLIPGeo
-                self._model = CLIPGeo(model=info["clip_name"], device=self.config.device,
-                                      cache_dir=str(self.config.checkpoint_dir))
+
+                self._model = CLIPGeo(
+                    model=info["clip_name"],
+                    device=self.config.device,
+                    cache_dir=str(self.config.checkpoint_dir),
+                )
                 self._model._load()
         except Exception as exc:
             raise LabelingError(
@@ -311,15 +323,21 @@ class FoundationModelLabeler(BaseLabeler):
         n_bands = self._model_info["input_bands"]
         if self.config.input_bands:
             if len(self.config.input_bands) != n_bands:
-                raise ValueError(f"{self.config.model} needs {n_bands} input_bands, "
-                                 f"got {len(self.config.input_bands)}")
+                raise ValueError(
+                    f"{self.config.model} needs {n_bands} input_bands, "
+                    f"got {len(self.config.input_bands)}"
+                )
             band_indices = [b + 1 for b in self.config.input_bands]
         else:
             if band_count < n_bands:
-                raise ValueError(f"{self.config.model} needs {n_bands} bands, {tile_path} has {band_count}")
+                raise ValueError(
+                    f"{self.config.model} needs {n_bands} bands, {tile_path} has {band_count}"
+                )
             band_indices = list(range(1, n_bands + 1))
         if max(band_indices) > band_count:
-            raise ValueError(f"band index {max(band_indices) - 1} out of range for {band_count} bands")
+            raise ValueError(
+                f"band index {max(band_indices) - 1} out of range for {band_count} bands"
+            )
 
         with rasterio.open(tile_path) as src:
             data = src.read(band_indices, masked=True).astype(np.float32)
@@ -351,14 +369,14 @@ class FoundationModelLabeler(BaseLabeler):
         size, cell = int(info["image_size"]), int(info["patch_size"])
         _, H, W = image.shape
         n_r, n_c = -(-H // size), -(-W // size)
-        per = size // cell                       # grid cells per tile side (1 for RemoteCLIP)
+        per = size // cell  # grid cells per tile side (1 for RemoteCLIP)
 
         windows, origins = [], []
         for r in range(n_r):
             for c in range(n_c):
-                win = image[:, r * size:(r + 1) * size, c * size:(c + 1) * size]
+                win = image[:, r * size : (r + 1) * size, c * size : (c + 1) * size]
                 ph, pw = size - win.shape[1], size - win.shape[2]
-                if ph or pw:                     # edge tile: replicate border instead of zero-filling
+                if ph or pw:  # edge tile: replicate border instead of zero-filling
                     win = np.pad(win, ((0, 0), (0, ph), (0, pw)), mode="edge")
                 windows.append(win)
                 origins.append((r, c))
@@ -367,28 +385,37 @@ class FoundationModelLabeler(BaseLabeler):
         tiles_emb: list[np.ndarray] = []
         with torch.no_grad():
             for i in range(0, len(windows), self.config.batch_size):
-                batch = windows[i:i + self.config.batch_size]
+                batch = windows[i : i + self.config.batch_size]
                 if info["backend"] == "prithvi":
                     x = torch.from_numpy(np.stack(batch)).to(self.config.device)
                     out = self._model._model(pixel_values=x)
                     gh, gw = out.grid
                     if (gh, gw) != (per, per):
-                        raise RuntimeError(f"unexpected token grid {(gh, gw)}, expected {(per, per)}")
-                    emb = out.frame_tokens[:, 0].cpu().numpy()                 # (B, per*per, D)
+                        raise RuntimeError(
+                            f"unexpected token grid {(gh, gw)}, expected {(per, per)}"
+                        )
+                    emb = out.frame_tokens[:, 0].cpu().numpy()  # (B, per*per, D)
                 else:
                     from PIL import Image
-                    emb = np.stack([
-                        self._model.embed_pil(Image.fromarray(
-                            (w.transpose(1, 2, 0) * 255).astype(np.uint8)))
-                        for w in batch])[:, None, :]                          # (B, 1, D)
+
+                    emb = np.stack(
+                        [
+                            self._model.embed_pil(
+                                Image.fromarray((w.transpose(1, 2, 0) * 255).astype(np.uint8))
+                            )
+                            for w in batch
+                        ]
+                    )[
+                        :, None, :
+                    ]  # (B, 1, D)
                 tiles_emb.append(emb)
-        emb_all = np.concatenate(tiles_emb, axis=0)                           # (T, per*per, D)
+        emb_all = np.concatenate(tiles_emb, axis=0)  # (T, per*per, D)
         d = emb_all.shape[-1]
 
         grid = np.zeros((n_r * per, n_c * per, d), dtype=np.float32)
         for (r, c), e in zip(origins, emb_all):
-            grid[r * per:(r + 1) * per, c * per:(c + 1) * per] = e.reshape(per, per, d)
-        rows, cols = -(-H // cell), -(-W // cell)                              # cells touching real pixels
+            grid[r * per : (r + 1) * per, c * per : (c + 1) * per] = e.reshape(per, per, d)
+        rows, cols = -(-H // cell), -(-W // cell)  # cells touching real pixels
         grid = grid[:rows, :cols]
         return grid.reshape(-1, d), (rows, cols), cell
 
@@ -399,7 +426,11 @@ class FoundationModelLabeler(BaseLabeler):
         from sklearn.preprocessing import StandardScaler
 
         n_components = min(64, embeddings.shape[0] - 1, embeddings.shape[1])
-        reduced = PCA(n_components=n_components).fit_transform(embeddings) if n_components > 1 else embeddings
+        reduced = (
+            PCA(n_components=n_components).fit_transform(embeddings)
+            if n_components > 1
+            else embeddings
+        )
         scaled = StandardScaler().fit_transform(reduced)
 
         n_clusters = min(self.config.num_classes, embeddings.shape[0])
@@ -413,7 +444,7 @@ class FoundationModelLabeler(BaseLabeler):
             raise ValueError("text_prompts are required for zero-shot classification")
         if len(prompts) > 255:
             raise ValueError("at most 255 text prompts (labels are uint8)")
-        text = np.stack([self._model.embed_text(p) for p in prompts])           # (K, D), L2-normalised
+        text = np.stack([self._model.embed_text(p) for p in prompts])  # (K, D), L2-normalised
         emb = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
         return np.argmax(emb @ text.T, axis=1).astype(np.uint8)
 
@@ -431,6 +462,6 @@ class FoundationModelLabeler(BaseLabeler):
         stay registered with the imagery (the old version stretched the grid over the image).
         """
         rows, cols = patch_grid
-        grid = np.asarray(patch_labels)[:rows * cols].reshape(rows, cols).astype(np.uint8)
+        grid = np.asarray(patch_labels)[: rows * cols].reshape(rows, cols).astype(np.uint8)
         full = np.repeat(np.repeat(grid, cell_px, axis=0), cell_px, axis=1)
         return full[:height, :width]

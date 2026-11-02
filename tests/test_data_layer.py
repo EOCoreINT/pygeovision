@@ -5,28 +5,32 @@ All network calls are mocked; no real satellite APIs required.
 
 from __future__ import annotations
 
+import contextlib
 import json
-import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
+
 import pytest
 
-from pygeovision.data.fetch import SatelliteFetcher, SearchResult, DownloadResult
-from pygeovision.data.pipeline import DataPipeline, PipelineStep
+from pygeovision.data.fetch import DownloadResult, SatelliteFetcher, SearchResult
+from pygeovision.data.pipeline import DataPipeline
 from pygeovision.data.providers import (
-    PROVIDERS, STAC_PROVIDERS, SATELLITE_SHORTCUTS,
-    OPEN_PROVIDERS, DEFAULT_SEARCH_PROVIDERS,
+    DEFAULT_SEARCH_PROVIDERS,
+    OPEN_PROVIDERS,
+    PROVIDERS,
+    SATELLITE_SHORTCUTS,
+    STAC_PROVIDERS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def fetcher():
     return SatelliteFetcher()
+
 
 @pytest.fixture
 def fetcher_no_cli():
@@ -34,6 +38,7 @@ def fetcher_no_cli():
     f = SatelliteFetcher()
     f._pygeofetch_available = False
     return f
+
 
 @pytest.fixture
 def sample_results():
@@ -61,6 +66,7 @@ def sample_results():
         ),
     ]
 
+
 @pytest.fixture
 def sample_geojson(tmp_path):
     """Write a sample pygeofetch-style GeoJSON and return its path."""
@@ -72,10 +78,15 @@ def sample_geojson(tmp_path):
                 "id": "S2C_MSIL2A_20260516T153811_R01",
                 "geometry": {
                     "type": "Polygon",
-                    "coordinates": [[
-                        [-74.1, 40.6], [-73.7, 40.6],
-                        [-73.7, 40.9], [-74.1, 40.9], [-74.1, 40.6],
-                    ]],
+                    "coordinates": [
+                        [
+                            [-74.1, 40.6],
+                            [-73.7, 40.6],
+                            [-73.7, 40.9],
+                            [-74.1, 40.9],
+                            [-74.1, 40.6],
+                        ]
+                    ],
                 },
                 "properties": {
                     "id": "S2C_MSIL2A_20260516T153811_R01",
@@ -92,10 +103,15 @@ def sample_geojson(tmp_path):
                 "id": "LC09_L2SP_013032_20260505_02_T",
                 "geometry": {
                     "type": "Polygon",
-                    "coordinates": [[
-                        [-74.1, 40.6], [-73.7, 40.6],
-                        [-73.7, 40.9], [-74.1, 40.9], [-74.1, 40.6],
-                    ]],
+                    "coordinates": [
+                        [
+                            [-74.1, 40.6],
+                            [-73.7, 40.6],
+                            [-73.7, 40.9],
+                            [-74.1, 40.9],
+                            [-74.1, 40.6],
+                        ]
+                    ],
                 },
                 "properties": {
                     "id": "LC09_L2SP_013032_20260505_02_T",
@@ -117,6 +133,7 @@ def sample_geojson(tmp_path):
 # ---------------------------------------------------------------------------
 # Providers registry
 # ---------------------------------------------------------------------------
+
 
 class TestProviders:
     def test_22_providers_defined(self):
@@ -166,6 +183,7 @@ class TestProviders:
 # SearchResult
 # ---------------------------------------------------------------------------
 
+
 class TestSearchResult:
     def test_basic_creation(self):
         r = SearchResult(
@@ -185,24 +203,33 @@ class TestSearchResult:
 
     def test_sar_detection(self):
         r = SearchResult(
-            id="s1-001", provider="copernicus", satellite="Sentinel-1A",
-            datetime="2026-01-01", cloud_cover=None,
+            id="s1-001",
+            provider="copernicus",
+            satellite="Sentinel-1A",
+            datetime="2026-01-01",
+            cloud_cover=None,
             bbox=(-74.1, 40.6, -73.7, 40.9),
         )
         assert r.is_sar
 
     def test_landsat_resolution(self):
         r = SearchResult(
-            id="l9-001", provider="usgs", satellite="Landsat-9",
-            datetime="2026-01-01", cloud_cover=2.0,
+            id="l9-001",
+            provider="usgs",
+            satellite="Landsat-9",
+            datetime="2026-01-01",
+            cloud_cover=2.0,
             bbox=(-74.1, 40.6, -73.7, 40.9),
         )
         assert r.resolution_m == 30.0
 
     def test_planet_resolution(self):
         r = SearchResult(
-            id="ps-001", provider="planet", satellite="PlanetScope",
-            datetime="2026-01-01", cloud_cover=0.0,
+            id="ps-001",
+            provider="planet",
+            satellite="PlanetScope",
+            datetime="2026-01-01",
+            cloud_cover=0.0,
             bbox=(-74.1, 40.6, -73.7, 40.9),
         )
         assert r.resolution_m == 3.0
@@ -223,8 +250,12 @@ class TestSearchResult:
 
     def test_none_cloud_cover(self):
         r = SearchResult(
-            id="x", provider="usgs", satellite="Landsat",
-            datetime="2026-01-01", cloud_cover=None, bbox=None,
+            id="x",
+            provider="usgs",
+            satellite="Landsat",
+            datetime="2026-01-01",
+            cloud_cover=None,
+            bbox=None,
         )
         assert r.cloud_cover is None
         assert "N/A" in str(r)
@@ -233,6 +264,7 @@ class TestSearchResult:
 # ---------------------------------------------------------------------------
 # DownloadResult
 # ---------------------------------------------------------------------------
+
 
 class TestDownloadResult:
     def test_success_result(self, tmp_path):
@@ -263,6 +295,7 @@ class TestDownloadResult:
 # SatelliteFetcher — CLI mode
 # ---------------------------------------------------------------------------
 
+
 class TestSatelliteFetcherCLI:
     def test_has_pygeofetch_detection(self, fetcher):
         # Just tests that detection works (not that pygeofetch is installed)
@@ -270,9 +303,7 @@ class TestSatelliteFetcherCLI:
         assert isinstance(result, bool)
 
     def test_resolve_providers_explicit(self, fetcher):
-        providers = fetcher._resolve_providers(
-            ["planetary_computer", "usgs"], None, None
-        )
+        providers = fetcher._resolve_providers(["planetary_computer", "usgs"], None, None)
         assert providers == ["planetary_computer", "usgs"]
 
     def test_resolve_providers_from_satellite(self, fetcher):
@@ -280,15 +311,11 @@ class TestSatelliteFetcherCLI:
         assert "planetary_computer" in providers
 
     def test_resolve_providers_from_collections(self, fetcher):
-        providers = fetcher._resolve_providers(
-            None, None, ["sentinel-2-l2a"]
-        )
+        providers = fetcher._resolve_providers(None, None, ["sentinel-2-l2a"])
         assert "planetary_computer" in providers
 
     def test_resolve_providers_landsat(self, fetcher):
-        providers = fetcher._resolve_providers(
-            None, None, ["landsat-c2-l2"]
-        )
+        providers = fetcher._resolve_providers(None, None, ["landsat-c2-l2"])
         assert "planetary_computer" in providers or "usgs" in providers
 
     def test_resolve_providers_default(self, fetcher):
@@ -314,23 +341,35 @@ class TestSatelliteFetcherCLI:
 
     def test_cache_key_deterministic(self, fetcher):
         k1 = fetcher._cache_key(
-            (-74.1, 40.6, -73.7, 40.9), ("2024-01-01", "2024-06-01"),
-            ["planetary_computer"], 15.0, ["sentinel-2-l2a"],
+            (-74.1, 40.6, -73.7, 40.9),
+            ("2024-01-01", "2024-06-01"),
+            ["planetary_computer"],
+            15.0,
+            ["sentinel-2-l2a"],
         )
         k2 = fetcher._cache_key(
-            (-74.1, 40.6, -73.7, 40.9), ("2024-01-01", "2024-06-01"),
-            ["planetary_computer"], 15.0, ["sentinel-2-l2a"],
+            (-74.1, 40.6, -73.7, 40.9),
+            ("2024-01-01", "2024-06-01"),
+            ["planetary_computer"],
+            15.0,
+            ["sentinel-2-l2a"],
         )
         assert k1 == k2
 
     def test_cache_key_different_for_different_params(self, fetcher):
         k1 = fetcher._cache_key(
-            (-74.1, 40.6, -73.7, 40.9), ("2024-01-01", "2024-06-01"),
-            ["planetary_computer"], 15.0, None,
+            (-74.1, 40.6, -73.7, 40.9),
+            ("2024-01-01", "2024-06-01"),
+            ["planetary_computer"],
+            15.0,
+            None,
         )
         k2 = fetcher._cache_key(
-            (-0.15, 51.47, -0.10, 51.52), ("2024-01-01", "2024-06-01"),
-            ["planetary_computer"], 15.0, None,
+            (-0.15, 51.47, -0.10, 51.52),
+            ("2024-01-01", "2024-06-01"),
+            ["planetary_computer"],
+            15.0,
+            None,
         )
         assert k1 != k2
 
@@ -347,17 +386,23 @@ class TestSatelliteFetcherCLI:
         assert result is None
 
     def test_add_credentials_stores_in_memory(self, fetcher):
-        import pygeovision.data.fetch as _fetch; _fetch._PYGEOFETCH_CLI_CHECKED = True; _fetch._PYGEOFETCH_CLI_EXE = None; _fetch._PYGEOFETCH_PY_AVAILABLE = False  # Simulate no CLI
+        import pygeovision.data.fetch as _fetch
+
+        _fetch._PYGEOFETCH_CLI_CHECKED = True
+        _fetch._PYGEOFETCH_CLI_EXE = None
+        _fetch._PYGEOFETCH_PY_AVAILABLE = False  # Simulate no CLI
         fetcher.add_credentials("usgs", username="user", password="pass")
         assert "usgs" in fetcher._credentials
         assert fetcher._credentials["usgs"]["username"] == "user"
 
     def test_add_credentials_chaining(self, fetcher):
-        import pygeovision.data.fetch as _fetch; _fetch._PYGEOFETCH_CLI_CHECKED = True; _fetch._PYGEOFETCH_CLI_EXE = None; _fetch._PYGEOFETCH_PY_AVAILABLE = False
-        result = (
-            fetcher
-            .add_credentials("usgs", username="user", password="pass")
-            .add_credentials("planet", api_key="PL_KEY")
+        import pygeovision.data.fetch as _fetch
+
+        _fetch._PYGEOFETCH_CLI_CHECKED = True
+        _fetch._PYGEOFETCH_CLI_EXE = None
+        _fetch._PYGEOFETCH_PY_AVAILABLE = False
+        result = fetcher.add_credentials("usgs", username="user", password="pass").add_credentials(
+            "planet", api_key="PL_KEY"
         )
         assert result is fetcher  # Returns self
         assert "usgs" in fetcher._credentials
@@ -371,8 +416,13 @@ class TestSatelliteFetcherCLI:
 
     def test_pick_best_asset(self, fetcher):
         result = SearchResult(
-            id="x", provider="p", satellite="s", datetime="", cloud_cover=None, bbox=None,
-            assets={"visual": {"href": "https://example.com/visual.tif"}, "B04": {"href": "..."}}
+            id="x",
+            provider="p",
+            satellite="s",
+            datetime="",
+            cloud_cover=None,
+            bbox=None,
+            assets={"visual": {"href": "https://example.com/visual.tif"}, "B04": {"href": "..."}},
         )
         best = fetcher._pick_best_asset(result)
         assert best in ("B04", "visual")
@@ -380,7 +430,12 @@ class TestSatelliteFetcherCLI:
     @patch("subprocess.run")
     def test_search_via_cli_calls_pygeofetch(self, mock_run, fetcher, sample_geojson):
         """Test that search() invokes pygeofetch search run."""
-        import pygeovision.data.fetch as _fetch; _fetch._PYGEOFETCH_CLI_CHECKED = True; _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"; _fetch._PYGEOFETCH_PY_AVAILABLE = False; fetcher._pgf_engine = None
+        import pygeovision.data.fetch as _fetch
+
+        _fetch._PYGEOFETCH_CLI_CHECKED = True
+        _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"
+        _fetch._PYGEOFETCH_PY_AVAILABLE = False
+        fetcher._pgf_engine = None
 
         # Mock subprocess to write geojson to output file
         def side_effect(cmd, **kwargs):
@@ -411,7 +466,12 @@ class TestSatelliteFetcherCLI:
     @patch("subprocess.run")
     def test_download_via_cli_calls_pygeofetch(self, mock_run, fetcher, sample_results, tmp_path):
         """Test that download() invokes pygeofetch download run."""
-        import pygeovision.data.fetch as _fetch; _fetch._PYGEOFETCH_CLI_CHECKED = True; _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"; _fetch._PYGEOFETCH_PY_AVAILABLE = False; fetcher._pgf_engine = None
+        import pygeovision.data.fetch as _fetch
+
+        _fetch._PYGEOFETCH_CLI_CHECKED = True
+        _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"
+        _fetch._PYGEOFETCH_PY_AVAILABLE = False
+        fetcher._pgf_engine = None
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
         # Create a fake output file
@@ -433,7 +493,12 @@ class TestSatelliteFetcherCLI:
 
     @patch("subprocess.run")
     def test_auth_add_calls_cli(self, mock_run, fetcher):
-        import pygeovision.data.fetch as _fetch; _fetch._PYGEOFETCH_CLI_CHECKED = True; _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"; _fetch._PYGEOFETCH_PY_AVAILABLE = False; fetcher._pgf_engine = None
+        import pygeovision.data.fetch as _fetch
+
+        _fetch._PYGEOFETCH_CLI_CHECKED = True
+        _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"
+        _fetch._PYGEOFETCH_PY_AVAILABLE = False
+        fetcher._pgf_engine = None
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
         fetcher.add_credentials("usgs", username="user", password="pass")
@@ -447,11 +512,18 @@ class TestSatelliteFetcherCLI:
 
     @patch("subprocess.run")
     def test_pipeline_run_calls_cli(self, mock_run, fetcher, tmp_path):
-        import pygeovision.data.fetch as _fetch; _fetch._PYGEOFETCH_CLI_CHECKED = True; _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"; _fetch._PYGEOFETCH_PY_AVAILABLE = False; fetcher._pgf_engine = None
+        import pygeovision.data.fetch as _fetch
+
+        _fetch._PYGEOFETCH_CLI_CHECKED = True
+        _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"
+        _fetch._PYGEOFETCH_PY_AVAILABLE = False
+        fetcher._pgf_engine = None
         mock_run.return_value = MagicMock(returncode=0, stdout="Pipeline complete", stderr="")
 
         yaml_file = tmp_path / "pipeline.yaml"
-        yaml_file.write_text("name: test\nsteps:\n  - search:\n      providers: [planetary_computer]\n")
+        yaml_file.write_text(
+            "name: test\nsteps:\n  - search:\n      providers: [planetary_computer]\n"
+        )
 
         result = fetcher.run_pipeline(yaml_file)
         assert result["success"]
@@ -462,18 +534,28 @@ class TestSatelliteFetcherCLI:
 
     @patch("subprocess.run")
     def test_cache_stats_cli(self, mock_run, fetcher):
-        import pygeovision.data.fetch as _fetch; _fetch._PYGEOFETCH_CLI_CHECKED = True; _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"; _fetch._PYGEOFETCH_PY_AVAILABLE = False; fetcher._pgf_engine = None
+        import pygeovision.data.fetch as _fetch
+
+        _fetch._PYGEOFETCH_CLI_CHECKED = True
+        _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"
+        _fetch._PYGEOFETCH_PY_AVAILABLE = False
+        fetcher._pgf_engine = None
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout='{"entries": 42, "size_bytes": 1048576}',
             stderr="",
         )
-        stats = fetcher.cache_stats()
+        fetcher.cache_stats()
         assert mock_run.called
 
     @patch("subprocess.run")
     def test_clear_cache_cli(self, mock_run, fetcher):
-        import pygeovision.data.fetch as _fetch; _fetch._PYGEOFETCH_CLI_CHECKED = True; _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"; _fetch._PYGEOFETCH_PY_AVAILABLE = False; fetcher._pgf_engine = None
+        import pygeovision.data.fetch as _fetch
+
+        _fetch._PYGEOFETCH_CLI_CHECKED = True
+        _fetch._PYGEOFETCH_CLI_EXE = "pygeofetch"
+        _fetch._PYGEOFETCH_PY_AVAILABLE = False
+        fetcher._pgf_engine = None
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         fetcher.clear_cache(provider="planetary_computer", older_than="7d")
         call_args = mock_run.call_args[0][0]
@@ -486,11 +568,13 @@ class TestSatelliteFetcherCLI:
 # SatelliteFetcher — STAC fallback mode
 # ---------------------------------------------------------------------------
 
+
 class TestSatelliteFetcherSTAC:
     def test_search_stac_fallback_no_pygeofetch(self, fetcher_no_cli):
         """When CLI unavailable, uses pystac_client for STAC providers."""
         import pygeovision.data.fetch as _fetch
-        pystac_client = pytest.importorskip("pystac_client")
+
+        pytest.importorskip("pystac_client")
         # Force both Python API and CLI unavailable so pystac_client fallback runs
         orig_py = _fetch._PYGEOFETCH_PY_AVAILABLE
         orig_cli = _fetch._PYGEOFETCH_CLI_EXE
@@ -535,6 +619,7 @@ class TestSatelliteFetcherSTAC:
 # ---------------------------------------------------------------------------
 # DataPipeline
 # ---------------------------------------------------------------------------
+
 
 class TestDataPipeline:
     def test_create_basic_pipeline(self):
@@ -598,6 +683,7 @@ class TestDataPipeline:
         class F:
             def run_pipeline(self, path, step=None):
                 import yaml
+
                 captured["doc"] = yaml.safe_load(open(path))
                 return {"success": True}
 
@@ -685,9 +771,11 @@ class TestDataPipeline:
 # PyGeoVision main client
 # ---------------------------------------------------------------------------
 
+
 class TestPyGeoVisionClient:
     def test_client_creation(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         assert client is not None
         assert hasattr(client, "data")
@@ -695,6 +783,7 @@ class TestPyGeoVisionClient:
 
     def test_status_structure(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         status = client.status()
         assert "pygeovision_version" in status
@@ -705,12 +794,14 @@ class TestPyGeoVisionClient:
 
     def test_list_providers_all(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         providers = client.list_providers()
         assert len(providers) == 22
 
     def test_list_providers_open_only(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         providers = client.list_providers(open_only=True)
         for p in providers.values():
@@ -718,6 +809,7 @@ class TestPyGeoVisionClient:
 
     def test_list_providers_sar(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         providers = client.list_providers(capabilities=["sar"])
         for p in providers.values():
@@ -725,12 +817,11 @@ class TestPyGeoVisionClient:
 
     def test_add_credentials_chaining(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         client.data._pygeofetch_available = False  # No CLI in test env
-        result = (
-            client
-            .add_credentials("usgs", username="u", password="p")
-            .add_credentials("planet", api_key="PL_KEY")
+        result = client.add_credentials("usgs", username="u", password="p").add_credentials(
+            "planet", api_key="PL_KEY"
         )
         assert result is client
         assert "usgs" in client.data._credentials
@@ -738,6 +829,7 @@ class TestPyGeoVisionClient:
 
     def test_create_pipeline(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         p = client.create_pipeline("my-pipeline", description="Test pipeline")
         assert isinstance(p, DataPipeline)
@@ -745,6 +837,7 @@ class TestPyGeoVisionClient:
 
     def test_repr(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         r = repr(client)
         assert "PyGeoVision" in r
@@ -752,6 +845,7 @@ class TestPyGeoVisionClient:
 
     def test_cache_stats_returns_dict(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         client.data._pygeofetch_available = False
         stats = client.cache_stats()
@@ -760,6 +854,7 @@ class TestPyGeoVisionClient:
 
     def test_provider_info(self):
         from pygeovision import PyGeoVision
+
         client = PyGeoVision()
         info = client.data.provider_info("planetary_computer")
         assert info["name"] == "Microsoft Planetary Computer"
@@ -781,9 +876,11 @@ class TestSearchParametersReachSearchQuery:
         # state here via monkeypatch (auto-restored after this test),
         # rather than assuming whatever ran before left it clean.
         import pygeovision.data.fetch as _fetch
+
         monkeypatch.setattr(_fetch, "_PYGEOFETCH_PY_AVAILABLE", True)
 
         from pygeofetch.models.search_query import SearchQuery
+
         captured = []
         real_init = SearchQuery.__init__
 
@@ -801,48 +898,60 @@ class TestSearchParametersReachSearchQuery:
         return fetcher, captured, SearchQuery, tracking_init
 
     def test_processing_level_reaches_the_real_query(self, tmp_path, monkeypatch):
-        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(tmp_path, monkeypatch)
-        with patch.object(SearchQuery, "__init__", tracking_init), \
-             patch.object(fetcher, "_use_cli", return_value=False), \
-             patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]), \
-             patch.object(fetcher, "_load_cache", return_value=None), \
-             patch.object(fetcher, "_cache_key", return_value="k"):
-            try:
-                fetcher.search(bbox=(-0.3, 5.5, -0.15, 5.65),
-                                date_range=("2024-01-01", "2024-06-01"),
-                                processing_level="L2A")
-            except Exception:
-                pass
+        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(
+            tmp_path, monkeypatch
+        )
+        with (
+            patch.object(SearchQuery, "__init__", tracking_init),
+            patch.object(fetcher, "_use_cli", return_value=False),
+            patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]),
+            patch.object(fetcher, "_load_cache", return_value=None),
+            patch.object(fetcher, "_cache_key", return_value="k"),
+        ):
+            with contextlib.suppress(Exception):
+                fetcher.search(
+                    bbox=(-0.3, 5.5, -0.15, 5.65),
+                    date_range=("2024-01-01", "2024-06-01"),
+                    processing_level="L2A",
+                )
         assert captured[0]["processing_levels"] == ["L2A"]
 
     def test_on_provider_failure_reaches_the_real_query(self, tmp_path, monkeypatch):
-        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(tmp_path, monkeypatch)
-        with patch.object(SearchQuery, "__init__", tracking_init), \
-             patch.object(fetcher, "_use_cli", return_value=False), \
-             patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]), \
-             patch.object(fetcher, "_load_cache", return_value=None), \
-             patch.object(fetcher, "_cache_key", return_value="k"):
-            try:
-                fetcher.search(bbox=(-0.3, 5.5, -0.15, 5.65),
-                                date_range=("2024-01-01", "2024-06-01"),
-                                on_provider_failure="raise")
-            except Exception:
-                pass
+        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(
+            tmp_path, monkeypatch
+        )
+        with (
+            patch.object(SearchQuery, "__init__", tracking_init),
+            patch.object(fetcher, "_use_cli", return_value=False),
+            patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]),
+            patch.object(fetcher, "_load_cache", return_value=None),
+            patch.object(fetcher, "_cache_key", return_value="k"),
+        ):
+            with contextlib.suppress(Exception):
+                fetcher.search(
+                    bbox=(-0.3, 5.5, -0.15, 5.65),
+                    date_range=("2024-01-01", "2024-06-01"),
+                    on_provider_failure="raise",
+                )
         assert captured[0]["on_provider_failure"] == "raise"
 
     def test_timeout_reaches_the_real_query(self, tmp_path, monkeypatch):
-        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(tmp_path, monkeypatch)
-        with patch.object(SearchQuery, "__init__", tracking_init), \
-             patch.object(fetcher, "_use_cli", return_value=False), \
-             patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]), \
-             patch.object(fetcher, "_load_cache", return_value=None), \
-             patch.object(fetcher, "_cache_key", return_value="k"):
-            try:
-                fetcher.search(bbox=(-0.3, 5.5, -0.15, 5.65),
-                                date_range=("2024-01-01", "2024-06-01"),
-                                timeout=300)
-            except Exception:
-                pass
+        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(
+            tmp_path, monkeypatch
+        )
+        with (
+            patch.object(SearchQuery, "__init__", tracking_init),
+            patch.object(fetcher, "_use_cli", return_value=False),
+            patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]),
+            patch.object(fetcher, "_load_cache", return_value=None),
+            patch.object(fetcher, "_cache_key", return_value="k"),
+        ):
+            with contextlib.suppress(Exception):
+                fetcher.search(
+                    bbox=(-0.3, 5.5, -0.15, 5.65),
+                    date_range=("2024-01-01", "2024-06-01"),
+                    timeout=300,
+                )
         assert captured[0]["timeout_seconds"] == 300
 
     def test_geometry_file_reaches_the_real_query(self, tmp_path, monkeypatch):
@@ -851,20 +960,31 @@ class TestSearchParametersReachSearchQuery:
         that nothing reads geometry_geojson at all."""
         geom_path = tmp_path / "aoi.geojson"
         with open(geom_path, "w") as f:
-            json.dump({"type": "Polygon", "coordinates": [[[-0.25,5.52],[-0.20,5.52],
-                                                             [-0.20,5.60],[-0.25,5.60],[-0.25,5.52]]]}, f)
+            json.dump(
+                {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [[-0.25, 5.52], [-0.20, 5.52], [-0.20, 5.60], [-0.25, 5.60], [-0.25, 5.52]]
+                    ],
+                },
+                f,
+            )
 
-        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(tmp_path, monkeypatch)
-        with patch.object(SearchQuery, "__init__", tracking_init), \
-             patch.object(fetcher, "_use_cli", return_value=False), \
-             patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]), \
-             patch.object(fetcher, "_load_cache", return_value=None), \
-             patch.object(fetcher, "_cache_key", return_value="k"):
-            try:
-                fetcher.search(bbox=(-0.3, 5.5, -0.15, 5.65),
-                                date_range=("2024-01-01", "2024-06-01"),
-                                geometry_file=str(geom_path))
-            except Exception:
-                pass
+        fetcher, captured, SearchQuery, tracking_init = self._fetcher_with_tracked_query(
+            tmp_path, monkeypatch
+        )
+        with (
+            patch.object(SearchQuery, "__init__", tracking_init),
+            patch.object(fetcher, "_use_cli", return_value=False),
+            patch.object(fetcher, "_resolve_providers", return_value=["planetary_computer"]),
+            patch.object(fetcher, "_load_cache", return_value=None),
+            patch.object(fetcher, "_cache_key", return_value="k"),
+        ):
+            with contextlib.suppress(Exception):
+                fetcher.search(
+                    bbox=(-0.3, 5.5, -0.15, 5.65),
+                    date_range=("2024-01-01", "2024-06-01"),
+                    geometry_file=str(geom_path),
+                )
         assert captured[0]["geometry"] is not None
         assert captured[0]["geometry"]["type"] == "Polygon"

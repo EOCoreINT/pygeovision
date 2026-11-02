@@ -1,4 +1,5 @@
 """PDF report (reportlab)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +25,12 @@ def _register_fonts() -> None:
     from reportlab.pdfbase.ttfonts import TTFont
 
     d = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
-    files = {"": "DejaVuSans.ttf", "-Bold": "DejaVuSans-Bold.ttf", "-Oblique": "DejaVuSans-Oblique.ttf", "-BoldOblique": "DejaVuSans-BoldOblique.ttf"}
+    files = {
+        "": "DejaVuSans.ttf",
+        "-Bold": "DejaVuSans-Bold.ttf",
+        "-Oblique": "DejaVuSans-Oblique.ttf",
+        "-BoldOblique": "DejaVuSans-BoldOblique.ttf",
+    }
     for suffix, fn in files.items():
         pdfmetrics.registerFont(TTFont(f"{_FONT}{suffix}", str(d / fn)))
     addMapping(_FONT, 0, 0, _FONT)
@@ -67,28 +73,62 @@ def write_pdf(report: Report, path: Path) -> Path:
     margin = 18 * mm
     avail = page_w - 2 * margin
 
-    body = ParagraphStyle("body", fontName=_FONT, fontSize=9.2, leading=13.4, textColor=ink, alignment=TA_LEFT, spaceAfter=4)
-    small = ParagraphStyle("small", parent=body, fontSize=7.8, leading=10.5, textColor=muted, spaceAfter=0)
-    cap = ParagraphStyle("cap", parent=small, fontName=f"{_FONT}-Oblique", spaceBefore=3, spaceAfter=8)
-    h1 = ParagraphStyle("h1", fontName=f"{_FONT}-Bold", fontSize=15, leading=19, textColor=accent, spaceBefore=12, spaceAfter=5, keepWithNext=1)
-    h2 = ParagraphStyle("h2", fontName=f"{_FONT}-Bold", fontSize=10.5, leading=14, textColor=ink, spaceBefore=8, spaceAfter=3, keepWithNext=1)
+    body = ParagraphStyle(
+        "body",
+        fontName=_FONT,
+        fontSize=9.2,
+        leading=13.4,
+        textColor=ink,
+        alignment=TA_LEFT,
+        spaceAfter=4,
+    )
+    small = ParagraphStyle(
+        "small", parent=body, fontSize=7.8, leading=10.5, textColor=muted, spaceAfter=0
+    )
+    cap = ParagraphStyle(
+        "cap", parent=small, fontName=f"{_FONT}-Oblique", spaceBefore=3, spaceAfter=8
+    )
+    h1 = ParagraphStyle(
+        "h1",
+        fontName=f"{_FONT}-Bold",
+        fontSize=15,
+        leading=19,
+        textColor=accent,
+        spaceBefore=12,
+        spaceAfter=5,
+        keepWithNext=1,
+    )
+    h2 = ParagraphStyle(
+        "h2",
+        fontName=f"{_FONT}-Bold",
+        fontSize=10.5,
+        leading=14,
+        textColor=ink,
+        spaceBefore=8,
+        spaceAfter=3,
+        keepWithNext=1,
+    )
     cell = ParagraphStyle("cell", parent=body, fontSize=8.2, leading=10.6, spaceAfter=0)
     cell_r = ParagraphStyle("cell_r", parent=cell, alignment=2)
     cell_h = ParagraphStyle("cell_h", parent=cell, fontName=f"{_FONT}-Bold", textColor=colors.white)
     cell_hr = ParagraphStyle("cell_hr", parent=cell_h, alignment=2)
     bullet = ParagraphStyle("bullet", parent=body, leftIndent=12, bulletIndent=2, spaceAfter=2)
-    kpi_v = ParagraphStyle("kpi_v", fontName=f"{_FONT}-Bold", fontSize=15, leading=18, textColor=accent)
+    kpi_v = ParagraphStyle(
+        "kpi_v", fontName=f"{_FONT}-Bold", fontSize=15, leading=18, textColor=accent
+    )
     kpi_l = ParagraphStyle("kpi_l", parent=small, fontSize=7.6, leading=9.6)
 
     def table_flowable(t: Table):
         cols = t.cols
         has_sw = t.colors is not None
-        header = ([Paragraph("", cell_h)] if has_sw else []) + [Paragraph(_esc(c.name), cell_hr if c.align == "right" else cell_h) for c in cols]
+        header = ([Paragraph("", cell_h)] if has_sw else []) + [
+            Paragraph(_esc(c.name), cell_hr if c.align == "right" else cell_h) for c in cols
+        ]
         if all(len(r) > 2 for r in t.rows) and False:
             pass
         data = [header]
         for r in t.rows:
-            row = ([""] if has_sw else [])
+            row = [""] if has_sw else []
             for c, v in zip(cols, r):
                 txt = F.fmt_value(v, c.fmt) if c.fmt != "text" else (F.NA if v is None else str(v))
                 row.append(Paragraph(_esc(txt), cell_r if c.align == "right" else cell))
@@ -96,10 +136,15 @@ def write_pdf(report: Report, path: Path) -> Path:
         total_w = sum(c.weight for c in cols)
         sw_w = 5 * mm if has_sw else 0
         widths = ([sw_w] if has_sw else []) + [(avail - sw_w) * c.weight / total_w for c in cols]
-        style = [("BACKGROUND", (0, 0), (-1, 0), accent), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                 ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#d5dbe1")),
-                 ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                 ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4)]
+        style = [
+            ("BACKGROUND", (0, 0), (-1, 0), accent),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#d5dbe1")),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]
         for i in range(1, len(data)):
             if i % 2 == 0:
                 style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f5f7f9")))
@@ -116,19 +161,38 @@ def write_pdf(report: Report, path: Path) -> Path:
     def callout_flowable(text: str, level: str):
         bg, bar = (WARN_SOFT, WARN) if level == "warn" else (ACCENT_SOFT, ACCENT)
         tbl = RLTable([[Paragraph(_esc(text), body)]], colWidths=[avail])
-        tbl.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(bg)), ("LINEBEFORE", (0, 0), (0, -1), 3, colors.HexColor(bar)),
-                                 ("LEFTPADDING", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        tbl.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(bg)),
+                    ("LINEBEFORE", (0, 0), (0, -1), 3, colors.HexColor(bar)),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
         return [tbl, Spacer(1, 6)]
 
     def kv_flowable(pairs):
         data = [[Paragraph(_esc(k), small), Paragraph(_esc(v), cell)] for k, v in pairs]
         tbl = RLTable(data, colWidths=[avail * 0.34, avail * 0.66])
-        tbl.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#d5dbe1")),
-                                 ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 2)]))
+        tbl.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#d5dbe1")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
         return [tbl, Spacer(1, 8)]
 
     def image_flowable(p: Path, caption: str, max_h: float = 150 * mm):
         from PIL import Image as PILImage
+
         with PILImage.open(p) as im:
             iw, ih = im.size
         w = avail
@@ -168,7 +232,9 @@ def write_pdf(report: Report, path: Path) -> Path:
                 if self._pageNumber > 1:
                     self.setFont(_FONT, 7.5)
                     self.setFillColor(muted)
-                    self.drawRightString(page_w - margin, 10 * mm, f"Page {self._pageNumber} of {n}")
+                    self.drawRightString(
+                        page_w - margin, 10 * mm, f"Page {self._pageNumber} of {n}"
+                    )
                 super().showPage()
             super().save()
 
@@ -194,6 +260,7 @@ def write_pdf(report: Report, path: Path) -> Path:
         canv.setFont(f"{_FONT}-Bold", 9)
         canv.drawString(margin, page_h - 14 * mm, "PYGEOVISION  ·  GEOSPATIAL ANALYSIS REPORT")
         from reportlab.lib.utils import simpleSplit
+
         y = page_h - 28 * mm
         canv.setFont(f"{_FONT}-Bold", 24)
         for line in simpleSplit(report.title, f"{_FONT}-Bold", 24, avail)[:2]:
@@ -211,21 +278,67 @@ def write_pdf(report: Report, path: Path) -> Path:
 
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    doc = BaseDocTemplate(str(out), pagesize=A4, leftMargin=margin, rightMargin=margin, topMargin=20 * mm, bottomMargin=18 * mm,
-                          title=report.title, author="PyGeoVision", subject=report.subtitle, creator=f"PyGeoVision {report.version}")
-    cover_frame = Frame(margin, 16 * mm, avail, page_h - 62 * mm - 16 * mm - 10 * mm, id="cover", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-    body_frame = Frame(margin, 18 * mm, avail, page_h - 20 * mm - 18 * mm, id="body", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-    doc.addPageTemplates([PageTemplate("cover", [cover_frame], onPage=on_cover), PageTemplate("body", [body_frame], onPage=on_body)])
+    doc = BaseDocTemplate(
+        str(out),
+        pagesize=A4,
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=20 * mm,
+        bottomMargin=18 * mm,
+        title=report.title,
+        author="PyGeoVision",
+        subject=report.subtitle,
+        creator=f"PyGeoVision {report.version}",
+    )
+    cover_frame = Frame(
+        margin,
+        16 * mm,
+        avail,
+        page_h - 62 * mm - 16 * mm - 10 * mm,
+        id="cover",
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+    )
+    body_frame = Frame(
+        margin,
+        18 * mm,
+        avail,
+        page_h - 20 * mm - 18 * mm,
+        id="body",
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+    )
+    doc.addPageTemplates(
+        [
+            PageTemplate("cover", [cover_frame], onPage=on_cover),
+            PageTemplate("body", [body_frame], onPage=on_body),
+        ]
+    )
 
     story: list[Any] = []
     if report.kpis:
-        cells = [[Paragraph(_esc(v), kpi_v), Paragraph(_esc(l), kpi_l)] for l, v, _ in report.kpis[:4]]
+        cells = [
+            [Paragraph(_esc(v), kpi_v), Paragraph(_esc(l), kpi_l)] for l, v, _ in report.kpis[:4]
+        ]
         n = len(cells)
-        data = [[c for c in cells]]
+        data = [list(cells)]
         k = RLTable(data, colWidths=[avail / n] * n)
-        k.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(ACCENT_SOFT)), ("LINEBEFORE", (0, 0), (-1, -1), 2, accent),
-                               ("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-                               ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        k.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(ACCENT_SOFT)),
+                    ("LINEBEFORE", (0, 0), (-1, -1), 2, accent),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
         story += [k, Spacer(1, 4)]
     story += [NextPageTemplate("body")]
 
@@ -236,14 +349,19 @@ def write_pdf(report: Report, path: Path) -> Path:
         first = False
         head = Paragraph(_esc(sec.title), h1)
         flows = [f for b in sec.blocks for f in block_flowables(b)]
-        if flows:                       # a heading never sits alone at the bottom of a page
+        if flows:  # a heading never sits alone at the bottom of a page
             story.append(KeepTogether([head, flows[0]]))
             story.extend(flows[1:])
         else:
             story.append(head)
     if report.warnings:
         story.append(Paragraph("Notes on this run", h1))
-        story.append(Paragraph("Parts of the deliverables that could not be produced, or were changed, and why:", body))
+        story.append(
+            Paragraph(
+                "Parts of the deliverables that could not be produced, or were changed, and why:",
+                body,
+            )
+        )
         story.append(Paragraph("", body))
         for w in report.warnings:
             story.append(Paragraph(_esc(w), bullet, bulletText="•"))

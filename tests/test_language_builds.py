@@ -1,9 +1,12 @@
 """The language builds must never leave a page pointing at static files that are not there."""
+
 import importlib.util
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("langstatic", ROOT / "docs" / "tools" / "langstatic.py")
+spec = importlib.util.spec_from_file_location(
+    "langstatic", ROOT / "docs" / "tools" / "langstatic.py"
+)
 langstatic = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(langstatic)
 

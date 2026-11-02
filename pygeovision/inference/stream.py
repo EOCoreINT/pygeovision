@@ -1,8 +1,9 @@
 """Streaming inference for ultra-large GeoTIFFs (B3, B4) — never loads full image."""
+
 from __future__ import annotations
 
-import logging
 from collections.abc import Generator
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -23,9 +24,14 @@ class StreamingInference:
     scaling from the per-scene percentile stretch of :meth:`infer`.
     """
 
-    def __init__(self, model: Any, chip_size: int = 1024,
-                 overlap: int = 128, num_classes: int = 2,
-                 device: str | None = None) -> None:
+    def __init__(
+        self,
+        model: Any,
+        chip_size: int = 1024,
+        overlap: int = 128,
+        num_classes: int = 2,
+        device: str | None = None,
+    ) -> None:
         self.model = model
         self.chip_size = chip_size
         self.overlap = overlap
@@ -35,8 +41,11 @@ class StreamingInference:
     @staticmethod
     def _has_cuda():
         try:
-            import torch; return torch.cuda.is_available()
-        except ImportError: return False
+            import torch
+
+            return torch.cuda.is_available()
+        except ImportError:
+            return False
 
     def stream_chips(self, image_path: str) -> Generator[dict, None, None]:
         """Generator that yields image chips one at a time (never loads full image)."""
@@ -44,8 +53,8 @@ class StreamingInference:
             import numpy as np
             import rasterio
             from rasterio.windows import Window
-        except ImportError:
-            raise ImportError("rasterio required")
+        except ImportError as exc:
+            raise ImportError("rasterio required") from exc
 
         with rasterio.open(image_path) as src:
             H, W = src.height, src.width
@@ -61,19 +70,29 @@ class StreamingInference:
                     for b in range(chip.shape[0]):
                         mn, mx = chip[b].min(), chip[b].max()
                         chip[b] = (chip[b] - mn) / (mx - mn + 1e-8)
-                    yield {"chip": chip, "row": row, "col": col,
-                            "height": r2 - row, "width": c2 - col,
-                            "window": (col, row, c2 - col, r2 - row)}
+                    yield {
+                        "chip": chip,
+                        "row": row,
+                        "col": col,
+                        "height": r2 - row,
+                        "width": c2 - col,
+                        "window": (col, row, c2 - col, r2 - row),
+                    }
 
-    def infer(self, image_path: str | Path,
-               output_path: str | Path, normalise: bool = True) -> dict[str, Any]:
+    def infer(
+        self, image_path: str | Path, output_path: str | Path, normalise: bool = True
+    ) -> dict[str, Any]:
         """Predict a GeoTIFF one chip per model call (see the class note on memory)."""
         from pygeovision.inference.tiled import TiledInference
+
         # Delegate to TiledInference with batch_tiles=1 (minimal memory)
         inf = TiledInference(
-            model=self.model, chip_size=self.chip_size,
-            overlap=self.overlap, num_classes=self.num_classes,
-            device=self.device, batch_tiles=1,
+            model=self.model,
+            chip_size=self.chip_size,
+            overlap=self.overlap,
+            num_classes=self.num_classes,
+            device=self.device,
+            batch_tiles=1,
         )
         return inf.infer(image_path, output_path, normalise=normalise)
 
@@ -86,9 +105,15 @@ class EnsembleInference:
     ``ValueError``. The probabilities come from 8-bit rasters (steps of 1/255).
     """
 
-    def __init__(self, models: list[Any], weights: list[float] | None = None,
-                 fusion: str = "mean", num_classes: int = 2,
-                 device: str | None = None, normalise: bool = True) -> None:
+    def __init__(
+        self,
+        models: list[Any],
+        weights: list[float] | None = None,
+        fusion: str = "mean",
+        num_classes: int = 2,
+        device: str | None = None,
+        normalise: bool = True,
+    ) -> None:
         if fusion not in ("mean", "max"):
             raise ValueError(f"fusion must be 'mean' or 'max', got {fusion!r}")
         if not models:
@@ -102,28 +127,35 @@ class EnsembleInference:
         self.num_classes = num_classes
         self.device = device or ("cuda" if StreamingInference._has_cuda() else "cpu")
 
-    def infer(self, image_path: str | Path,
-               output_path: str | Path) -> dict[str, Any]:
+    def infer(self, image_path: str | Path, output_path: str | Path) -> dict[str, Any]:
         import numpy as np
         import rasterio
 
         from pygeovision.inference.tiled import TiledInference
 
-        all_probs = []
+        all_probs: list[Any] = []
         for model, weight in zip(self.models, self.weights):
             inf = TiledInference(model=model, num_classes=self.num_classes, device=self.device)
             tmp = str(output_path) + f".tmp{len(all_probs)}.tif"
             try:
-                res = inf.infer(image_path, tmp, return_probabilities=True, normalise=self.normalise)
+                res = inf.infer(
+                    image_path, tmp, return_probabilities=True, normalise=self.normalise
+                )
                 if res.get("success") is False:
-                    return {"success": False, "error": res.get("error"), "n_models": len(self.models)}
+                    return {
+                        "success": False,
+                        "error": res.get("error"),
+                        "n_models": len(self.models),
+                    }
                 with rasterio.open(tmp) as src:
                     probs = src.read().astype(np.float32) / 255.0 * weight
                     all_probs.append(probs)
                     if len(all_probs) == 1:
                         profile = src.profile.copy()
             finally:
-                Path(tmp).unlink(missing_ok=True)       # do not leave one temporary raster per model behind
+                Path(tmp).unlink(
+                    missing_ok=True
+                )  # do not leave one temporary raster per model behind
 
         if self.fusion == "mean":
             fused = np.stack(all_probs).mean(0)
@@ -131,11 +163,12 @@ class EnsembleInference:
             fused = np.stack(all_probs).max(0)
 
         label = np.argmax(fused, axis=0).astype(np.uint8)
-        no_data = fused.max(axis=0) <= 0           # pixels the models were not asked to predict
+        no_data = fused.max(axis=0) <= 0  # pixels the models were not asked to predict
         label[no_data] = 255
         profile.update(count=1, dtype="uint8", nodata=255 if no_data.any() else None)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(str(output_path), "w", **profile) as dst:
             dst.write(label[np.newaxis])

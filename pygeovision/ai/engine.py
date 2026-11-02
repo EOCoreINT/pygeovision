@@ -34,7 +34,7 @@ class AIEngine:
     """
 
     def __init__(self, pgv_client: Any) -> None:
-        self._pgv = pgv_client          # PyGeoVision instance
+        self._pgv = pgv_client  # PyGeoVision instance
         self._models_hub: Any | None = None
         self._registry: Any | None = None
 
@@ -43,6 +43,7 @@ class AIEngine:
         """ModelHub — download, cache, and load pretrained models."""
         if self._models_hub is None:
             from pygeovision.ai.models.hub import ModelHub
+
             self._models_hub = ModelHub()
         return self._models_hub  # type: ignore[return-value]
 
@@ -50,6 +51,7 @@ class AIEngine:
     def registry(self) -> ModelRegistry:
         """ModelRegistry — list and inspect all registered architectures."""
         from pygeovision.ai.models.registry import registry
+
         return registry  # type: ignore[return-value]
 
     def label(self, tiles: Any, labeler: str, output_dir: str = "./labels", **kwargs: Any) -> Any:
@@ -65,6 +67,7 @@ class AIEngine:
             MicrosoftBuildingsLabeler,
             OSMLabeler,
         )
+
         _LABELERS = {
             "osm": OSMLabeler,
             "microsoft_buildings": MicrosoftBuildingsLabeler,
@@ -72,14 +75,18 @@ class AIEngine:
             "esa_worldcover": ESAWorldCoverLabeler,
             "dynamic_world": DynamicWorldLabeler,
         }
+        lbl: Any
         if labeler == "sam":
             from pygeovision.ai.labeling.sam_labeler import SAMLabeler
+
             lbl = SAMLabeler(**kwargs)
         elif labeler == "foundation":
             from pygeovision.ai.labeling.foundation_labeler import FoundationModelLabeler
+
             lbl = FoundationModelLabeler(**kwargs)
         elif labeler == "label_studio":
             from pygeovision.ai.labeling.label_studio import LabelStudioLabeler
+
             lbl = LabelStudioLabeler(**kwargs)
         elif labeler in _LABELERS:
             lbl = _LABELERS[labeler](**kwargs)
@@ -90,8 +97,14 @@ class AIEngine:
             )
         return lbl.label_tiles(tiles, output_dir=output_dir)
 
-    def train(self, model: Any, train_dataset: Any = None, val_dataset: Any = None,
-              config: Any = None, **kwargs: Any) -> Any:
+    def train(
+        self,
+        model: Any,
+        train_dataset: Any = None,
+        val_dataset: Any = None,
+        config: Any = None,
+        **kwargs: Any,
+    ) -> Any:
         """Train a model with :class:`~pygeovision.ai.training.trainer.GeoTrainer`.
 
         ``config`` is a ``TrainingConfig`` (or a dict of its fields). Remaining keyword arguments are
@@ -111,14 +124,23 @@ class AIEngine:
             known = {f.name for f in dataclasses.fields(TrainingConfig)}
             unknown = sorted(set(kwargs) - known)
             if unknown:
-                raise TypeError(f"train() got unknown arguments {unknown}; not TrainingConfig fields")
-            config = dataclasses.replace(config, **kwargs) if config is not None else TrainingConfig(**kwargs)
+                raise TypeError(
+                    f"train() got unknown arguments {unknown}; not TrainingConfig fields"
+                )
+            config = (
+                dataclasses.replace(config, **kwargs)
+                if config is not None
+                else TrainingConfig(**kwargs)
+            )
         trainer = GeoTrainer(model, config)
         return trainer.fit(train_dataset=train_dataset, val_dataset=val_dataset, **fit_kwargs)
 
-    def infer(self, model: Any, input_path: str, output_path: str, num_classes: int = 2, **kwargs: Any) -> Any:
+    def infer(
+        self, model: Any, input_path: str, output_path: str, num_classes: int = 2, **kwargs: Any
+    ) -> Any:
         """Run tiled inference on a large GeoTIFF scene."""
         from pygeovision.ai.inference.tiled_inference import TiledInference
+
         engine = TiledInference(model, **kwargs)
         return engine.run(input_path, output_path, num_classes=num_classes)
 
@@ -138,17 +160,25 @@ class AIEngine:
 class _MonitorProxy:
     def drift_detector(self, **kwargs: Any) -> DriftDetector:
         from pygeovision.ai.monitoring import DriftDetector
+
         return DriftDetector(**kwargs)
 
     def performance_tracker(self, **kwargs: Any) -> PerformanceTracker:
         from pygeovision.ai.monitoring import PerformanceTracker
+
         return PerformanceTracker(**kwargs)
 
-    def detect(self, reference_features: Any, production_features: Any,
-               threshold: float = 0.1, method: str = "ks") -> Any:
+    def detect(
+        self,
+        reference_features: Any,
+        production_features: Any,
+        threshold: float = 0.1,
+        method: str = "ks",
+    ) -> Any:
         import numpy as np
 
         from pygeovision.ai.monitoring import DriftDetector
+
         d = DriftDetector(threshold=threshold, method=method)
         d.fit_reference(np.array(reference_features))
         return d.check(np.array(production_features))
@@ -157,8 +187,10 @@ class _MonitorProxy:
 class _ExperimentsProxy:
     def new(self, name: str, **kwargs: Any) -> ExperimentTracker:
         from pygeovision.ai.experiments import ExperimentTracker
+
         return ExperimentTracker(name, **kwargs)
 
     def load(self, run_id: str, **kwargs: Any) -> ExperimentTracker:
         from pygeovision.ai.experiments import ExperimentTracker
+
         return ExperimentTracker.load(run_id, **kwargs)

@@ -23,6 +23,7 @@ tensors or a ``(B, C, H, W)`` tensor, scaled to roughly [0, 1]; they are padded 
 multiple of 32 and normalised inside the model with per-channel mean/std (ImageNet
 statistics for the first three bands; pass ``image_mean`` / ``image_std`` for your sensor).
 """
+
 from __future__ import annotations
 
 import math
@@ -47,17 +48,17 @@ def gaussian_radius(height: float, width: float, min_overlap: float = 0.7) -> fl
     a1 = 1.0
     b1 = height + width
     c1 = width * height * (1 - min_overlap) / (1 + min_overlap)
-    r1 = (b1 + math.sqrt(max(b1 ** 2 - 4 * a1 * c1, 0.0))) / 2
+    r1 = (b1 + math.sqrt(max(b1**2 - 4 * a1 * c1, 0.0))) / 2
 
     a2 = 4.0
     b2 = 2 * (height + width)
     c2 = (1 - min_overlap) * width * height
-    r2 = (b2 + math.sqrt(max(b2 ** 2 - 4 * a2 * c2, 0.0))) / 2
+    r2 = (b2 + math.sqrt(max(b2**2 - 4 * a2 * c2, 0.0))) / 2
 
     a3 = 4 * min_overlap
     b3 = -2 * min_overlap * (height + width)
     c3 = (min_overlap - 1) * width * height
-    r3 = (b3 + math.sqrt(max(b3 ** 2 - 4 * a3 * c3, 0.0))) / 2
+    r3 = (b3 + math.sqrt(max(b3**2 - 4 * a3 * c3, 0.0))) / 2
     return min(r1, r2, r3)
 
 
@@ -66,13 +67,13 @@ def _draw_gaussian(heatmap: torch.Tensor, cx: int, cy: int, radius: int) -> None
     diameter = 2 * radius + 1
     sigma = diameter / 6
     ys = torch.arange(-radius, radius + 1, dtype=heatmap.dtype, device=heatmap.device)
-    g1 = torch.exp(-(ys ** 2) / (2 * sigma * sigma))
+    g1 = torch.exp(-(ys**2) / (2 * sigma * sigma))
     gauss = g1[:, None] * g1[None, :]
     h, w = heatmap.shape
     left, right = min(cx, radius), min(w - cx, radius + 1)
     top, bottom = min(cy, radius), min(h - cy, radius + 1)
-    region = heatmap[cy - top:cy + bottom, cx - left:cx + right]
-    patch = gauss[radius - top:radius + bottom, radius - left:radius + right]
+    region = heatmap[cy - top : cy + bottom, cx - left : cx + right]
+    patch = gauss[radius - top : radius + bottom, radius - left : radius + right]
     torch.maximum(region, patch, out=region)
 
 
@@ -111,8 +112,12 @@ class CenterNet(nn.Module):
 
         if num_classes < 1:
             raise ValueError("num_classes must be >= 1")
-        builders = {"resnet18": torchvision.models.resnet18, "resnet34": torchvision.models.resnet34,
-                    "resnet50": torchvision.models.resnet50, "resnet101": torchvision.models.resnet101}
+        builders = {
+            "resnet18": torchvision.models.resnet18,
+            "resnet34": torchvision.models.resnet34,
+            "resnet50": torchvision.models.resnet50,
+            "resnet101": torchvision.models.resnet101,
+        }
         if backbone not in builders:
             raise ValueError(f"backbone must be one of {sorted(builders)}, got {backbone!r}")
         net = builders[backbone](weights="DEFAULT" if pretrained else None)
@@ -124,14 +129,18 @@ class CenterNet(nn.Module):
 
         up, ch = [], feat
         for out_ch in (256, 128, 64):
-            up += [nn.ConvTranspose2d(ch, out_ch, 4, stride=2, padding=1, bias=False),
-                   nn.BatchNorm2d(out_ch), nn.ReLU(inplace=True)]
+            up += [
+                nn.ConvTranspose2d(ch, out_ch, 4, stride=2, padding=1, bias=False),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
+            ]
             ch = out_ch
         self.deconv = nn.Sequential(*up)
 
         def head(out: int) -> nn.Sequential:
-            return nn.Sequential(nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(inplace=True),
-                                 nn.Conv2d(64, out, 1))
+            return nn.Sequential(
+                nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(inplace=True), nn.Conv2d(64, out, 1)
+            )
 
         self.hm_head, self.wh_head, self.off_head = head(num_classes), head(2), head(2)
         self.hm_head[-1].bias.data.fill_(-2.19)  # start with ~10% foreground probability
@@ -140,8 +149,16 @@ class CenterNet(nn.Module):
         self.score_thresh = score_thresh
         self.max_detections = max_detections
         self.wh_weight, self.off_weight = wh_weight, off_weight
-        mean = image_mean if image_mean is not None else _adapt.extend_stats(_adapt.IMAGENET_MEAN, in_channels)
-        std = image_std if image_std is not None else _adapt.extend_stats(_adapt.IMAGENET_STD, in_channels)
+        mean = (
+            image_mean
+            if image_mean is not None
+            else _adapt.extend_stats(_adapt.IMAGENET_MEAN, in_channels)
+        )
+        std = (
+            image_std
+            if image_std is not None
+            else _adapt.extend_stats(_adapt.IMAGENET_STD, in_channels)
+        )
         if len(mean) != in_channels or len(std) != in_channels:
             raise ValueError(f"image_mean/image_std need {in_channels} values each")
         self.register_buffer("mean", torch.tensor(mean).view(1, -1, 1, 1))
@@ -158,13 +175,14 @@ class CenterNet(nn.Module):
         for im in images:
             if im.ndim != 3 or im.shape[0] != self.in_channels:
                 raise ValueError(
-                    f"expected (C={self.in_channels}, H, W) images, got {tuple(im.shape)}")
+                    f"expected (C={self.in_channels}, H, W) images, got {tuple(im.shape)}"
+                )
             sizes.append((int(im.shape[1]), int(im.shape[2])))
         h = math.ceil(max(s[0] for s in sizes) / 32) * 32
         w = math.ceil(max(s[1] for s in sizes) / 32) * 32
         batch = images[0].new_zeros((len(images), self.in_channels, h, w))
         for i, im in enumerate(images):
-            batch[i, :, :im.shape[1], :im.shape[2]] = im
+            batch[i, :, : im.shape[1], : im.shape[2]] = im
         return (batch - self.mean) / self.std, sizes
 
     def _raw(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -187,7 +205,8 @@ class CenterNet(nn.Module):
             for box, lab in zip(boxes, labels):
                 if not 1 <= int(lab) <= self.num_classes:
                     raise ValueError(
-                        f"label {int(lab)} outside 1..{self.num_classes} (0 is background)")
+                        f"label {int(lab)} outside 1..{self.num_classes} (0 is background)"
+                    )
                 x1, y1, x2, y2 = (box / _STRIDE).tolist()
                 bw, bh = x2 - x1, y2 - y1
                 if bw <= 0 or bh <= 0:
@@ -230,14 +249,30 @@ class CenterNet(nn.Module):
             w_, h_ = wh[i, 0, p], wh[i, 1, p]
             cx = (xs[i] + off[i, 0, p]) * _STRIDE
             cy = (ys[i] + off[i, 1, p]) * _STRIDE
-            boxes = torch.stack([cx - w_ * _STRIDE / 2, cy - h_ * _STRIDE / 2,
-                                 cx + w_ * _STRIDE / 2, cy + h_ * _STRIDE / 2], dim=1)
+            boxes = torch.stack(
+                [
+                    cx - w_ * _STRIDE / 2,
+                    cy - h_ * _STRIDE / 2,
+                    cx + w_ * _STRIDE / 2,
+                    cy + h_ * _STRIDE / 2,
+                ],
+                dim=1,
+            )
             ih, iw = sizes[i]
             boxes[:, 0::2] = boxes[:, 0::2].clamp(0, iw)
             boxes[:, 1::2] = boxes[:, 1::2].clamp(0, ih)
-            keep = (scores[i] >= self.score_thresh) & (boxes[:, 2] > boxes[:, 0]) & (boxes[:, 3] > boxes[:, 1])
-            results.append({"boxes": boxes[keep], "scores": scores[i][keep],
-                            "labels": (cls[i][keep] + 1).long()})
+            keep = (
+                (scores[i] >= self.score_thresh)
+                & (boxes[:, 2] > boxes[:, 0])
+                & (boxes[:, 3] > boxes[:, 1])
+            )
+            results.append(
+                {
+                    "boxes": boxes[keep],
+                    "scores": scores[i][keep],
+                    "labels": (cls[i][keep] + 1).long(),
+                }
+            )
         return results
 
     def forward(self, images: Any, targets: list[dict] | None = None):
@@ -279,8 +314,9 @@ def build_centernet(
             raise ModelLoadError(
                 f"Could not load ImageNet weights for the CenterNet {backbone} backbone: {exc}",
                 details="Pass pretrained=False for random initialisation, or "
-                        "allow_random_init=True to fall back automatically.",
+                "allow_random_init=True to fall back automatically.",
             ) from exc
         return _adapt.mark_random_init(
             CenterNet(num_classes, in_channels, backbone, False, **kwargs),
-            f"pretrained load failed: {exc}")
+            f"pretrained load failed: {exc}",
+        )

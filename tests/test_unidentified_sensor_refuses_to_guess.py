@@ -9,6 +9,7 @@ not a crash, just quietly wrong reflectance values with no error at all.
 Fixed to positively identify both Landsat and Sentinel-2, and refuse to
 guess for anything else.
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
@@ -32,8 +33,17 @@ def _make_generic_assets(tmp_path, size=20):
     asset_paths = {}
     for key in ["red", "green", "blue"]:
         p = tmp_path / f"{key}.tif"
-        with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            p,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="uint16",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             dst.write(np.full((size, size), 9091, dtype="uint16"), 1)
         asset_paths[key] = p
     return asset_paths
@@ -45,7 +55,9 @@ class TestUnidentifiedSensorRefusesToGuess:
         asset_paths = _make_generic_assets(tmp_path)
         with pytest.raises(RuntimeError, match="not identifiable as Landsat or Sentinel-2"):
             pipeline._stack_bands(
-                asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+                asset_paths,
+                tmp_path / "stack.tif",
+                bands=("red", "green", "blue"),
                 scene_id="NAIP_2024_SOMETHING_UNRECOGNIZED",
             )
 
@@ -54,7 +66,9 @@ class TestUnidentifiedSensorRefusesToGuess:
         asset_paths = _make_generic_assets(tmp_path)
         with pytest.raises(RuntimeError, match="not identifiable as Landsat or Sentinel-2"):
             pipeline._stack_bands(
-                asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+                asset_paths,
+                tmp_path / "stack.tif",
+                bands=("red", "green", "blue"),
             )
 
     def test_apply_scale_false_bypasses_the_requirement(self, tmp_path):
@@ -63,8 +77,11 @@ class TestUnidentifiedSensorRefusesToGuess:
         pipeline = _make_pipeline()
         asset_paths = _make_generic_assets(tmp_path)
         result = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="NAIP_2024_SOMETHING_UNRECOGNIZED", apply_scale=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="NAIP_2024_SOMETHING_UNRECOGNIZED",
+            apply_scale=False,
         )
         with rasterio.open(result) as src:
             assert src.dtypes[0] == "uint16"  # raw DN, genuinely unscaled
@@ -80,14 +97,26 @@ class TestUnidentifiedSensorRefusesToGuess:
         asset_paths = {}
         for key in ["B04", "B03", "B02"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 500, dtype="uint16"), 1)
             asset_paths[key] = p
 
         result = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL",
+            apply_cloud_mask=False,
         )
         with rasterio.open(result) as src:
             data = src.read()
@@ -101,14 +130,26 @@ class TestUnidentifiedSensorRefusesToGuess:
         asset_paths = {}
         for key in ["SR_B4", "SR_B3", "SR_B2"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 9091, dtype="uint16"), 1)
             asset_paths[key] = p
 
         result = pipeline._stack_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="LC08_L2SP_014031_20240615_02_T1", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="LC08_L2SP_014031_20240615_02_T1",
+            apply_cloud_mask=False,
         )
         with rasterio.open(result) as src:
             data = src.read()

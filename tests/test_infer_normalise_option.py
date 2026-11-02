@@ -1,8 +1,9 @@
 """`--normalise/--no-normalise` on the inference commands, and honest batch failure reporting."""
+
 import numpy as np
 import pytest
-import torch
 
+torch = pytest.importorskip("torch")
 rasterio = pytest.importorskip("rasterio")
 from click.testing import CliRunner  # noqa: E402
 from rasterio.transform import from_origin  # noqa: E402
@@ -25,9 +26,18 @@ class ThresholdNet(torch.nn.Module):
 
 def _scene(path, bands=4, size=64):
     arr = np.full((bands, size, size), 0.2, "float32")
-    arr[:, :, size // 2:] = 0.8
-    with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=bands, dtype="float32",
-                       crs="EPSG:32630", transform=from_origin(500000, 700000, 10, 10)) as d:
+    arr[:, :, size // 2 :] = 0.8
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=bands,
+        dtype="float32",
+        crs="EPSG:32630",
+        transform=from_origin(500000, 700000, 10, 10),
+    ) as d:
         d.write(arr)
 
 
@@ -48,17 +58,53 @@ def test_no_normalise_changes_what_the_model_sees(tmp_path, monkeypatch):
     torch.save({}, ck)
     for flag, expect in (("--no-normalise", 0.5), ("--normalise", None)):
         out = tmp_path / f"o{flag}.tif"
-        r = CliRunner().invoke(cli, ["infer", "predict", str(img), "-m", "x", "--checkpoint", str(ck),
-                                     "-o", str(out), "--chip-size", "32", "--overlap", "0",
-                                     "--device", "cpu", flag])
+        r = CliRunner().invoke(
+            cli,
+            [
+                "infer",
+                "predict",
+                str(img),
+                "-m",
+                "x",
+                "--checkpoint",
+                str(ck),
+                "-o",
+                str(out),
+                "--chip-size",
+                "32",
+                "--overlap",
+                "0",
+                "--device",
+                "cpu",
+                flag,
+            ],
+        )
         assert r.exit_code == 0, r.output
         if expect is not None:
             assert _fraction_class1(out) == pytest.approx(expect, abs=0.02)
     # the stretch maps 0.2 -> 0 and 0.8 -> 1 so it is also half/half here; the point of the
     # option is the printed input description
-    r = CliRunner().invoke(cli, ["infer", "predict", str(img), "-m", "x", "--checkpoint", str(ck),
-                                 "-o", str(tmp_path / "z.tif"), "--chip-size", "32", "--overlap", "0",
-                                 "--device", "cpu", "--no-normalise"])
+    r = CliRunner().invoke(
+        cli,
+        [
+            "infer",
+            "predict",
+            str(img),
+            "-m",
+            "x",
+            "--checkpoint",
+            str(ck),
+            "-o",
+            str(tmp_path / "z.tif"),
+            "--chip-size",
+            "32",
+            "--overlap",
+            "0",
+            "--device",
+            "cpu",
+            "--no-normalise",
+        ],
+    )
     assert "used as stored" in r.output
 
 
@@ -74,8 +120,9 @@ def test_batch_reports_a_failed_file_as_failed(tmp_path):
     (tmp_path / "in").mkdir()
     _scene(tmp_path / "in" / "ok.tif", bands=4)
     _scene(tmp_path / "in" / "bad.tif", bands=2)
-    eng = BatchInferenceEngine(NeedsFour(), n_workers=1, chip_size=32, overlap=0, device="cpu",
-                               half_precision=False)
+    eng = BatchInferenceEngine(
+        NeedsFour(), n_workers=1, chip_size=32, overlap=0, device="cpu", half_precision=False
+    )
     res = eng.run_directory(tmp_path / "in", tmp_path / "out")
     assert res["n_success"] + res["n_failed"] == 2
     assert res["n_failed"] >= 1
@@ -91,12 +138,21 @@ def test_batch_cli_skips_existing_outputs_and_says_so(tmp_path, monkeypatch):
     _scene(tmp_path / "in" / "a.tif")
     ck = tmp_path / "c.pth"
     torch.save({}, ck)
-    args = ["infer", "batch", str(tmp_path / "in"), str(tmp_path / "out"), "-m", "x",
-            "--checkpoint", str(ck), "--no-normalise"]
+    args = [
+        "infer",
+        "batch",
+        str(tmp_path / "in"),
+        str(tmp_path / "out"),
+        "-m",
+        "x",
+        "--checkpoint",
+        str(ck),
+        "--no-normalise",
+    ]
     first = CliRunner().invoke(cli, args)
     assert first.exit_code == 0 and "1/1 succeeded" in first.output
     again = CliRunner().invoke(cli, args)
-    assert again.exit_code == 0, again.output                 # nothing to do is not a failure
+    assert again.exit_code == 0, again.output  # nothing to do is not a failure
     assert "1 skipped" in again.output
     redo = CliRunner().invoke(cli, args + ["--overwrite"])
     assert "1/1 succeeded" in redo.output and "skipped" not in redo.output

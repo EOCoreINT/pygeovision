@@ -71,8 +71,7 @@ class GeoPreprocessor:
         invalid = set(self.steps) - self.AVAILABLE_STEPS
         if invalid:
             raise PreprocessingError(
-                f"Unknown preprocessing steps: {invalid}. "
-                f"Available: {self.AVAILABLE_STEPS}"
+                f"Unknown preprocessing steps: {invalid}. " f"Available: {self.AVAILABLE_STEPS}"
             )
 
         # Per-band statistics (computed during fit())
@@ -103,9 +102,9 @@ class GeoPreprocessor:
         if isinstance(images, np.ndarray):
             images = [images]
 
-        all_data = np.concatenate(
-            [img.reshape(img.shape[0], -1) for img in images], axis=1
-        ).astype(np.float64)
+        all_data = np.concatenate([img.reshape(img.shape[0], -1) for img in images], axis=1).astype(
+            np.float64
+        )
 
         if self.nodata_value is not None:
             mask = all_data != self.nodata_value
@@ -126,9 +125,7 @@ class GeoPreprocessor:
                 self._percentile_min[b] = float(np.percentile(valid, 2))
                 self._percentile_max[b] = float(np.percentile(valid, 98))
 
-        logger.debug(
-            "GeoPreprocessor fitted on %d images, %d bands", len(images), n_bands
-        )
+        logger.debug("GeoPreprocessor fitted on %d images, %d bands", len(images), n_bands)
         return self
 
     def process(
@@ -173,9 +170,7 @@ class GeoPreprocessor:
                     pan_band=pan_band,
                 )
             except Exception as exc:
-                raise PreprocessingError(
-                    f"Preprocessing step '{step}' failed: {exc}"
-                ) from exc
+                raise PreprocessingError(f"Preprocessing step '{step}' failed: {exc}") from exc
 
         return result
 
@@ -250,7 +245,9 @@ class GeoPreprocessor:
     def _standardize(self, image: np.ndarray) -> np.ndarray:
         """Zero-mean, unit-variance standardisation using fitted statistics."""
         if self._mean is None or self._std is None:
-            logger.warning("GeoPreprocessor not fitted — using per-image statistics for standardize")
+            logger.warning(
+                "GeoPreprocessor not fitted — using per-image statistics for standardize"
+            )
             return self._normalize(image)
         result = image.copy()
         for c in range(min(result.shape[0], len(self._mean))):
@@ -357,9 +354,7 @@ class GeoPreprocessor:
         g_idx = green_band - 1
         nir_idx = nir_band - 1
         if g_idx >= image.shape[0] or nir_idx >= image.shape[0]:
-            logger.warning(
-                "NDWI: band index out of range — skipping"
-            )
+            logger.warning("NDWI: band index out of range — skipping")
             return image
 
         green = image[g_idx].astype(np.float32)

@@ -1,4 +1,5 @@
 """SatelliteFetcher local search cache: TTL and size pruning (previously silent no-ops)."""
+
 import json
 import os
 import time

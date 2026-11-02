@@ -1,4 +1,5 @@
 """AIEngine.train argument routing and the CloudDeployer base class."""
+
 import pytest
 
 
@@ -29,6 +30,7 @@ def test_engine_train_routes_arguments_to_the_real_geotrainer_signature(monkeypa
 
 def test_cloud_deployer_base_is_abstract_and_all_providers_are_concrete():
     from pygeovision.cloud.deploy import AWSDeployer, AzureDeployer, CloudDeployer, GCPDeployer
+
     with pytest.raises(TypeError):
         CloudDeployer("aws")
     for cls in (AWSDeployer, AzureDeployer, GCPDeployer):

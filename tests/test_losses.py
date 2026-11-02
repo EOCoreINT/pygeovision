@@ -10,6 +10,7 @@ import pytest
 _TORCH_AVAILABLE = False
 try:
     import torch
+
     _TORCH_AVAILABLE = True
 except ImportError:
     pass
@@ -21,8 +22,9 @@ pytestmark = pytest.mark.skipif(not _TORCH_AVAILABLE, reason="torch not installe
 def seg_batch():
     """Synthetic segmentation batch: (B=2, C=3, H=16, W=16) preds, (B=2, H=16, W=16) targets."""
     import torch
+
     torch.manual_seed(42)
-    preds   = torch.randn(2, 3, 16, 16)
+    preds = torch.randn(2, 3, 16, 16)
     targets = torch.randint(0, 3, (2, 16, 16))
     return preds, targets
 
@@ -31,8 +33,9 @@ def seg_batch():
 def binary_batch():
     """Binary segmentation: 2-class."""
     import torch
+
     torch.manual_seed(0)
-    preds   = torch.randn(2, 2, 16, 16)
+    preds = torch.randn(2, 2, 16, 16)
     targets = torch.randint(0, 2, (2, 16, 16))
     return preds, targets
 
@@ -40,24 +43,27 @@ def binary_batch():
 class TestDiceLoss:
     def test_forward_shape(self, seg_batch):
         from pygeovision.losses.segmentation import DiceLoss
+
         preds, targets = seg_batch
         loss = DiceLoss()(preds, targets)
-        assert loss.ndim == 0      # scalar
+        assert loss.ndim == 0  # scalar
         assert loss.item() >= 0
 
     def test_perfect_prediction(self):
         import torch
 
         from pygeovision.losses.segmentation import DiceLoss
+
         targets = torch.zeros(1, 16, 16, dtype=torch.long)
         # Perfect prediction: class 0 has infinite logit
         preds = torch.full((1, 2, 16, 16), -1e9)
         preds[:, 0] = 1e9
         loss = DiceLoss()(preds, targets)
-        assert loss.item() < 0.01   # near-zero loss
+        assert loss.item() < 0.01  # near-zero loss
 
     def test_ignore_index(self, seg_batch):
         from pygeovision.losses.segmentation import DiceLoss
+
         preds, targets = seg_batch
         targets_with_ignore = targets.clone()
         targets_with_ignore[0, 0, 0] = 255
@@ -69,8 +75,9 @@ class TestDiceLoss:
 
     def test_per_class_vs_mean(self, binary_batch):
         from pygeovision.losses.segmentation import DiceLoss
+
         preds, targets = binary_batch
-        loss_pc   = DiceLoss(per_class=True)(preds, targets)
+        loss_pc = DiceLoss(per_class=True)(preds, targets)
         loss_mean = DiceLoss(per_class=False)(preds, targets)
         assert loss_pc.ndim == 0
         assert loss_mean.ndim == 0
@@ -79,6 +86,7 @@ class TestDiceLoss:
 class TestFocalLoss:
     def test_forward_positive(self, seg_batch):
         from pygeovision.losses.segmentation import FocalLoss
+
         preds, targets = seg_batch
         loss = FocalLoss(alpha=0.25, gamma=2.0)(preds, targets)
         assert loss.item() >= 0
@@ -88,9 +96,10 @@ class TestFocalLoss:
         import torch
 
         from pygeovision.losses.segmentation import FocalLoss
+
         # Well-classified sample: target=0, large logit for class 0
-        preds   = torch.tensor([[[[10.0, -10.0], [-10.0, 10.0]]]])   # (1, 2, 2, 1) — needs reshape
-        preds   = torch.tensor([[[[10.0]], [[-10.0]]]])   # (B=1, C=2, H=1, W=1)
+        preds = torch.tensor([[[[10.0, -10.0], [-10.0, 10.0]]]])  # (1, 2, 2, 1) — needs reshape
+        preds = torch.tensor([[[[10.0]], [[-10.0]]]])  # (B=1, C=2, H=1, W=1)
         targets = torch.zeros(1, 1, 1, dtype=torch.long)
         loss_g0 = FocalLoss(gamma=0.0)(preds, targets).item()
         loss_g2 = FocalLoss(gamma=2.0)(preds, targets).item()
@@ -103,17 +112,19 @@ class TestFocalLoss:
         import torch.nn.functional as F
 
         from pygeovision.losses.segmentation import FocalLoss
+
         torch.manual_seed(5)
-        preds   = torch.randn(2, 3, 8, 8)
+        preds = torch.randn(2, 3, 8, 8)
         targets = torch.randint(0, 3, (2, 8, 8))
-        focal   = FocalLoss(alpha=1.0, gamma=0.0)(preds, targets).item()
-        ce      = F.cross_entropy(preds, targets).item()
+        focal = FocalLoss(alpha=1.0, gamma=0.0)(preds, targets).item()
+        ce = F.cross_entropy(preds, targets).item()
         assert abs(focal - ce) < 0.01
 
 
 class TestTverskyLoss:
     def test_forward_range(self, binary_batch):
         from pygeovision.losses.segmentation import TverskyLoss
+
         preds, targets = binary_batch
         loss = TverskyLoss(alpha=0.3, beta=0.7)(preds, targets)
         assert 0.0 <= loss.item() <= 2.0
@@ -121,8 +132,9 @@ class TestTverskyLoss:
     def test_dice_is_special_case(self, binary_batch):
         """Tversky(0.5, 0.5) should be close to Dice."""
         from pygeovision.losses.segmentation import DiceLoss, TverskyLoss
+
         preds, targets = binary_batch
-        tv   = TverskyLoss(alpha=0.5, beta=0.5)(preds, targets).item()
+        tv = TverskyLoss(alpha=0.5, beta=0.5)(preds, targets).item()
         dice = DiceLoss()(preds, targets).item()
         assert abs(tv - dice) < 0.1
 
@@ -130,21 +142,24 @@ class TestTverskyLoss:
 class TestComboLoss:
     def test_forward(self, seg_batch):
         from pygeovision.losses.segmentation import ComboLoss
+
         preds, targets = seg_batch
         loss = ComboLoss(dice_weight=0.5, ce_weight=0.5)(preds, targets)
         assert loss.item() >= 0
 
     def test_dice_only(self, seg_batch):
         from pygeovision.losses.segmentation import ComboLoss, DiceLoss
+
         preds, targets = seg_batch
         combo_dice = ComboLoss(dice_weight=1.0, ce_weight=0.0)(preds, targets).item()
-        pure_dice  = DiceLoss()(preds, targets).item()
+        pure_dice = DiceLoss()(preds, targets).item()
         assert abs(combo_dice - pure_dice) < 0.01
 
 
 class TestBoundaryAwareLoss:
     def test_forward(self, binary_batch):
         from pygeovision.losses.segmentation import BoundaryAwareLoss
+
         preds, targets = binary_batch
         loss = BoundaryAwareLoss(boundary_weight=5.0)(preds, targets)
         assert loss.item() >= 0
@@ -153,6 +168,7 @@ class TestBoundaryAwareLoss:
         import torch
 
         from pygeovision.losses.segmentation import BoundaryAwareLoss
+
         bl = BoundaryAwareLoss()
         targets = torch.zeros(1, 8, 8, dtype=torch.long)
         targets[0, 2:6, 2:6] = 1
@@ -164,6 +180,7 @@ class TestBoundaryAwareLoss:
 class TestOhemCrossEntropy:
     def test_forward(self, seg_batch):
         from pygeovision.losses.segmentation import OhemCrossEntropy
+
         preds, targets = seg_batch
         loss = OhemCrossEntropy(thresh=0.7, min_kept=10)(preds, targets)
         assert loss.item() >= 0
@@ -173,7 +190,8 @@ class TestOhemCrossEntropy:
         import torch
 
         from pygeovision.losses.segmentation import OhemCrossEntropy
-        preds   = torch.randn(1, 2, 8, 8)
+
+        preds = torch.randn(1, 2, 8, 8)
         targets = torch.full((1, 8, 8), 255, dtype=torch.long)
         loss = OhemCrossEntropy()(preds, targets)
         assert loss.item() == pytest.approx(0.0, abs=1e-3) or loss.item() >= 0
@@ -182,6 +200,7 @@ class TestOhemCrossEntropy:
 class TestGeospatialMixedLoss:
     def test_forward(self, binary_batch):
         from pygeovision.losses.segmentation import GeospatialMixedLoss
+
         preds, targets = binary_batch
         loss_fn = GeospatialMixedLoss(weights={"combo": 0.5, "boundary": 0.3, "ohem": 0.2})
         loss = loss_fn(preds, targets)
@@ -193,9 +212,10 @@ class TestGeospatialMixedLoss:
 
     def test_single_weight(self, binary_batch):
         from pygeovision.losses.segmentation import DiceLoss, GeospatialMixedLoss
+
         preds, targets = binary_batch
         mixed = GeospatialMixedLoss(weights={"dice": 1.0})(preds, targets).item()
-        dice  = DiceLoss()(preds, targets).item()
+        dice = DiceLoss()(preds, targets).item()
         assert abs(mixed - dice) < 0.01
 
 
@@ -203,22 +223,25 @@ class TestDetectionLosses:
     @pytest.fixture
     def box_batch(self):
         import torch
+
         torch.manual_seed(0)
-        pred   = torch.rand(4, 4)  # (N, 4) in xyxy
+        pred = torch.rand(4, 4)  # (N, 4) in xyxy
         target = pred.clone() + torch.randn(4, 4) * 0.05
         return pred, target
 
     def test_ciou_loss(self, box_batch):
         from pygeovision.losses.detection import CIoULoss
+
         pred, target = box_batch
         # Ensure x2>x1, y2>y1
-        pred   = torch.stack([pred.min(dim=1).values, pred.max(dim=1).values], dim=1)
-        pred   = torch.cat([pred[:, [0, 0]], pred[:, [1, 1]]], dim=1) * 0.5
-        loss   = CIoULoss()(pred, pred.clone())  # self-overlap → near zero
-        assert loss.item() >= -0.1   # ciou can be slightly negative
+        pred = torch.stack([pred.min(dim=1).values, pred.max(dim=1).values], dim=1)
+        pred = torch.cat([pred[:, [0, 0]], pred[:, [1, 1]]], dim=1) * 0.5
+        loss = CIoULoss()(pred, pred.clone())  # self-overlap → near zero
+        assert loss.item() >= -0.1  # ciou can be slightly negative
 
     def test_giou_loss(self, box_batch):
         from pygeovision.losses.detection import GIoULoss
+
         pred, _ = box_batch
         pred_fixed = torch.zeros(4, 4)
         pred_fixed[:, 2:] = 0.5
@@ -229,18 +252,21 @@ class TestDetectionLosses:
 class TestClassBalanceLosses:
     def test_label_smoothing(self, seg_batch):
         from pygeovision.losses.class_balance import LabelSmoothingCrossEntropy
+
         preds, targets = seg_batch
         loss = LabelSmoothingCrossEntropy(smoothing=0.1)(preds, targets)
         assert loss.item() >= 0
 
     def test_class_balanced_ce_no_counts(self, seg_batch):
         from pygeovision.losses.class_balance import ClassBalancedCrossEntropy
+
         preds, targets = seg_batch
         loss = ClassBalancedCrossEntropy(class_counts=None)(preds, targets)
         assert loss.item() >= 0
 
     def test_class_balanced_ce_with_counts(self, binary_batch):
         from pygeovision.losses.class_balance import ClassBalancedCrossEntropy
+
         preds, targets = binary_batch
         # Highly imbalanced: class 0 has 10x more pixels
         loss = ClassBalancedCrossEntropy(class_counts=[100000, 10000])(preds, targets)
@@ -256,6 +282,7 @@ class TestOhemMinKeptGuarantee:
 
     def test_min_kept_guarantee_holds_with_mostly_easy_pixels(self):
         import torch
+
         from pygeovision.losses.segmentation import OhemCrossEntropy
 
         # Moderately confident (not perfect) predictions: nonzero CE for
@@ -281,6 +308,7 @@ class TestOhemMinKeptGuarantee:
         criterion, never make it stricter than the user's configured
         thresh."""
         import torch
+
         ce_flat = torch.cat([torch.full((900,), 0.1), torch.full((100,), 0.9)])
         thresh, min_kept = 0.7, 500
         topk_min = ce_flat.topk(min(min_kept, ce_flat.numel()))[0].min()
@@ -297,12 +325,14 @@ class TestDetectionLossesAreGenuinelyDistinct:
     @pytest.fixture
     def boxes(self):
         import torch
-        pred = torch.tensor([[10., 10., 50., 40.]], requires_grad=True)
-        target = torch.tensor([[12., 8., 55., 45.]])
+
+        pred = torch.tensor([[10.0, 10.0, 50.0, 40.0]], requires_grad=True)
+        target = torch.tensor([[12.0, 8.0, 55.0, 45.0]])
         return pred, target
 
     def test_diou_differs_from_ciou(self, boxes):
         from pygeovision.losses.detection import CIoULoss, DIoULoss
+
         pred, target = boxes
         ciou = CIoULoss()(pred, target)
         diou = DIoULoss()(pred, target)
@@ -310,6 +340,7 @@ class TestDetectionLossesAreGenuinelyDistinct:
 
     def test_siou_differs_from_giou(self, boxes):
         from pygeovision.losses.detection import GIoULoss, SIoULoss
+
         pred, target = boxes
         giou = GIoULoss()(pred, target)
         siou = SIoULoss()(pred, target)
@@ -322,9 +353,11 @@ class TestDetectionLossesAreGenuinelyDistinct:
         regardless of a downstream clamp) — identical/coincident boxes
         used to produce a NaN gradient despite a correct forward loss."""
         import torch
+
         from pygeovision.losses.detection import SIoULoss
-        pred = torch.tensor([[10., 10., 50., 40.]], requires_grad=True)
-        target = torch.tensor([[10., 10., 50., 40.]])
+
+        pred = torch.tensor([[10.0, 10.0, 50.0, 40.0]], requires_grad=True)
+        target = torch.tensor([[10.0, 10.0, 50.0, 40.0]])
         loss = SIoULoss()(pred, target)
         assert loss.item() == pytest.approx(0.0, abs=1e-4)
         loss.backward()
@@ -332,11 +365,13 @@ class TestDetectionLossesAreGenuinelyDistinct:
 
     def test_all_four_losses_finite_on_random_boxes(self):
         import torch
+
         from pygeovision.losses.detection import CIoULoss, DIoULoss, GIoULoss, SIoULoss
+
         torch.manual_seed(0)
-        target = torch.tensor([[8., 3., 30., 22.]])
+        target = torch.tensor([[8.0, 3.0, 30.0, 22.0]])
         for loss_cls in (CIoULoss, DIoULoss, GIoULoss, SIoULoss):
-            p = torch.tensor([[5., 5., 25., 20.]], requires_grad=True)
+            p = torch.tensor([[5.0, 5.0, 25.0, 20.0]], requires_grad=True)
             loss = loss_cls()(p, target)
             assert torch.isfinite(loss)
             loss.backward()

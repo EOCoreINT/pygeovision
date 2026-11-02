@@ -5,6 +5,7 @@ next year. The WorldCover palette is ESA's own; the rest were chosen to stay
 distinguishable for common colour-vision deficiencies (no red/green pairs
 carrying the only difference).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class ClassDef:
     """One value of a class raster: its number, a human name and a display colour."""
+
     value: int
     name: str
     color: str  # "#rrggbb"
@@ -61,13 +63,22 @@ DYNAMIC_WORLD = (
 
 # Okabe-Ito colour-blind-safe qualitative palette, for classes that have no
 # standard legend (user-trained models).
-CATEGORICAL = ("#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442", "#999999")
+CATEGORICAL = (
+    "#0072B2",
+    "#E69F00",
+    "#009E73",
+    "#D55E00",
+    "#CC79A7",
+    "#56B4E9",
+    "#F0E442",
+    "#999999",
+)
 
-NO_CHANGE = "#d9dee3"       # "nothing happened here" -- deliberately quiet
-NEUTRAL_BG = "#eef1f4"      # map background where there is no data
+NO_CHANGE = "#d9dee3"  # "nothing happened here" -- deliberately quiet
+NEUTRAL_BG = "#eef1f4"  # map background where there is no data
 INK = "#1f2933"
 MUTED = "#52606d"
-ACCENT = "#1b4965"          # report headings and table headers
+ACCENT = "#1b4965"  # report headings and table headers
 ACCENT_SOFT = "#e3edf4"
 WARN = "#b45309"
 WARN_SOFT = "#fdf3e1"

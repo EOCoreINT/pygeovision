@@ -22,7 +22,6 @@ essentially never "< len(dict)" for a small dict, so every real class
 silently fell through to str(class_id) instead of its actual name --
 producing stats keyed '10'/'50' instead of 'tree_cover'/'built_up'.
 """
-import pytest
 
 import numpy as np
 
@@ -48,9 +47,9 @@ class TestWorldCoverNodataDoesNotCrash:
         builds it (excluding key 0)."""
         labeler = _make_labeler()
         mask = np.zeros((20, 20), dtype=np.uint8)
-        mask[:5, :] = 0     # genuine nodata border
+        mask[:5, :] = 0  # genuine nodata border
         mask[5:15, :] = 10  # tree_cover
-        mask[15:, :] = 50   # built_up
+        mask[15:, :] = 50  # built_up
         active_classes = {10: "tree_cover", 50: "built_up"}  # real 0-exclusion
 
         stats = labeler._compute_class_distribution(mask, active_classes, nodata_value=0)
@@ -70,7 +69,9 @@ class TestWorldCoverNodataDoesNotCrash:
         active_classes = {10: "tree_cover"}
 
         stats_wrong = labeler._compute_class_distribution(mask, active_classes)  # default 255
-        assert "0" in stats_wrong, "nodata pixels should show up as a spurious class with the wrong nodata_value"
+        assert (
+            "0" in stats_wrong
+        ), "nodata pixels should show up as a spurious class with the wrong nodata_value"
 
         stats_right = labeler._compute_class_distribution(mask, active_classes, nodata_value=0)
         assert "0" not in stats_right
@@ -92,9 +93,9 @@ class TestClassDistributionUsesRealNames:
     def test_fractions_are_correct_not_just_the_keys(self):
         labeler = _make_labeler()
         mask = np.zeros((20, 20), dtype=np.uint8)
-        mask[:5, :] = 0     # 5 rows nodata, excluded
+        mask[:5, :] = 0  # 5 rows nodata, excluded
         mask[5:15, :] = 10  # 10 rows tree_cover
-        mask[15:, :] = 50   # 5 rows built_up
+        mask[15:, :] = 50  # 5 rows built_up
         active_classes = {10: "tree_cover", 50: "built_up"}
 
         stats = labeler._compute_class_distribution(mask, active_classes, nodata_value=0)

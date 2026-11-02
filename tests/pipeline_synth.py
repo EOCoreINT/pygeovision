@@ -4,10 +4,12 @@ The pipelines' own logic (band maths, nodata handling, thresholds, file
 writing, statistics) runs for real; only the network download is replaced
 by pre-built GeoTIFFs whose correct answer is known by construction.
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import rasterio
@@ -16,17 +18,35 @@ from rasterio.transform import from_origin
 BBOX = (-0.15, 51.47, -0.10, 51.52)
 
 
-def write_raster(path: Path, bands: Any, bounds=BBOX, crs: str = "EPSG:4326",
-                 dtype: str = "float32", nodata: Any = None) -> Path:
+def write_raster(
+    path: Path,
+    bands: Any,
+    bounds=BBOX,
+    crs: str = "EPSG:4326",
+    dtype: str = "float32",
+    nodata: Any = None,
+) -> Path:
     arr = np.asarray(bands, dtype=dtype)
     if arr.ndim == 2:
         arr = arr[None]
     _, h, w = arr.shape
-    transform = from_origin(bounds[0], bounds[3], (bounds[2] - bounds[0]) / w, (bounds[3] - bounds[1]) / h)
+    transform = from_origin(
+        bounds[0], bounds[3], (bounds[2] - bounds[0]) / w, (bounds[3] - bounds[1]) / h
+    )
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(path, "w", driver="GTiff", height=h, width=w, count=arr.shape[0],
-                       dtype=dtype, crs=crs, transform=transform, nodata=nodata) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=h,
+        width=w,
+        count=arr.shape[0],
+        dtype=dtype,
+        crs=crs,
+        transform=transform,
+        nodata=nodata,
+    ) as dst:
         dst.write(arr)
     return path
 
@@ -35,8 +55,12 @@ def const(value: float, shape=(40, 40)) -> np.ndarray:
     return np.full(shape, value, dtype=np.float32)
 
 
-def patch_downloads(monkeypatch, single: Callable | dict | Path | None = None,
-                    pair: tuple[Path, Path] | None = None, record: dict | None = None) -> None:
+def patch_downloads(
+    monkeypatch,
+    single: Callable | dict | Path | None = None,
+    pair: tuple[Path, Path] | None = None,
+    record: dict | None = None,
+) -> None:
     """Replace the network download of every pipeline.
 
     ``single`` is a path, a ``{date: path}`` dict, or a callable

@@ -1,4 +1,5 @@
 """sar_flood_mapping on Sentinel-1-like scenes whose answer is known by construction (local GeoTIFFs, no network)."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -8,8 +9,8 @@ from rasterio.transform import from_origin
 
 from pygeovision.ai.pipelines.sar_flood import SarFloodMappingPipeline, otsu_threshold, speckle_mean
 
-BBOX = (0.45, 5.90, 0.4725, 5.9225)             # about 2.5 km square
-RASTER = (0.44, 5.89, 0.4825, 5.9325)            # a scene extends beyond the requested box
+BBOX = (0.45, 5.90, 0.4725, 5.9225)  # about 2.5 km square
+RASTER = (0.44, 5.89, 0.4825, 5.9325)  # a scene extends beyond the requested box
 RES = 0.0001
 H = int(round((RASTER[3] - RASTER[1]) / RES))
 W = int(round((RASTER[2] - RASTER[0]) / RES))
@@ -29,8 +30,18 @@ def scene(path, db, nodata_mask=None):
     lin = (10.0 ** (np.asarray(db, dtype="float64") / 10.0)).astype("float32")
     if nodata_mask is not None:
         lin[nodata_mask] = -32768.0
-    with rasterio.open(path, "w", driver="GTiff", height=H, width=W, count=1, dtype="float32", crs="EPSG:4326",
-                       transform=from_origin(RASTER[0], RASTER[3], RES, RES), nodata=-32768.0) as d:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=H,
+        width=W,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_origin(RASTER[0], RASTER[3], RES, RES),
+        nodata=-32768.0,
+    ) as d:
         d.write(lin, 1)
     return str(path)
 
@@ -41,10 +52,17 @@ def land(db=-10.0):
 
 def item(i, day, path, state="descending", orbit=1, pol="vv"):
     w, s, e, n = RASTER
-    return {"id": f"S1_{i}", "bbox": [w, s, e, n],
-            "geometry": {"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]},
-            "properties": {"datetime": f"{day}T05:30:00Z", "sat:orbit_state": state, "sat:relative_orbit": orbit},
-            "assets": {pol: {"href": path}}}
+    return {
+        "id": f"S1_{i}",
+        "bbox": [w, s, e, n],
+        "geometry": {"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]},
+        "properties": {
+            "datetime": f"{day}T05:30:00Z",
+            "sat:orbit_state": state,
+            "sat:relative_orbit": orbit,
+        },
+        "assets": {pol: {"href": path}},
+    }
 
 
 class FakePC:
@@ -94,8 +112,10 @@ def basic(tmp_path):
     shadow = lonlat_mask((0.4650, 5.9150, 0.4700, 5.9200))
     before[shadow] = -22.0
     after[shadow] = -22.0
-    items = [item(1, "2026-06-10", scene(tmp_path / "b1.tif", before)),
-             item(2, "2026-06-29", scene(tmp_path / "a1.tif", after))]
+    items = [
+        item(1, "2026-06-10", scene(tmp_path / "b1.tif", before)),
+        item(2, "2026-06-29", scene(tmp_path / "a1.tif", after)),
+    ]
     return items, lake, shadow
 
 
@@ -118,8 +138,10 @@ class TestFloodMapping:
         grid_t = src.transform
         rows, cols = np.nonzero(cls == 1)
         from pyproj import Transformer
+
         lon, lat = Transformer.from_crs(src.crs, "EPSG:4326", always_xy=True).transform(
-            grid_t.c + (cols + 0.5) * grid_t.a, grid_t.f + (rows + 0.5) * grid_t.e)
+            grid_t.c + (cols + 0.5) * grid_t.a, grid_t.f + (rows + 0.5) * grid_t.e
+        )
         lon, lat = np.asarray(lon), np.asarray(lat)
         assert lon.min() > FLOOD[0] - 0.0005 and lon.max() < FLOOD[2] + 0.0005
         assert lat.min() > FLOOD[1] - 0.0005 and lat.max() < FLOOD[3] + 0.0005
@@ -133,7 +155,7 @@ class TestFloodMapping:
         with rasterio.open(tmp_path / "out" / "change_db.tif") as s:
             ch = s.read(1)
             cls = rasterio.open(tmp_path / "out" / "flood_extent.tif").read(1)
-        assert np.nanmedian(ch[cls == 1]) == pytest.approx(-12.0, abs=0.3)      # -22 minus -10
+        assert np.nanmedian(ch[cls == 1]) == pytest.approx(-12.0, abs=0.3)  # -22 minus -10
 
     def test_requiring_more_darkening_removes_a_marginal_flood(self, tmp_path, basic):
         items, *_ = basic
@@ -143,9 +165,11 @@ class TestFloodMapping:
     def test_nodata_pixels_are_nodata_not_dry(self, tmp_path):
         before, after = land(), land()
         after[lonlat_mask(FLOOD)] = -22.0
-        hole = lonlat_mask((0.4560, 5.9060, 0.4590, 5.9100))                     # inside the flood block, no data
-        items = [item(1, "2026-06-10", scene(tmp_path / "b.tif", before)),
-                 item(2, "2026-06-29", scene(tmp_path / "a.tif", after, nodata_mask=hole))]
+        hole = lonlat_mask((0.4560, 5.9060, 0.4590, 5.9100))  # inside the flood block, no data
+        items = [
+            item(1, "2026-06-10", scene(tmp_path / "b.tif", before)),
+            item(2, "2026-06-29", scene(tmp_path / "a.tif", after, nodata_mask=hole)),
+        ]
         r = run(pipeline(items), tmp_path)
         cls, _ = classes(tmp_path)
         assert r.success and (cls == 255).sum() > 0 and r.stats["valid_fraction"] < 1.0
@@ -155,11 +179,13 @@ class TestFloodMapping:
         base_after = land()
         base_after[lonlat_mask(FLOOD)] = -22.0
         artefact = base_after.copy()
-        artefact[lonlat_mask((0.4660, 5.9100, 0.4700, 5.9140))] = -25.0           # dark in one pass only
-        items = [item(1, "2026-06-10", scene(tmp_path / "b.tif", land())),
-                 item(2, "2026-06-28", scene(tmp_path / "a1.tif", base_after)),
-                 item(3, "2026-06-29", scene(tmp_path / "a2.tif", artefact)),
-                 item(4, "2026-06-30", scene(tmp_path / "a3.tif", base_after))]
+        artefact[lonlat_mask((0.4660, 5.9100, 0.4700, 5.9140))] = -25.0  # dark in one pass only
+        items = [
+            item(1, "2026-06-10", scene(tmp_path / "b.tif", land())),
+            item(2, "2026-06-28", scene(tmp_path / "a1.tif", base_after)),
+            item(3, "2026-06-29", scene(tmp_path / "a2.tif", artefact)),
+            item(4, "2026-06-30", scene(tmp_path / "a3.tif", base_after)),
+        ]
         r = run(pipeline(items), tmp_path)
         assert r.success and r.stats["scenes_flood"] == 3
         assert r.stats["flooded_area_ha"] == pytest.approx(FLOOD_HA, rel=0.06)
@@ -167,8 +193,11 @@ class TestFloodMapping:
     def test_small_patches_are_removed_and_reported(self, tmp_path):
         after = land()
         after[lonlat_mask(FLOOD)] = -22.0
-        after[lonlat_mask((0.4700, 5.9200, 0.47025, 5.92025))] = -22.0            # a few pixels
-        items = [item(1, "2026-06-10", scene(tmp_path / "b.tif", land())), item(2, "2026-06-29", scene(tmp_path / "a.tif", after))]
+        after[lonlat_mask((0.4700, 5.9200, 0.47025, 5.92025))] = -22.0  # a few pixels
+        items = [
+            item(1, "2026-06-10", scene(tmp_path / "b.tif", land())),
+            item(2, "2026-06-29", scene(tmp_path / "a.tif", after)),
+        ]
         kept = run(pipeline(items), tmp_path / "k", min_patch_ha=0)
         cut = run(pipeline(items), tmp_path / "c", min_patch_ha=0.5)
         assert kept.stats["flooded_area_ha"] > cut.stats["flooded_area_ha"]
@@ -185,20 +214,30 @@ class TestFloodMapping:
         assert r.stats["flooded_area_ha"] == pytest.approx(FLOOD_HA, rel=0.06)
 
     def test_no_common_track_is_refused_with_the_reason(self, tmp_path):
-        items = [item(1, "2026-06-10", scene(tmp_path / "b.tif", land()), orbit=1),
-                 item(2, "2026-06-29", scene(tmp_path / "a.tif", land()), state="ascending", orbit=2)]
+        items = [
+            item(1, "2026-06-10", scene(tmp_path / "b.tif", land()), orbit=1),
+            item(2, "2026-06-29", scene(tmp_path / "a.tif", land()), state="ascending", orbit=2),
+        ]
         r = run(pipeline(items), tmp_path)
-        assert not r.success and "no Sentinel-1 orbit track in common" in r.error and "viewing geometry" in r.error
+        assert (
+            not r.success
+            and "no Sentinel-1 orbit track in common" in r.error
+            and "viewing geometry" in r.error
+        )
 
     def test_empty_window_lists_nearby_acquisitions(self, tmp_path):
-        items = [item(1, "2026-06-10", scene(tmp_path / "b.tif", land())),
-                 item(2, "2026-07-12", scene(tmp_path / "a.tif", land()))]
+        items = [
+            item(1, "2026-06-10", scene(tmp_path / "b.tif", land())),
+            item(2, "2026-07-12", scene(tmp_path / "a.tif", land())),
+        ]
         r = run(pipeline(items), tmp_path, date_after="2026-06-29")
         assert not r.success and "flood window" in r.error and "2026-07-12" in r.error
         r2 = run(pipeline(items), tmp_path / "x", date_before="2026-05-20")
         assert not r2.success and "reference window" in r2.error and "2026-06-10" in r2.error
 
-    def test_windows_are_enforced_even_if_the_server_ignores_the_datetime_filter(self, tmp_path, basic):
+    def test_windows_are_enforced_even_if_the_server_ignores_the_datetime_filter(
+        self, tmp_path, basic
+    ):
         """A search that returns every scene regardless of the window must not make both windows use the same scenes."""
         items, *_ = basic
 
@@ -206,11 +245,14 @@ class TestFloodMapping:
             def search(self, collection, bbox, datetime=None, **kw):
                 self.searches.append(datetime)
                 return self.items
+
         p = SarFloodMappingPipeline(None)
         p.pc = Sloppy(items)
         r = run(p, tmp_path)
         assert r.success, r.error
-        assert r.stats["reference_dates"] == ["2026-06-10"] and r.stats["flood_dates"] == ["2026-06-29"]
+        assert r.stats["reference_dates"] == ["2026-06-10"] and r.stats["flood_dates"] == [
+            "2026-06-29"
+        ]
         assert r.metadata["scene_ids"] == {"reference": ["S1_1"], "flood": ["S1_2"]}
         assert r.stats["flooded_area_ha"] == pytest.approx(FLOOD_HA, rel=0.06)
 
@@ -223,16 +265,24 @@ class TestFloodMapping:
         items, *_ = basic
         p = pipeline(items)
         assert "date_before" in run(p, tmp_path, date_before=None).error
-        assert "must end before" in run(p, tmp_path, date_before="2026-06-30", date_after="2026-06-29").error
+        assert (
+            "must end before"
+            in run(p, tmp_path, date_before="2026-06-30", date_after="2026-06-29").error
+        )
         assert "polarization" in run(p, tmp_path, polarization="xx").error
         assert "water_db" in run(p, tmp_path, water_db="deep").error
         assert "negative" in run(p, tmp_path, change_db=-1).error
 
     def test_month_windows_are_accepted(self, tmp_path, basic):
         items, *_ = basic
-        assert run(pipeline(items), tmp_path, date_before="2026-06", date_after="2026-07").success is False   # overlap-free but no scene in July
+        assert (
+            run(pipeline(items), tmp_path, date_before="2026-06", date_after="2026-07").success
+            is False
+        )  # overlap-free but no scene in July
         items2 = [items[0], item(5, "2026-07-03", items[1]["assets"]["vv"]["href"])]
-        assert run(pipeline(items2), tmp_path / "y", date_before="2026-06", date_after="2026-07").success
+        assert run(
+            pipeline(items2), tmp_path / "y", date_before="2026-06", date_after="2026-07"
+        ).success
 
     def test_speckle_filter_keeps_the_flood_and_fills_edges(self, tmp_path, basic):
         items, *_ = basic
@@ -262,6 +312,7 @@ class TestThreshold:
 
     def test_otsu_needs_enough_pixels(self):
         from pygeovision.data.reference import ReferenceDataError
+
         with pytest.raises(ReferenceDataError):
             otsu_threshold(np.array([-10.0] * 10))
 
@@ -271,7 +322,7 @@ def test_speckle_mean_ignores_invalid_neighbours():
     lin[2, 2] = 10.0
     valid = np.ones((5, 5), bool)
     valid[2, 3] = False
-    lin[2, 3] = 1000.0                                  # invalid: must not leak into the mean
+    lin[2, 3] = 1000.0  # invalid: must not leak into the mean
     out = speckle_mean(lin, valid)
     assert out[2, 2] == pytest.approx((10.0 + 7 * 1.0) / 8.0)
     assert np.isnan(out[2, 3])

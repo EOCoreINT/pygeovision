@@ -1,11 +1,12 @@
 """Pipeline execution engine with dependency management and retry logic."""
+
 from __future__ import annotations
 
 import builtins
-import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,11 @@ class Pipeline:
         self.name = name
         self.description = description
         self._steps: list[Any] = []
-        self._hooks: dict[str, list[Callable]] = {"before_step": [], "after_step": [], "on_error": []}
+        self._hooks: dict[str, list[Callable]] = {
+            "before_step": [],
+            "after_step": [],
+            "on_error": [],
+        }
 
     def add(self, step: Any) -> Pipeline:
         self._steps.append(step)
@@ -80,7 +85,8 @@ class Pipeline:
 
             # Execute with retry (a StepError is deterministic -- retrying cannot help)
             from pygeovision.pipelines.steps import StepError
-            last_exc = None
+
+            last_exc: Exception | None = None
             max_retries = max(1, getattr(step, "retry_on_fail", 1))
             for attempt in range(max_retries):
                 try:
@@ -104,15 +110,17 @@ class Pipeline:
                 except Exception as exc:
                     last_exc = exc
                     if attempt < max_retries - 1:
-                        time.sleep(2 ** attempt)
-                    logger.warning("Step '%s' attempt %d failed: %s", step_name, attempt+1, exc)
+                        time.sleep(2**attempt)
+                    logger.warning("Step '%s' attempt %d failed: %s", step_name, attempt + 1, exc)
 
             if last_exc:
                 failed.append(step_name)
                 errors[step_name] = str(last_exc)
                 for hook in self._hooks.get("on_error", []):
                     hook(step, ctx, last_exc)
-                logger.error("Step '%s' failed after %d attempts: %s", step_name, max_retries, last_exc)
+                logger.error(
+                    "Step '%s' failed after %d attempts: %s", step_name, max_retries, last_exc
+                )
 
             for hook in self._hooks.get("after_step", []):
                 hook(step, ctx)
@@ -130,15 +138,18 @@ class Pipeline:
 
     def _topo_sort(self) -> list[Any]:
         """Topological sort by dependency order."""
-        name_to_step = {(s.name if hasattr(s, "name") else str(i)): s
-                        for i, s in enumerate(self._steps)}
+        name_to_step = {
+            (s.name if hasattr(s, "name") else str(i)): s for i, s in enumerate(self._steps)
+        }
         visited, order = set(), []
 
         def _visit(name: str) -> None:
-            if name in visited: return
+            if name in visited:
+                return
             visited.add(name)
             step = name_to_step.get(name)
-            if step is None: return
+            if step is None:
+                return
             for dep in (step.depends_on if hasattr(step, "depends_on") else []):
                 _visit(dep)
             order.append(step)
@@ -157,9 +168,12 @@ class Pipeline:
             SearchStep,
             Step,
         )
+
         ACTION_MAP = {
-            "search": SearchStep, "download": DownloadStep,
-            "infer": InferStep, "export": ExportStep,
+            "search": SearchStep,
+            "download": DownloadStep,
+            "infer": InferStep,
+            "export": ExportStep,
         }
         p = cls(config["name"], config.get("description", ""))
         for s_cfg in config.get("steps", []):
@@ -178,6 +192,7 @@ class Pipeline:
     @classmethod
     def from_yaml(cls, path: str) -> Pipeline:
         from pygeovision.pipelines.yaml_parser import PipelineYAMLParser
+
         config = PipelineYAMLParser().load(path)
         return cls.from_config(config)
 
@@ -207,8 +222,7 @@ class PipelineOrchestrator:
         p = Pipeline.from_yaml(path)
         return self.register(p.name, p)
 
-    def run(self, name: str, context: dict | None = None,
-             dry_run: bool = False) -> PipelineResult:
+    def run(self, name: str, context: dict | None = None, dry_run: bool = False) -> PipelineResult:
         if name not in self._pipelines:
             raise KeyError(f"Pipeline '{name}' not registered. Available: {list(self._pipelines)}")
         ctx = {"client": self.client, **(context or {})}

@@ -24,6 +24,7 @@ their output is meaningless and must never be read as a result.
 
 Exit status is 0 only if every selected pipeline succeeded.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -61,12 +62,29 @@ SPECS: dict[str, list] = {
     "change_detection": ["--date-before", "2022-06", "--date-after", "2024-06"],
     "coastal_monitoring": ["--date-before", "2020-01", "--date-after", "2024-01"],
     "crop_health": PAIR,
-    "crop_monitoring": ["--date", "2023-06", "--param", "num_classes=3", ("ckpt", "segformer_b2", 3, 3)],
+    "crop_monitoring": [
+        "--date",
+        "2023-06",
+        "--param",
+        "num_classes=3",
+        ("ckpt", "segformer_b2", 3, 3),
+    ],
     "deforestation": PAIR + [("ckpt", "changeformer", 3, 3)],
-    "disaster_assessment": PAIR + ["--param", "disaster_type=flood", ("ckpt", "siamese_unet", 4, 3)],
+    "disaster_assessment": PAIR
+    + ["--param", "disaster_type=flood", ("ckpt", "siamese_unet", 4, 3)],
     "flood_mapping": PAIR,
-    "sar_flood_mapping": ["--date-before", "2024-05-01/2024-05-31", "--date-after", "2024-06-10/2024-06-20"],
-    "multisensor_flood_mapping": ["--date-before", "2024-05-01/2024-05-31", "--date-after", "2024-06-10/2024-06-20"],
+    "sar_flood_mapping": [
+        "--date-before",
+        "2024-05-01/2024-05-31",
+        "--date-after",
+        "2024-06-10/2024-06-20",
+    ],
+    "multisensor_flood_mapping": [
+        "--date-before",
+        "2024-05-01/2024-05-31",
+        "--date-after",
+        "2024-06-10/2024-06-20",
+    ],
     "glacier_monitoring": PAIR,
     "land_cover": ["--date", "2023-06"],
     "land_surface_temperature": ["--date", "2024-07"],
@@ -89,15 +107,18 @@ def real_command(name: str) -> str:
     """The command for real data (you supply the bbox/dates and, where needed, your checkpoint)."""
     parts = ["pygeovision", "channel", name, *BBOX_ARGS, "-o", f"./out/{name}"]
     for e in SPECS[name]:
-        parts += (["--checkpoint", "path/to/your_trained.pth"] if isinstance(e, tuple)
-                  else [f"'{e}'" if " " in e or "," in e else e])
+        parts += (
+            ["--checkpoint", "path/to/your_trained.pth"]
+            if isinstance(e, tuple)
+            else [f"'{e}'" if " " in e or "," in e else e]
+        )
     return " ".join(parts)
 
 
 def install_offline_patches(tmp: pathlib.Path):
     import numpy as np
-    import rasterio
     from pipeline_synth import write_raster
+    import rasterio
 
     from pygeovision.ai.labeling.base_labeler import LabelingResult
     from pygeovision.ai.labeling.esa_worldcover import ESAWorldCoverLabeler
@@ -115,7 +136,10 @@ def install_offline_patches(tmp: pathlib.Path):
         n = len(kw.get("bands") or []) or 4
         a = np.clip(rng.normal(0.25, 0.1, (n, 60, 60)), 0.02, 0.9).astype("float32")
         b = np.clip(a + rng.normal(0, 0.05, a.shape), 0.02, 0.9).astype("float32")
-        return (write_raster(tmp / f"{self.name}_b.tif", a, bbox), write_raster(tmp / f"{self.name}_a.tif", b, bbox))
+        return (
+            write_raster(tmp / f"{self.name}_b.tif", a, bbox),
+            write_raster(tmp / f"{self.name}_a.tif", b, bbox),
+        )
 
     def fake_dem(self, bbox, out, dem_type):
         y, x = np.mgrid[0:80, 0:80]
@@ -128,7 +152,9 @@ def install_offline_patches(tmp: pathlib.Path):
     def fake_label(self, tile_path, meta, out_path):
         with rasterio.open(tile_path) as src:
             shape = (src.height, src.width)
-        lc = np.full(shape, 30, np.uint8); lc[:, :15] = 80; lc[20:30, 20:30] = 10
+        lc = np.full(shape, 30, np.uint8)
+        lc[:, :15] = 80
+        lc[20:30, 20:30] = 10
         write_raster(out_path, lc[None], dtype="uint8")
         return LabelingResult(tile_id="t", label_path=out_path, source="esa_worldcover")
 
@@ -152,27 +178,76 @@ def install_reference_patches(tmp: pathlib.Path) -> None:
     class SmokePC:
         def search(self, collection, bbox, datetime=None, **kw):
             lo = (datetime or "2020-01-01/2020-12-31").split("/")[0]
-            hi = (datetime or "2020-01-01/2020-12-31").split("/")[-1]
+            (datetime or "2020-01-01/2020-12-31").split("/")[-1]
             year = int(lo[:4])
             if collection == "modis-14A1-061":
                 days = [lo, f"{lo[:8]}{int(lo[8:10]) + 1:02d}"]
-                return [{"id": f"MOD14A1.{d}", "properties": {"start_datetime": f"{d}T00:00:00Z"}, "assets": {}} for d in days]
+                return [
+                    {
+                        "id": f"MOD14A1.{d}",
+                        "properties": {"start_datetime": f"{d}T00:00:00Z"},
+                        "assets": {},
+                    }
+                    for d in days
+                ]
             if collection == "modis-16A3GF-061":
-                return [{"id": f"MOD16A3GF.A{year}001.h18v08.061.x", "properties": {"start_datetime": f"{year}-01-01T00:00:00Z",
-                                                                                    "end_datetime": f"{year}-12-31T23:59:59Z"}, "assets": {}}]
+                return [
+                    {
+                        "id": f"MOD16A3GF.A{year}001.h18v08.061.x",
+                        "properties": {
+                            "start_datetime": f"{year}-01-01T00:00:00Z",
+                            "end_datetime": f"{year}-12-31T23:59:59Z",
+                        },
+                        "assets": {},
+                    }
+                ]
             if collection == "sentinel-1-rtc":
                 day = lo[:10]
-                geom = {"type": "Polygon", "coordinates": [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]]}
-                return [{"id": f"S1_{day}", "geometry": geom, "bbox": [-180, -90, 180, 90],
-                         "properties": {"datetime": f"{day}T05:30:00Z", "sat:orbit_state": "descending", "sat:relative_orbit": 1},
-                         "assets": {"vv": {"href": "x"}, "vh": {"href": "x"}}}]
+                geom = {
+                    "type": "Polygon",
+                    "coordinates": [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]],
+                }
+                return [
+                    {
+                        "id": f"S1_{day}",
+                        "geometry": geom,
+                        "bbox": [-180, -90, 180, 90],
+                        "properties": {
+                            "datetime": f"{day}T05:30:00Z",
+                            "sat:orbit_state": "descending",
+                            "sat:relative_orbit": 1,
+                        },
+                        "assets": {"vv": {"href": "x"}, "vh": {"href": "x"}},
+                    }
+                ]
             if collection == "sentinel-2-l2a":
                 day = lo[:10]
-                return [{"id": f"S2_{day}", "properties": {"datetime": f"{day}T10:30:00Z", "eo:cloud_cover": 12.0},
-                         "assets": {"B03": {"href": "x"}, "B11": {"href": "x"}, "SCL": {"href": "x"}}}]
+                return [
+                    {
+                        "id": f"S2_{day}",
+                        "properties": {"datetime": f"{day}T10:30:00Z", "eo:cloud_cover": 12.0},
+                        "assets": {
+                            "B03": {"href": "x"},
+                            "B11": {"href": "x"},
+                            "SCL": {"href": "x"},
+                        },
+                    }
+                ]
             if collection in ("jrc-gsw", "cop-dem-glo-30"):
-                return [{"id": f"{collection}-tile", "properties": {"datetime": "2020-07-01T00:00:00Z"}, "assets": {}}]
-            return [{"id": f"{collection}-{year}", "properties": {"start_datetime": f"{year}-01-01T00:00:00Z"}, "assets": {}}]
+                return [
+                    {
+                        "id": f"{collection}-tile",
+                        "properties": {"datetime": "2020-07-01T00:00:00Z"},
+                        "assets": {},
+                    }
+                ]
+            return [
+                {
+                    "id": f"{collection}-{year}",
+                    "properties": {"start_datetime": f"{year}-01-01T00:00:00Z"},
+                    "assets": {},
+                }
+            ]
 
         def asset_urls(self, collection, items, asset):
             return [f"synthetic://{collection}/{asset}/{it['id']}" for it in items]
@@ -182,21 +257,26 @@ def install_reference_patches(tmp: pathlib.Path) -> None:
         rr, cc = np.mgrid[0:h, 0:w]
         _, rest = url.split("://")
         collection, asset, ident = rest.split("/")
-        year = int("".join(ch for ch in ident.split(".A")[-1][:4] if ch.isdigit()) or 2020) if "MOD16" in ident else \
-            int(ident[-4:]) if ident[-4:].isdigit() else 2020
+        year = (
+            int("".join(ch for ch in ident.split(".A")[-1][:4] if ch.isdigit()) or 2020)
+            if "MOD16" in ident
+            else int(ident[-4:]) if ident[-4:].isdigit() else 2020
+        )
         if collection == "sentinel-1-rtc":
-            a = np.full((h, w), 0.1)                                        # land, about -10 dB
-            a[rr > h * 0.85] = 0.003                                          # a permanent lake
-            if ident[3:] >= "2024-06-01":                                     # the flood scene: a dark block appears
+            a = np.full((h, w), 0.1)  # land, about -10 dB
+            a[rr > h * 0.85] = 0.003  # a permanent lake
+            if ident[3:] >= "2024-06-01":  # the flood scene: a dark block appears
                 a[(rr > h * 0.3) & (rr < h * 0.5) & (cc > w * 0.3) & (cc < w * 0.6)] = 0.004
             return a
         if collection == "sentinel-2-l2a":
-            water = rr > h * 0.85                                             # the same permanent lake
-            if ident[3:] >= "2024-06-01":                                     # the flood scene: the same block is water
+            water = rr > h * 0.85  # the same permanent lake
+            if ident[3:] >= "2024-06-01":  # the flood scene: the same block is water
                 water = water | ((rr > h * 0.3) & (rr < h * 0.5) & (cc > w * 0.3) & (cc < w * 0.6))
             if asset == "SCL":
                 return np.full((h, w), 4.0)
-            return np.where(water, 1200.0 if asset == "B03" else 300.0, 1500.0 if asset == "B03" else 2500.0)
+            return np.where(
+                water, 1200.0 if asset == "B03" else 300.0, 1500.0 if asset == "B03" else 2500.0
+            )
         if collection == "io-lulc-annual-v02":
             a = np.full((h, w), 2.0)
             a[rr > h * 0.6] = 5.0
@@ -210,7 +290,10 @@ def install_reference_patches(tmp: pathlib.Path) -> None:
             return a
         if collection == "jrc-gsw":
             if asset == "transitions":
-                a = np.zeros((h, w)); a[rr > h * 0.8] = 1.0; a[(rr > h * 0.7) & (rr <= h * 0.8)] = 4.0; a[(rr < h * 0.1) & (cc < w * 0.3)] = 3.0
+                a = np.zeros((h, w))
+                a[rr > h * 0.8] = 1.0
+                a[(rr > h * 0.7) & (rr <= h * 0.8)] = 4.0
+                a[(rr < h * 0.1) & (cc < w * 0.3)] = 3.0
                 return a
             if asset == "occurrence":
                 return np.where(rr > h * 0.7, 80.0, 0.0)
@@ -219,21 +302,40 @@ def install_reference_patches(tmp: pathlib.Path) -> None:
             return np.full((h, w), 12000.0 if asset == "ET_500m" else 19000.0) + cc
         if collection == "modis-14A1-061":
             if asset == "FireMask":
-                a = np.full((h, w), 5.0); a[h // 2, w // 2] = 9.0; a[h // 3, w // 3] = 8.0; a[0, 0] = 4.0
+                a = np.full((h, w), 5.0)
+                a[h // 2, w // 2] = 9.0
+                a[h // 3, w // 3] = 8.0
+                a[0, 0] = 4.0
                 return a
-            a = np.zeros((h, w)); a[h // 2, w // 2] = 250.0
+            a = np.zeros((h, w))
+            a[h // 2, w // 2] = 250.0
             return a
         if collection == "cop-dem-glo-30":
             return 120.0 + 25 * np.sin(cc / 9.0) + 20 * np.cos(rr / 7.0) + 0.6 * cc - 0.3 * rr
         raise ValueError(f"smoke test has no synthetic data for {url}")
 
-    def fake_read(urls, grid, *, band=1, resampling="nearest", dtype="float32", invalid_values=(), fill=np.nan, env=None):
+    def fake_read(
+        urls,
+        grid,
+        *,
+        band=1,
+        resampling="nearest",
+        dtype="float32",
+        invalid_values=(),
+        fill=np.nan,
+        env=None,
+    ):
         urls = list(urls)
         data = synth(urls[0], grid).astype(dtype)
         valid = np.ones(data.shape, bool)
         for v in invalid_values:
             valid &= data != v
-        return GridRaster(np.where(valid, data, np.nan).astype(dtype), valid, grid, [u.rsplit("/", 1)[-1] for u in urls])
+        return GridRaster(
+            np.where(valid, data, np.nan).astype(dtype),
+            valid,
+            grid,
+            [u.rsplit("/", 1)[-1] for u in urls],
+        )
 
     pc = SmokePC()
     reference_products.read_to_grid = fake_read
@@ -247,17 +349,36 @@ def install_reference_patches(tmp: pathlib.Path) -> None:
 
     def fake_buildings(bbox, **kw):
         w, s_, e, n = bbox
-        geoms = [box(w + (e - w) * (0.1 + 0.07 * i), s_ + (n - s_) * (0.2 + 0.05 * (i % 5)),
-                     w + (e - w) * (0.1 + 0.07 * i) + 0.0002, s_ + (n - s_) * (0.2 + 0.05 * (i % 5)) + 0.0002) for i in range(12)]
+        geoms = [
+            box(
+                w + (e - w) * (0.1 + 0.07 * i),
+                s_ + (n - s_) * (0.2 + 0.05 * (i % 5)),
+                w + (e - w) * (0.1 + 0.07 * i) + 0.0002,
+                s_ + (n - s_) * (0.2 + 0.05 * (i % 5)) + 0.0002,
+            )
+            for i in range(12)
+        ]
         return gpd.GeoDataFrame({"id": range(12)}, geometry=geoms, crs="EPSG:4326")
 
     def fake_osm(bbox, kind="building", **kw):
         if kind == "building":
             return fake_buildings(bbox)
         w, s_, e, n = bbox
-        lines = [LineString([(w, (s_ + n) / 2), (e, (s_ + n) / 2)]), LineString([((w + e) / 2, s_), ((w + e) / 2, n)])]
-        return gpd.GeoDataFrame({"highway": ["primary", "residential"], "name": ["Main St", None], "surface": [None, None],
-                                 "oneway": [None, None], "osm_id": [1, 2]}, geometry=lines, crs="EPSG:4326")
+        lines = [
+            LineString([(w, (s_ + n) / 2), (e, (s_ + n) / 2)]),
+            LineString([((w + e) / 2, s_), ((w + e) / 2, n)]),
+        ]
+        return gpd.GeoDataFrame(
+            {
+                "highway": ["primary", "residential"],
+                "name": ["Main St", None],
+                "surface": [None, None],
+                "oneway": [None, None],
+                "osm_id": [1, 2],
+            },
+            geometry=lines,
+            crs="EPSG:4326",
+        )
 
     fp.microsoft_footprints = fake_buildings
     fp.google_footprints = fake_buildings
@@ -268,6 +389,7 @@ def wiring_checkpoint(tmp: pathlib.Path, model: str, classes: int, bands: int, n
     import torch
 
     from pygeovision.ai.models.hub import ModelHub
+
     m = ModelHub().load(model, num_classes=classes, in_channels=bands, pretrained=False)
     p = tmp / f"{name}.pth"
     torch.save(m.state_dict(), p)
@@ -277,25 +399,40 @@ def wiring_checkpoint(tmp: pathlib.Path, model: str, classes: int, bands: int, n
 def check_deliverables(out: pathlib.Path, name: str) -> tuple[bool, str]:
     """True (= problem) if a pipeline run did not leave its map, vectors and three reports."""
     import json
+
     summary = out / "run_summary.json"
     if not summary.is_file():
         return True, "no run_summary.json (deliverables were not created)"
     d = json.loads(summary.read_text())["deliverables"]
     missing = [f for f in ("pdf", "docx", "xlsx") if f not in d["reports"]]
-    files = [pathlib.Path(p) for p in [*d["reports"].values(), *d["maps"], *sum(d["vectors"].values(), [])]]
+    files = [
+        pathlib.Path(p)
+        for p in [*d["reports"].values(), *d["maps"], *sum(d["vectors"].values(), [])]
+    ]
     gone = [p.name for p in files if not p.is_file() or p.stat().st_size == 0]
     if missing or gone or not d["maps"] or "gpkg" not in d["vectors"]:
-        return True, f"missing reports {missing}, empty/absent files {gone}, maps={len(d['maps'])}, warnings={d['warnings']}"
-    return False, (f"{len(d['reports'])} reports, {len(d['maps'])} map(s), "
-                   f"{sum(len(v) for v in d['vectors'].values())} vector file(s)"
-                   + (f"  [note: {d['warnings'][0][:60]}]" if d["warnings"] else ""))
+        return (
+            True,
+            f"missing reports {missing}, empty/absent files {gone}, maps={len(d['maps'])}, warnings={d['warnings']}",
+        )
+    return False, (
+        f"{len(d['reports'])} reports, {len(d['maps'])} map(s), "
+        f"{sum(len(v) for v in d['vectors'].values())} vector file(s)"
+        + (f"  [note: {d['warnings'][0][:60]}]" if d["warnings"] else "")
+    )
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("pipelines", nargs="*", help="pipelines to run (default: all)")
-    ap.add_argument("--commands", action="store_true", help="print the real-data command for each and exit")
-    ap.add_argument("--keep", metavar="DIR", help="write the outputs under DIR instead of a temp directory")
+    ap.add_argument(
+        "--commands", action="store_true", help="print the real-data command for each and exit"
+    )
+    ap.add_argument(
+        "--keep", metavar="DIR", help="write the outputs under DIR instead of a temp directory"
+    )
     args = ap.parse_args(argv)
 
     unknown = [p for p in args.pipelines if p not in SPECS]
@@ -311,6 +448,7 @@ def main(argv=None) -> int:
 
     from pygeovision.ai.pipelines import list_pipelines
     from pygeovision.cli.main import cli
+
     missing = set(list_pipelines()) ^ set(SPECS)
     if missing and not args.pipelines:
         print(f"WARNING: registry and SPECS disagree on {sorted(missing)}", file=sys.stderr)
@@ -336,8 +474,11 @@ def main(argv=None) -> int:
         print(f"{'OK ' if not problem else 'ERR'} {name:<26} {tail[:150]}")
         if problem:
             failed.append(name)
-    print(f"\n{len(names) - len(failed)}/{len(names)} pipelines succeeded"
-          + (f"; failed: {failed}" if failed else "") + f"   (outputs: {tmp})")
+    print(
+        f"\n{len(names) - len(failed)}/{len(names)} pipelines succeeded"
+        + (f"; failed: {failed}" if failed else "")
+        + f"   (outputs: {tmp})"
+    )
     return 1 if failed else 0
 
 

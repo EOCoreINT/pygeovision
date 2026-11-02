@@ -41,8 +41,10 @@ Usage::
         "prediction.tif", "reference.tif"
     )
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 import json
 import logging
 import pathlib
@@ -56,6 +58,7 @@ logger = logging.getLogger(__name__)
 def _require_rasterio():
     try:
         import rasterio
+
         return rasterio
     except ImportError:
         raise ImportError("pip install rasterio") from None
@@ -64,6 +67,7 @@ def _require_rasterio():
 def _require_geopandas():
     try:
         import geopandas as gpd
+
         return gpd
     except ImportError:
         raise ImportError("pip install geopandas") from None
@@ -72,9 +76,68 @@ def _require_geopandas():
 def _require_shapely():
     try:
         from shapely import affinity, geometry, ops
+
         return geometry, affinity, ops
     except ImportError:
         raise ImportError("pip install shapely>=2.0") from None
+
+
+# ----------------------------------------------------------------------
+# Geographic (lon/lat) units
+# ----------------------------------------------------------------------
+
+
+def _metres_per_degree(lat_deg):
+    """Metres per degree of latitude and of longitude at ``lat_deg`` (WGS84 series)."""
+    lat = np.radians(lat_deg)
+    m_lat = 111132.92 - 559.82 * np.cos(2 * lat) + 1.175 * np.cos(4 * lat)
+    m_lon = 111412.84 * np.cos(lat) - 93.5 * np.cos(3 * lat)
+    return m_lat, m_lon
+
+
+def _geographic_area_m2(geom) -> float:
+    """True area (m2) of a polygon whose coordinates are lon/lat degrees."""
+    if geom.is_empty:
+        return 0.0
+    m_lat, m_lon = _metres_per_degree(geom.centroid.y)
+    return float(geom.area * m_lat * m_lon)
+
+
+def _iter_coords(obj):
+    if isinstance(obj, (list, tuple)):
+        if obj and isinstance(obj[0], (int, float)):
+            yield obj
+        else:
+            for item in obj:
+                yield from _iter_coords(item)
+
+
+def _geojson_is_geographic(gj: dict) -> bool:
+    """True when a GeoJSON dict is in lon/lat degrees.
+
+    A declared CRS wins (a geographic WKT/EPSG:4326 name is True, a projected one False). With no
+    CRS the coordinates must fit the lon/lat range and span under one degree, so that local
+    pixel or metre coordinates are never mistaken for degrees.
+    """
+    crs = (((gj.get("crs") or {}).get("properties") or {}).get("name")) or ""
+    if crs:
+        up = crs.upper()
+        if "4326" in up or "CRS84" in up:
+            return True
+        if up.lstrip().startswith(("GEOGCS", "GEOGCRS", "GEODCRS")):
+            return True
+        if up.lstrip().startswith(("PROJCS", "PROJCRS")) or "EPSG" in up:
+            return False
+    xs: list[float] = []
+    ys: list[float] = []
+    for feat in gj.get("features", []):
+        for c in _iter_coords((feat.get("geometry") or {}).get("coordinates", [])):
+            xs.append(c[0])
+            ys.append(c[1])
+    if not xs:
+        return False
+    in_range = min(xs) >= -180 and max(xs) <= 180 and min(ys) >= -90 and max(ys) <= 90
+    return bool(in_range and (max(xs) - min(xs)) < 1.0 and (max(ys) - min(ys)) < 1.0)
 
 
 def _pygeofetch_postprocessor():
@@ -85,6 +148,7 @@ def _pygeofetch_postprocessor():
     correct install)."""
     try:
         from pygeofetch.processing.postprocessor import PostProcessor as _PgfPost
+
         return _PgfPost()
     except ImportError:
         return None
@@ -114,6 +178,7 @@ class PostProcessor:
     def __init__(self, validator=None):
         if validator is None:
             from pygeovision.data.validator import DataValidator
+
             validator = DataValidator(mode="fix")
         self._v = validator
 
@@ -165,10 +230,11 @@ class PostProcessor:
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         with rasterio.open(input_path) as src:
-            data      = src.read(band)
+            data = src.read(band)
             transform = src.transform
-            crs_wkt   = src.crs.to_wkt() if src.crs else None
-            nd        = nodata if nodata is not None else src.nodata
+            crs_wkt = src.crs.to_wkt() if src.crs else None
+            geographic = bool(src.crs and src.crs.is_geographic)
+            nd = nodata if nodata is not None else src.nodata
 
         data = data.astype(np.int32)
         if nd is not None:
@@ -187,13 +253,19 @@ class PostProcessor:
             geom = shape(geom_dict)
             if simplify_tolerance > 0:
                 geom = geom.simplify(simplify_tolerance, preserve_topology=True)
-            if min_area_m2 > 0 and geom.area < min_area_m2:
+            area_m2 = _geographic_area_m2(geom) if geographic else geom.area
+            if min_area_m2 > 0 and area_m2 < min_area_m2:
                 continue
-            features.append({
-                "type": "Feature",
-                "geometry": mapping(geom),
-                "properties": {"class": int(value), "area_m2": round(geom.area, 2)},
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": mapping(geom),
+                    "properties": {
+                        "class": int(target_class) if target_class is not None else int(value),
+                        "area_m2": round(area_m2, 2),
+                    },
+                }
+            )
 
         gj = {
             "type": "FeatureCollection",
@@ -236,8 +308,8 @@ class PostProcessor:
 
         with rasterio.open(reference_path) as ref:
             transform = ref.transform
-            shape_rc  = (ref.height, ref.width)
-            profile   = ref.profile.copy()
+            shape_rc = (ref.height, ref.width)
+            profile = ref.profile.copy()
 
         with open(vector_path) as f:
             gj = json.load(f)
@@ -245,7 +317,7 @@ class PostProcessor:
         shapes_vals = []
         for feat in gj.get("features", []):
             geom = shape(feat["geometry"])
-            val  = feat.get("properties", {}).get(burn_field, default_value)
+            val = feat.get("properties", {}).get(burn_field, default_value)
             shapes_vals.append((geom, float(val)))
 
         burned = rio_rasterize(
@@ -299,7 +371,7 @@ class PostProcessor:
             output_path = str(p.parent / f"{p.stem}_sieved{p.suffix}")
 
         with rasterio.open(input_path) as src:
-            data    = src.read(band)
+            data = src.read(band)
             profile = src.profile.copy()
 
         sieved = rio_sieve(data.astype(np.int32), min_pixels, connectivity=connectivity)
@@ -345,9 +417,9 @@ class PostProcessor:
             output_path = str(p.parent / f"{p.stem}_filled{p.suffix}")
 
         with rasterio.open(input_path) as src:
-            data    = src.read(band).astype(np.float32)
+            data = src.read(band).astype(np.float32)
             profile = src.profile.copy()
-            nd      = nodata if nodata is not None else src.nodata
+            nd = nodata if nodata is not None else src.nodata
 
         if nd is not None:
             mask = (data != nd).astype(np.uint8)
@@ -357,8 +429,10 @@ class PostProcessor:
         if method == "bilinear":
             try:
                 from scipy.interpolate import griddata
-            except ImportError:
-                raise ImportError("scipy required for method='bilinear': pip install scipy")
+            except ImportError as exc:
+                raise ImportError(
+                    "scipy required for method='bilinear': pip install scipy"
+                ) from exc
 
             valid_rows, valid_cols = np.where(mask > 0)
             hole_rows, hole_cols = np.where(mask == 0)
@@ -375,7 +449,10 @@ class PostProcessor:
                 nan_mask = np.isnan(interpolated)
                 if nan_mask.any():
                     interpolated[nan_mask] = griddata(
-                        valid_points, valid_values, hole_points[nan_mask], method="nearest",
+                        valid_points,
+                        valid_values,
+                        hole_points[nan_mask],
+                        method="nearest",
                     )
                 filled = data.copy()
                 filled[hole_rows, hole_cols] = interpolated
@@ -383,6 +460,7 @@ class PostProcessor:
                 filled = data
         else:
             from rasterio.fill import fillnodata as rio_fill
+
             filled = rio_fill(data, mask=mask, max_search_distance=100)
 
         profile.update(count=1, dtype="float32", compress="lzw")
@@ -416,7 +494,7 @@ class PostProcessor:
         """
         rasterio = _require_rasterio()
         with rasterio.open(prob_path) as src:
-            prob    = src.read(band).astype(np.float32)
+            prob = src.read(band).astype(np.float32)
             profile = src.profile.copy()
 
         out = np.where(prob >= threshold, 1, nodata).astype(np.uint8)
@@ -426,14 +504,15 @@ class PostProcessor:
             dst.write(out[np.newaxis])
 
         kept_pct = (prob >= threshold).mean() * 100
-        logger.info("Threshold %.2f applied: %.1f%% pixels kept → %s",
-                     threshold, kept_pct, output_path)
+        logger.info(
+            "Threshold %.2f applied: %.1f%% pixels kept → %s", threshold, kept_pct, output_path
+        )
         return output_path
 
     # ------------------------------------------------------------------
     # 3. Vector geometry operations
     # ------------------------------------------------------------------
-    
+
     def smooth(
         self,
         input_path: str,
@@ -458,15 +537,24 @@ class PostProcessor:
         pgf = _pygeofetch_postprocessor()
         if pgf is not None:
             try:
-                result = pgf.smooth(input=input_path, tolerance=tolerance,
-                                     output=output_path, method="simplify")
+                result = pgf.smooth(
+                    input=input_path, tolerance=tolerance, output=output_path, method="simplify"
+                )
                 if result.success:
-                    logger.info("Smoothed %d features (tol=%.2f) → %s (via pygeofetch)",
-                                result.metadata.get("n_features", -1), tolerance, output_path)
+                    logger.info(
+                        "Smoothed %d features (tol=%.2f) → %s (via pygeofetch)",
+                        result.metadata.get("n_features", -1),
+                        tolerance,
+                        output_path,
+                    )
                     return str(result.output_path)
-                logger.warning("pygeofetch.smooth failed (%s) — falling back to native.", result.error)
+                logger.warning(
+                    "pygeofetch.smooth failed (%s) — falling back to native.", result.error
+                )
             except Exception as exc:
-                logger.warning("pygeofetch.smooth delegation failed (%s) — falling back to native.", exc)
+                logger.warning(
+                    "pygeofetch.smooth delegation failed (%s) — falling back to native.", exc
+                )
 
         geom_mod, _, _ = _require_shapely()
 
@@ -587,7 +675,7 @@ class PostProcessor:
                 feat.setdefault("properties", {})["regularised"] = True
                 regularised.append(feat)
             except Exception:
-                regularised.append(feat)   # keep original on failure
+                regularised.append(feat)  # keep original on failure
 
         out_gj = dict(gj)
         out_gj["features"] = regularised
@@ -653,7 +741,8 @@ class PostProcessor:
         geom_mod, _, _ = _require_shapely()
         features_gdf = gpd.read_file(input_path)
         aoi_gdf = gpd.GeoDataFrame(
-            {"geometry": [geom_mod.shape(g) for g in aoi_geoms]}, crs="EPSG:4326",
+            {"geometry": [geom_mod.shape(g) for g in aoi_geoms]},
+            crs="EPSG:4326",
         )
 
         if features_gdf.crs is not None and aoi_gdf.crs != features_gdf.crs:
@@ -666,8 +755,9 @@ class PostProcessor:
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         clipped.to_file(output_path, driver="GeoJSON")
 
-        logger.info("Clipped vector to AOI polygon: %d → %d features → %s",
-                     n_before, n_after, output_path)
+        logger.info(
+            "Clipped vector to AOI polygon: %d → %d features → %s", n_before, n_after, output_path
+        )
         return {"output_path": output_path, "n_before": n_before, "n_after": n_after}
 
     def dissolve(
@@ -700,6 +790,7 @@ class PostProcessor:
             key = feat.get("properties", {}).get(by_field, "all") if by_field else "all"
             groups.setdefault(key, []).append(geom_mod.shape(feat["geometry"]))
 
+        geographic = _geojson_is_geographic(gj)
         dissolved_features = []
         for key, geoms in groups.items():
             if buffer_px > 0:
@@ -709,11 +800,18 @@ class PostProcessor:
                 union = union.buffer(-buffer_px)
             polys = list(union.geoms) if hasattr(union, "geoms") else [union]
             for poly in polys:
-                dissolved_features.append({
-                    "type": "Feature",
-                    "geometry": geom_mod.mapping(poly),
-                    "properties": {by_field or "class": key, "area_m2": round(poly.area, 2)},
-                })
+                dissolved_features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": geom_mod.mapping(poly),
+                        "properties": {
+                            by_field or "class": key,
+                            "area_m2": round(
+                                _geographic_area_m2(poly) if geographic else poly.area, 2
+                            ),
+                        },
+                    }
+                )
 
         out_gj = {
             "type": "FeatureCollection",
@@ -754,12 +852,20 @@ class PostProcessor:
                 try:
                     result = pgf.buffer(input=input_path, distance=distance, output=output_path)
                     if result.success:
-                        logger.info("Buffered %d features (d=%.1f) → %s (via pygeofetch)",
-                                    result.metadata.get("n_features", -1), distance, output_path)
+                        logger.info(
+                            "Buffered %d features (d=%.1f) → %s (via pygeofetch)",
+                            result.metadata.get("n_features", -1),
+                            distance,
+                            output_path,
+                        )
                         return str(result.output_path)
-                    logger.warning("pygeofetch.buffer failed (%s) — falling back to native.", result.error)
+                    logger.warning(
+                        "pygeofetch.buffer failed (%s) — falling back to native.", result.error
+                    )
                 except Exception as exc:
-                    logger.warning("pygeofetch.buffer delegation failed (%s) — falling back to native.", exc)
+                    logger.warning(
+                        "pygeofetch.buffer delegation failed (%s) — falling back to native.", exc
+                    )
 
         geom_mod, _, _ = _require_shapely()
 
@@ -774,8 +880,9 @@ class PostProcessor:
         with open(output_path, "w") as f:
             json.dump(gj, f)
 
-        logger.info("Buffered %d features (d=%.1f) → %s",
-                     len(gj.get("features",[])), distance, output_path)
+        logger.info(
+            "Buffered %d features (d=%.1f) → %s", len(gj.get("features", [])), distance, output_path
+        )
         return output_path
 
     # ------------------------------------------------------------------
@@ -807,27 +914,42 @@ class PostProcessor:
         rasterio = _require_rasterio()
 
         with rasterio.open(prediction_path) as src:
-            data     = src.read(band).astype(np.int32)
-            _res     = abs(src.transform.a)
-            px_size  = pixel_size_m or _res
-            nd       = src.nodata
+            data = src.read(band).astype(np.int32)
+            _res = abs(src.transform.a)
+            px_size = pixel_size_m or _res
+            nd = src.nodata
+            geographic = bool(src.crs and src.crs.is_geographic) and not pixel_size_m
+            tf = src.transform
 
-        if nd is not None:
-            valid = data[data != int(nd)]
-        else:
-            valid = data.ravel()
+        valid_mask = (data != int(nd)) if nd is not None else np.ones(data.shape, dtype=bool)
+        valid = data[valid_mask]
 
         total_px = valid.size
         classes, counts = np.unique(valid, return_counts=True)
-        px_area_m2 = px_size ** 2
+        px_area_m2 = px_size**2
+        area_by_class: dict[int, float] | None = None
+        if geographic:
+            # pixel size is in degrees: weight each pixel by the true area of its row (shrinks
+            # with latitude), so areas are m2 rather than degrees squared
+            rows = np.arange(data.shape[0])
+            lat = tf.f + (rows + 0.5) * tf.e
+            m_lat, m_lon = _metres_per_degree(lat)
+            row_area = (abs(tf.a) * m_lon) * (abs(tf.e) * m_lat)
+            area_grid = np.broadcast_to(row_area[:, None], data.shape)[valid_mask]
+            area_by_class = {int(c): float(area_grid[valid == c].sum()) for c in classes}
+
+        def _area(cls, cnt) -> float:
+            if area_by_class is not None:
+                return area_by_class[int(cls)]
+            return float(cnt) * px_area_m2
 
         return {
             int(cls): {
-                "pixels":   int(cnt),
-                "area_m2":  round(cnt * px_area_m2, 1),
-                "area_ha":  round(cnt * px_area_m2 / 10_000, 3),
-                "area_km2": round(cnt * px_area_m2 / 1_000_000, 5),
-                "pct":      round(100 * cnt / max(total_px, 1), 2),
+                "pixels": int(cnt),
+                "area_m2": round(_area(cls, cnt), 1),
+                "area_ha": round(_area(cls, cnt) / 10_000, 3),
+                "area_km2": round(_area(cls, cnt) / 1_000_000, 5),
+                "pct": round(100 * cnt / max(total_px, 1), 2),
             }
             for cls, cnt in zip(classes, counts)
         }
@@ -837,7 +959,7 @@ class PostProcessor:
         raster_path: str,
         vector_path: str,
         output_path: str | None = None,
-        stats: list[str] = ("mean", "std", "min", "max", "count"),
+        stats: Sequence[str] = ("mean", "std", "min", "max", "count"),
         band: int = 1,
     ) -> str | list[dict]:
         """Compute raster statistics for each polygon in a vector layer.
@@ -860,6 +982,7 @@ class PostProcessor:
                 stats=["mean","std","min","max"],
             )
         """
+
         def _native():
             rasterio = _require_rasterio()
             from rasterio.mask import mask as rio_mask
@@ -874,26 +997,39 @@ class PostProcessor:
                 props = dict(feat.get("properties") or {})
                 try:
                     with rasterio.open(raster_path) as src:
-                        data, _ = rio_mask(src, [geom.__geo_interface__], crop=True)
-                        arr = data[band - 1].astype(np.float32)
-                        valid = arr[np.isfinite(arr) & (arr != (src.nodata or -9999))]
+                        data, _ = rio_mask(src, [geom.__geo_interface__], crop=True, filled=False)
+                        band_data = data[band - 1]
+                        arr = np.ma.getdata(band_data).astype(np.float32)
+                        keep = ~np.ma.getmaskarray(band_data) & np.isfinite(arr)
+                        if src.nodata is not None:
+                            keep &= arr != src.nodata  # nodata=0 is a real nodata value
+                        valid = arr[keep]
 
                     if valid.size > 0:
                         for s in stats:
-                            if s == "mean":   props["stat_mean"]   = float(valid.mean())
-                            elif s == "std":  props["stat_std"]    = float(valid.std())
-                            elif s == "min":  props["stat_min"]    = float(valid.min())
-                            elif s == "max":  props["stat_max"]    = float(valid.max())
-                            elif s == "count":props["stat_count"]  = int(valid.size)
-                            elif s == "median": props["stat_median"] = float(np.median(valid))
-                            elif s == "sum":  props["stat_sum"]    = float(valid.sum())
+                            if s == "mean":
+                                props["stat_mean"] = float(valid.mean())
+                            elif s == "std":
+                                props["stat_std"] = float(valid.std())
+                            elif s == "min":
+                                props["stat_min"] = float(valid.min())
+                            elif s == "max":
+                                props["stat_max"] = float(valid.max())
+                            elif s == "count":
+                                props["stat_count"] = int(valid.size)
+                            elif s == "median":
+                                props["stat_median"] = float(np.median(valid))
+                            elif s == "sum":
+                                props["stat_sum"] = float(valid.sum())
                     else:
                         for s in stats:
                             props[f"stat_{s}"] = None
                 except Exception as e:
                     logger.warning("Zonal stats failed for feature: %s", e)
 
-                results.append({"type": "Feature", "geometry": feat["geometry"], "properties": props})
+                results.append(
+                    {"type": "Feature", "geometry": feat["geometry"], "properties": props}
+                )
 
             if output_path:
                 pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -919,13 +1055,17 @@ class PostProcessor:
             try:
                 csv_path = str(pathlib.Path(tmp_dir) / "zonal.csv")
                 result = pgf.zonal_stats(
-                    raster=raster_path, zones=vector_path, output=csv_path,
-                    stats=list(stats), band=band,
+                    raster=raster_path,
+                    zones=vector_path,
+                    output=csv_path,
+                    stats=list(stats),
+                    band=band,
                 )
                 if not result.success:
                     logger.warning(
                         "pygeofetch.zonal_stats failed (%s) — falling back to "
-                        "pygeovision's native implementation.", result.error,
+                        "pygeovision's native implementation.",
+                        result.error,
                     )
                     return _native()
 
@@ -942,6 +1082,22 @@ class PostProcessor:
                         zone_id = int(row["zone_id"])
                         stats_by_zone_id[zone_id] = row
 
+                # the delegate may not return every requested statistic (for example it has no
+                # "count" column): use the native path, which computes all of them, rather than
+                # returning None for a statistic that was asked for
+                missing = [
+                    s
+                    for s in stats
+                    if stats_by_zone_id
+                    and all(r.get(s) in (None, "") for r in stats_by_zone_id.values())
+                ]
+                if missing or not stats_by_zone_id:
+                    logger.info(
+                        "pygeofetch zonal_stats returned no %s; using the native implementation",
+                        missing,
+                    )
+                    return _native()
+
                 results = []
                 for i, feat in enumerate(features):
                     props = dict(feat.get("properties") or {})
@@ -949,7 +1105,9 @@ class PostProcessor:
                     for s in stats:
                         val = row.get(s)
                         props[f"stat_{s}"] = float(val) if val not in (None, "", "nan") else None
-                    results.append({"type": "Feature", "geometry": feat["geometry"], "properties": props})
+                    results.append(
+                        {"type": "Feature", "geometry": feat["geometry"], "properties": props}
+                    )
 
                 if output_path:
                     pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -960,11 +1118,13 @@ class PostProcessor:
                 return results
             finally:
                 import shutil
+
                 shutil.rmtree(tmp_dir, ignore_errors=True)
         except Exception as exc:
             logger.warning(
                 "pygeofetch delegation for zonal_statistics failed (%s) — "
-                "falling back to pygeovision's native implementation.", exc,
+                "falling back to pygeovision's native implementation.",
+                exc,
             )
             return _native()
 
@@ -1002,8 +1162,8 @@ class PostProcessor:
         with rasterio.open(prediction_path) as src:
             pred = src.read(band).astype(np.int32).ravel()
         with rasterio.open(reference_path) as src:
-            ref  = src.read(band).astype(np.int32).ravel()
-            nd   = src.nodata
+            ref = src.read(band).astype(np.int32).ravel()
+            nd = src.nodata
 
         # Align sizes
         n = min(len(pred), len(ref))
@@ -1018,7 +1178,7 @@ class PostProcessor:
         pred, ref = pred[valid], ref[valid]
 
         classes = sorted(set(np.unique(ref).tolist()) | set(np.unique(pred).tolist()))
-        n_cls   = len(classes)
+        n_cls = len(classes)
         cls_map = {c: i for i, c in enumerate(classes)}
 
         # Confusion matrix
@@ -1029,11 +1189,11 @@ class PostProcessor:
             if ri is not None and pi is not None:
                 cm[ri, pi] += 1
 
-        total     = cm.sum()
-        oa        = float(cm.diagonal().sum() / max(total, 1))
+        total = cm.sum()
+        oa = float(cm.diagonal().sum() / max(total, 1))
         # Cohen's kappa
-        p_e       = float((cm.sum(axis=0) * cm.sum(axis=1)).sum()) / max(total**2, 1)
-        kappa     = (oa - p_e) / max(1 - p_e, 1e-10)
+        p_e = float((cm.sum(axis=0) * cm.sum(axis=1)).sum()) / max(total**2, 1)
+        kappa = (oa - p_e) / max(1 - p_e, 1e-10)
 
         per_class = {}
         for i, cls in enumerate(classes):
@@ -1041,32 +1201,36 @@ class PostProcessor:
             fp = int(cm[:, i].sum() - tp)
             fn = int(cm[i, :].sum() - tp)
             precision = tp / max(tp + fp, 1)
-            recall    = tp / max(tp + fn, 1)
-            f1        = 2*precision*recall / max(precision + recall, 1e-10)
-            iou       = tp / max(tp + fp + fn, 1)
+            recall = tp / max(tp + fn, 1)
+            f1 = 2 * precision * recall / max(precision + recall, 1e-10)
+            iou = tp / max(tp + fp + fn, 1)
             per_class[int(cls)] = {
                 "precision": round(precision, 4),
-                "recall":    round(recall, 4),
-                "f1":        round(f1, 4),
-                "iou":       round(iou, 4),
-                "tp": tp, "fp": fp, "fn": fn,
+                "recall": round(recall, 4),
+                "f1": round(f1, 4),
+                "iou": round(iou, 4),
+                "tp": tp,
+                "fp": fp,
+                "fn": fn,
             }
 
         mean_iou = float(np.mean([v["iou"] for v in per_class.values()]))
-        names    = class_names or [str(c) for c in classes]
+        names = class_names or [str(c) for c in classes]
 
         logger.info(
             "Accuracy assessment: OA=%.3f  κ=%.3f  mIoU=%.3f",
-            oa, kappa, mean_iou,
+            oa,
+            kappa,
+            mean_iou,
         )
         return {
             "overall_accuracy": round(oa, 4),
-            "kappa":            round(kappa, 4),
-            "mean_iou":         round(mean_iou, 4),
-            "per_class":        per_class,
+            "kappa": round(kappa, 4),
+            "mean_iou": round(mean_iou, 4),
+            "per_class": per_class,
             "confusion_matrix": cm.tolist(),
-            "class_names":      names[:n_cls],
-            "total_pixels":     int(total),
+            "class_names": names[:n_cls],
+            "total_pixels": int(total),
         }
 
     # ------------------------------------------------------------------
@@ -1119,7 +1283,8 @@ class PostProcessor:
                         )
                         with rasterio.open(result.output_path, "r+") as fix_dst:
                             fix_dst.build_overviews(
-                                [2, 4, 8, 16, 32], rasterio.enums.Resampling.average,
+                                [2, 4, 8, 16, 32],
+                                rasterio.enums.Resampling.average,
                             )
                     logger.info("COG → %s (via pygeofetch)", output_path)
                     return str(result.output_path)
@@ -1131,7 +1296,8 @@ class PostProcessor:
             except Exception as exc:
                 logger.warning(
                     "pygeofetch.cog delegation failed (%s) — falling back to "
-                    "gdal_translate/native tiling.", exc,
+                    "gdal_translate/native tiling.",
+                    exc,
                 )
 
         import subprocess
@@ -1145,7 +1311,8 @@ class PostProcessor:
         try:
             subprocess.run(
                 ["gdal_translate", "-of", "COG", input_path, output_path],
-                check=True, capture_output=True,
+                check=True,
+                capture_output=True,
             )
         except (subprocess.CalledProcessError, FileNotFoundError):
             rasterio = _require_rasterio()
@@ -1165,7 +1332,8 @@ class PostProcessor:
             logger.warning(
                 "COG → %s written WITHOUT overview pyramids (neither pygeofetch "
                 "nor gdal_translate were available) — this is a tiled GeoTIFF, "
-                "not a genuine COG.", output_path,
+                "not a genuine COG.",
+                output_path,
             )
             return output_path
         logger.info("COG → %s (via gdal_translate)", output_path)
@@ -1194,9 +1362,9 @@ class PostProcessor:
 
         driver_map = {
             "geojson": "GeoJSON",
-            "shp":     "ESRI Shapefile",
-            "gpkg":    "GPKG",
-            "kml":     "KML",
+            "shp": "ESRI Shapefile",
+            "gpkg": "GPKG",
+            "kml": "KML",
         }
         driver = driver_map.get(fmt, "GeoJSON")
         gdf.to_file(output_path, driver=driver)
@@ -1220,15 +1388,15 @@ class PostProcessor:
             ``output_path``
         """
         stats = self.class_statistics(prediction_path)
-        acc   = None
+        acc = None
         if reference_path:
-            acc = self.accuracy_assessment(prediction_path, reference_path,
-                                            class_names=class_names)
+            acc = self.accuracy_assessment(prediction_path, reference_path, class_names=class_names)
 
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         if fmt == "json":
             import json
+
             with open(output_path, "w") as f:
                 json.dump({"class_stats": stats, "accuracy": acc}, f, indent=2)
         else:
@@ -1257,7 +1425,7 @@ th,td{{border:1px solid #e2e8f0;padding:8px 12px;}}th{{background:#f1f5f9;}}</st
 <h2>Class Statistics</h2>
 <table><tr><th>Class</th><th>Pixels</th><th>Area (ha)</th><th>Coverage</th></tr>
 {stat_rows}</table>
-{acc_html} 
+{acc_html}
 </body></html>"""
             with open(output_path, "w") as f:
                 f.write(html)

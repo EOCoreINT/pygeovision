@@ -7,7 +7,6 @@ whatever strategy was requested. A caller doing
 `select(n=1, strategy="best")` expecting the lowest-cloud-cover scene
 just got whichever scene happened to be first in the search results.
 """
-import pytest
 
 from pygeovision.data.ai_prep import EOPipeline
 from pygeovision.data.fetch import SearchResult
@@ -15,12 +14,33 @@ from pygeovision.data.fetch import SearchResult
 
 def _make_scenes():
     return [
-        SearchResult(id="A", provider="p", satellite="sentinel-2",
-                     datetime="2024-03-15T10:00:00", cloud_cover=45.0, bbox=None, score=0.5),
-        SearchResult(id="B", provider="p", satellite="sentinel-2",
-                     datetime="2024-06-01T10:00:00", cloud_cover=2.0, bbox=None, score=0.9),
-        SearchResult(id="C", provider="p", satellite="sentinel-2",
-                     datetime="2024-01-01T10:00:00", cloud_cover=15.0, bbox=None, score=0.7),
+        SearchResult(
+            id="A",
+            provider="p",
+            satellite="sentinel-2",
+            datetime="2024-03-15T10:00:00",
+            cloud_cover=45.0,
+            bbox=None,
+            score=0.5,
+        ),
+        SearchResult(
+            id="B",
+            provider="p",
+            satellite="sentinel-2",
+            datetime="2024-06-01T10:00:00",
+            cloud_cover=2.0,
+            bbox=None,
+            score=0.9,
+        ),
+        SearchResult(
+            id="C",
+            provider="p",
+            satellite="sentinel-2",
+            datetime="2024-01-01T10:00:00",
+            cloud_cover=15.0,
+            bbox=None,
+            score=0.7,
+        ),
     ]
 
 
@@ -58,11 +78,21 @@ class TestSelectStrategies:
 
     def test_none_cloud_cover_sorts_last_for_best_strategy(self):
         scenes = _make_scenes()
-        scenes.append(SearchResult(id="D", provider="p", satellite="sentinel-1",
-                                    datetime="2024-05-01T10:00:00", cloud_cover=None, bbox=None))
+        scenes.append(
+            SearchResult(
+                id="D",
+                provider="p",
+                satellite="sentinel-1",
+                datetime="2024-05-01T10:00:00",
+                cloud_cover=None,
+                bbox=None,
+            )
+        )
         pipe = _pipeline_with(scenes)
         pipe.select(n=4, strategy="best")
-        assert pipe._scenes[-1].id == "D", "scene with unknown cloud cover should sort last, not first/arbitrary"
+        assert (
+            pipe._scenes[-1].id == "D"
+        ), "scene with unknown cloud cover should sort last, not first/arbitrary"
 
     def test_unrecognised_strategy_keeps_search_order_with_warning(self, caplog):
         pipe = _pipeline_with(_make_scenes())

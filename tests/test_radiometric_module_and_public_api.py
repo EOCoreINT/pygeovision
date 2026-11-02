@@ -16,6 +16,7 @@ what was already verified inside BasePipeline._stack_bands(), and that
 BasePipeline's own tests (a separate file) continue to pass unchanged
 against the new thin-wrapper implementation.
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
@@ -36,14 +37,26 @@ class TestSharedModuleDirectly:
         asset_paths = {}
         for key in ["SR_B4", "SR_B3", "SR_B2"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), known_dn, dtype="uint16"), 1)
             asset_paths[key] = p
 
         result = stack_and_prepare_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="LC08_L2SP_014031_20240615_02_T1", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="LC08_L2SP_014031_20240615_02_T1",
+            apply_cloud_mask=False,
         )
         with rasterio.open(result) as src:
             data = src.read()
@@ -57,15 +70,27 @@ class TestSharedModuleDirectly:
         asset_paths = {}
         for key in ["B04", "B03", "B02"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 500, dtype="uint16"), 1)
             asset_paths[key] = p
 
         # A 2021 scene (processing baseline < 04.00): reflectance = DN / 10000.
         result = stack_and_prepare_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL",
+            apply_cloud_mask=False,
         )
         with rasterio.open(result) as src:
             data = src.read()
@@ -80,14 +105,26 @@ class TestSharedModuleDirectly:
         asset_paths = {}
         for key in ["B04", "B03", "B02"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
-                dst.write(np.full((size, size), 1500, dtype="uint16"), 1)   # 0.05 reflectance
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
+                dst.write(np.full((size, size), 1500, dtype="uint16"), 1)  # 0.05 reflectance
             asset_paths[key] = p
 
         result = stack_and_prepare_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111",
+            apply_cloud_mask=False,
         )
         with rasterio.open(result) as src:
             data = src.read()
@@ -102,15 +139,27 @@ class TestSharedModuleDirectly:
         asset_paths = {}
         for key in ["B04", "B03", "B02"]:
             arr = np.full((size, size), 1500, dtype="uint16")
-            arr[0, 0] = 0                                                  # swath-edge fill
+            arr[0, 0] = 0  # swath-edge fill
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(arr, 1)
             asset_paths[key] = p
         result = stack_and_prepare_bands(
-            asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
-            scene_id="S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111", apply_cloud_mask=False,
+            asset_paths,
+            tmp_path / "stack.tif",
+            bands=("red", "green", "blue"),
+            scene_id="S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111",
+            apply_cloud_mask=False,
         )
         with rasterio.open(result) as src:
             data = src.read()
@@ -125,14 +174,25 @@ class TestSharedModuleDirectly:
         asset_paths = {}
         for key in ["red", "green", "blue"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 9091, dtype="uint16"), 1)
             asset_paths[key] = p
 
         with pytest.raises(RuntimeError, match="not identifiable as Landsat or Sentinel-2"):
             stack_and_prepare_bands(
-                asset_paths, tmp_path / "stack.tif", bands=("red", "green", "blue"),
+                asset_paths,
+                tmp_path / "stack.tif",
+                bands=("red", "green", "blue"),
                 scene_id="UNKNOWN_SENSOR_SCENE",
             )
 
@@ -155,14 +215,24 @@ class TestPrepareStackPublicMethod:
         asset_paths = {}
         for key in ["B04", "B03", "B02"]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), 500, dtype="uint16"), 1)
             asset_paths[key] = p
 
         fetcher = SatelliteFetcher.__new__(SatelliteFetcher)
         result = fetcher.prepare_stack(
-            asset_paths, tmp_path / "stack.tif",
+            asset_paths,
+            tmp_path / "stack.tif",
             scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL",
         )
         with rasterio.open(result) as src:
@@ -181,14 +251,24 @@ class TestPrepareStackPublicMethod:
         # Need at least 4 bands for water()'s green/nir index logic
         for key, val in [("B02", 300), ("B03", 400), ("B04", 350), ("B08", 100)]:
             p = tmp_path / f"{key}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=transform,
+            ) as dst:
                 dst.write(np.full((size, size), val, dtype="uint16"), 1)
             asset_paths[key] = p
 
         fetcher = SatelliteFetcher.__new__(SatelliteFetcher)
         stack_path = fetcher.prepare_stack(
-            asset_paths, tmp_path / "stack.tif",
+            asset_paths,
+            tmp_path / "stack.tif",
             bands=("blue", "green", "red", "nir"),
             scene_id="S2A_MSIL2A_20210615T153941_R011_T18TXL",
             apply_cloud_mask=False,

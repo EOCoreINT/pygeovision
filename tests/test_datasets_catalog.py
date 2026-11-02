@@ -1,16 +1,18 @@
 """Catalogue integrity, filters and helpers of ``pygeovision.datasets``."""
+
 from __future__ import annotations
 
-import json
 from collections import Counter
+import json
 
-import pytest
 from click.testing import CliRunner
+import pytest
 
 from pygeovision.datasets.analysis import DatasetAnalyzer
 from pygeovision.datasets.benchmark import BenchmarkBuilder, BenchmarkConfig
 from pygeovision.datasets.loader import DatasetLoader
-from pygeovision.datasets.registry import _build_catalog, _raw_catalog, dataset_registry as reg
+from pygeovision.datasets.registry import _build_catalog, _raw_catalog
+from pygeovision.datasets.registry import dataset_registry as reg
 
 
 class TestCatalogue:
@@ -27,9 +29,12 @@ class TestCatalogue:
         for d in _raw_catalog():
             first.setdefault(d.name, d)
         for n in dup:
-            assert built[n].n_samples == first[n].n_samples          # first entry wins
+            assert built[n].n_samples == first[n].n_samples  # first entry wins
         # tasks are the union, so a dataset stays findable under every task it was listed for
-        assert "time_series" in built["CropHarvest"].tasks and "classification" in built["CropHarvest"].tasks
+        assert (
+            "time_series" in built["CropHarvest"].tasks
+            and "classification" in built["CropHarvest"].tasks
+        )
         # empty links are filled from later entries
         assert built["CropHarvest"].download_url.startswith("https://")
 
@@ -53,7 +58,7 @@ class TestCatalogue:
 
 class TestFilters:
     def test_zero_is_a_real_bound(self):
-        assert reg.filter(max_volume_gb=0.0) == []                      # was "no filter" before
+        assert reg.filter(max_volume_gb=0.0) == []  # was "no filter" before
         assert len(reg.filter(max_volume_gb=0.5)) < len(reg)
 
     def test_conditions_combine(self):
@@ -122,7 +127,9 @@ class TestAnalysis:
 class TestBenchmarkConfig:
     def test_split_ratios_must_sum_to_one(self):
         with pytest.raises(ValueError, match="sum to 1"):
-            BenchmarkConfig("segmentation", ["x"], split_ratios={"train": 0.7, "val": 0.2, "test": 0.2})
+            BenchmarkConfig(
+                "segmentation", ["x"], split_ratios={"train": 0.7, "val": 0.2, "test": 0.2}
+            )
         with pytest.raises(ValueError):
             BenchmarkConfig("segmentation", ["x"], split_ratios={"train": 0.8, "test": 0.2})
 
@@ -130,7 +137,10 @@ class TestBenchmarkConfig:
         paths = BenchmarkBuilder().save_all(str(tmp_path), n=3)
         assert paths and all(p.endswith(".json") for p in paths)
         cfg = json.loads(open(paths[0]).read())
-        assert cfg["split_ratios"] == {"train": 0.6, "val": 0.2, "test": 0.2} and len(cfg["dataset_names"]) == 3
+        assert (
+            cfg["split_ratios"] == {"train": 0.6, "val": 0.2, "test": 0.2}
+            and len(cfg["dataset_names"]) == 3
+        )
 
     def test_unknown_task_lists_the_valid_ones(self):
         with pytest.raises(ValueError, match="segmentation"):
@@ -140,6 +150,7 @@ class TestBenchmarkConfig:
 class TestCLI:
     def _run(self, *args):
         from pygeovision.cli.main import cli
+
         return CliRunner().invoke(cli, list(args))
 
     def test_datasets_top_modality(self):

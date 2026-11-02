@@ -10,6 +10,7 @@ Defects pinned here (each was reproduced before being fixed):
 * DETR got ``num_classes + 1`` labels on top of its own "no object" slot;
 * a super-resolution model got 3 output bands for a 4-band input.
 """
+
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -39,7 +40,7 @@ class TestAdaptFirstConv:
         torch.testing.assert_close(new.weight[:, :3], conv.weight)
         mean = conv.weight.mean(dim=1, keepdim=True)
         for k in range(3, 6):
-            torch.testing.assert_close(new.weight[:, k:k + 1], mean)
+            torch.testing.assert_close(new.weight[:, k : k + 1], mean)
         assert new.stride == conv.stride and new.padding == conv.padding
 
     def test_not_pretrained_does_not_copy(self):
@@ -78,12 +79,13 @@ class TestAdaptFirstConv:
 @pytest.mark.parametrize("name", ["faster-rcnn-r50", "mask-rcnn-r50", "fcos-r50"])
 @pytest.mark.parametrize("bands", [3, 4, 13])
 def test_torchvision_detectors_run_on_any_band_count(name, bands):
-    model = get_model(name, num_classes=2, in_channels=bands, pretrained=False,
-                      min_size=96, max_size=96).eval()
+    model = get_model(
+        name, num_classes=2, in_channels=bands, pretrained=False, min_size=96, max_size=96
+    ).eval()
     with torch.no_grad():
         out = model([torch.rand(bands, 96, 96)])
     assert set(out[0]) >= {"boxes", "scores", "labels"}
-    assert list(model.transform.image_mean.__len__() for _ in [0]) == [bands]
+    assert len(model.transform.image_mean) == bands
 
 
 def test_detector_normaliser_uses_imagenet_for_rgb_and_their_mean_for_extras():
@@ -95,20 +97,28 @@ def test_detector_normaliser_uses_imagenet_for_rgb_and_their_mean_for_extras():
 
 def test_detector_accepts_sensor_statistics():
     mean, std = [0.1, 0.2, 0.3, 0.4], [0.05, 0.06, 0.07, 0.08]
-    model = get_model("fcos-r50", num_classes=2, in_channels=4, pretrained=False,
-                      image_mean=mean, image_std=std)
+    model = get_model(
+        "fcos-r50", num_classes=2, in_channels=4, pretrained=False, image_mean=mean, image_std=std
+    )
     assert model.transform.image_mean == mean and model.transform.image_std == std
 
 
 def test_detector_statistics_of_the_wrong_length_rejected():
     with pytest.raises(ValueError, match="4 values"):
-        get_model("fcos-r50", num_classes=2, in_channels=4, pretrained=False,
-                  image_mean=[0.1, 0.2], image_std=[0.1, 0.2])
+        get_model(
+            "fcos-r50",
+            num_classes=2,
+            in_channels=4,
+            pretrained=False,
+            image_mean=[0.1, 0.2],
+            image_std=[0.1, 0.2],
+        )
 
 
 def test_detector_trains_one_step_on_four_bands():
-    model = get_model("faster-rcnn-r50", num_classes=1, in_channels=4, pretrained=False,
-                      min_size=64, max_size=64).train()
+    model = get_model(
+        "faster-rcnn-r50", num_classes=1, in_channels=4, pretrained=False, min_size=64, max_size=64
+    ).train()
     img = torch.rand(4, 64, 64)
     tgt = {"boxes": torch.tensor([[10.0, 10.0, 40.0, 40.0]]), "labels": torch.tensor([1])}
     losses = model([img], [tgt])
@@ -122,6 +132,7 @@ class TestPretrainedFailureIsNeverSilent:
     @pytest.fixture
     def offline_timm(self, monkeypatch):
         import timm
+
         real = timm.create_model
 
         def fake(name, pretrained=False, **kw):
@@ -136,8 +147,9 @@ class TestPretrainedFailureIsNeverSilent:
             get_model("resnet50", num_classes=3, in_channels=4, pretrained=True)
 
     def test_opt_in_fallback_is_flagged(self, offline_timm):
-        m = get_model("resnet50", num_classes=3, in_channels=4, pretrained=True,
-                      allow_random_init=True)
+        m = get_model(
+            "resnet50", num_classes=3, in_channels=4, pretrained=True, allow_random_init=True
+        )
         assert m._pygeovision_is_random_init is True
         assert "simulated download failure" in m._pygeovision_random_init_reason
 
@@ -158,8 +170,9 @@ class TestPretrainedFailureIsNeverSilent:
             raise OSError("simulated hub failure")
 
         monkeypatch.setattr(transformers.AutoConfig, "from_pretrained", boom)
-        m = get_model("segformer-b0", num_classes=2, in_channels=3, pretrained=True,
-                      allow_random_init=True)
+        m = get_model(
+            "segformer-b0", num_classes=2, in_channels=3, pretrained=True, allow_random_init=True
+        )
         assert m._pygeovision_is_random_init is True
         assert m(torch.rand(1, 3, 64, 64)).shape == (1, 2, 64, 64)
 
@@ -176,8 +189,20 @@ class TestPretrainedFailureIsNeverSilent:
 
 
 # ---------------------------------------------------- Hugging Face construction
-HF_LOCAL = ["vit-b16", "vit-l16", "dinov2-s", "dinov2-b", "segformer-b0", "segformer-b2",
-            "segformer-b5", "detr-r50", "detr-r101", "rt-detr-l", "upernet-swin-b", "swinir-m"]
+HF_LOCAL = [
+    "vit-b16",
+    "vit-l16",
+    "dinov2-s",
+    "dinov2-b",
+    "segformer-b0",
+    "segformer-b2",
+    "segformer-b5",
+    "detr-r50",
+    "detr-r101",
+    "rt-detr-l",
+    "upernet-swin-b",
+    "swinir-m",
+]
 
 
 @pytest.mark.parametrize("name", HF_LOCAL)
@@ -191,7 +216,7 @@ def test_offline_architecture_matches_the_published_parameter_count(name):
 def test_detr_label_count_is_the_number_of_real_classes():
     model = get_model("detr-r50", num_classes=3, in_channels=3, pretrained=False)
     assert model.config.num_labels == 3
-    assert model.class_labels_classifier.out_features == 4      # 3 + DETR's own "no object"
+    assert model.class_labels_classifier.out_features == 4  # 3 + DETR's own "no object"
 
 
 @pytest.mark.parametrize("bands", [4, 13])
@@ -210,9 +235,11 @@ def test_classifier_has_the_requested_head_and_returns_logits():
 
 
 def test_hf_stem_adaptation_keeps_pretrained_rgb_filters():
-    cfg = transformers.SegformerConfig(depths=[1, 1, 1, 1], hidden_sizes=[16, 32, 64, 128],
-                                       decoder_hidden_size=32, num_labels=2)
+    cfg = transformers.SegformerConfig(
+        depths=[1, 1, 1, 1], hidden_sizes=[16, 32, 64, 128], decoder_hidden_size=32, num_labels=2
+    )
     model = transformers.SegformerForSemanticSegmentation(cfg)
+
     def stem():  # transformers 4.x and 5.x place the patch embedding at different paths
         return next(m for m in model.modules() if isinstance(m, nn.Conv2d))
 
@@ -257,11 +284,24 @@ def test_geotrainer_trains_a_registry_segformer(tmp_path):
     y = (x[:, 0] > 0.6).long()
     ds = torch.utils.data.TensorDataset(x, y)
     dl = torch.utils.data.DataLoader(ds, batch_size=4)
-    cfg = TrainingConfig(output_dir=str(tmp_path), max_epochs=2, batch_size=4, num_workers=0,
-                         persistent_workers=False, pin_memory=False, augment=False, precision="fp32",
-                         learning_rate=1e-3, early_stopping_patience=99, warmup_epochs=0, seed=0,
-                         devices="cpu")
-    result = GeoTrainer(model, cfg).fit(train_loader=dl, val_loader=dl, loss_fn=nn.CrossEntropyLoss())
+    cfg = TrainingConfig(
+        output_dir=str(tmp_path),
+        max_epochs=2,
+        batch_size=4,
+        num_workers=0,
+        persistent_workers=False,
+        pin_memory=False,
+        augment=False,
+        precision="fp32",
+        learning_rate=1e-3,
+        early_stopping_patience=99,
+        warmup_epochs=0,
+        seed=0,
+        devices="cpu",
+    )
+    result = GeoTrainer(model, cfg).fit(
+        train_loader=dl, val_loader=dl, loss_fn=nn.CrossEntropyLoss()
+    )
     assert result["epochs_trained"] == 2
     assert all(torch.isfinite(torch.tensor(v)) for v in result["history"]["train_loss"])
 
@@ -273,24 +313,43 @@ def test_tiled_inference_stitches_a_registry_segformer_at_full_resolution():
 
     model = get_model("segformer-b0", num_classes=3, in_channels=4, pretrained=False).eval()
     image = np.random.RandomState(0).rand(4, 150, 170).astype("float32")
-    probs = TiledInference(model, chip_size=64, overlap=16, num_classes=3, half_precision=False,
-                           device="cpu").predict_array(image)
+    probs = TiledInference(
+        model, chip_size=64, overlap=16, num_classes=3, half_precision=False, device="cpu"
+    ).predict_array(image)
     assert probs.shape == (3, 150, 170)
     np.testing.assert_allclose(probs.sum(0), 1.0, atol=1e-4)
 
 
 # -------------------------------------------------------------- registry integrity
-REFUSED = {"rf-detr-b", "rf-detr-l", "dinov3_segmentor", "changestar-r18", "changeformer-mit-b4",
-           "satlas-pretrain", "chatearthnet", "lisat-7b"}
+REFUSED = {
+    "rf-detr-b",
+    "rf-detr-l",
+    "dinov3_segmentor",
+    "changestar-r18",
+    "changeformer-mit-b4",
+    "satlas-pretrain",
+    "chatearthnet",
+    "lisat-7b",
+}
 # Wrappers around libraries/weights fetched at construction time, and the Hub-only configs.
-NOT_OFFLINE = {"grounding-dino", "mask2former-swin-t", "mask2former-swin-b", "dofa-base",
-               "dofa-large", "prithvi-100m", "prithvi-300m", "prithvi_eo_1_0", "prithvi_eo_2_0",
-               "prithvi_burn_scar"}
+NOT_OFFLINE = {
+    "grounding-dino",
+    "mask2former-swin-t",
+    "mask2former-swin-b",
+    "dofa-base",
+    "dofa-large",
+    "prithvi-100m",
+    "prithvi-300m",
+    "prithvi_eo_1_0",
+    "prithvi_eo_2_0",
+    "prithvi_burn_scar",
+}
 WRAPPERS = {"clip", "moondream", "sam", "sam2", "tessera", "alphaearth"}
 
 
 def _registry():
     from pygeovision.models import registry as r
+
     return r._REGISTRY
 
 
@@ -319,8 +378,14 @@ def test_registry_size_is_unchanged():
 
 def test_every_hub_id_is_a_repo_that_exists():
     """Ids verified against the Hugging Face API; a stale id fails here, not in a user's run."""
-    known_bad = {"caidas/swin2SR-realworld-sr-x4-64", "ibm-nasa-geospatial/Prithvi-100M",
-                 "ibm-nasa-geospatial/Prithvi-300M", "ibm-nasa-geospatial/Prithvi-100M-burn-scar",
-                 "facebook/sam2-hiera-large", "roboflow/rf-detr-base", "roboflow/rf-detr-large"}
+    known_bad = {
+        "caidas/swin2SR-realworld-sr-x4-64",
+        "ibm-nasa-geospatial/Prithvi-100M",
+        "ibm-nasa-geospatial/Prithvi-300M",
+        "ibm-nasa-geospatial/Prithvi-100M-burn-scar",
+        "facebook/sam2-hiera-large",
+        "roboflow/rf-detr-base",
+        "roboflow/rf-detr-large",
+    }
     used = {s.hf_id for s in _registry().values() if s.hf_id}
     assert not used & known_bad, used & known_bad

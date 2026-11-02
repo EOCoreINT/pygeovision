@@ -4,9 +4,10 @@ PyGeoVision shipped 49 named pipelines; 24 had no working implementation
 (placeholder indices, untrained networks, invented constants) and were removed
 before launch. Three of them (landcover_change, road_extraction,
 landslide_detection) came back once a real implementation existed, and ten new
-ones were added, so 40 are available: 33 run out of the box ("ready") and 7 run
+ones were added (and more since), so 41 are available: 34 run out of the box ("ready") and 7 run
 a network you trained yourself ("needs_weights").
 """
+
 from __future__ import annotations
 
 import ast
@@ -18,18 +19,38 @@ from pygeovision.ai import pipelines as P
 from pygeovision.ai.pipelines import domains
 from pygeovision.ai.pipelines.removed import REMOVED_PIPELINES
 
-NEEDS_WEIGHTS = {"solar_detection", "crop_monitoring", "disaster_assessment", "deforestation", "urban_growth",
-                 "road_extraction", "landslide_detection"}
+NEEDS_WEIGHTS = {
+    "solar_detection",
+    "crop_monitoring",
+    "disaster_assessment",
+    "deforestation",
+    "urban_growth",
+    "road_extraction",
+    "landslide_detection",
+}
 #: pipelines that are not among the original 49
-ADDED = {"urban_expansion", "forest_change", "surface_water_dynamics", "evapotranspiration", "active_fire", "road_network",
-         "terrain_analysis", "drainage_analysis", "vegetation_anomaly", "water_extent_timeseries", "sar_flood_mapping", "multisensor_flood_mapping"}
+ADDED = {
+    "urban_expansion",
+    "forest_change",
+    "surface_water_dynamics",
+    "evapotranspiration",
+    "active_fire",
+    "road_network",
+    "terrain_analysis",
+    "drainage_analysis",
+    "vegetation_anomaly",
+    "water_extent_timeseries",
+    "sar_flood_mapping",
+    "multisensor_flood_mapping",
+    "mine_rehabilitation",
+}
 
 
 class TestCatalogue:
     def test_counts(self):
         kinds = P.pipeline_kinds()
-        assert len(kinds) == 40
-        assert sum(k == "ready" for k in kinds.values()) == 33
+        assert len(kinds) == 41
+        assert sum(k == "ready" for k in kinds.values()) == 34
         assert {n for n, k in kinds.items() if k == "needs_weights"} == NEEDS_WEIGHTS
 
     def test_sorted_and_unique(self):
@@ -39,7 +60,7 @@ class TestCatalogue:
     def test_original_49_are_exactly_kept_plus_removed(self):
         kept, removed = set(P.list_pipelines()), set(REMOVED_PIPELINES)
         assert not kept & removed, "a pipeline cannot be both available and removed"
-        assert ADDED <= kept
+        assert kept >= ADDED
         assert len((kept - ADDED) | removed) == 49
         assert len(removed) == 21
 
@@ -71,15 +92,18 @@ class TestCatalogue:
             tree = ast.parse(inspect.getsource(mod))
             for node in ast.walk(tree):
                 if isinstance(node, ast.ExceptHandler) and node.type is not None:
-                    assert not (isinstance(node.type, ast.Name) and node.type.id == "Exception"
-                                and all(isinstance(s, ast.Pass) for s in node.body)), \
-                        f"silent 'except Exception: pass' at line {node.lineno}"
+                    assert not (
+                        isinstance(node.type, ast.Name)
+                        and node.type.id == "Exception"
+                        and all(isinstance(s, ast.Pass) for s in node.body)
+                    ), f"silent 'except Exception: pass' at line {node.lineno}"
 
 
 class TestEntryPointsAgree:
     def test_one_registry_everywhere(self):
         import pygeovision
         import pygeovision.pipelines as top
+
         expected = P.list_pipelines()
         assert list(pygeovision.list_all_pipelines()) == expected
         assert top.list_pipelines() == expected
@@ -87,12 +111,15 @@ class TestEntryPointsAgree:
 
     def test_one_result_type_everywhere(self):
         import pygeovision.pipelines as top
+
         assert top.PipelineResult is P.PipelineResult is domains.PipelineResult
 
     def test_domain_pipeline_reachable_from_client(self, tmp_path, monkeypatch):
         """Regression: client.pipeline() used to say 'Unknown pipeline' for every domain pipeline."""
         from pipeline_synth import BBOX, no_network
+
         from pygeovision import PyGeoVision
+
         no_network(monkeypatch)
         client = PyGeoVision()
         # reaches the pipeline (and its own argument check) instead of "Unknown pipeline"
@@ -101,6 +128,7 @@ class TestEntryPointsAgree:
 
     def test_client_rejects_removed_pipeline_with_reason(self, tmp_path):
         from pygeovision import PyGeoVision
+
         with pytest.raises(ValueError, match="was removed"):
             PyGeoVision().pipeline("carbon_estimation", bbox=(0, 0, 1, 1), output_dir=str(tmp_path))
 
@@ -119,9 +147,12 @@ class TestPipelineResult:
 class TestFailureModes:
     def test_empty_search_is_a_failure_with_a_message(self, tmp_path):
         from unittest.mock import MagicMock
+
         client = MagicMock()
         client.search.return_value = []
-        r = P.get_pipeline("water_bodies", client).run((-0.15, 51.47, -0.10, 51.52), tmp_path, date="2024-06")
+        r = P.get_pipeline("water_bodies", client).run(
+            (-0.15, 51.47, -0.10, 51.52), tmp_path, date="2024-06"
+        )
         assert not r.success and r.error
 
     def test_flood_mapping_requires_both_dates(self, tmp_path):
@@ -136,15 +167,17 @@ class TestChannelCli:
     @pytest.fixture
     def run(self):
         from click.testing import CliRunner
+
         from pygeovision.cli.main import cli
+
         runner = CliRunner()
         return lambda *args: runner.invoke(cli, ["channel", *args])
 
     def test_list(self, run):
         out = run("list")
         assert out.exit_code == 0
-        assert "40 PyGeoVision pipelines" in out.output
-        assert "33 ready" in out.output and "7 need your trained weights" in out.output
+        assert "41 PyGeoVision pipelines" in out.output
+        assert "34 ready" in out.output and "7 need your trained weights" in out.output
         for name in ("flood_mapping", "building_footprints", "drainage_analysis"):
             assert name in out.output
 
@@ -161,9 +194,20 @@ class TestChannelCli:
 
     def test_needs_weights_without_checkpoint_fails_clearly(self, run, tmp_path, monkeypatch):
         from pipeline_synth import no_network
+
         no_network(monkeypatch)
-        out = run("road_extraction", "--bbox", "-0.15", "51.47", "-0.10", "51.52",
-                  "--date", "2024-06", "-o", str(tmp_path))
+        out = run(
+            "road_extraction",
+            "--bbox",
+            "-0.15",
+            "51.47",
+            "-0.10",
+            "51.52",
+            "--date",
+            "2024-06",
+            "-o",
+            str(tmp_path),
+        )
         assert out.exit_code == 1
         assert "checkpoint" in out.output
 
@@ -175,12 +219,31 @@ class TestChannelCli:
             return P.PipelineResult(pipeline="water_bodies")
 
         monkeypatch.setattr(P.WaterBodiesPipeline, "run", fake_run)
-        out = run("water_bodies", "--bbox", "0", "0", "1", "1", "--date", "2024-06",
-                  "--param", "threshold=0.25", "--param", "method=ndwi", "--dates", "2024-01, 2024-02",
-                  "-o", str(tmp_path))
+        out = run(
+            "water_bodies",
+            "--bbox",
+            "0",
+            "0",
+            "1",
+            "1",
+            "--date",
+            "2024-06",
+            "--param",
+            "threshold=0.25",
+            "--param",
+            "method=ndwi",
+            "--dates",
+            "2024-01, 2024-02",
+            "-o",
+            str(tmp_path),
+        )
         assert out.exit_code == 0, out.output
-        assert seen == {"date": "2024-06", "threshold": 0.25, "method": "ndwi",
-                        "dates": ["2024-01", "2024-02"]}
+        assert seen == {
+            "date": "2024-06",
+            "threshold": 0.25,
+            "method": "ndwi",
+            "dates": ["2024-01", "2024-02"],
+        }
 
     def test_bad_param_is_rejected(self, run):
         assert run("water_bodies", "--bbox", "0", "0", "1", "1", "--param", "oops").exit_code != 0

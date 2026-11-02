@@ -22,11 +22,18 @@ def mock_sv_with_geotiff(mock_pgv_client, small_geotiff):
 
 
 class TestBuildingFootprintsPipeline:
-    def test_network_mode_refuses_a_missing_checkpoint_without_searching(self, tmp_dir, mock_pgv_client):
+    def test_network_mode_refuses_a_missing_checkpoint_without_searching(
+        self, tmp_dir, mock_pgv_client
+    ):
         from pygeovision.ai.pipelines import get_pipeline
+
         pipeline = get_pipeline("building_footprints", mock_pgv_client)
-        result = pipeline.run(bbox=(-0.1, 51.4, 0.0, 51.5), output_dir=tmp_dir, date="2024-06",
-                              checkpoint=str(tmp_dir / "missing.pth"))
+        result = pipeline.run(
+            bbox=(-0.1, 51.4, 0.0, 51.5),
+            output_dir=tmp_dir,
+            date="2024-06",
+            checkpoint=str(tmp_dir / "missing.pth"),
+        )
         assert result.success is False
         assert "not found" in result.error
         mock_pgv_client.search.assert_not_called()
@@ -35,13 +42,19 @@ class TestBuildingFootprintsPipeline:
         torch = pytest.importorskip("torch")
         from pygeovision.ai.models.registry import registry
         from pygeovision.ai.pipelines import get_pipeline
+
         ckpt = tmp_dir / "ck.pth"
-        torch.save(registry.build("unet_resnet50", num_classes=2, in_channels=3,
-                                  pretrained=False).state_dict(), ckpt)
+        torch.save(
+            registry.build(
+                "unet_resnet50", num_classes=2, in_channels=3, pretrained=False
+            ).state_dict(),
+            ckpt,
+        )
         mock_pgv_client.search.return_value = []
         pipeline = get_pipeline("building_footprints", mock_pgv_client)
-        result = pipeline.run(bbox=(-0.1, 51.4, 0.0, 51.5), output_dir=tmp_dir,
-                              date="2024-06", checkpoint=str(ckpt))
+        result = pipeline.run(
+            bbox=(-0.1, 51.4, 0.0, 51.5), output_dir=tmp_dir, date="2024-06", checkpoint=str(ckpt)
+        )
         assert result.success is False
         assert "No imagery" in result.error
 
@@ -56,6 +69,7 @@ class TestBuildingFootprintsPipeline:
         class TinyModel(nn.Module):
             def forward(self, x):
                 import torch
+
                 return torch.zeros(x.shape[0], 2, x.shape[2], x.shape[3])
 
         with patch("pygeovision.ai.models.hub.ModelHub.load", return_value=TinyModel()):
@@ -144,6 +158,7 @@ class TestDriftDetector:
 
     def test_requires_fit_before_check(self):
         from pygeovision.ai.monitoring import DriftDetector
+
         detector = DriftDetector()
         with pytest.raises(RuntimeError, match="fit_reference"):
             detector.check(np.random.randn(10, 4))

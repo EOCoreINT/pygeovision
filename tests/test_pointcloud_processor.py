@@ -18,6 +18,7 @@ Real bugs found and fixed during this audit:
      point-derived rasters are naturally scattered even for real LiDAR;
      morphological closing was needed and is now a tunable parameter.
 """
+
 import pytest
 
 laspy = pytest.importorskip("laspy", reason="laspy not installed")
@@ -64,6 +65,7 @@ def _make_synthetic_las(path, seed=0):
 class TestPointCloudProcessorRead:
     def test_reads_real_crs(self, tmp_path):
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
@@ -76,6 +78,7 @@ class TestCanopyHeightModelCRS:
 
     def test_output_crs_matches_source_not_hardcoded_4326(self, tmp_path):
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
@@ -96,25 +99,31 @@ class TestCanopyHeightModelSparseDTM:
         DSM(~100m absolute) - DTM(0, uninitialized) = ~100m false height.
         The true max height difference in this synthetic data is ~15m."""
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
         out = tmp_path / "chm.tif"
-        result = proc.canopy_height_model(str(las_path), str(out), resolution=1.0)
+        proc.canopy_height_model(str(las_path), str(out), resolution=1.0)
 
         with rasterio.open(out) as src:
             chm = src.read(1)
-        assert chm.max() < 20, f"CHM max still shows phantom absolute-elevation heights: {chm.max()}"
+        assert (
+            chm.max() < 20
+        ), f"CHM max still shows phantom absolute-elevation heights: {chm.max()}"
 
     def test_filter_ground_false_uses_min_elevation_fallback(self, tmp_path):
         """filter_ground=False must actually change behavior (it was
         previously a dead parameter that did nothing)."""
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
         out = tmp_path / "chm.tif"
-        result = proc.canopy_height_model(str(las_path), str(out), resolution=1.0, filter_ground=False)
+        result = proc.canopy_height_model(
+            str(las_path), str(out), resolution=1.0, filter_ground=False
+        )
         assert result["success"] is True
         with rasterio.open(out) as src:
             chm = src.read(1)
@@ -126,8 +135,9 @@ class TestClassifyPoints:
     false docstring claim with no actual implementation)."""
 
     def test_runs_real_randlanet_inference(self, tmp_path):
-        torch = pytest.importorskip("torch", reason="torch not installed")
+        pytest.importorskip("torch", reason="torch not installed")
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
@@ -138,8 +148,9 @@ class TestClassifyPoints:
         assert sum(result["class_counts"].values()) == 5000
 
     def test_runs_real_pointnet2_inference(self, tmp_path):
-        torch = pytest.importorskip("torch", reason="torch not installed")
+        pytest.importorskip("torch", reason="torch not installed")
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
@@ -154,6 +165,7 @@ class TestExtractBuildings:
 
     def test_finds_no_buildings_gracefully_without_the_class(self, tmp_path):
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
@@ -167,18 +179,24 @@ class TestExtractBuildings:
         produce ~145 disconnected single-cell fragments instead of a
         coherent building footprint."""
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
         out = tmp_path / "buildings.geojson"
         result = proc.extract_buildings(
-            str(las_path), str(out), building_class=6, resolution=0.5, gap_fill_m=2.5,
+            str(las_path),
+            str(out),
+            building_class=6,
+            resolution=0.5,
+            gap_fill_m=2.5,
         )
         assert result["success"] is True
         # True building patch was 20m x 20m = 400 m2 — a working extraction
         # should find something in the right order of magnitude, not dozens
         # of ~0.25 m2 fragments.
         import json
+
         with open(out) as f:
             gj = json.load(f)
         areas = [f["properties"]["area_m2"] for f in gj["features"]]
@@ -187,12 +205,14 @@ class TestExtractBuildings:
 
     def test_output_has_correct_crs(self, tmp_path):
         from pygeovision.advanced.pointcloud import PointCloudProcessor
+
         las_path = tmp_path / "test.las"
         _make_synthetic_las(las_path)
         proc = PointCloudProcessor()
         out = tmp_path / "buildings.geojson"
-        result = proc.extract_buildings(str(las_path), str(out), building_class=6, gap_fill_m=2.5)
+        proc.extract_buildings(str(las_path), str(out), building_class=6, gap_fill_m=2.5)
         import json
+
         with open(out) as f:
             gj = json.load(f)
         assert "32630" in gj.get("crs", {}).get("properties", {}).get("name", "")

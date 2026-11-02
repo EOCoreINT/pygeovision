@@ -1,4 +1,5 @@
 """The 'ChangeFormer' entries must describe what they build."""
+
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -19,6 +20,7 @@ def test_b4_is_refused_not_mislabelled():
 
 def test_unknown_backbone_label_is_refused():
     from pygeovision.models.change_detection.changeformer import ChangeFormer
+
     with pytest.raises(ValueError, match="single fixed architecture"):
         ChangeFormer(backbone="mit-b4")
     ChangeFormer(backbone="mit-b0")  # the legacy label still works

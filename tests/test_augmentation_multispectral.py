@@ -1,4 +1,5 @@
 """Default training augmentation must work for multispectral (non-RGB) stacks."""
+
 import logging
 
 import numpy as np

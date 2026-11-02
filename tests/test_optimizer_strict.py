@@ -1,4 +1,5 @@
 """Unknown optimizer / scheduler names must fail, not turn into AdamW / cosine."""
+
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -23,6 +24,7 @@ def test_lars_is_not_pretended():
 
 def test_lion_without_its_package_is_an_error_not_adamw(monkeypatch):
     import builtins
+
     real = builtins.__import__
 
     def fake(name, *a, **k):
@@ -46,7 +48,9 @@ def test_none_scheduler_means_constant_rate():
     assert build_scheduler(build_optimizer(_model(), cfg), cfg) is None
 
 
-@pytest.mark.parametrize("name", ["cosine", "cosine_warmup", "warmup_cosine", "linear", "step", "plateau", "onecycle"])
+@pytest.mark.parametrize(
+    "name", ["cosine", "cosine_warmup", "warmup_cosine", "linear", "step", "plateau", "onecycle"]
+)
 def test_every_documented_scheduler_builds(name):
     cfg = TrainingConfig(scheduler=name, max_epochs=10)
     assert build_scheduler(build_optimizer(_model(), cfg), cfg, steps_per_epoch=20) is not None

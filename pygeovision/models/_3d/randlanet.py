@@ -32,6 +32,7 @@ encoder stage, symmetric U-Net style, ending in a per-point classifier.
 This is NOT a registry stub — every module below is a real, working
 nn.Module with verified forward-pass shapes (see the test suite).
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,6 +46,7 @@ def _require_torch():
         import torch
         import torch.nn as nn
         import torch.nn.functional as F
+
         return torch, nn, F
     except ImportError:
         raise ImportError("torch required for RandLA-Net: pip install torch") from None
@@ -56,8 +58,8 @@ def square_distance(src, dst):
     B, N, _ = src.shape
     _, M, _ = dst.shape
     dist = -2 * torch.matmul(src, dst.permute(0, 2, 1))
-    dist += torch.sum(src ** 2, -1).view(B, N, 1)
-    dist += torch.sum(dst ** 2, -1).view(B, 1, M)
+    dist += torch.sum(src**2, -1).view(B, N, 1)
+    dist += torch.sum(dst**2, -1).view(B, 1, M)
     return dist.clamp(min=0)
 
 
@@ -70,7 +72,9 @@ def index_points(points, idx):
     view_shape[1:] = [1] * (len(view_shape) - 1)
     repeat_shape = list(idx.shape)
     repeat_shape[0] = 1
-    batch_indices = torch.arange(B, dtype=torch.long, device=device).view(view_shape).repeat(repeat_shape)
+    batch_indices = (
+        torch.arange(B, dtype=torch.long, device=device).view(view_shape).repeat(repeat_shape)
+    )
     return points[batch_indices, idx, :]
 
 
@@ -107,46 +111,52 @@ def random_sample(xyz, features, n_sample):
 def _build_lfa_modules():
     torch, nn, F = _require_torch()
 
-    class LocSE(nn.Module):
+    class LocSE(nn.Module):  # type: ignore[name-defined]
         """Local Spatial Encoding — augments each of the K neighbor
         features with an explicit encoding of its relative position."""
+
         def __init__(self, feature_dim, k):
             super().__init__()
             self.k = k
             self.mlp = nn.Sequential(
-                nn.Conv2d(10, feature_dim, 1), nn.BatchNorm2d(feature_dim), nn.ReLU(inplace=True),
+                nn.Conv2d(10, feature_dim, 1),
+                nn.BatchNorm2d(feature_dim),
+                nn.ReLU(inplace=True),
             )
 
         def forward(self, xyz, features):
             """xyz:(B,N,3) features:(B,C,N) -> augmented (B, 2C, N, k')."""
             B, N, _ = xyz.shape
-            idx = knn_point(self.k, xyz, xyz)                       # (B, N, k') — k' = min(self.k, N)
+            idx = knn_point(self.k, xyz, xyz)  # (B, N, k') — k' = min(self.k, N)
             k_actual = idx.shape[-1]
-            neighbor_xyz = index_points(xyz, idx)                    # (B, N, k', 3)
-            center_xyz = xyz.unsqueeze(2).repeat(1, 1, k_actual, 1)   # (B, N, k', 3)
+            neighbor_xyz = index_points(xyz, idx)  # (B, N, k', 3)
+            center_xyz = xyz.unsqueeze(2).repeat(1, 1, k_actual, 1)  # (B, N, k', 3)
             relative = center_xyz - neighbor_xyz
             dist = torch.norm(relative, dim=-1, keepdim=True)
             # Relative point position encoding: [center, neighbor, offset, dist] -> 10 dims
             rel_pos_encoding = torch.cat([center_xyz, neighbor_xyz, relative, dist], dim=-1)
             rel_pos_encoding = rel_pos_encoding.permute(0, 3, 1, 2)  # (B, 10, N, k)
-            rel_pos_encoding = self.mlp(rel_pos_encoding)             # (B, C, N, k)
+            rel_pos_encoding = self.mlp(rel_pos_encoding)  # (B, C, N, k)
 
-            feat_t = features.permute(0, 2, 1)                       # (B, N, C)
-            neighbor_feat = index_points(feat_t, idx)                 # (B, N, k, C)
-            neighbor_feat = neighbor_feat.permute(0, 3, 1, 2)          # (B, C, N, k)
+            feat_t = features.permute(0, 2, 1)  # (B, N, C)
+            neighbor_feat = index_points(feat_t, idx)  # (B, N, k, C)
+            neighbor_feat = neighbor_feat.permute(0, 3, 1, 2)  # (B, C, N, k)
 
             return torch.cat([rel_pos_encoding, neighbor_feat], dim=1)  # (B, 2C, N, k)
 
-    class AttentivePooling(nn.Module):
+    class AttentivePooling(nn.Module):  # type: ignore[name-defined]
         """Learned attention over the K neighbors, replacing max-pool —
         avoids discarding information the way a hard max would."""
+
         def __init__(self, in_channel, out_channel):
             super().__init__()
             self.score_fn = nn.Sequential(
                 nn.Conv2d(in_channel, in_channel, 1, bias=False),
             )
             self.mlp = nn.Sequential(
-                nn.Conv2d(in_channel, out_channel, 1), nn.BatchNorm2d(out_channel), nn.ReLU(inplace=True),
+                nn.Conv2d(in_channel, out_channel, 1),
+                nn.BatchNorm2d(out_channel),
+                nn.ReLU(inplace=True),
             )
 
         def forward(self, x):
@@ -154,16 +164,19 @@ def _build_lfa_modules():
             scores = self.score_fn(x)
             scores = F.softmax(scores, dim=-1)
             pooled = torch.sum(x * scores, dim=-1, keepdim=True)  # (B, C, N, 1)
-            return self.mlp(pooled).squeeze(-1)                    # (B, C_out, N)
+            return self.mlp(pooled).squeeze(-1)  # (B, C_out, N)
 
-    class DilatedResidualBlock(nn.Module):
+    class DilatedResidualBlock(nn.Module):  # type: ignore[name-defined]
         """Two LocSE + AttentivePooling units with a skip connection —
         cheaply expands each point's receptive field to its two-hop
         neighborhood (K neighbors, then K^2 via feature propagation)."""
+
         def __init__(self, in_channel, out_channel, k):
             super().__init__()
             d = out_channel // 2
-            self.fc1 = nn.Sequential(nn.Conv1d(in_channel, d, 1), nn.BatchNorm1d(d), nn.ReLU(inplace=True))
+            self.fc1 = nn.Sequential(
+                nn.Conv1d(in_channel, d, 1), nn.BatchNorm1d(d), nn.ReLU(inplace=True)
+            )
 
             self.locse1 = LocSE(d, k)
             self.ap1 = AttentivePooling(2 * d, d)
@@ -171,9 +184,12 @@ def _build_lfa_modules():
             self.locse2 = LocSE(d, k)
             self.ap2 = AttentivePooling(2 * d, out_channel)
 
-            self.fc2 = nn.Sequential(nn.Conv1d(out_channel, out_channel, 1), nn.BatchNorm1d(out_channel))
+            self.fc2 = nn.Sequential(
+                nn.Conv1d(out_channel, out_channel, 1), nn.BatchNorm1d(out_channel)
+            )
             self.shortcut = nn.Sequential(
-                nn.Conv1d(in_channel, out_channel, 1), nn.BatchNorm1d(out_channel),
+                nn.Conv1d(in_channel, out_channel, 1),
+                nn.BatchNorm1d(out_channel),
             )
             self.act = nn.ReLU(inplace=True)
 
@@ -199,39 +215,53 @@ class RandLANetSegModel:
         logits = model(xyz)  # xyz: (B, 3+extra, N) -> (B, num_classes, N)
     """
 
-    def __new__(cls, num_classes: int = 5, extra_feature_channels: int = 0,
-                k: int = 16, decimation: int = 4, num_layers: int = 4):
+    def __new__(
+        cls,
+        num_classes: int = 5,
+        extra_feature_channels: int = 0,
+        k: int = 16,
+        decimation: int = 4,
+        num_layers: int = 4,
+    ):
         torch, nn, F = _require_torch()
         _, _, DRB = _build_lfa_modules()
 
-        class RandLANetSeg(nn.Module):
+        class RandLANetSeg(nn.Module):  # type: ignore[name-defined]
             def __init__(self):
                 super().__init__()
                 in_ch = 3 + extra_feature_channels
                 self.fc_start = nn.Sequential(
-                    nn.Conv1d(in_ch, 8, 1), nn.BatchNorm1d(8), nn.ReLU(inplace=True),
+                    nn.Conv1d(in_ch, 8, 1),
+                    nn.BatchNorm1d(8),
+                    nn.ReLU(inplace=True),
                 )
 
                 # Encoder: channel progression matching the original paper's
                 # scale-down version (8 -> 32 -> 128 -> 256 -> 512).
                 enc_channels = [8, 32, 128, 256, 512][: num_layers + 1]
-                self.encoder = nn.ModuleList([
-                    DRB(enc_channels[i], enc_channels[i + 1], k)
-                    for i in range(num_layers)
-                ])
+                self.encoder = nn.ModuleList(
+                    [DRB(enc_channels[i], enc_channels[i + 1], k) for i in range(num_layers)]
+                )
 
                 # Decoder: symmetric, nearest-neighbor upsample + skip concat + MLP
                 dec_channels = enc_channels[::-1]
-                self.decoder = nn.ModuleList([
-                    nn.Sequential(
-                        nn.Conv1d(dec_channels[i] + dec_channels[i + 1], dec_channels[i + 1], 1),
-                        nn.BatchNorm1d(dec_channels[i + 1]), nn.ReLU(inplace=True),
-                    )
-                    for i in range(num_layers)
-                ])
+                self.decoder = nn.ModuleList(
+                    [
+                        nn.Sequential(
+                            nn.Conv1d(
+                                dec_channels[i] + dec_channels[i + 1], dec_channels[i + 1], 1
+                            ),
+                            nn.BatchNorm1d(dec_channels[i + 1]),
+                            nn.ReLU(inplace=True),
+                        )
+                        for i in range(num_layers)
+                    ]
+                )
 
                 self.fc_end = nn.Sequential(
-                    nn.Conv1d(dec_channels[-1], 32, 1), nn.BatchNorm1d(32), nn.ReLU(inplace=True),
+                    nn.Conv1d(dec_channels[-1], 32, 1),
+                    nn.BatchNorm1d(32),
+                    nn.ReLU(inplace=True),
                     nn.Dropout(0.5),
                     nn.Conv1d(32, num_classes, 1),
                 )
@@ -241,7 +271,7 @@ class RandLANetSegModel:
                 # xyz_full: (B, 3+extra, N)
                 B, _, N = xyz_full.shape
                 xyz = xyz_full[:, :3, :].permute(0, 2, 1)  # (B, N, 3)
-                features = self.fc_start(xyz_full)          # (B, 8, N)
+                features = self.fc_start(xyz_full)  # (B, 8, N)
 
                 xyz_stack = [xyz]
                 feat_stack = [features]

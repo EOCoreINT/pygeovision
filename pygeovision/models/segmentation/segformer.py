@@ -1,4 +1,5 @@
 """SegFormer (Mix Transformer encoder + all-MLP head) for geospatial segmentation."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -35,8 +36,11 @@ def build_segformer(
     if variant not in MIT_ENCODERS:
         raise ValueError(f"variant must be one of {sorted(MIT_ENCODERS)}, got {variant!r}")
     spec = SimpleNamespace(
-        name=f"segformer-{variant}", family="segformer", task="segmentation",
+        name=f"segformer-{variant}",
+        family="segformer",
+        task="segmentation",
         hf_id=MIT_ENCODERS[variant],
     )
-    return build_hf_model(spec, num_classes, in_channels, pretrained,
-                          allow_random_init=allow_random_init, **kwargs)
+    return build_hf_model(
+        spec, num_classes, in_channels, pretrained, allow_random_init=allow_random_init, **kwargs
+    )

@@ -1,13 +1,16 @@
 """Tests for PyGeoVision auto-labeling layer (Phase 2+)."""
+
 from unittest.mock import patch
 
 import pytest
 
 # ── OSM Labeler ───────────────────────────────────────────────────────────────
 
+
 class TestOSMLabeler:
     def test_list_categories(self):
         from pygeovision.labeling.osm import OSM_CATEGORIES, OSMLabeler
+
         labeler = OSMLabeler()
         cats = labeler.list_categories()
         assert isinstance(cats, dict)
@@ -18,6 +21,7 @@ class TestOSMLabeler:
 
     def test_preview_query(self):
         from pygeovision.labeling.osm import OSMLabeler
+
         labeler = OSMLabeler()
         q = labeler.preview_query((-74.05, 40.70, -73.95, 40.80), ["buildings"])
         assert "building" in q
@@ -26,6 +30,7 @@ class TestOSMLabeler:
 
     def test_build_overpass_query(self):
         from pygeovision.labeling.osm import OSMLabeler
+
         labeler = OSMLabeler()
         q = labeler._build_overpass_query((-74.05, 40.70, -73.95, 40.80), ["buildings", "water"])
         assert "[out:json]" in q
@@ -34,6 +39,7 @@ class TestOSMLabeler:
 
     def test_osm_to_geojson_empty(self):
         from pygeovision.labeling.osm import OSMLabeler
+
         labeler = OSMLabeler()
         geojson = labeler._osm_to_geojson({"elements": []}, ["buildings"])
         assert geojson["type"] == "FeatureCollection"
@@ -41,16 +47,24 @@ class TestOSMLabeler:
 
     def test_osm_to_geojson_with_buildings(self):
         from pygeovision.labeling.osm import OSMLabeler
+
         labeler = OSMLabeler()
-        data = {"elements": [{
-            "type": "way", "id": 1,
-            "tags": {"building": "yes"},
-            "geometry": [
-                {"lon": -74.0, "lat": 40.7}, {"lon": -74.01, "lat": 40.7},
-                {"lon": -74.01, "lat": 40.71}, {"lon": -74.0, "lat": 40.71},
-                {"lon": -74.0, "lat": 40.7},
+        data = {
+            "elements": [
+                {
+                    "type": "way",
+                    "id": 1,
+                    "tags": {"building": "yes"},
+                    "geometry": [
+                        {"lon": -74.0, "lat": 40.7},
+                        {"lon": -74.01, "lat": 40.7},
+                        {"lon": -74.01, "lat": 40.71},
+                        {"lon": -74.0, "lat": 40.71},
+                        {"lon": -74.0, "lat": 40.7},
+                    ],
+                }
             ]
-        }]}
+        }
         geojson = labeler._osm_to_geojson(data, ["buildings"])
         assert len(geojson["features"]) == 1
         f = geojson["features"][0]
@@ -59,15 +73,20 @@ class TestOSMLabeler:
 
     def test_label_network_failure_returns_error(self):
         from pygeovision.labeling.osm import OSMLabeler
+
         labeler = OSMLabeler(retry_attempts=1)
         with patch.object(labeler, "_fetch_overpass", return_value=None):
             result = labeler.label((-74.05, 40.70, -73.95, 40.80), ["buildings"])
         assert result["success"] is False
         assert "error" in result
 
-    @pytest.mark.skipif(not pytest.importorskip("rasterio", reason="rasterio not installed"), reason="needs rasterio")
+    @pytest.mark.skipif(
+        not pytest.importorskip("rasterio", reason="rasterio not installed"),
+        reason="needs rasterio",
+    )
     def test_rasterise_empty_geojson(self, tmp_path):
         from pygeovision.labeling.osm import OSMLabeler
+
         labeler = OSMLabeler()
         geojson = {"type": "FeatureCollection", "features": []}
         out = tmp_path / "test.tif"
@@ -78,9 +97,11 @@ class TestOSMLabeler:
 
 # ── Label Quality Assessor ────────────────────────────────────────────────────
 
+
 class TestLabelQualityAssessor:
     def test_recommendations_empty(self):
         from pygeovision.labeling.quality import LabelQualityAssessor
+
         qa = LabelQualityAssessor()
         results = {"quality_score": 0.9, "quality_grade": "A", "checks": {}}
         recs = qa._recommendations(results)
@@ -88,6 +109,7 @@ class TestLabelQualityAssessor:
 
     def test_report_html_structure(self):
         from pygeovision.labeling.quality import LabelQualityAssessor
+
         qa = LabelQualityAssessor()
         results = {
             "label_path": "test.tif",
@@ -101,7 +123,9 @@ class TestLabelQualityAssessor:
         assert "quality_grade" in html.lower() or "B" in html
         assert "Test recommendation" in html
 
-    @pytest.mark.skipif(not pytest.importorskip("rasterio", reason="rasterio"), reason="needs rasterio")
+    @pytest.mark.skipif(
+        not pytest.importorskip("rasterio", reason="rasterio"), reason="needs rasterio"
+    )
     def test_assess_synthetic_label(self, tmp_path):
         import numpy as np
         import rasterio
@@ -111,12 +135,21 @@ class TestLabelQualityAssessor:
 
         # Create a synthetic label raster
         label = np.zeros((100, 100), dtype=np.uint8)
-        label[20:50, 20:50] = 1   # class 1 patch
-        label[60:80, 60:80] = 1   # another patch
+        label[20:50, 20:50] = 1  # class 1 patch
+        label[60:80, 60:80] = 1  # another patch
         transform = from_bounds(0, 0, 1, 1, 100, 100)
         p = tmp_path / "label.tif"
-        with rasterio.open(str(p), "w", driver="GTiff", height=100, width=100,
-                            count=1, dtype="uint8", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            str(p),
+            "w",
+            driver="GTiff",
+            height=100,
+            width=100,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             dst.write(label[np.newaxis])
 
         qa = LabelQualityAssessor(num_classes=2)
@@ -129,20 +162,24 @@ class TestLabelQualityAssessor:
 
 # ── Active Learner ────────────────────────────────────────────────────────────
 
+
 class TestActiveLearner:
     def test_init_valid_strategies(self):
         from pygeovision.labeling.active import ActiveLearner
+
         for strategy in ["entropy", "least_confidence", "margin", "coreset", "committee", "random"]:
             learner = ActiveLearner(strategy=strategy)
             assert learner.strategy == strategy
 
     def test_init_invalid_strategy(self):
         from pygeovision.labeling.active import ActiveLearner
+
         with pytest.raises(ValueError, match="strategy"):
             ActiveLearner(strategy="invalid_xyz")
 
     def test_update_adds_samples(self):
         from pygeovision.labeling.active import ActiveLearner
+
         learner = ActiveLearner()
         samples = [{"path": f"img{i}.tif", "label": i % 2} for i in range(5)]
         learner.update(samples)
@@ -151,6 +188,7 @@ class TestActiveLearner:
 
     def test_random_selection(self):
         from pygeovision.labeling.active import ActiveLearner
+
         learner = ActiveLearner(strategy="random", seed=42)
         pool = [{"path": f"img{i}.tif"} for i in range(20)]
         selected = learner.select(None, pool, n_select=5)
@@ -158,15 +196,17 @@ class TestActiveLearner:
 
     def test_history_empty_initially(self):
         from pygeovision.labeling.active import ActiveLearner
+
         learner = ActiveLearner()
         assert learner.history == []
 
     @pytest.mark.skipif(
-        __import__('importlib').util.find_spec('torch') is None,
-        reason='torch not installed',
+        __import__("importlib").util.find_spec("torch") is None,
+        reason="torch not installed",
     )
     def test_train_iteration_returns_dict(self):
         from pygeovision.labeling.active import ActiveLearner
+
         learner = ActiveLearner(strategy="random")
         pool = [{"path": f"img{i}.tif"} for i in range(10)]
         result = learner.train_iteration(None, None, pool)
@@ -177,30 +217,36 @@ class TestActiveLearner:
 
 # ── AutoLabelPipeline ────────────────────────────────────────────────────────
 
+
 class TestAutoLabelPipeline:
     def test_init_defaults(self):
         from pygeovision.labeling.pipeline import AutoLabelPipeline
+
         pipeline = AutoLabelPipeline()
         assert "osm" in pipeline.sources
         assert pipeline.fusion in ("majority_vote", "union", "intersection", "priority")
 
     def test_init_custom_sources(self):
         from pygeovision.labeling.pipeline import AutoLabelPipeline
+
         pipeline = AutoLabelPipeline(sources=["osm", "esa_worldcover"])
         assert pipeline.sources == ["osm", "esa_worldcover"]
 
     def test_run_returns_dict_on_network_failure(self, tmp_path):
         from pygeovision.labeling.pipeline import AutoLabelPipeline
+
         pipeline = AutoLabelPipeline(sources=["osm"])
-        with patch("pygeovision.labeling.osm.OSMLabeler.label",
-                   return_value={"success": False, "error": "Network"}):
-            result = pipeline.run((-74.05, 40.70, -73.95, 40.80),
-                                   output_dir=str(tmp_path))
+        with patch(
+            "pygeovision.labeling.osm.OSMLabeler.label",
+            return_value={"success": False, "error": "Network"},
+        ):
+            result = pipeline.run((-74.05, 40.70, -73.95, 40.80), output_dir=str(tmp_path))
         assert "sources_succeeded" in result
         assert "sources_failed" in result
 
     def test_supported_sources_list(self):
         from pygeovision.labeling.pipeline import AutoLabelPipeline
+
         assert "osm" in AutoLabelPipeline.SOURCES
         assert "microsoft_buildings" in AutoLabelPipeline.SOURCES
         assert "esa_worldcover" in AutoLabelPipeline.SOURCES
@@ -209,15 +255,18 @@ class TestAutoLabelPipeline:
 
 # ── Foundation Model Labeler ──────────────────────────────────────────────────
 
+
 class TestFoundationModelLabeler:
     def test_init(self):
         from pygeovision.labeling.foundation import FoundationModelLabeler
+
         lab = FoundationModelLabeler(model="dinov2-base")
         assert lab.model_name == "dinov2-base"
 
     def test_hf_model_mapping(self):
         # Verify all model names map to HF IDs (via FewShotLearner which shares mapping)
         from pygeovision.advanced.few_shot import FewShotLearner
+
         for name in ["dinov2-small", "dinov2-base", "dinov2-large"]:
             learner = FewShotLearner(backbone=name)
             assert learner is not None  # FewShotLearner init succeeds
@@ -229,10 +278,12 @@ class TestFoundationModelLabeler:
 # real dataset is only addressable via the dataset-links.csv manifest keyed
 # by Bing Maps quadkey.
 
+
 class TestMicrosoftBuildingsQuadkey:
     def test_quadkey_format(self):
         """Quadkeys must be base-4 strings (digits 0-3) of length == zoom."""
         from pygeovision.labeling.buildings import MicrosoftBuildingsLabeler
+
         bbox = (-0.15, 51.47, -0.10, 51.52)  # London
         for zoom in (6, 9, 12):
             keys = MicrosoftBuildingsLabeler._bbox_to_quadkeys(bbox, zoom)
@@ -245,6 +296,7 @@ class TestMicrosoftBuildingsQuadkey:
         """Microsoft's own Bing Maps Tile System docs give tile (3,5) at
         level 3 -> quadkey "213". Verify our tile->quadkey digit encoding
         (extracted inline in _bbox_to_quadkeys) reproduces that exactly."""
+
         def tile_to_quadkey(x, y, z):
             qk = []
             for i in range(z, 0, -1):
@@ -256,12 +308,14 @@ class TestMicrosoftBuildingsQuadkey:
                     digit += 2
                 qk.append(str(digit))
             return "".join(qk)
+
         assert tile_to_quadkey(3, 5, 3) == "213"
 
     def test_manifest_url_is_current_hosting_location(self):
         """Regression guard: MS moved dataset-links.csv hosting in Nov 2024
         from *.blob.core.windows.net to *.z5.web.core.windows.net."""
         from pygeovision.labeling.buildings import MicrosoftBuildingsLabeler
+
         assert "z5.web.core.windows.net" in MicrosoftBuildingsLabeler.MANIFEST_URL
         assert MicrosoftBuildingsLabeler.MANIFEST_URL.endswith("dataset-links.csv")
 
@@ -269,23 +323,30 @@ class TestMicrosoftBuildingsQuadkey:
         """A manifest row should be selected when its quadkey is a prefix of
         (or shares a prefix with) our target quadkeys."""
         import pandas as pd
+
         from pygeovision.labeling.buildings import MicrosoftBuildingsLabeler
 
         lab = MicrosoftBuildingsLabeler()
         target_qk = lab._bbox_to_quadkeys((-0.15, 51.47, -0.10, 51.52), 9)[0]
 
-        fake_manifest = pd.DataFrame({
-            "Location": ["UnitedKingdom"],
-            "QuadKey": [target_qk[:6]],  # coarser prefix, as real manifest often is
-            "Url": ["https://example.test/uk_part.csv.gz"],
-            "Size": ["1KB"],
-            "UploadDate": ["2026-01-01"],
-        })
+        fake_manifest = pd.DataFrame(
+            {
+                "Location": ["UnitedKingdom"],
+                "QuadKey": [target_qk[:6]],  # coarser prefix, as real manifest often is
+                "Url": ["https://example.test/uk_part.csv.gz"],
+                "Size": ["1KB"],
+                "UploadDate": ["2026-01-01"],
+            }
+        )
         monkeypatch.setattr(lab, "_load_manifest", lambda: fake_manifest)
 
         import gzip
+
         import requests as requests_mod
-        payload = gzip.compress(b'{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-0.12,51.5],[-0.12,51.51],[-0.11,51.51],[-0.11,51.5],[-0.12,51.5]]]},"properties":{"confidence":0.9}}\n')
+
+        payload = gzip.compress(
+            b'{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-0.12,51.5],[-0.12,51.51],[-0.11,51.51],[-0.11,51.5],[-0.12,51.5]]]},"properties":{"confidence":0.9}}\n'
+        )
 
         class _FakeResponse:
             status_code = 200
@@ -304,9 +365,11 @@ class TestMicrosoftBuildingsQuadkey:
 # hex token the GCS bucket actually uses; (2) parsed the `geometry` CSV
 # column with json.loads() when it's actually WKT, which would always raise.
 
+
 class TestGoogleBuildingsS2Tokens:
     def test_tokens_are_short_hex_not_raw_decimal_ids(self):
         from pygeovision.labeling.buildings import GoogleBuildingsLabeler
+
         lab = GoogleBuildingsLabeler()
         tokens = lab._bbox_to_s2_cells((3.35, 6.45, 3.45, 6.55))  # Lagos, Nigeria
         assert len(tokens) >= 1
@@ -321,11 +384,12 @@ class TestGoogleBuildingsS2Tokens:
         """The CSV `geometry` column is WKT; verify the real code path
         parses it via shapely instead of crashing on json.loads()."""
         from pygeovision.labeling.buildings import GoogleBuildingsLabeler
+
         lab = GoogleBuildingsLabeler(min_confidence=0.5)
         monkeypatch.setattr(lab, "_bbox_to_s2_cells", lambda bbox: ["abc"])
 
         import gzip
-        import io as io_mod
+
         csv_bytes = (
             b"latitude,longitude,area_in_meters,confidence,geometry,full_plus_code\n"
             b'6.5,3.4,50.0,0.9,"POLYGON((3.4 6.5, 3.41 6.5, 3.41 6.51, 3.4 6.51, 3.4 6.5))",ABC\n'
@@ -337,9 +401,12 @@ class TestGoogleBuildingsS2Tokens:
             content = payload
 
         import requests as requests_mod
+
         monkeypatch.setattr(requests_mod, "get", lambda *a, **kw: _FakeResponse())
 
-        import tempfile, os
+        import os
+        import tempfile
+
         with tempfile.TemporaryDirectory() as tmp:
             out = os.path.join(tmp, "out.tif")
             result = lab.label((3.35, 6.45, 3.45, 6.55), output_path=out)
@@ -351,21 +418,27 @@ class TestGoogleBuildingsS2Tokens:
 # Real bug: self.year was stored but never sent as a STAC datetime filter,
 # so the search returned whichever item matched first regardless of year.
 
+
 class TestESAWorldCoverYearFilter:
     def test_search_includes_year_datetime_filter(self, monkeypatch):
         from pygeovision.labeling.landcover import ESAWorldCoverLabeler
+
         lab = ESAWorldCoverLabeler(year=2020)
 
         captured = {}
+
         class _FakeResponse:
             status_code = 200
+
             def json(self):
                 return {"features": []}
 
         import requests as requests_mod
+
         def fake_post(url, json=None, timeout=None):
             captured["json"] = json
             return _FakeResponse()
+
         monkeypatch.setattr(requests_mod, "post", fake_post)
 
         lab.label((-87.7, 41.8, -87.5, 41.9), output_path="/tmp/_unused_esa.tif")
@@ -378,6 +451,7 @@ class TestESAWorldCoverYearFilter:
 # (The labeler used to download the whole tile as raw bytes; it now reads only the bbox window, so the
 # test checks that the URL handed to rasterio is the signed one.)
 
+
 class TestDynamicWorldSigning:
     def test_pc_backend_signs_asset_url(self, monkeypatch, tmp_path):
         import numpy as np
@@ -387,22 +461,41 @@ class TestDynamicWorldSigning:
         from pygeovision.labeling.landcover import DynamicWorldLabeler
 
         src = tmp_path / "tile.tif"
-        with rasterio.open(src, "w", driver="GTiff", height=50, width=50, count=1, dtype="uint8",
-                           crs="EPSG:4326", transform=from_bounds(-0.2, 51.4, -0.05, 51.6, 50, 50)) as d:
+        with rasterio.open(
+            src,
+            "w",
+            driver="GTiff",
+            height=50,
+            width=50,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:4326",
+            transform=from_bounds(-0.2, 51.4, -0.05, 51.6, 50, 50),
+        ) as d:
             d.write(np.full((1, 50, 50), 7, "uint8"))
 
         lab = DynamicWorldLabeler(backend="planetary_computer")
 
         class _FakeSearchResponse:
             status_code = 200
+
             def json(self):
-                return {"features": [{"properties": {"start_datetime": "2023-01-01T00:00:00Z"},
-                                      "assets": {"data": {"href": str(src)}}}]}
+                return {
+                    "features": [
+                        {
+                            "properties": {"start_datetime": "2023-01-01T00:00:00Z"},
+                            "assets": {"data": {"href": str(src)}},
+                        }
+                    ]
+                }
 
         import requests as requests_mod
+
         monkeypatch.setattr(requests_mod, "post", lambda *a, **kw: _FakeSearchResponse())
 
-        pc_mod = pytest.importorskip("planetary_computer", reason="planetary-computer not installed")
+        pc_mod = pytest.importorskip(
+            "planetary_computer", reason="planetary-computer not installed"
+        )
         signed = []
         monkeypatch.setattr(pc_mod, "sign", lambda url: signed.append(url) or url)
 
@@ -415,5 +508,6 @@ class TestDynamicWorldSigning:
 class TestLabelingOrchestratorIsHonest:
     def test_label_raises_instead_of_claiming_completion(self):
         from pygeovision.ai.labeling import LabelingOrchestrator
+
         with pytest.raises(NotImplementedError, match="AutoLabelPipeline"):
             LabelingOrchestrator(None).label("data", "osm")

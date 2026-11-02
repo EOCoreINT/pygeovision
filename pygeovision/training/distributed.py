@@ -1,4 +1,5 @@
 """Distributed training utilities — DDP, FSDP, gradient accumulation."""
+
 from __future__ import annotations
 
 import logging
@@ -7,52 +8,59 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def setup_distributed(backend: str = "nccl", rank: int = 0, world_size: int = 1,
-                        init_method: str = "env://") -> None:
+def setup_distributed(
+    backend: str = "nccl", rank: int = 0, world_size: int = 1, init_method: str = "env://"
+) -> None:
     """Initialise distributed process group."""
     try:
         import torch.distributed as dist
+
         if not dist.is_initialized():
-            dist.init_process_group(backend=backend, init_method=init_method,
-                                     rank=rank, world_size=world_size)
+            dist.init_process_group(
+                backend=backend, init_method=init_method, rank=rank, world_size=world_size
+            )
             logger.info("Distributed: rank=%d/%d backend=%s", rank, world_size, backend)
-    except ImportError:
-        raise ImportError("torch required")
+    except ImportError as exc:
+        raise ImportError("torch required") from exc
 
 
 def cleanup_distributed() -> None:
     try:
         import torch.distributed as dist
+
         if dist.is_initialized():
             dist.destroy_process_group()
     except ImportError:
         pass
 
 
-def wrap_ddp(model: Any, device_ids: list[int] | None = None,
-              find_unused_parameters: bool = False) -> Any:
+def wrap_ddp(
+    model: Any, device_ids: list[int] | None = None, find_unused_parameters: bool = False
+) -> Any:
     """Wrap model with DistributedDataParallel."""
     try:
         from torch.nn.parallel import DistributedDataParallel as DDP
-        return DDP(model, device_ids=device_ids,
-                   find_unused_parameters=find_unused_parameters)
-    except ImportError:
-        raise ImportError("torch required")
+
+        return DDP(model, device_ids=device_ids, find_unused_parameters=find_unused_parameters)
+    except ImportError as exc:
+        raise ImportError("torch required") from exc
 
 
 def wrap_fsdp(model: Any, mixed_precision: bool = True) -> Any:
     """Wrap model with FullyShardedDataParallel for memory-efficient training."""
     try:
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-        from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+        from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy  # noqa: F401
+
         if mixed_precision:
             import torch
             from torch.distributed.fsdp import MixedPrecision
+
             policy = MixedPrecision(param_dtype=torch.float16)
             return FSDP(model, mixed_precision=policy)
         return FSDP(model)
-    except ImportError:
-        raise ImportError("torch>=1.12 required for FSDP")
+    except ImportError as exc:
+        raise ImportError("torch>=1.12 required for FSDP") from exc
 
 
 class GradientAccumulator:
@@ -74,6 +82,7 @@ class GradientAccumulator:
     def step(self, loss: Any, optimizer: Any, scaler: Any = None) -> bool:
         """Accumulate gradient. Returns True when optimizer.step() was called."""
         import torch
+
         scaled_loss = loss / self.steps
         if scaler:
             scaler.scale(scaled_loss).backward()
@@ -104,6 +113,7 @@ def auto_device_count() -> int:
     """Return the number of available CUDA devices."""
     try:
         import torch
+
         return torch.cuda.device_count() if torch.cuda.is_available() else 0
     except ImportError:
         return 0
@@ -114,10 +124,11 @@ def launch_ddp(train_fn: Any, world_size: int | None = None, **kwargs) -> None:
     try:
         import torch
         import torch.multiprocessing as mp
+
         n_gpus = world_size or torch.cuda.device_count()
         if n_gpus <= 1:
             train_fn(rank=0, world_size=1, **kwargs)
         else:
             mp.spawn(train_fn, args=(n_gpus,) + tuple(kwargs.values()), nprocs=n_gpus)
-    except ImportError:
-        raise ImportError("torch required")
+    except ImportError as exc:
+        raise ImportError("torch required") from exc

@@ -15,8 +15,8 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -143,8 +143,7 @@ class SAMLabeler(BaseLabeler):
         self.config = SAMConfig(
             model_type=model_type,
             device=resolved_device,
-            checkpoint_dir=checkpoint_dir
-            or Path.home() / ".pygeovision" / "cache" / "sam",
+            checkpoint_dir=checkpoint_dir or Path.home() / ".pygeovision" / "cache" / "sam",
             points_per_side=points_per_side,
             pred_iou_thresh=pred_iou_thresh,
             stability_score_thresh=stability_score_thresh,
@@ -161,17 +160,17 @@ class SAMLabeler(BaseLabeler):
 
     @property
     def name(self) -> str:
-        return 'sam'
+        return "sam"
 
     @property
     def supported_tasks(self) -> list:
-        return ['segmentation']
+        return ["segmentation"]
 
     # ------------------------------------------------------------------
     # BaseLabeler interface
     # ------------------------------------------------------------------
 
-    def label_tile(
+    def label_tile(  # type: ignore[override]
         self,
         tile_path: Path,
         tile_metadata: Any,
@@ -213,9 +212,7 @@ class SAMLabeler(BaseLabeler):
             masks_data = self._generate_masks(rgb)
 
             # Compose instance mask (each segment = unique ID)
-            instance_mask = self._compose_instance_mask(
-                masks_data, height, width
-            )
+            instance_mask = self._compose_instance_mask(masks_data, height, width)
 
             # Write output
             meta = {
@@ -271,6 +268,7 @@ class SAMLabeler(BaseLabeler):
         """
         try:
             import torch
+
             if torch.cuda.is_available():
                 return "cuda"
             if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -294,9 +292,11 @@ class SAMLabeler(BaseLabeler):
         try:
             if self.config.model_type == "mobile":
                 from mobile_sam import SamAutomaticMaskGenerator, sam_model_registry  # type: ignore
+
                 self._sam_model = sam_model_registry["vit_t"](checkpoint=str(checkpoint_path))
             else:
                 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
+
                 self._sam_model = sam_model_registry[self.config.model_type](
                     checkpoint=str(checkpoint_path)
                 )
@@ -360,9 +360,7 @@ class SAMLabeler(BaseLabeler):
         logger.info("SAM checkpoint saved to %s", local_path)
         return local_path
 
-    def _load_rgb(
-        self, tile_path: Path, rgb_bands: tuple[int, int, int]
-    ) -> np.ndarray:
+    def _load_rgb(self, tile_path: Path, rgb_bands: tuple[int, int, int]) -> np.ndarray:
         """Load and prepare an RGB image for SAM.
 
         SAM expects a uint8 HxWx3 array in [0, 255].

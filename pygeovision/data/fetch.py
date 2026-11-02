@@ -13,25 +13,25 @@ e.g. iw-vh_EPSG_32630_cog.tiff.  However, PyGeoFetch's reprojection has a known
 bug: it updates the CRS tag to the target CRS (EPSG:32630) but writes an identity /
 pixel-space affine transform — a=1.0 px/unit, origin=(0.0, N) — instead of the
 correct UTM metre-scale geotransform.
- 
+
 Our _apply_post_process() then receives this already-corrupt file and re-runs
 reproject on it. calculate_default_transform() sees bounds of (0, 0, W, H) in
 "EPSG:32630" space and produces another pixel-space result, so the corruption is
 preserved (and the validator correctly rejects it).
- 
+
 THREE-PART FIX
 --------------
 1. _is_pixel_space_transform()
    Heuristic that recognises the corruption: pixel size ≤ 10 m AND origin ≈ 0
    are impossible for real UTM data (Sentinel-1 GRD 10m, origin ~hundreds of km).
- 
+
 2. _rescue_geotransform()
    Attempts to recover a valid transform by:
    a. Re-reading the file's native/source CRS via GDAL subdataset metadata
    b. Checking for embedded GCPs and deriving a transform from them
    c. Computing a plausible UTM transform from the file dimensions using
       Sentinel-1 GRD's known 10m ground range resolution as a fallback
- 
+
 3. _apply_post_process() — rewrite
    - Detect pixel-space input before reprojecting, rescue or abort clearly
    - Skip reproject if file is already in target CRS AND transform is valid
@@ -42,12 +42,13 @@ THREE-PART FIX
 
 from __future__ import annotations
 
+import contextlib
+from dataclasses import dataclass, field
 import hashlib
 import logging
+from pathlib import Path
 import re
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from pygeovision.data.providers import (
@@ -64,9 +65,9 @@ logger = logging.getLogger(__name__)
 _PYGEOFETCH_AVAILABLE: bool | None = None
 
 # CLI fallback — used by tests and when Python API is unavailable
-_PYGEOFETCH_PY_AVAILABLE: bool | None = None   # Python API availability
-_PYGEOFETCH_CLI_EXE: str | None = None          # Path to pygeofetch CLI executable
-_PYGEOFETCH_CLI_CHECKED: bool = False              # Whether we've already checked for CLI
+_PYGEOFETCH_PY_AVAILABLE: bool | None = None  # Python API availability
+_PYGEOFETCH_CLI_EXE: str | None = None  # Path to pygeofetch CLI executable
+_PYGEOFETCH_CLI_CHECKED: bool = False  # Whether we've already checked for CLI
 
 # Search-result cache schema version. Bump this whenever the cached
 # payload shape changes (e.g. adding the 'assets' field below) so that
@@ -76,9 +77,6 @@ _PYGEOFETCH_CLI_CHECKED: bool = False              # Whether we've already check
 # no one ever needs to manually clear ~/.pygeovision/search_cache/.
 _CACHE_SCHEMA_VERSION = 2
 _DEFAULT_CACHE_TTL_SECONDS = 3600
-
-
-
 
 
 def _check_pygeofetch() -> bool:
@@ -93,6 +91,7 @@ def _check_pygeofetch() -> bool:
             )
             from pygeofetch.models.satellite_data import SatelliteData  # noqa: F401
             from pygeofetch.models.search_query import SearchQuery  # noqa: F401
+
             _PYGEOFETCH_AVAILABLE = True
             _PYGEOFETCH_PY_AVAILABLE = True
         except ImportError:
@@ -107,6 +106,7 @@ def _check_cli() -> str | None:
     if _PYGEOFETCH_CLI_CHECKED:
         return _PYGEOFETCH_CLI_EXE
     import shutil
+
     exe = shutil.which("pygeofetch")
     _PYGEOFETCH_CLI_EXE = exe
     _PYGEOFETCH_CLI_CHECKED = True
@@ -118,9 +118,8 @@ def _use_cli_mode() -> bool:
     return _PYGEOFETCH_PY_AVAILABLE is False and _PYGEOFETCH_CLI_EXE is not None
 
 
-
-_MIN_PIXEL_SIZE_M   = 0.3    # WorldView-3 finest commercial res
-_MIN_PIXEL_SIZE_DEG = 1e-6   # ~0.1m at the equator -- degree-CRS equivalent minimum
+_MIN_PIXEL_SIZE_M = 0.3  # WorldView-3 finest commercial res
+_MIN_PIXEL_SIZE_DEG = 1e-6  # ~0.1m at the equator -- degree-CRS equivalent minimum
 _MAX_ORIGIN_FOR_PIXEL = 1e4  # Real UTM origins are >100 km from equator
 
 
@@ -147,9 +146,9 @@ def _is_pixel_space_transform(transform, crs=None) -> bool:
     """
     if transform is None:
         return True
-    a = abs(transform.a)   # pixel width
-    c = abs(transform.c)   # x origin
-    f = abs(transform.f)   # y origin
+    a = abs(transform.a)  # pixel width
+    c = abs(transform.c)  # x origin
+    f = abs(transform.f)  # y origin
 
     is_geographic = False
     if crs is not None:
@@ -169,32 +168,29 @@ def _is_pixel_space_transform(transform, crs=None) -> bool:
         # signature, and otherwise only flag genuinely-too-small sizes.
         if 0.5 <= a <= 1.5:
             return True
-        if a < _MIN_PIXEL_SIZE_DEG:
-            return True
-        return False
+        return a < _MIN_PIXEL_SIZE_DEG
 
     # Pixel size of 1.0 with near-zero origin is the smoking gun
     if a <= 1.0 and c < _MAX_ORIGIN_FOR_PIXEL and f < _MAX_ORIGIN_FOR_PIXEL:
         return True
     # Also catch sub-minimum pixel sizes that snuck through
-    if a < _MIN_PIXEL_SIZE_M:
-        return True
-    return False
+    return a < _MIN_PIXEL_SIZE_M
+
 
 def _rescue_geotransform(src_path: Path, target_crs: str):
     """Attempt to recover a valid affine transform for a corrupt-georef file.
- 
+
     Tries, in order:
       1. GCPs embedded in the file → fit an affine from them
       2. Subdataset / native metadata (GDAL -mdd ALL_METADATA)
       3. Sentinel-1 GRD heuristic: assume 10 m pixels and a UTM origin
          reconstructed from the file's nominal footprint if we can parse
          the scene ID
- 
+
     Returns (transform, crs_wkt) or (None, None) if recovery is impossible.
     """
-    import rasterio
     from affine import Affine
+    import rasterio
     from rasterio.crs import CRS
 
     try:
@@ -203,12 +199,12 @@ def _rescue_geotransform(src_path: Path, target_crs: str):
             gcps, gcp_crs = src.gcps
             if gcps and len(gcps) >= 4:
                 from rasterio.transform import from_gcps
+
                 try:
                     t = from_gcps(gcps)
                     if not _is_pixel_space_transform(t):
                         logger.info(
-                            "_rescue_geotransform: recovered from GCPs for %s",
-                            src_path.name
+                            "_rescue_geotransform: recovered from GCPs for %s", src_path.name
                         )
                         return t, (gcp_crs or CRS.from_epsg(4326)).to_wkt()
                 except Exception as gcp_exc:
@@ -225,12 +221,10 @@ def _rescue_geotransform(src_path: Path, target_crs: str):
                     if "transform" in k.lower() or "geotransform" in k.lower():
                         parts = [float(x) for x in v.replace(",", " ").split() if x]
                         if len(parts) == 6:
-                            t = Affine(parts[1], parts[2], parts[0],
-                                       parts[4], parts[5], parts[3])
+                            t = Affine(parts[1], parts[2], parts[0], parts[4], parts[5], parts[3])
                             if not _is_pixel_space_transform(t):
                                 logger.info(
-                                    "_rescue_geotransform: recovered from tags[%s][%s]",
-                                    ns, k
+                                    "_rescue_geotransform: recovered from tags[%s][%s]", ns, k
                                 )
                                 return t, target_crs
     except Exception as exc:
@@ -246,7 +240,7 @@ def _rescue_geotransform(src_path: Path, target_crs: str):
         "GCPs absent, tags empty. The file from PyGeoFetch is unrecoverable. "
         "Re-download WITHOUT post_process=['reproject:...'] and reproject "
         "manually with pygeovision.processors.reproject_safe().",
-        src_path.name
+        src_path.name,
     )
     return None, None
 
@@ -255,12 +249,14 @@ def _rescue_geotransform(src_path: Path, target_crs: str):
 # Data models
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SearchResult:
     """A satellite scene from a pygeofetch search.
 
     This is a lightweight wrapper around pygeofetch's SatelliteData.
     """
+
     id: str
     provider: str
     satellite: str
@@ -290,12 +286,18 @@ class SearchResult:
             if v is not None:
                 return float(v)
         sat = self.satellite.lower()
-        if "sentinel-2" in sat: return 10.0
-        if "landsat" in sat:    return 30.0
-        if "naip" in sat:       return 0.6
-        if "planetscope" in sat: return 3.0
-        if "worldview" in sat:  return 0.3
-        if "pleiades" in sat:   return 0.5
+        if "sentinel-2" in sat:
+            return 10.0
+        if "landsat" in sat:
+            return 30.0
+        if "naip" in sat:
+            return 0.6
+        if "planetscope" in sat:
+            return 3.0
+        if "worldview" in sat:
+            return 0.3
+        if "pleiades" in sat:
+            return 0.5
         return None
 
     def to_dict(self) -> dict[str, Any]:
@@ -338,10 +340,18 @@ class SearchResult:
 # downloads (a full 19-asset Landsat 7 scene and a full 19-asset
 # Landsat 8 scene).
 _LANDSAT_MULTI_TOKEN_SUFFIXES = [
-    ("QA", "PIXEL"), ("QA", "RADSAT"),
-    ("SR", "QA", "AEROSOL"), ("SR", "ATMOS", "OPACITY"),
-    ("ST", "QA"), ("ST", "DRAD"), ("ST", "URAD"), ("ST", "TRAD"),
-    ("ST", "ATRAN"), ("ST", "CDIST"), ("ST", "EMIS"), ("ST", "EMSD"),
+    ("QA", "PIXEL"),
+    ("QA", "RADSAT"),
+    ("SR", "QA", "AEROSOL"),
+    ("SR", "ATMOS", "OPACITY"),
+    ("ST", "QA"),
+    ("ST", "DRAD"),
+    ("ST", "URAD"),
+    ("ST", "TRAD"),
+    ("ST", "ATRAN"),
+    ("ST", "CDIST"),
+    ("ST", "EMIS"),
+    ("ST", "EMSD"),
 ]
 _SR_ST_BAND_RE = re.compile(r"^(SR|ST)$")
 _BAND_NUMBER_RE = re.compile(r"^B\d{1,2}A?$")
@@ -400,6 +410,7 @@ def _derive_asset_key(filename_stem: str) -> str:
 @dataclass
 class DownloadResult:
     """Result from a pygeofetch download operation."""
+
     scene_id: str
     provider: str = ""
     path: Path | None = None
@@ -435,18 +446,21 @@ class DownloadResult:
 # Main fetcher
 # ---------------------------------------------------------------------------
 
+
 class _NullEngine:
     """Stub engine used when pygeofetch Python API is not installed.
 
     All real operations go through the CLI or pystac_client fallback.
     Any accidental call to an engine method raises a clear error.
     """
+
     def __getattr__(self, name: str):
         def _missing(*args, **kwargs):
             raise RuntimeError(
                 f"pygeofetch engine method '{name}' called but pygeofetch is not installed. "
                 "Install it with: pip install pygeofetch"
             )
+
         return _missing
 
 
@@ -484,6 +498,7 @@ class SatelliteFetcher:
         _py_ok = False
         try:
             from pygeofetch import PyGeoFetch as _PGF
+
             _py_ok = True
         except ImportError:
             pass
@@ -497,6 +512,7 @@ class SatelliteFetcher:
             self._instance_py_available = False
             # Snapshot CLI exe from the real OS (shutil.which), not module global.
             import shutil as _sh
+
             self._instance_cli_exe = _sh.which("pygeofetch")
             if self._instance_cli_exe:
                 logger.info("pygeofetch CLI at '%s' — CLI mode active", self._instance_cli_exe)
@@ -524,10 +540,15 @@ class SatelliteFetcher:
         Credentials are stored securely via pygeofetch's auth system.
         """
         self._credentials[provider] = {
-            k: v for k, v in {
-                "username": username, "password": password, "api_key": api_key,
-                "client_id": client_id, "client_secret": client_secret
-            }.items() if v is not None
+            k: v
+            for k, v in {
+                "username": username,
+                "password": password,
+                "api_key": api_key,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            }.items()
+            if v is not None
         }
 
         if self._use_cli():
@@ -562,7 +583,8 @@ class SatelliteFetcher:
                 # Credentials are already stored in self._credentials above.
                 logger.debug(
                     "pygeofetch AuthManager.add_credentials() unavailable; "
-                    "using in-memory credentials store for '%s'", provider
+                    "using in-memory credentials store for '%s'",
+                    provider,
                 )
 
             # Also try to authenticate the engine's provider instance directly.
@@ -586,6 +608,7 @@ class SatelliteFetcher:
                         # Try with a dummy auth_type string/enum
                         try:
                             from pygeofetch.models.user_auth import AuthType
+
                             creds_kwargs["auth_type"] = AuthType.USERNAME_PASSWORD
                         except (ImportError, AttributeError):
                             creds_kwargs["auth_type"] = "username_password"
@@ -602,20 +625,24 @@ class SatelliteFetcher:
                                 prov_inst.authenticate(pgf_creds)
                                 logger.info(
                                     "Provider '%s' authenticated via engine.%s.authenticate()",
-                                    provider, attr
+                                    provider,
+                                    attr,
                                 )
                                 authenticated = True
                                 break
 
                     if not authenticated and hasattr(self._engine, "authenticate"):
                         self._engine.authenticate(provider, pgf_creds)
-                        logger.info("Provider '%s' authenticated via engine.authenticate()", provider)
+                        logger.info(
+                            "Provider '%s' authenticated via engine.authenticate()", provider
+                        )
 
                 except Exception as auth_exc:
                     logger.debug(
                         "Direct provider authentication failed for '%s': %s — "
                         "download will use PyGeoVision's Bearer token fallback.",
-                        provider, auth_exc
+                        provider,
+                        auth_exc,
                     )
         # else: no CLI, no Python API — credentials kept in-memory only (above)
         logger.info("Credentials stored for '%s'", provider)
@@ -634,7 +661,7 @@ class SatelliteFetcher:
             return True
         # Normal path: use instance-level snapshot from __init__
         py_avail = getattr(self, "_instance_py_available", None)
-        cli_exe  = getattr(self, "_instance_cli_exe", None)
+        cli_exe = getattr(self, "_instance_cli_exe", None)
         return py_avail is False and cli_exe is not None
 
     def list_credentials(self) -> list[str]:
@@ -648,14 +675,13 @@ class SatelliteFetcher:
         No stored credentials, a rejected login or an unreachable service return ``False`` (reason logged).
         """
         meta = {}
-        try:
+        with contextlib.suppress(Exception):
             meta = self.list_providers().get(provider, {})
-        except Exception:  # noqa: BLE001
-            pass
         if meta.get("open") and not meta.get("auth") and meta.get("endpoint"):
             # open-access provider: there is nothing to authenticate, so the check is "does it answer"
             try:
                 import requests
+
                 return requests.get(meta["endpoint"], timeout=15).status_code < 400
             except Exception as exc:  # noqa: BLE001
                 logger.warning("%s: %s unreachable: %s", provider, meta["endpoint"], exc)
@@ -726,8 +752,14 @@ class SatelliteFetcher:
         # Check cache
         if use_cache:
             cache_key = self._cache_key(
-                bbox, date_range, active_providers, cloud_cover_max, collections,
-                max_results, sort_by, sort_order,
+                bbox,
+                date_range,
+                active_providers,
+                cloud_cover_max,
+                collections,
+                max_results,
+                sort_by,
+                sort_order,
             )
             cached = self._load_cache(cache_key)
             if cached is not None:
@@ -736,8 +768,12 @@ class SatelliteFetcher:
 
         logger.info(
             "Searching %d provider(s) [%s] | bbox=%s | %s→%s | cloud≤%.0f%%",
-            len(active_providers), ", ".join(active_providers),
-            bbox, date_range[0], date_range[1], cloud_cover_max,
+            len(active_providers),
+            ", ".join(active_providers),
+            bbox,
+            date_range[0],
+            date_range[1],
+            cloud_cover_max,
         )
 
         results: list[SearchResult] = []
@@ -746,17 +782,25 @@ class SatelliteFetcher:
         if self._use_cli():
             import os
             import tempfile
+
             with tempfile.NamedTemporaryFile(suffix=".geojson", delete=False) as tmp:
                 tmp_path = tmp.name
             try:
                 args = [
-                    "search", "run",
-                    "--bbox",        f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
-                    "--start-date",  date_range[0],
-                    "--end-date",    date_range[1],
-                    "--cloud-cover", str(cloud_cover_max),
-                    "--max-results", str(max_results),
-                    "--output",      tmp_path,
+                    "search",
+                    "run",
+                    "--bbox",
+                    f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
+                    "--start-date",
+                    date_range[0],
+                    "--end-date",
+                    date_range[1],
+                    "--cloud-cover",
+                    str(cloud_cover_max),
+                    "--max-results",
+                    str(max_results),
+                    "--output",
+                    tmp_path,
                 ]
                 for p in active_providers:
                     args += ["--providers", p]
@@ -766,10 +810,8 @@ class SatelliteFetcher:
             except Exception as exc:
                 logger.warning("CLI search failed: %s", exc)
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     os.unlink(tmp_path)
-                except Exception:
-                    pass
 
         # ── Path B: Python API (primary) ─────────────────────────────
         elif _PYGEOFETCH_PY_AVAILABLE is not False:
@@ -779,16 +821,14 @@ class SatelliteFetcher:
                 from pygeofetch.models.search_query import BoundingBox, SearchQuery
 
                 # Build BoundingBox properly using PyGeoFetch's native model
-                pgf_bbox = BoundingBox.from_string(
-                    f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
-                )
+                pgf_bbox = BoundingBox.from_string(f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}")
 
                 # Parse dates properly
                 start_d = end_d = None
                 if date_range:
                     try:
                         start_d = _date.fromisoformat(str(date_range[0])[:10])
-                        end_d   = _date.fromisoformat(str(date_range[1])[:10])
+                        end_d = _date.fromisoformat(str(date_range[1])[:10])
                     except (ValueError, TypeError):
                         pass
 
@@ -803,33 +843,35 @@ class SatelliteFetcher:
                 geometry_geojson = None
                 if geometry_file:
                     import json
+
                     with open(geometry_file) as gf:
                         gj = json.load(gf)
                     geometry_geojson = (
-                        gj if gj.get("type") in ("Polygon", "MultiPolygon")
+                        gj
+                        if gj.get("type") in ("Polygon", "MultiPolygon")
                         else gj.get("geometry") or (gj.get("features") or [{}])[0].get("geometry")
                     )
 
                 query = SearchQuery(
-                    bbox               = pgf_bbox,
-                    geometry           = geometry_geojson,
-                    start_date         = start_d,
-                    end_date           = end_d,
-                    cloud_cover_min    = 0.0,
-                    cloud_cover_max    = cloud_cover_max,
-                    max_results        = max_results,
-                    sort_by            = sort_by,
-                    sort_ascending     = (sort_order == "asc"),
-                    satellites         = [],
-                    sensors            = [],
-                    collections        = collections or [],
-                    processing_levels  = [processing_level] if processing_level else [],
-                    providers          = active_providers or [],
-                    provider_filters   = {},
-                    ids                = [],
-                    cql2_filter        = cql2_filter,
-                    on_provider_failure= on_provider_failure,
-                    timeout_seconds    = timeout,
+                    bbox=pgf_bbox,
+                    geometry=geometry_geojson,
+                    start_date=start_d,
+                    end_date=end_d,
+                    cloud_cover_min=0.0,
+                    cloud_cover_max=cloud_cover_max,
+                    max_results=max_results,
+                    sort_by=sort_by,
+                    sort_ascending=(sort_order == "asc"),
+                    satellites=[],
+                    sensors=[],
+                    collections=collections or [],
+                    processing_levels=[processing_level] if processing_level else [],
+                    providers=active_providers or [],
+                    provider_filters={},
+                    ids=[],
+                    cql2_filter=cql2_filter,
+                    on_provider_failure=on_provider_failure,
+                    timeout_seconds=timeout,
                 )
 
                 satellite_data_list = self._engine.search(
@@ -847,37 +889,40 @@ class SatelliteFetcher:
                 # we fall through to the STAC-based pystac_client fallback
                 # which uses the correct STAC collection IDs.
                 if not results:
-                    logger.debug(
-                        "PyGeoFetch returned 0 results — trying pystac_client fallback"
-                    )
+                    logger.debug("PyGeoFetch returned 0 results — trying pystac_client fallback")
                     fallback = self._search_pystac_fallback(
-                        bbox, date_range, active_providers, cloud_cover_max,
-                        max_results, collections
+                        bbox,
+                        date_range,
+                        active_providers,
+                        cloud_cover_max,
+                        max_results,
+                        collections,
                     )
                     if fallback:
                         logger.info(
                             "pystac fallback found %d result(s) that PyGeoFetch missed",
-                            len(fallback)
+                            len(fallback),
                         )
                         results = fallback
             except Exception as exc:
                 logger.warning("Python API search failed: %s — trying pystac_client fallback", exc)
                 results = self._search_pystac_fallback(
-                    bbox, date_range, active_providers, cloud_cover_max,
-                    max_results, collections
+                    bbox, date_range, active_providers, cloud_cover_max, max_results, collections
                 )
 
         # ── Path C: pystac_client fallback ────────────────────────────
         else:
             results = self._search_pystac_fallback(
-                bbox, date_range, active_providers, cloud_cover_max,
-                max_results, collections
+                bbox, date_range, active_providers, cloud_cover_max, max_results, collections
             )
 
         # Sort results
-        reverse = (sort_order == "desc")
+        reverse = sort_order == "desc"
         if sort_by == "cloud_cover":
-            results.sort(key=lambda r: (r.cloud_cover if r.cloud_cover is not None else 100.0), reverse=reverse)
+            results.sort(
+                key=lambda r: (r.cloud_cover if r.cloud_cover is not None else 100.0),
+                reverse=reverse,
+            )
         elif sort_by == "datetime":
             results.sort(key=lambda r: r.datetime, reverse=reverse)
         elif sort_by == "score":
@@ -887,8 +932,7 @@ class SatelliteFetcher:
         if resolution_range:
             min_m, max_m = resolution_range
             results = [
-                r for r in results
-                if r.resolution_m is None or (min_m <= r.resolution_m <= max_m)
+                r for r in results if r.resolution_m is None or (min_m <= r.resolution_m <= max_m)
             ]
 
         # Cache results
@@ -921,8 +965,8 @@ class SatelliteFetcher:
         # STAC endpoint mapping
         _STAC_ENDPOINTS = {
             "planetary_computer": "https://planetarycomputer.microsoft.com/api/stac/v1",
-            "aws_earth":          "https://earth-search.aws.element84.com/v1",
-            "copernicus":         "https://catalogue.dataspace.copernicus.eu/stac",
+            "aws_earth": "https://earth-search.aws.element84.com/v1",
+            "copernicus": "https://catalogue.dataspace.copernicus.eu/stac",
             "copernicus_dataspace": "https://catalogue.dataspace.copernicus.eu/stac",
         }
         # Default collections per provider.
@@ -931,9 +975,9 @@ class SatelliteFetcher:
         # PyGeoFetch's native Copernicus provider) uses different identifiers,
         # but the STAC API — which this fallback uses — accepts lowercase.
         _DEFAULT_COLLECTIONS = {
-            "planetary_computer":   ["sentinel-1-grd"],
-            "aws_earth":            ["sentinel-2-l2a"],
-            "copernicus":           ["sentinel-1-grd"],     # CDSE STAC = lowercase
+            "planetary_computer": ["sentinel-1-grd"],
+            "aws_earth": ["sentinel-2-l2a"],
+            "copernicus": ["sentinel-1-grd"],  # CDSE STAC = lowercase
             "copernicus_dataspace": ["sentinel-1-grd"],
         }
 
@@ -946,7 +990,8 @@ class SatelliteFetcher:
                 logger.warning(
                     "Unknown provider '%s' — recognised providers: %s. "
                     "Check PROVIDERS list in your notebook.",
-                    provider, list(_STAC_ENDPOINTS.keys())
+                    provider,
+                    list(_STAC_ENDPOINTS.keys()),
                 )
                 continue
             try:
@@ -955,6 +1000,7 @@ class SatelliteFetcher:
                 if provider == "planetary_computer":
                     try:
                         import planetary_computer as pc
+
                         open_kwargs["modifier"] = pc.sign_inplace
                     except ImportError:
                         pass
@@ -962,13 +1008,16 @@ class SatelliteFetcher:
                 # Copernicus Data Space requires authentication.
                 # Try credentials from in-memory store.
                 if provider in ("copernicus", "copernicus_dataspace"):
-                    creds = self._credentials.get(provider) or \
-                            self._credentials.get("copernicus") or \
-                            self._credentials.get("copernicus_dataspace") or {}
+                    creds = (
+                        self._credentials.get(provider)
+                        or self._credentials.get("copernicus")
+                        or self._credentials.get("copernicus_dataspace")
+                        or {}
+                    )
                     if creds:
                         # Build auth header for Copernicus STAC
                         user = creds.get("username", "")
-                        pwd  = creds.get("password", "")
+                        pwd = creds.get("password", "")
                         if user and pwd:
                             # Get OAuth2 token from Copernicus Identity Service
                             token = self._get_copernicus_token(user, pwd)
@@ -979,7 +1028,8 @@ class SatelliteFetcher:
                             "No credentials found for '%s'. "
                             "Call client.add_credentials('%s', username=..., password=...) "
                             "or try provider='planetary_computer' which needs no auth.",
-                            provider, provider
+                            provider,
+                            provider,
                         )
 
                 catalog = pystac_client.Client.open(endpoint, **open_kwargs)
@@ -989,8 +1039,7 @@ class SatelliteFetcher:
                 search_cols = collections or _DEFAULT_COLLECTIONS.get(provider, ["sentinel-1-grd"])
 
                 # Copernicus STAC does not accept eo:cloud_cover for SAR
-                is_sar = any("sentinel-1" in c.lower() or "SAR" in c.upper()
-                             for c in search_cols)
+                is_sar = any("sentinel-1" in c.lower() or "SAR" in c.upper() for c in search_cols)
                 query_filter = {} if is_sar else {"eo:cloud_cover": {"lt": cloud_cover_max}}
 
                 search = catalog.search(
@@ -1003,18 +1052,21 @@ class SatelliteFetcher:
                 count = 0
                 for item in search.items():
                     dt = item.datetime.isoformat() if item.datetime else ""
-                    results.append(SearchResult(
-                        id=item.id,
-                        provider=provider,
-                        satellite=self._collection_to_satellite(
-                            item.collection_id or (search_cols[0] if search_cols else "")),
-                        datetime=dt,
-                        cloud_cover=item.properties.get("eo:cloud_cover"),
-                        bbox=tuple(item.bbox) if item.bbox else None,
-                        collection=item.collection_id or "",
-                        assets={k: {"href": v.href} for k, v in (item.assets or {}).items()},
-                        properties=dict(item.properties or {}),
-                    ))
+                    results.append(
+                        SearchResult(
+                            id=item.id,
+                            provider=provider,
+                            satellite=self._collection_to_satellite(
+                                item.collection_id or (search_cols[0] if search_cols else "")
+                            ),
+                            datetime=dt,
+                            cloud_cover=item.properties.get("eo:cloud_cover"),
+                            bbox=tuple(item.bbox) if item.bbox else None,
+                            collection=item.collection_id or "",
+                            assets={k: {"href": v.href} for k, v in (item.assets or {}).items()},
+                            properties=dict(item.properties or {}),
+                        )
+                    )
                     count += 1
                 logger.info("  %-24s %d scenes", f"[{provider}]", count)
             except Exception as exc:
@@ -1024,6 +1076,7 @@ class SatelliteFetcher:
     def _satellite_data_to_result(self, sd: Any) -> SearchResult:
         """Convert pygeofetch SatelliteData → SearchResult using the bridge."""
         from pygeovision.data.pgf_bridge import _pgf_satellite_data_to_pgv
+
         return _pgf_satellite_data_to_pgv(sd)
 
     # ------------------------------------------------------------------
@@ -1045,7 +1098,7 @@ class SatelliteFetcher:
         notify_webhook: str | None = None,
         max_items: int | None = None,
         priority: str = "normal",
-        bands: list[str] | None = None,   # <-- new
+        bands: list[str] | None = None,  # <-- new
     ) -> list[DownloadResult]:
         """Download satellite scenes with progress display."""
         import sys
@@ -1068,6 +1121,7 @@ class SatelliteFetcher:
         # match, since it handles alias resolution (B02 <-> blue, B4 <-> B04)
         # that real provider asset keys may require.
         from pygeofetch.models.satellite_data import resolve_band_keys
+
         if bands:
             for item in items:
                 if item.assets:
@@ -1089,7 +1143,9 @@ class SatelliteFetcher:
                             "(available: %s) — resolve_band_keys() fell back to "
                             "returning all assets. Check the provider's actual "
                             "asset key naming (e.g. via item.satellite_data.assets.keys()).",
-                            bands, item.id, available,
+                            bands,
+                            item.id,
+                            available,
                         )
                     sd.assets = {k: v for k, v in sd.assets.items() if k in matched}
 
@@ -1101,10 +1157,14 @@ class SatelliteFetcher:
             # Write search results to a temp JSON so CLI can read them
             ids_str = ",".join(item.id for item in items)
             args = [
-                "download", "run",
-                "--from-search", ids_str,
-                "--output",      str(output_dir),
-                "--parallel",    str(parallel),
+                "download",
+                "run",
+                "--from-search",
+                ids_str,
+                "--output",
+                str(output_dir),
+                "--parallel",
+                str(parallel),
             ]
             if post_process:
                 for step in post_process:
@@ -1113,13 +1173,15 @@ class SatelliteFetcher:
             results = []
             for item in items:
                 f = self._find_downloaded_file(output_dir, item.id)
-                results.append(DownloadResult(
-                    scene_id=item.id,
-                    provider=item.provider,
-                    success=proc.returncode == 0,
-                    path=str(f) if f else None,
-                    error=proc.stderr if proc.returncode != 0 else None,
-                ))
+                results.append(
+                    DownloadResult(
+                        scene_id=item.id,
+                        provider=item.provider,
+                        success=proc.returncode == 0,
+                        path=Path(f) if f else None,
+                        error=proc.stderr if proc.returncode != 0 else None,
+                    )
+                )
             return results
 
         # ── Python API ───────────────────────────────────────────────
@@ -1132,29 +1194,27 @@ class SatelliteFetcher:
                 step = step.strip()
                 if ":" in step:
                     action, param_val = step.split(":", 1)
-                    pp_actions.append(PostProcessAction(
-                        action=action.strip(),
-                        params={"value": param_val.strip()}
-                    ))
+                    pp_actions.append(
+                        PostProcessAction(
+                            action=action.strip(), params={"value": param_val.strip()}
+                        )
+                    )
                 else:
-                    pp_actions.append(PostProcessAction(
-                        action=step,
-                        params={}
-                    ))
+                    pp_actions.append(PostProcessAction(action=step, params={}))
 
         # Configure download options using actual DownloadOptions fields
         options = DownloadOptions(
-            parallel           = parallel,
-            retry_attempts     = retry_attempts,
-            verify_checksum    = verify_checksum,
-            resume             = resume,
-            bandwidth_limit_mbps = bandwidth_limit_mb or 0.0,
-            priority           = 5,
-            post_process       = pp_actions,
-            on_failure         = on_failure,
-            overwrite          = overwrite,
-            notify_webhook     = notify_webhook,
-            bands=bands
+            parallel=parallel,
+            retry_attempts=retry_attempts,
+            verify_checksum=verify_checksum,
+            resume=resume,
+            bandwidth_limit_mbps=bandwidth_limit_mb or 0.0,
+            priority=5,
+            post_process=pp_actions,
+            on_failure=on_failure,
+            overwrite=overwrite,
+            notify_webhook=notify_webhook,
+            bands=bands,
         )
 
         # ── Separate native PyGeoFetch items from pystac-fallback items ──────
@@ -1166,8 +1226,8 @@ class SatelliteFetcher:
         # Solution: download pystac fallback items directly via requests/httpx
         # using the Copernicus OAuth2 token already cached from the search step.
 
-        pgf_items   = []   # items with native PyGeoFetch satellite_data
-        stac_items  = []   # items from pystac fallback (satellite_data was None)
+        pgf_items = []  # items with native PyGeoFetch satellite_data
+        stac_items = []  # items from pystac fallback (satellite_data was None)
 
         for item in items:
             if item.satellite_data is not None:
@@ -1178,7 +1238,7 @@ class SatelliteFetcher:
                 logger.warning(
                     "Item %s has no satellite_data and no assets — cannot download. "
                     "Re-run client.search(..., use_cache=False) and download immediately.",
-                    item.id
+                    item.id,
                 )
 
         # Download pystac fallback items directly
@@ -1186,7 +1246,7 @@ class SatelliteFetcher:
         if stac_items:
             logger.info(
                 "Downloading %d pystac-fallback item(s) directly (bypassing PyGeoFetch engine).",
-                len(stac_items)
+                len(stac_items),
             )
             for item in stac_items:
                 dr = self._download_stac_item_direct(
@@ -1205,7 +1265,8 @@ class SatelliteFetcher:
             )
             return [
                 DownloadResult(
-                    scene_id=item.id, provider=item.provider,
+                    scene_id=item.id,
+                    provider=item.provider,
                     success=False,
                     error=(
                         "No valid satellite data (missing satellite_data and assets). "
@@ -1219,7 +1280,9 @@ class SatelliteFetcher:
         if not satellite_data_list:
             return direct_results + [
                 DownloadResult(
-                    scene_id=item.id, provider=item.provider, success=False,
+                    scene_id=item.id,
+                    provider=item.provider,
+                    success=False,
                     error="No satellite_data and no assets — cannot download",
                 )
                 for item in items
@@ -1228,7 +1291,7 @@ class SatelliteFetcher:
 
         # Print download info for native PyGeoFetch items
         total = len(satellite_data_list)
-        providers_used = ', '.join(set(i.provider for i in pgf_items))
+        providers_used = ", ".join({i.provider for i in pgf_items})
         print(f"\n  📡 Downloading {total} scene(s) via PyGeoFetch from {providers_used}")
         print(f"  📁 Output: {output_dir}")
         if post_process:
@@ -1238,12 +1301,13 @@ class SatelliteFetcher:
 
         # Execute download with progress tracking
         import threading
-        _stop          = threading.Event()
-        lock           = threading.Lock()
+
+        _stop = threading.Event()
+        lock = threading.Lock()
         downloaded_bytes = 0
 
         def _spinner():
-            frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+            frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
             i = 0
             while not _stop.is_set():
                 sys.stdout.write(f"\r  {frames[i % len(frames)]}  Downloading {total} scene(s)…  ")
@@ -1274,8 +1338,9 @@ class SatelliteFetcher:
                 downloaded_bytes += r.bytes_downloaded or 0
 
         # Final progress bar
-        sys.stdout.write(f"\r  [{'█' * 40}] {total}/{total} (100%) | "
-                    f"{downloaded_bytes/1024/1024:.1f} MB\n")
+        sys.stdout.write(
+            f"\r  [{'█' * 40}] {total}/{total} (100%) | " f"{downloaded_bytes/1024/1024:.1f} MB\n"
+        )
         sys.stdout.flush()
 
         # ------------------------------------------------------------
@@ -1297,10 +1362,14 @@ class SatelliteFetcher:
         for idx, item in enumerate(items_with_data):
             if idx >= n_results:
                 # engine.download() returned fewer results than we sent
-                download_results.append(DownloadResult(
-                    scene_id=item.id, provider=item.provider,
-                    success=False, error="No download result returned",
-                ))
+                download_results.append(
+                    DownloadResult(
+                        scene_id=item.id,
+                        provider=item.provider,
+                        success=False,
+                        error="No download result returned",
+                    )
+                )
                 continue
 
             pgf_result = results[idx]
@@ -1313,16 +1382,19 @@ class SatelliteFetcher:
             # We have the credentials in self._credentials — use them to
             # construct the OData download URL from the item UUID and
             # download directly with our Bearer token.
-            if (not success
-                    and "authentication" in pgf_error.lower()
-                    and item.provider in ("copernicus", "copernicus_dataspace")):
+            if (
+                not success
+                and "authentication" in pgf_error.lower()
+                and item.provider in ("copernicus", "copernicus_dataspace")
+            ):
                 logger.info(
                     "PyGeoFetch auth failure for %s — retrying via direct OData download",
-                    item.id[:40]
+                    item.id[:40],
                 )
                 creds = (
-                    self._credentials.get("copernicus") or
-                    self._credentials.get("copernicus_dataspace") or {}
+                    self._credentials.get("copernicus")
+                    or self._credentials.get("copernicus_dataspace")
+                    or {}
                 )
                 if creds:
                     token = self._get_copernicus_token(
@@ -1337,10 +1409,15 @@ class SatelliteFetcher:
                             f"https://download.dataspace.copernicus.eu"
                             f"/odata/v1/Products('{item.id}')/$value"
                         )
-                        retry_item = type("_I", (), {
-                            "id": item.id, "provider": item.provider,
-                            "assets": {"PRODUCT": {"href": odata_url}},
-                        })()
+                        retry_item = type(
+                            "_I",
+                            (),
+                            {
+                                "id": item.id,
+                                "provider": item.provider,
+                                "assets": {"PRODUCT": {"href": odata_url}},
+                            },
+                        )()
                         dr = self._download_stac_item_direct(
                             retry_item, output_dir, post_process, bandwidth_limit_mb
                         )
@@ -1351,7 +1428,7 @@ class SatelliteFetcher:
                             "Bearer token generation failed for '%s'. "
                             "Check your Copernicus credentials — the password "
                             "in client.add_credentials() may be incorrect or expired.",
-                            item.provider
+                            item.provider,
                         )
                         pgf_error += (
                             " | OData retry failed: Bearer token not obtained. "
@@ -1404,16 +1481,20 @@ class SatelliteFetcher:
             if getattr(pgf_result, "from_cache", False) and out_paths:
                 scan_dir = Path(out_paths[0]).parent
                 real_matches = sorted(
-                    p for p in scan_dir.glob(f"{item.id}*")
-                    if p.is_file() and p.suffix.lower() in
-                    (".tif", ".tiff", ".jp2", ".img", ".nc", ".zip")
+                    p
+                    for p in scan_dir.glob(f"{item.id}*")
+                    if p.is_file()
+                    and p.suffix.lower() in (".tif", ".tiff", ".jp2", ".img", ".nc", ".zip")
                 )
                 if len(real_matches) > len(out_paths):
                     logger.info(
                         "download: resume-cache result for %s only reported %d "
                         "file(s), but %d real file(s) matching this scene exist "
                         "in %s — using the complete set.",
-                        item.id, len(out_paths), len(real_matches), scan_dir,
+                        item.id,
+                        len(out_paths),
+                        len(real_matches),
+                        scan_dir,
                     )
                     out_paths = real_matches
 
@@ -1422,26 +1503,33 @@ class SatelliteFetcher:
                 p = Path(p)
                 asset_paths[_derive_asset_key(p.stem)] = p
 
-            download_results.append(DownloadResult(
-                scene_id=item.id,
-                provider=getattr(pgf_result, "provider", None) or item.provider,
-                path=path,
-                asset_paths=asset_paths,
-                success=success,
-                bytes_downloaded=getattr(pgf_result, "bytes_downloaded", 0) or 0,
-                duration_seconds=getattr(pgf_result, "duration_seconds", None) or (duration / max(n_results, 1)),
-                checksum_verified=bool(getattr(pgf_result, "checksum_verified", False)),
-                error=getattr(pgf_result, "error", "") or "",
-                post_process_steps=post_process or [],
-            ))
+            download_results.append(
+                DownloadResult(
+                    scene_id=item.id,
+                    provider=getattr(pgf_result, "provider", None) or item.provider,
+                    path=path,
+                    asset_paths=asset_paths,
+                    success=success,
+                    bytes_downloaded=getattr(pgf_result, "bytes_downloaded", 0) or 0,
+                    duration_seconds=getattr(pgf_result, "duration_seconds", None)
+                    or (duration / max(n_results, 1)),
+                    checksum_verified=bool(getattr(pgf_result, "checksum_verified", False)),
+                    error=getattr(pgf_result, "error", "") or "",
+                    post_process_steps=post_process or [],
+                )
+            )
 
         # Items that never had satellite_data at all (couldn't be sent)
         for item in items:
             if id(item) not in items_with_data_ids:
-                download_results.append(DownloadResult(
-                    scene_id=item.id, provider=item.provider,
-                    success=False, error="No satellite_data available to download",
-                ))
+                download_results.append(
+                    DownloadResult(
+                        scene_id=item.id,
+                        provider=item.provider,
+                        success=False,
+                        error="No satellite_data available to download",
+                    )
+                )
 
         # Print summary
         successful = sum(1 for r in download_results if r.success)
@@ -1477,7 +1565,7 @@ class SatelliteFetcher:
         import time as _time
 
         chunk_size = 1024 * 1024
-        bw_delay   = (1.0 / (bandwidth_limit_mb or float("inf"))) if bandwidth_limit_mb else 0
+        bw_delay = (1.0 / (bandwidth_limit_mb or float("inf"))) if bandwidth_limit_mb else 0
 
         resp = session.get(url, stream=True, timeout=300, allow_redirects=True)
 
@@ -1541,7 +1629,7 @@ class SatelliteFetcher:
         """
         import time as _time
 
-        t0      = _time.time()
+        t0 = _time.time()
         item_id = item.id
         provider = item.provider or "unknown"
 
@@ -1550,7 +1638,9 @@ class SatelliteFetcher:
 
         if not url_pairs:
             return DownloadResult(
-                scene_id=item_id, provider=provider, success=False,
+                scene_id=item_id,
+                provider=provider,
+                success=False,
                 error=(
                     f"No downloadable asset found in STAC assets. "
                     f"Available keys: {list(assets.keys())}. "
@@ -1567,8 +1657,9 @@ class SatelliteFetcher:
         headers = {}
         if provider in ("copernicus", "copernicus_dataspace"):
             creds = (
-                self._credentials.get("copernicus") or
-                self._credentials.get("copernicus_dataspace") or {}
+                self._credentials.get("copernicus")
+                or self._credentials.get("copernicus_dataspace")
+                or {}
             )
             if creds:
                 token = self._get_copernicus_token(
@@ -1584,6 +1675,7 @@ class SatelliteFetcher:
 
         try:
             import requests
+
             session = requests.Session()
             session.headers.update(headers)
             # Override rebuild_auth so the Authorization header is NOT dropped
@@ -1601,6 +1693,7 @@ class SatelliteFetcher:
                 if provider == "planetary_computer" and band_url:
                     try:
                         import planetary_computer as pc
+
                         band_url = pc.sign(band_url)
                     except ImportError:
                         logger.warning(
@@ -1624,22 +1717,34 @@ class SatelliteFetcher:
                 logger.info("  [direct] %s  %s → %s", item_id[:55], asset_key, band_file.name)
 
                 bytes_written, err = self._stream_download_asset(
-                    session, band_url, band_file, provider, item_id, headers, bandwidth_limit_mb,
+                    session,
+                    band_url,
+                    band_file,
+                    provider,
+                    item_id,
+                    headers,
+                    bandwidth_limit_mb,
                 )
                 if err:
                     logger.warning("  ✗ %s (%s): %s", item_id[:55], asset_key, err)
                     return DownloadResult(
-                        scene_id=item_id, provider=provider, success=False, error=err,
+                        scene_id=item_id,
+                        provider=provider,
+                        success=False,
+                        error=err,
                     )
 
                 total_bytes += bytes_written
                 band_files.append((str(band_file), asset_key))
 
             duration = _time.time() - t0
-            size_mb  = total_bytes / 1024 / 1024
+            size_mb = total_bytes / 1024 / 1024
             logger.info(
                 "  ✓ %-50s  %6.0f MB  %5.1fs  (%d asset%s)",
-                item_id[:50], size_mb, duration, len(band_files),
+                item_id[:50],
+                size_mb,
+                duration,
+                len(band_files),
                 "" if len(band_files) == 1 else "s",
             )
 
@@ -1651,6 +1756,7 @@ class SatelliteFetcher:
                 out_file = Path(band_files[0][0])
             else:
                 from pygeovision.preprocess.core import Preprocessor
+
                 out_file = out_dir / f"{safe_id}.tif"
                 Preprocessor().stack_bands(
                     [p for p, _ in band_files],
@@ -1658,10 +1764,8 @@ class SatelliteFetcher:
                     band_names=[k for _, k in band_files],
                 )
                 for p, _ in band_files:
-                    try:
+                    with contextlib.suppress(OSError):
                         Path(p).unlink()
-                    except OSError:
-                        pass
 
             # Run post-processing (reproject, cog, etc.)
             final_path = out_file
@@ -1669,13 +1773,16 @@ class SatelliteFetcher:
                 final_path = self._apply_post_process(out_file, post_process)
                 if final_path is None:
                     return DownloadResult(
-                        scene_id=item_id, provider=provider, success=False,
+                        scene_id=item_id,
+                        provider=provider,
+                        success=False,
                         error=(
                             f"Post-processing failed for {out_file.name} "
                             f"(steps={post_process}) — see preceding log for the specific "
                             f"reason. The downloaded file is not usable as-is."
                         ),
-                        bytes_downloaded=total_bytes, duration_seconds=duration,
+                        bytes_downloaded=total_bytes,
+                        duration_seconds=duration,
                     )
 
             return DownloadResult(
@@ -1690,7 +1797,9 @@ class SatelliteFetcher:
         except Exception as exc:
             logger.warning("  ✗ %s: %s", item_id[:55], exc)
             return DownloadResult(
-                scene_id=item_id, provider=provider, success=False,
+                scene_id=item_id,
+                provider=provider,
+                success=False,
                 error=str(exc),
             )
 
@@ -1748,9 +1857,7 @@ class SatelliteFetcher:
                             f"https://catalogue.dataspace.copernicus.eu"
                             f"/odata/v1/Products('{product_id}')/$value"
                         )
-                        logger.debug(
-                            "OData lookup: %s → UUID=%s", name[:50], product_id[:8]
-                        )
+                        logger.debug("OData lookup: %s → UUID=%s", name[:50], product_id[:8])
                         return download_url
             except Exception as exc:
                 logger.debug("OData lookup failed for %s: %s", name[:50], exc)
@@ -1758,9 +1865,7 @@ class SatelliteFetcher:
         return None
 
     @staticmethod
-    def _pick_stac_download_urls(
-        assets: dict, provider: str
-    ) -> list[tuple[str, str]]:
+    def _pick_stac_download_urls(assets: dict, provider: str) -> list[tuple[str, str]]:
         """
         Pick the downloadable asset URL(s) from a STAC assets dict.
 
@@ -1806,10 +1911,27 @@ class SatelliteFetcher:
         # Priority 2+3: individual band assets — collect EVERY match present,
         # not just the first, so all requested bands actually get downloaded.
         band_keys = (
-            "vh", "vv", "VH", "VV",
-            "B01", "B02", "B03", "B04", "B05", "B06", "B07",
-            "B08", "B8A", "B09", "B10", "B11", "B12",
-            "TCI", "visual", "red", "nir",
+            "vh",
+            "vv",
+            "VH",
+            "VV",
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B10",
+            "B11",
+            "B12",
+            "TCI",
+            "visual",
+            "red",
+            "nir",
         )
         matches = []
         seen_urls = set()
@@ -1825,8 +1947,14 @@ class SatelliteFetcher:
         # Priority 4: any HTTPS asset that isn't a thumbnail/preview
         # (best-effort single pick — we don't know which of these are
         # "bands" vs metadata, so don't assume more than one is wanted).
-        skip = {"thumbnail", "preview", "rendered_preview", "tilejson",
-                "overview", "visual_preview"}
+        skip = {
+            "thumbnail",
+            "preview",
+            "rendered_preview",
+            "tilejson",
+            "overview",
+            "visual_preview",
+        }
         for key, val in assets.items():
             if key.lower() in skip:
                 continue
@@ -1841,14 +1969,20 @@ class SatelliteFetcher:
             if key in assets:
                 url = _href(assets[key])
                 if url and url.startswith("s3://eodata/"):
-                    https_url = "https://eodata.dataspace.copernicus.eu/" + url[len("s3://eodata/"):]
+                    https_url = (
+                        "https://eodata.dataspace.copernicus.eu/" + url[len("s3://eodata/") :]
+                    )
                     return [(https_url, key)]
 
         # All assets are unresolvable S3 or unknown
         return []
 
     def _warn_if_bands_or_dtype_changed(
-        self, step_name: str, path: Path, expected_count: int | None, expected_dtype: str | None,
+        self,
+        step_name: str,
+        path: Path,
+        expected_count: int | None,
+        expected_dtype: str | None,
     ) -> None:
         """Loudly warn if a post-process step unexpectedly changed the band
         count or dtype-kind of the raster, instead of letting it surface
@@ -1862,6 +1996,7 @@ class SatelliteFetcher:
             return
         try:
             import rasterio
+
             with rasterio.open(str(path)) as src:
                 actual_count = src.count
                 actual_dtype = src.dtypes[0]
@@ -1877,8 +2012,12 @@ class SatelliteFetcher:
                 "%d band(s)/%s for %s. This step is the likely source if "
                 "downstream validation reports too few bands or an "
                 "unexpected dtype — inspect this file directly to confirm.",
-                step_name, expected_count, expected_dtype,
-                actual_count, actual_dtype, path.name,
+                step_name,
+                expected_count,
+                expected_dtype,
+                actual_count,
+                actual_dtype,
+                path.name,
             )
 
     def _apply_post_process(
@@ -1888,7 +2027,7 @@ class SatelliteFetcher:
     ) -> Path | None:
         """
         Replacement for SatelliteFetcher._apply_post_process().
-    
+
         Changes vs original:
         • Detects corrupt (pixel-space) input transform before reprojecting
         • Attempts georef rescue; aborts clearly if recovery is impossible
@@ -1936,7 +2075,8 @@ class SatelliteFetcher:
                         "unzip step: %s is not a valid zip file (%s) — the download "
                         "is likely corrupt or the source asset isn't actually zipped. "
                         "Refusing to proceed with an un-extracted file.",
-                        current.name, exc,
+                        current.name,
+                        exc,
                     )
                     return None
 
@@ -1945,14 +2085,17 @@ class SatelliteFetcher:
                 # subdirectories, not just the top level.
                 raster_exts = (".tif", ".tiff", ".jp2", ".img", ".nc")
                 candidates = [
-                    p for p in extract_dir.rglob("*")
+                    p
+                    for p in extract_dir.rglob("*")
                     if p.is_file() and p.suffix.lower() in raster_exts
                 ]
                 if not candidates:
                     logger.error(
                         "unzip step: extracted %s but found no raster file (looked for "
                         "%s) among %d extracted file(s) — cannot proceed.",
-                        current.name, raster_exts, sum(1 for _ in extract_dir.rglob("*") if _.is_file()),
+                        current.name,
+                        raster_exts,
+                        sum(1 for _ in extract_dir.rglob("*") if _.is_file()),
                     )
                     return None
 
@@ -1974,11 +2117,11 @@ class SatelliteFetcher:
 
                 with rasterio.open(str(current)) as src:
                     src_transform = src.transform
-                    src_crs       = src.crs
-                    src_width     = src.width
-                    src_height    = src.height
-                    src_meta      = src.meta.copy()
-                    src_count     = src.count
+                    src_crs = src.crs
+                    src_width = src.width
+                    src_height = src.height
+                    src_meta = src.meta.copy()
+                    src_count = src.count
 
                 # ── Detect corrupt geotransform ───────────────────────────────
                 if _is_pixel_space_transform(src_transform, crs=src_crs):
@@ -1987,7 +2130,10 @@ class SatelliteFetcher:
                         "(a=%.4f, origin=(%.1f, %.1f)). "
                         "This is the PyGeoFetch post-reproject CRS corruption bug. "
                         "Attempting georef rescue…",
-                        current.name, src_transform.a, src_transform.c, src_transform.f,
+                        current.name,
+                        src_transform.a,
+                        src_transform.c,
+                        src_transform.f,
                     )
                     rescued_t, rescued_crs = _rescue_geotransform(current, target_crs)
                     if rescued_t is None:
@@ -1995,7 +2141,7 @@ class SatelliteFetcher:
                             "reproject step: georef rescue failed for %s — "
                             "skipping reproject. Fix: re-download without post_process "
                             "and reproject via pygeovision.processors.reproject_safe().",
-                            current.name
+                            current.name,
                         )
                         # Return what we have; caller's validator will report the issue
                         return None
@@ -2003,23 +2149,27 @@ class SatelliteFetcher:
 
                 # ── Skip if already in target CRS and transform is valid ──────
                 try:
-                    already_there = src_crs and CRS.from_user_input(str(src_crs)) == \
-                                                CRS.from_user_input(target_crs)
+                    already_there = src_crs and CRS.from_user_input(
+                        str(src_crs)
+                    ) == CRS.from_user_input(target_crs)
                 except Exception:
                     already_there = False
 
                 if already_there and not _is_pixel_space_transform(src_transform, crs=src_crs):
                     logger.debug(
                         "reproject: %s already in %s with valid transform — skipping",
-                        current.name, target_crs
+                        current.name,
+                        target_crs,
                     )
                     continue
 
                 # ── Compute output transform ──────────────────────────────────
                 try:
                     out_transform, out_w, out_h = calculate_default_transform(
-                        src_crs, target_crs,
-                        src_width, src_height,
+                        src_crs,
+                        target_crs,
+                        src_width,
+                        src_height,
                         *rasterio.transform.array_bounds(src_height, src_width, src_transform),
                     )
                 except Exception as cdt_exc:
@@ -2036,7 +2186,7 @@ class SatelliteFetcher:
                         "reproject: output transform is still pixel-space after rescue "
                         "(a=%.4f). The rescued bounds are probably wrong. "
                         "Re-download without post_process=['reproject:...'].",
-                        out_transform.a
+                        out_transform.a,
                     )
                     return None
 
@@ -2046,7 +2196,7 @@ class SatelliteFetcher:
                     transform=out_transform,
                     width=out_w,
                     height=out_h,
-                    compress="deflate",   # keep output manageable
+                    compress="deflate",  # keep output manageable
                 )
 
                 out_path = current.with_name(current.stem + "_repr.tif")
@@ -2054,23 +2204,26 @@ class SatelliteFetcher:
                 try:
                     with rasterio.open(str(current)) as src_f:
                         from pygeovision.data._profile import writable_profile
+
                         out_meta = writable_profile(out_meta)
                         with rasterio.open(str(tmp_path), "w", **out_meta) as dst_f:
                             for band_i in range(1, src_count + 1):
                                 reproject(
-                                    source      =rasterio.band(src_f, band_i),
-                                    destination =rasterio.band(dst_f, band_i),
+                                    source=rasterio.band(src_f, band_i),
+                                    destination=rasterio.band(dst_f, band_i),
                                     src_transform=src_transform,
-                                    src_crs      =src_crs,
+                                    src_crs=src_crs,
                                     dst_transform=out_transform,
-                                    dst_crs      =target_crs,
-                                    resampling   =Resampling.bilinear,
+                                    dst_crs=target_crs,
+                                    resampling=Resampling.bilinear,
                                 )
                     shutil.move(str(tmp_path), str(out_path))
                     # Report the pixel size in the target CRS's own units. The
                     # old "%.1f m/px" printed "0.0 m/px, origin=(-2, 52)" for
                     # every EPSG:4326 output, where the size is in degrees.
-                    if target_crs_obj is not None and getattr(target_crs_obj, "is_geographic", False):
+                    if target_crs_obj is not None and getattr(
+                        target_crs_obj, "is_geographic", False
+                    ):
                         _size_txt = f"{abs(out_transform.a):.6f} deg/px"
                         _origin_txt = f"({out_transform.c:.4f}, {out_transform.f:.4f})"
                     else:
@@ -2078,7 +2231,10 @@ class SatelliteFetcher:
                         _origin_txt = f"({out_transform.c:.0f}, {out_transform.f:.0f})"
                     logger.info(
                         "reproject: %s → %s (%s, origin=%s)",
-                        current.name, out_path.name, _size_txt, _origin_txt,
+                        current.name,
+                        out_path.name,
+                        _size_txt,
+                        _origin_txt,
                     )
                     current = out_path
                     self._warn_if_bands_or_dtype_changed(
@@ -2093,17 +2249,26 @@ class SatelliteFetcher:
             elif step == "cog":
                 # Skip if the file was already a COG (e.g. PyGeoFetch already did it)
                 if "_cog" in current.stem.lower():
-                    logger.debug("cog step: %s already appears to be a COG — skipping", current.name)
+                    logger.debug(
+                        "cog step: %s already appears to be a COG — skipping", current.name
+                    )
                     continue
 
                 out_path = current.with_name(current.stem + "_cog.tif")
                 tmp_path = out_path.with_suffix(".tmp.tif")
                 try:
                     r = subprocess.run(
-                        ["gdal_translate", "-of", "COG",
-                        "-co", "COMPRESS=DEFLATE",
-                        "-co", "PREDICTOR=2",
-                        str(current), str(tmp_path)],
+                        [
+                            "gdal_translate",
+                            "-of",
+                            "COG",
+                            "-co",
+                            "COMPRESS=DEFLATE",
+                            "-co",
+                            "PREDICTOR=2",
+                            str(current),
+                            str(tmp_path),
+                        ],
                         capture_output=True,
                     )
                     if r.returncode == 0:
@@ -2117,7 +2282,8 @@ class SatelliteFetcher:
                         tmp_path.unlink(missing_ok=True)
                         logger.warning(
                             "COG conversion failed (gdal_translate rc=%d): %s",
-                            r.returncode, r.stderr.decode()[:200],
+                            r.returncode,
+                            r.stderr.decode()[:200],
                         )
                 except FileNotFoundError:
                     logger.warning("gdal_translate not on PATH — skipping COG step")
@@ -2148,17 +2314,20 @@ class SatelliteFetcher:
             proc = self._run_cli(args)
             return {
                 "success": proc.returncode == 0,
-                "output":  proc.stdout,
-                "error":   proc.stderr if proc.returncode != 0 else "",
+                "output": proc.stdout,
+                "error": proc.stderr if proc.returncode != 0 else "",
             }
         from pygeofetch.core.scheduler import PipelineScheduler
+
         sched = PipelineScheduler(engine=self._engine)
         pipeline = sched.load_pipeline(pipeline_yaml)
         if step:
             kept = [s for s in pipeline.steps if s.step_type == step]
             if not kept:
-                raise ValueError(f"pipeline {pipeline.name!r} has no step {step!r} "
-                                 f"(steps: {[s.step_type for s in pipeline.steps]})")
+                raise ValueError(
+                    f"pipeline {pipeline.name!r} has no step {step!r} "
+                    f"(steps: {[s.step_type for s in pipeline.steps]})"
+                )
             pipeline.steps = kept
         summary = sched.run_once(pipeline.name)
         errors = [f"{s['step']}: {s.get('error')}" for s in summary["steps"] if s["status"] != "ok"]
@@ -2173,8 +2342,9 @@ class SatelliteFetcher:
         Only the structure is checked -- step options are validated when the step runs. The reason
         for ``False`` is logged.
         """
-        import yaml
         from pygeofetch.core.scheduler import Pipeline
+        import yaml
+
         try:
             with open(pipeline_yaml) as fh:
                 data = yaml.safe_load(fh)
@@ -2192,10 +2362,12 @@ class SatelliteFetcher:
     def _pipeline_store() -> Path:
         """pygeofetch's own schedule registry, shared with ``pygeofetch pipeline schedule``."""
         from pygeofetch.config.settings import get_config_dir
+
         return get_config_dir() / "scheduled_pipelines.json"
 
-    def schedule_pipeline(self, pipeline_yaml: str | Path,
-                          name: str | None = None, cron: str | None = None) -> bool:
+    def schedule_pipeline(
+        self, pipeline_yaml: str | Path, name: str | None = None, cron: str | None = None
+    ) -> bool:
         """Register a pipeline (and optional cron expression) in pygeofetch's schedule registry.
 
         This records *what* should run *when*; something must still run the scheduler loop
@@ -2203,8 +2375,9 @@ class SatelliteFetcher:
         """
         import json
 
-        import yaml
         from pygeofetch.core.scheduler import Pipeline
+        import yaml
+
         try:
             with open(pipeline_yaml) as fh:
                 data = yaml.safe_load(fh)
@@ -2218,41 +2391,59 @@ class SatelliteFetcher:
             return False
         store = self._pipeline_store()
         existing = json.loads(store.read_text()) if store.exists() else {}
-        existing[p.name] = {"file": str(Path(pipeline_yaml).resolve()), "schedule": p.schedule, "name": p.name}
+        existing[p.name] = {
+            "file": str(Path(pipeline_yaml).resolve()),
+            "schedule": p.schedule,
+            "name": p.name,
+        }
         store.write_text(json.dumps(existing, indent=2))
         return True
 
     def list_scheduled_pipelines(self) -> list[dict]:
         """Pipelines in the schedule registry: ``[{"name", "schedule", "file"}, ...]``."""
         import json
+
         store = self._pipeline_store()
         if not store.exists():
             return []
-        return [{"name": k, "schedule": v.get("schedule"), "file": v.get("file")}
-                for k, v in json.loads(store.read_text()).items()]
+        return [
+            {"name": k, "schedule": v.get("schedule"), "file": v.get("file")}
+            for k, v in json.loads(store.read_text()).items()
+        ]
 
     @staticmethod
     def _history_file() -> Path:
         return Path.home() / ".pygeovision" / "pipeline_history.jsonl"
 
-    def _log_pipeline_run(self, name: str, pipeline_yaml: str | Path, summary: dict[str, Any]) -> None:
+    def _log_pipeline_run(
+        self, name: str, pipeline_yaml: str | Path, summary: dict[str, Any]
+    ) -> None:
         import json
+
         try:
             f = self._history_file()
             f.parent.mkdir(parents=True, exist_ok=True)
             with open(f, "a") as fh:
-                fh.write(json.dumps({
-                    "pipeline": name, "file": str(pipeline_yaml),
-                    "started_at": summary.get("started_at"),
-                    "duration_seconds": summary.get("duration_seconds"),
-                    "success": bool(summary.get("success")), "error": summary.get("error"),
-                }) + "\n")
-        except OSError as exc:      # a read-only home must not fail the run itself
+                fh.write(
+                    json.dumps(
+                        {
+                            "pipeline": name,
+                            "file": str(pipeline_yaml),
+                            "started_at": summary.get("started_at"),
+                            "duration_seconds": summary.get("duration_seconds"),
+                            "success": bool(summary.get("success")),
+                            "error": summary.get("error"),
+                        }
+                    )
+                    + "\n"
+                )
+        except OSError as exc:  # a read-only home must not fail the run itself
             logger.warning("could not record pipeline run: %s", exc)
 
     def pipeline_history(self, limit: int = 20) -> list[dict]:
         """The most recent pipeline runs made through :meth:`run_pipeline`, newest first."""
         import json
+
         f = self._history_file()
         if not f.exists():
             return []
@@ -2267,6 +2458,7 @@ class SatelliteFetcher:
         """Get cache statistics."""
         if self._use_cli():
             import json as _json
+
             proc = self._run_cli(["cache", "stats", "--json"])
             try:
                 return _json.loads(proc.stdout)
@@ -2281,8 +2473,9 @@ class SatelliteFetcher:
             "location": str(self.cache_dir),
         }
 
-    def clear_cache(self, provider: str | None = None,
-                    older_than: str | None = None, dry_run: bool = False) -> None:
+    def clear_cache(
+        self, provider: str | None = None, older_than: str | None = None, dry_run: bool = False
+    ) -> None:
         """Clear search cache."""
         if self._use_cli():
             args = ["cache", "clear"]
@@ -2324,7 +2517,7 @@ class SatelliteFetcher:
         """
         if max_size_gb < 0:
             raise ValueError(f"max_size_gb must be >= 0, got {max_size_gb!r}")
-        limit = int(max_size_gb * 1024 ** 3)
+        limit = int(max_size_gb * 1024**3)
         entries = []
         for f in self.cache_dir.glob("*.json"):
             try:
@@ -2344,7 +2537,7 @@ class SatelliteFetcher:
             total -= size
             removed += 1
         if removed:
-            logger.info("Pruned %d search-cache file(s); %.1f MB remain", removed, total / 1024 ** 2)
+            logger.info("Pruned %d search-cache file(s); %.1f MB remain", removed, total / 1024**2)
         return removed
 
     # ------------------------------------------------------------------
@@ -2371,6 +2564,7 @@ class SatelliteFetcher:
             pass
         try:
             import pygeofetch
+
             return getattr(pygeofetch, "__version__", "unknown")
         except ImportError:
             return "not installed"
@@ -2394,10 +2588,11 @@ class SatelliteFetcher:
     def doctor(self) -> dict[str, Any]:
         """Run diagnostic checks across all PyGeoVision components."""
         import platform
+
         report: dict[str, Any] = {
             "pygeovision": {"ok": True},
-            "python":      platform.python_version(),
-            "platform":    platform.system(),
+            "python": platform.python_version(),
+            "platform": platform.system(),
         }
 
         # pygeofetch engine
@@ -2413,6 +2608,7 @@ class SatelliteFetcher:
         # torch / CUDA
         try:
             import torch
+
             report["torch"] = {
                 "ok": True,
                 "version": torch.__version__,
@@ -2427,9 +2623,11 @@ class SatelliteFetcher:
         # rasterio
         try:
             import rasterio
+
             report["rasterio"] = {"ok": True, "version": rasterio.__version__}
             # Quick GDAL check
-            from rasterio.drivers import raster_driver_extensions
+            from rasterio.drivers import raster_driver_extensions  # noqa: F401
+
             report["rasterio"]["gdal"] = "ok"
         except ImportError:
             report["rasterio"] = {"ok": False, "error": "not installed — pip install rasterio"}
@@ -2439,6 +2637,7 @@ class SatelliteFetcher:
         # geopandas
         try:
             import geopandas
+
             report["geopandas"] = {"ok": True, "version": geopandas.__version__}
         except ImportError:
             report["geopandas"] = {"ok": False, "error": "not installed — pip install geopandas"}
@@ -2456,13 +2655,17 @@ class SatelliteFetcher:
         except Exception as exc:
             report["cache"] = {"ok": False, "error": str(exc)}
 
-        n_ok  = sum(1 for v in report.values() if isinstance(v, dict) and v.get("ok"))
+        n_ok = sum(1 for v in report.values() if isinstance(v, dict) and v.get("ok"))
         n_all = sum(1 for v in report.values() if isinstance(v, dict) and "ok" in v)
         report["summary"] = f"{n_ok}/{n_all} components healthy"
         return report
 
-    def list_providers(self, auth_only: bool = False, open_only: bool = False,
-                       capabilities: list[str] | None = None) -> dict[str, dict]:
+    def list_providers(
+        self,
+        auth_only: bool = False,
+        open_only: bool = False,
+        capabilities: list[str] | None = None,
+    ) -> dict[str, dict]:
         """List available providers."""
         providers = dict(PROVIDERS)
         if auth_only:
@@ -2504,6 +2707,7 @@ class SatelliteFetcher:
         is no limit, which downloads need; a search must pass one, or an unreachable provider hangs the caller.
         """
         import subprocess
+
         exe = _PYGEOFETCH_CLI_EXE or "pygeofetch"
         cmd = [exe] + args
         logger.debug("CLI: %s", " ".join(cmd))
@@ -2514,36 +2718,40 @@ class SatelliteFetcher:
             timeout=timeout,
         )
 
-    def _parse_stac_geojson_file(self, geojson_path: Path) -> list[SearchResult]:
+    def _parse_stac_geojson_file(self, geojson_path: str | Path) -> list[SearchResult]:
         """Parse a pygeofetch-style GeoJSON result file into SearchResult objects."""
         import json
+
         with open(geojson_path, encoding="utf-8") as f:
             data = json.load(f)
         results = []
         for feat in data.get("features", []):
             props = feat.get("properties", {})
-            fid   = feat.get("id") or props.get("id", "")
-            geom  = feat.get("geometry") or {}
-            bbox  = None
+            fid = feat.get("id") or props.get("id", "")
+            geom = feat.get("geometry") or {}
+            bbox = None
             if geom.get("type") == "Polygon":
                 coords = geom.get("coordinates", [[]])[0]
                 if coords:
                     lons = [c[0] for c in coords]
                     lats = [c[1] for c in coords]
                     bbox = (min(lons), min(lats), max(lons), max(lats))
-            results.append(SearchResult(
-                id=fid,
-                provider=props.get("provider", ""),
-                satellite=props.get("satellite", self._collection_to_satellite(
-                    props.get("collection", ""))),
-                datetime=props.get("datetime", ""),
-                cloud_cover=props.get("eo:cloud_cover"),
-                bbox=bbox,
-                score=props.get("score"),
-                collection=props.get("collection", ""),
-                assets=props.get("assets", {}),
-                properties=props,
-            ))
+            results.append(
+                SearchResult(
+                    id=fid,
+                    provider=props.get("provider", ""),
+                    satellite=props.get(
+                        "satellite", self._collection_to_satellite(props.get("collection", ""))
+                    ),
+                    datetime=props.get("datetime", ""),
+                    cloud_cover=props.get("eo:cloud_cover"),
+                    bbox=bbox,
+                    score=props.get("score"),
+                    collection=props.get("collection", ""),
+                    assets=props.get("assets", {}),
+                    properties=props,
+                )
+            )
         return results
 
     def _collection_to_satellite(self, collection: str) -> str:
@@ -2554,19 +2762,19 @@ class SatelliteFetcher:
         """
         col = collection.lower()
         _MAP = {
-            "sentinel-2-l2a":  "Sentinel-2",
-            "sentinel-2-l1c":  "Sentinel-2",
-            "sentinel-1-rtc":  "Sentinel-1",
-            "sentinel-1-grd":  "Sentinel-1",
-            "sentinel-1-slc":  "Sentinel-1",
-            "sentinel-1":      "Sentinel-1",
-            "landsat-c2-l2":   "Landsat",
-            "landsat-c2-l1":   "Landsat",
-            "landsat-8-l1tp":  "Landsat",
-            "landsat-9-l1tp":  "Landsat",
-            "naip":            "NAIP",
-            "cop-dem-glo-30":  "Copernicus DEM",
-            "modis":           "MODIS",
+            "sentinel-2-l2a": "Sentinel-2",
+            "sentinel-2-l1c": "Sentinel-2",
+            "sentinel-1-rtc": "Sentinel-1",
+            "sentinel-1-grd": "Sentinel-1",
+            "sentinel-1-slc": "Sentinel-1",
+            "sentinel-1": "Sentinel-1",
+            "landsat-c2-l2": "Landsat",
+            "landsat-c2-l1": "Landsat",
+            "landsat-8-l1tp": "Landsat",
+            "landsat-9-l1tp": "Landsat",
+            "naip": "NAIP",
+            "cop-dem-glo-30": "Copernicus DEM",
+            "modis": "MODIS",
         }
         for key, val in _MAP.items():
             if key in col:
@@ -2580,6 +2788,7 @@ class SatelliteFetcher:
         Returns the access_token string, or None on failure.
         """
         import time
+
         if not username or not password:
             logger.warning(
                 "Copernicus token request skipped — username or password is empty. "
@@ -2588,9 +2797,10 @@ class SatelliteFetcher:
             return None
 
         # Return cached token if still valid
-        if hasattr(self, "_copernicus_token") and hasattr(self, "_copernicus_token_exp"):
-            if time.time() < self._copernicus_token_exp - 30:
-                return self._copernicus_token
+        cached_token = getattr(self, "_copernicus_token", None)
+        cached_expiry = getattr(self, "_copernicus_token_exp", 0.0)
+        if cached_token and time.time() < cached_expiry - 30:
+            return cached_token
 
         import json as _json
         import urllib.parse
@@ -2600,12 +2810,14 @@ class SatelliteFetcher:
             "https://identity.dataspace.copernicus.eu"
             "/auth/realms/CDSE/protocol/openid-connect/token"
         )
-        payload = urllib.parse.urlencode({
-            "grant_type":    "password",
-            "username":      username,
-            "password":      password,
-            "client_id":     "cdse-public",
-        }).encode()
+        payload = urllib.parse.urlencode(
+            {
+                "grant_type": "password",
+                "username": username,
+                "password": password,
+                "client_id": "cdse-public",
+            }
+        ).encode()
 
         req = urllib.request.Request(
             token_url,
@@ -2615,50 +2827,47 @@ class SatelliteFetcher:
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
                 token_data = _json.loads(resp.read())
-                token      = token_data.get("access_token")
+                token = token_data.get("access_token")
                 expires_in = token_data.get("expires_in", 600)
                 if token:
-                    self._copernicus_token     = token
+                    self._copernicus_token = token
                     self._copernicus_token_exp = time.time() + expires_in
                     logger.debug(
-                        "Copernicus token obtained for %s (expires in %ds)",
-                        username, expires_in
+                        "Copernicus token obtained for %s (expires in %ds)", username, expires_in
                     )
                     return token
                 else:
                     logger.warning(
-                        "Copernicus token response had no access_token. "
-                        "Response keys: %s", list(token_data.keys())
+                        "Copernicus token response had no access_token. " "Response keys: %s",
+                        list(token_data.keys()),
                     )
         except urllib.error.HTTPError as e:
             body = ""
-            try:
+            with contextlib.suppress(Exception):
                 body = e.read().decode()[:300]
-            except Exception:
-                pass
             if e.code == 401:
                 logger.warning(
                     "Copernicus authentication FAILED (401): wrong password for %s. "
                     "Update your credentials: "
                     "client.add_credentials('copernicus', username='%s', password='NEW_PASSWORD'). "
                     "Response: %s",
-                    username, username, body
+                    username,
+                    username,
+                    body,
                 )
             elif e.code == 400:
                 logger.warning(
                     "Copernicus token request error (400): %s. "
                     "Check username format (must be email address).",
-                    body
+                    body,
                 )
             else:
-                logger.warning(
-                    "Copernicus token HTTP error %d: %s", e.code, body
-                )
+                logger.warning("Copernicus token HTTP error %d: %s", e.code, body)
         except Exception as exc:
             logger.warning(
                 "Copernicus authentication network error: %s\n"
                 "  Check your credentials at: https://dataspace.copernicus.eu",
-                exc
+                exc,
             )
         return None
 
@@ -2678,8 +2887,9 @@ class SatelliteFetcher:
                                         password='correct_password')
         """
         creds = (
-            self._credentials.get("copernicus") or
-            self._credentials.get("copernicus_dataspace") or {}
+            self._credentials.get("copernicus")
+            or self._credentials.get("copernicus_dataspace")
+            or {}
         )
         if not creds:
             logger.warning(
@@ -2751,9 +2961,14 @@ class SatelliteFetcher:
             The output path.
         """
         from pygeovision.data.radiometric import stack_and_prepare_bands
+
         return stack_and_prepare_bands(
-            asset_paths, Path(output_path), bands=bands, scene_id=scene_id,
-            apply_scale=apply_scale, apply_cloud_mask=apply_cloud_mask,
+            asset_paths,
+            Path(output_path),
+            bands=bands,
+            scene_id=scene_id,
+            apply_scale=apply_scale,
+            apply_cloud_mask=apply_cloud_mask,
         )
 
     def _pick_best_asset(self, result: SearchResult) -> str | None:
@@ -2794,15 +3009,15 @@ class SatelliteFetcher:
         # Normalise common provider name aliases
         _ALIASES = {
             "copernicus_dataspace": "copernicus",
-            "cdse":                 "copernicus",
-            "dataspace":            "copernicus",
-            "esa":                  "copernicus",
-            "pc":                   "planetary_computer",
-            "microsoft":            "planetary_computer",
-            "aws":                  "aws_earth",
-            "element84":            "aws_earth",
-            "asf":                  "asf_vertex",
-            "alaska":               "asf_vertex",
+            "cdse": "copernicus",
+            "dataspace": "copernicus",
+            "esa": "copernicus",
+            "pc": "planetary_computer",
+            "microsoft": "planetary_computer",
+            "aws": "aws_earth",
+            "element84": "aws_earth",
+            "asf": "asf_vertex",
+            "alaska": "asf_vertex",
         }
         if providers:
             normalised = []
@@ -2824,8 +3039,20 @@ class SatelliteFetcher:
             for col in collections:
                 cl = col.lower()
                 key = next(
-                    (k for k in ("sentinel-2", "sentinel-1", "landsat", "modis", "naip", "dem", "planet")
-                     if k in cl), None
+                    (
+                        k
+                        for k in (
+                            "sentinel-2",
+                            "sentinel-1",
+                            "landsat",
+                            "modis",
+                            "naip",
+                            "dem",
+                            "planet",
+                        )
+                        if k in cl
+                    ),
+                    None,
                 )
                 if key:
                     for p in SATELLITE_SHORTCUTS.get(key, []):
@@ -2842,7 +3069,9 @@ class SatelliteFetcher:
         return self._default_provider_list()
 
     def _drop_unusable_default_providers(
-        self, active: list[str], collections: list[str] | None,
+        self,
+        active: list[str],
+        collections: list[str] | None,
     ) -> list[str]:
         """Remove default-list providers that cannot answer this search.
 
@@ -2855,7 +3084,9 @@ class SatelliteFetcher:
         """
         import re
 
-        stac_style = any(re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)+", c or "") for c in (collections or []))
+        stac_style = any(
+            re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)+", c or "") for c in (collections or [])
+        )
         try:
             stored = set(self.list_credentials())
         except Exception:  # noqa: BLE001
@@ -2866,7 +3097,8 @@ class SatelliteFetcher:
             if p == "copernicus" and stac_style:
                 logger.info(
                     "Skipping copernicus: its catalogue has no collection named %s "
-                    "(name it in providers=[...] to force it).", collections,
+                    "(name it in providers=[...] to force it).",
+                    collections,
                 )
                 continue
             if meta.get("auth") and not meta.get("open") and p not in stored:
@@ -2891,8 +3123,17 @@ class SatelliteFetcher:
             sats.extend(sat_map.get(p, []))
         return list(set(sats)) if sats else []
 
-    def _cache_key(self, bbox, date_range, providers, cloud_cover_max, collections,
-                   max_results=None, sort_by=None, sort_order=None) -> str:
+    def _cache_key(
+        self,
+        bbox,
+        date_range,
+        providers,
+        cloud_cover_max,
+        collections,
+        max_results=None,
+        sort_by=None,
+        sort_order=None,
+    ) -> str:
         """Generate cache key for search parameters.
 
         ``max_results`` and the sort order are part of the key: a search
@@ -2919,11 +3160,14 @@ class SatelliteFetcher:
         path = self.cache_dir / f"{key}.json"
         if not path.exists():
             return None
-        if time.time() - path.stat().st_mtime > getattr(self, "_cache_ttl", _DEFAULT_CACHE_TTL_SECONDS):
+        if time.time() - path.stat().st_mtime > getattr(
+            self, "_cache_ttl", _DEFAULT_CACHE_TTL_SECONDS
+        ):
             path.unlink(missing_ok=True)
             return None
         try:
             import json
+
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
 
@@ -2945,6 +3189,7 @@ class SatelliteFetcher:
         """Save search results to cache, tagged with the current schema version."""
         try:
             import json
+
             payload = {
                 "version": _CACHE_SCHEMA_VERSION,
                 "results": [r.to_dict() for r in results],

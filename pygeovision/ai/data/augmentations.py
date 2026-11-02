@@ -10,6 +10,7 @@ All augmentations preserve geospatial validity:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import logging
 import random
 from typing import Any
@@ -43,6 +44,7 @@ def _require_albumentations() -> None:
 # Custom geospatial-specific transforms
 # ------------------------------------------------------------------
 
+
 class AtmosphericHaze(ImageOnlyTransform):
     """
     Simulate atmospheric haze by blending the image with a uniform haze layer.
@@ -67,9 +69,9 @@ class AtmosphericHaze(ImageOnlyTransform):
     def apply(self, img: np.ndarray, haze_intensity: float = 0.1, **params: Any) -> np.ndarray:
         haze_color = np.ones_like(img, dtype=np.float32) * 0.9
         img_float = img.astype(np.float32)
-        return np.clip(
-            img_float * (1 - haze_intensity) + haze_color * haze_intensity, 0, 1
-        ).astype(img.dtype)
+        return np.clip(img_float * (1 - haze_intensity) + haze_color * haze_intensity, 0, 1).astype(
+            img.dtype
+        )
 
     def get_params(self) -> dict[str, float]:
         return {"haze_intensity": random.uniform(*self.haze_range)}
@@ -153,7 +155,7 @@ class ResolutionDegradation(ImageOnlyTransform):
         # are processed in blocks of 4 bands.
         blocks = []
         for start in range(0, img.shape[2], 4):
-            block = _degrade(np.ascontiguousarray(img[:, :, start:start + 4]))
+            block = _degrade(np.ascontiguousarray(img[:, :, start : start + 4]))
             blocks.append(block if block.ndim == 3 else block[:, :, None])
         return np.concatenate(blocks, axis=2)
 
@@ -183,7 +185,9 @@ class BandDropout(ImageOnlyTransform):
         super().__init__(always_apply=always_apply, p=p)
         self.drop_fraction = drop_fraction
 
-    def apply(self, img: np.ndarray, bands_to_drop: list[int] = (), **params: Any) -> np.ndarray:
+    def apply(
+        self, img: np.ndarray, bands_to_drop: Sequence[int] = (), **params: Any
+    ) -> np.ndarray:
         out = img.copy()
         for b in bands_to_drop:
             if img.ndim == 3 and b < img.shape[2]:
@@ -441,16 +445,22 @@ class GeoAugmentationPipeline:
         return cls(mode=mode, task=task, n_channels=n_channels)
 
     @classmethod
-    def light(cls, task: str = "segmentation", n_channels: int | None = None) -> GeoAugmentationPipeline:
+    def light(
+        cls, task: str = "segmentation", n_channels: int | None = None
+    ) -> GeoAugmentationPipeline:
         """Light augmentation (minimal distortion). Pass ``n_channels`` for imagery that is not 1 or 3 bands (colour jitter is skipped then)."""
         return cls(mode="light", task=task, n_channels=n_channels)
 
     @classmethod
-    def medium(cls, task: str = "segmentation", n_channels: int | None = None) -> GeoAugmentationPipeline:
+    def medium(
+        cls, task: str = "segmentation", n_channels: int | None = None
+    ) -> GeoAugmentationPipeline:
         """Medium augmentation (recommended default). Pass ``n_channels`` for imagery that is not 1 or 3 bands (colour jitter is skipped then)."""
         return cls(mode="medium", task=task, n_channels=n_channels)
 
     @classmethod
-    def heavy(cls, task: str = "segmentation", n_channels: int | None = None) -> GeoAugmentationPipeline:
+    def heavy(
+        cls, task: str = "segmentation", n_channels: int | None = None
+    ) -> GeoAugmentationPipeline:
         """Heavy augmentation (maximum diversity). Pass ``n_channels`` for imagery that is not 1 or 3 bands (colour jitter is skipped then)."""
         return cls(mode="heavy", task=task, n_channels=n_channels)
