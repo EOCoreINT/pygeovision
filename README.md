@@ -11,8 +11,7 @@
 [![Providers](https://img.shields.io/badge/pygeofetch-22_providers-f59e0b?style=flat-square)](https://appiahkubis14.github.io/pygeofetch-docs/)
 [![Pipelines](https://img.shields.io/badge/Pipelines-41-22c55e?style=flat-square)](#%EF%B8%8F-end-to-end-pipelines)
 [![Models](https://img.shields.io/badge/Registered_architectures-77-a855f7?style=flat-square)](#-models-and-training)
-[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://appiahkubis14.github.io/pygeovision-docs/)
-
+[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
 [Features](#-features) · [Install](#-installation) · [Quick start](#-quick-start) · [Case studies](#-case-studies) · [CLI](#%EF%B8%8F-command-line) · [Pipelines](#%EF%B8%8F-end-to-end-pipelines) · [OBIA](#-object-based-image-analysis-obia) · [Status](#-project-status) · [Citation](#-citation) · [Docs](#-documentation)
 
 </div>
@@ -361,7 +360,7 @@ follow [CLI_TESTING_GUIDE.md](CLI_TESTING_GUIDE.md).
 
 ## 📋 Documentation
 
-Full documentation is at **https://appiahkubis14.github.io/pygeovision-docs/**. To build it locally:
+Full documentation is at **https://pygeovision.readthedocs.io/en/latest/**. To build it locally:
 
 ```bash
 pip install -r docs/requirements.txt
