@@ -9,9 +9,9 @@ title: "pygeovision: A Unified Open-Source Python Platform for Satellite Earth O
 version: 2.2.0
 date-released: "2026-07-10"
 license: MIT
-repository-code: "https://github.com/eocoreint/pygeovision"
+repository-code: "https://github.com/EOcoreINT/pygeovision"
 url: "https://pygeovision.readthedocs.io"
-doi: 10.5281/zenodo.XXXXXXX   # updated automatically by Zenodo on each release
+doi: 10.5281/zenodo.22258220   # updated automatically by Zenodo on each release
 
 abstract: >
   pygeovision is a unified open-source Python library for satellite Earth
@@ -69,7 +69,7 @@ references:
     authors:
       - family-names: "Appiah Kubi"
         given-names: "Samuel"
-    repository-code: "https://github.com/eocoreint/pygeofetch"
+    repository-code: "https://github.com/EOcoreINT/pygeofetch"
     version: "1.4.2"
   - type: article
     title: "Prithvi-EO-2.0: A Versatile Multi-Temporal Foundation Model for Earth Observation Applications"
