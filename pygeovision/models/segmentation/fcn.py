@@ -1,4 +1,5 @@
 """FCN (fully convolutional network) for geospatial segmentation (torchvision backed)."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -29,9 +30,14 @@ def build_fcn(
     if backbone not in builders:
         raise ValueError(f"FCN backbone must be one of {sorted(builders)}, got {backbone!r}")
     model = builders[backbone](
-        weights=None, weights_backbone="DEFAULT" if pretrained else None,
-        num_classes=num_classes, aux_loss=False, **kwargs,
+        weights=None,
+        weights_backbone="DEFAULT" if pretrained else None,
+        num_classes=num_classes,
+        aux_loss=False,
+        **kwargs,
     )
     if in_channels != 3:
-        model.backbone.conv1 = _adapt.adapt_first_conv(model.backbone.conv1, in_channels, pretrained)
+        model.backbone.conv1 = _adapt.adapt_first_conv(
+            model.backbone.conv1, in_channels, pretrained
+        )
     return TorchvisionSegmentationAdapter(model)

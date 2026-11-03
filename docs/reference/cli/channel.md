@@ -63,6 +63,7 @@ Run an end-to-end geospatial pipeline by name.
 | `--vector-formats` | text | `gpkg,geojson` |  | Vector formats: any of gpkg, geojson, shp, kml; 'none' for no vector files. |
 | `--class-names` | text |  |  | Comma-separated names for the classes 0,1,2... of a network you trained (labels the map, tables and vector attributes). |
 | `--report-title` | text |  |  | Replace the report title. |
+| `--cloud-mask`, `--no-cloud-mask` | flag | `--no-cloud-mask` |  | Turn the cloud mask on or off for pipelines that accept it. Not sent unless you pass the flag, so pipelines that have no such argument are not warned about. |
 
 :::{dropdown} Full help text
 
@@ -120,6 +121,9 @@ Options:
   --class-names TEXT              Comma-separated names for the classes 0,1,2... of a network
                                   you trained (labels the map, tables and vector attributes).
   --report-title TEXT             Replace the report title.
+  --cloud-mask / --no-cloud-mask  Turn the cloud mask on or off for pipelines that accept it.
+                                  Not sent unless you pass the flag, so pipelines that have no
+                                  such argument are not warned about.
   --help                          Show this message and exit.
 ```
 :::

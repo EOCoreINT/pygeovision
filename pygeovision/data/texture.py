@@ -29,8 +29,10 @@ Two computation modes, both genuinely GLCM-based:
     cost (O(H*W) GLCM computations). Use for small AOIs/test scenes, or
     when per-pixel texture resolution genuinely matters more than speed.
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 import logging
 import pathlib
 from typing import Any
@@ -45,6 +47,7 @@ HARALICK_FEATURES = ("contrast", "dissimilarity", "homogeneity", "energy", "corr
 def _require_skimage():
     try:
         from skimage.feature import graycomatrix, graycoprops
+
         return graycomatrix, graycoprops
     except ImportError:
         raise ImportError(
@@ -55,6 +58,7 @@ def _require_skimage():
 def _require_rasterio():
     try:
         import rasterio
+
         return rasterio
     except ImportError:
         raise ImportError("pip install rasterio") from None
@@ -71,22 +75,31 @@ def _quantise(band: np.ndarray, levels: int) -> np.ndarray:
         d_min, d_max = np.nanmin(band[valid]), np.nanmax(band[valid])
         span = d_max - d_min
         if span > 1e-10:
-            q[valid] = np.clip(
-                ((band[valid] - d_min) / span * (levels - 1)), 0, levels - 1
-            ).astype(np.uint8)
+            q[valid] = np.clip(((band[valid] - d_min) / span * (levels - 1)), 0, levels - 1).astype(
+                np.uint8
+            )
     return q
 
 
 def _glcm_features_for_window(
-    graycomatrix, graycoprops, window: np.ndarray, levels: int,
-    distances: list[int], angles: list[float], features: tuple[str, ...],
+    graycomatrix,
+    graycoprops,
+    window: np.ndarray,
+    levels: int,
+    distances: list[int],
+    angles: list[float],
+    features: tuple[str, ...],
 ) -> np.ndarray:
     """Real GLCM computation for a single window: build the actual
     co-occurrence matrix, average over the requested distances/angles,
     derive each requested Haralick feature from it."""
     glcm = graycomatrix(
-        window, distances=distances, angles=angles, levels=levels,
-        symmetric=True, normed=True,
+        window,
+        distances=distances,
+        angles=angles,
+        levels=levels,
+        symmetric=True,
+        normed=True,
     )
     out = np.empty(len(features), dtype=np.float32)
     for i, feat in enumerate(features):
@@ -106,7 +119,7 @@ def compute_glcm_texture(
     levels: int = 32,
     distances: list[int] | None = None,
     angles: list[float] | None = None,
-    features: list[str] | None = None,
+    features: Sequence[str] | None = None,
 ) -> dict[str, np.ndarray]:
     """Compute real GLCM texture features from a single-band array.
 
@@ -155,9 +168,15 @@ def compute_glcm_texture(
         results = {f: np.zeros((out_h, out_w), dtype=np.float32) for f in features}
         for r in range(out_h):
             for c in range(out_w):
-                block = q[r * window:(r + 1) * window, c * window:(c + 1) * window]
+                block = q[r * window : (r + 1) * window, c * window : (c + 1) * window]
                 vals = _glcm_features_for_window(
-                    graycomatrix, graycoprops, block, levels, distances, angles, features,
+                    graycomatrix,
+                    graycoprops,
+                    block,
+                    levels,
+                    distances,
+                    angles,
+                    features,
                 )
                 for i, f in enumerate(features):
                     results[f][r, c] = vals[i]
@@ -169,9 +188,15 @@ def compute_glcm_texture(
         results = {f: np.zeros((H, W), dtype=np.float32) for f in features}
         for r in range(H):
             for c in range(W):
-                win = padded[r:r + window, c:c + window]
+                win = padded[r : r + window, c : c + window]
                 vals = _glcm_features_for_window(
-                    graycomatrix, graycoprops, win, levels, distances, angles, features,
+                    graycomatrix,
+                    graycoprops,
+                    win,
+                    levels,
+                    distances,
+                    angles,
+                    features,
                 )
                 for i, f in enumerate(features):
                     results[f][r, c] = vals[i]
@@ -204,7 +229,7 @@ class GLCMTexture:
         levels: int = 32,
         distances: list[int] | None = None,
         angles: list[float] | None = None,
-        features: list[str] | None = None,
+        features: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Compute real GLCM texture and write a real, georeferenced
         multi-band GeoTIFF (one band per requested feature).
@@ -222,24 +247,32 @@ class GLCMTexture:
             transform = src.transform
 
         results = compute_glcm_texture(
-            arr, window=window, mode=mode, levels=levels,
-            distances=distances, angles=angles, features=list(features),
+            arr,
+            window=window,
+            mode=mode,
+            levels=levels,
+            distances=distances,
+            angles=angles,
+            features=list(features),
         )
 
         stack = np.stack([results[f] for f in features])
 
         out_profile = profile.copy()
         out_profile.update(count=len(features), dtype="float32", compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             out_profile.pop(_k, None)
         if mode == "block":
             # Output is coarser than input by `window` — scale the
             # transform accordingly so it stays correctly georeferenced,
             # not just visually similar.
             from rasterio.transform import Affine
+
             new_transform = transform * Affine.scale(window, window)
             out_profile.update(
-                height=stack.shape[1], width=stack.shape[2], transform=new_transform,
+                height=stack.shape[1],
+                width=stack.shape[2],
+                transform=new_transform,
             )
 
         out_path = output_path
@@ -252,10 +285,16 @@ class GLCMTexture:
             dst.write(stack)
             for i, f in enumerate(features):
                 dst.set_band_description(i + 1, f)
-            dst.update_tags(method="GLCM (Haralick 1973)", window=str(window),
-                             mode=mode, levels=str(levels))
+            dst.update_tags(
+                method="GLCM (Haralick 1973)", window=str(window), mode=mode, levels=str(levels)
+            )
 
-        logger.info("GLCM texture (%s, window=%d, %d features) → %s",
-                    mode, window, len(features), out_path)
-        return {"success": True, "output_path": out_path, "features": list(features),
-                "shape": stack.shape}
+        logger.info(
+            "GLCM texture (%s, window=%d, %d features) → %s", mode, window, len(features), out_path
+        )
+        return {
+            "success": True,
+            "output_path": out_path,
+            "features": list(features),
+            "shape": stack.shape,
+        }

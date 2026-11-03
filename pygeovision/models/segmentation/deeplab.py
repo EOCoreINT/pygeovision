@@ -1,4 +1,5 @@
 """DeepLabV3 / DeepLabV3+ for geospatial segmentation (segmentation-models-pytorch backed)."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -25,8 +26,9 @@ def build_deeplab(
     try:
         import segmentation_models_pytorch as smp
     except ImportError as exc:
-        raise ImportError("DeepLab needs segmentation-models-pytorch: "
-                          "pip install segmentation-models-pytorch") from exc
+        raise ImportError(
+            "DeepLab needs segmentation-models-pytorch: " "pip install segmentation-models-pytorch"
+        ) from exc
     cls = smp.DeepLabV3Plus if plus else smp.DeepLabV3
     return cls(
         encoder_name=backbone,

@@ -16,8 +16,8 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +37,7 @@ class PostProcessorConfig:
         kernel_size: Structuring element size for morphological ops.
         simplify_tolerance: Polygon simplification tolerance (pixels).
     """
+
     min_area_pixels: int = 50
     fill_holes: bool = True
     morphological_closing: bool = True
@@ -157,7 +158,7 @@ class PostProcessor:
         try:
             from rasterio.features import shapes
             from shapely.geometry import mapping, shape
-            from shapely.ops import unary_union
+            from shapely.ops import unary_union  # noqa: F401
         except ImportError as exc:
             raise ImportError(
                 "Vectorization requires rasterio and shapely. "
@@ -183,15 +184,17 @@ class PostProcessor:
                         self.config.simplify_tolerance * abs(transform.a),
                         preserve_topology=True,
                     )
-                features.append({
-                    "type": "Feature",
-                    "geometry": mapping(poly),
-                    "properties": {
-                        "class_id": int(cls_id),
-                        "class_name": class_name,
-                        "area_m2": round(poly.area, 2),
-                    },
-                })
+                features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": mapping(poly),
+                        "properties": {
+                            "class_id": int(cls_id),
+                            "class_name": class_name,
+                            "area_m2": round(poly.area, 2),
+                        },
+                    }
+                )
 
         geojson = {
             "type": "FeatureCollection",
@@ -201,6 +204,7 @@ class PostProcessor:
 
         if output_path is not None:
             import json
+
             Path(output_path).write_text(json.dumps(geojson, indent=2))
             logger.info("Saved %d features to %s", len(features), output_path)
 

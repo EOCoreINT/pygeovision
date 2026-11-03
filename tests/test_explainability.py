@@ -1,38 +1,48 @@
 """Tests for pygeovision.explainability — real bugs found and fixed:
 
-  1. GradCAMPlusPlus claimed "element-wise square of gradients for
-     improved localisation" but just called the parent GradCAM's
-     unchanged implementation — silently identical output under a
-     different name.
-  2. AttentionMapExtractor's exception fallback returned a hardcoded
-     (64, 64) zero array regardless of actual input image size —
-     inconsistent with the sibling GradCAM.explain(), which correctly
-     uses the real input shape.
-  3. GeospatialSHAP's background_samples (constructor) and n_samples
-     (method) parameters were both accepted but never used anywhere —
-     the background was always a single all-zero image regardless.
-  4. UncertaintyEstimator computed aleatoric uncertainty then discarded
-     it — missing entirely from the output despite being explicitly
-     promised in the class docstring. save_epistemic/save_aleatoric were
-     both dead parameters that never controlled anything.
-  5. UncertaintyEstimator crashed with a cryptic Python-internal
-     ValueError when chip_size <= overlap, instead of a clear message.
+1. GradCAMPlusPlus claimed "element-wise square of gradients for
+   improved localisation" but just called the parent GradCAM's
+   unchanged implementation — silently identical output under a
+   different name.
+2. AttentionMapExtractor's exception fallback returned a hardcoded
+   (64, 64) zero array regardless of actual input image size —
+   inconsistent with the sibling GradCAM.explain(), which correctly
+   uses the real input shape.
+3. GeospatialSHAP's background_samples (constructor) and n_samples
+   (method) parameters were both accepted but never used anywhere —
+   the background was always a single all-zero image regardless.
+4. UncertaintyEstimator computed aleatoric uncertainty then discarded
+   it — missing entirely from the output despite being explicitly
+   promised in the class docstring. save_epistemic/save_aleatoric were
+   both dead parameters that never controlled anything.
+5. UncertaintyEstimator crashed with a cryptic Python-internal
+   ValueError when chip_size <= overlap, instead of a clear message.
 """
+
 import pytest
 
 torch = pytest.importorskip("torch", reason="torch not installed")
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
 
 import numpy as np
-import torch.nn as nn
 from rasterio.transform import from_bounds
+import torch.nn as nn
 
 
 def _make_geotiff(path, bands=4, size=64):
     transform = from_bounds(0, 0, size * 10, size * 10, size, size)
     data = np.random.rand(bands, size, size).astype("float32")
-    with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=bands,
-                        dtype="float32", crs="EPSG:32630", transform=transform) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=bands,
+        dtype="float32",
+        crs="EPSG:32630",
+        transform=transform,
+    ) as dst:
         dst.write(data)
 
 
@@ -56,6 +66,7 @@ class TestGradCAMPlusPlus:
 
     def test_produces_different_output_from_vanilla_gradcam(self):
         from pygeovision.explainability.gradcam import GradCAM, GradCAMPlusPlus
+
         torch.manual_seed(0)
         model = TinyConvNet()
         image = torch.randn(1, 3, 32, 32)
@@ -70,6 +81,7 @@ class TestGradCAMPlusPlus:
 
     def test_output_shape_matches_input(self):
         from pygeovision.explainability.gradcam import GradCAMPlusPlus
+
         model = TinyConvNet()
         image = torch.randn(1, 3, 40, 24)
         cam_pp = GradCAMPlusPlus(model, target_layer="conv2")
@@ -78,6 +90,7 @@ class TestGradCAMPlusPlus:
 
     def test_normalised_output_in_unit_range(self):
         from pygeovision.explainability.gradcam import GradCAMPlusPlus
+
         model = TinyConvNet()
         image = torch.randn(1, 3, 32, 32)
         cam_pp = GradCAMPlusPlus(model, target_layer="conv2")
@@ -115,8 +128,10 @@ class TestGeospatialSHAPDeadParameters:
         class _FakeExplainer:
             def __init__(self, model, background):
                 captured["background_shape"] = tuple(background.shape)
+
             def shap_values(self, image, check_additivity=True):
                 import numpy as np
+
                 return np.zeros((1, image.shape[1]) + tuple(image.shape[2:]))
 
         monkeypatch.setattr(shap_mod, "DeepExplainer", _FakeExplainer)
@@ -141,8 +156,10 @@ class TestGeospatialSHAPDeadParameters:
         class _FakeExplainer:
             def __init__(self, model, background):
                 captured["background_shape"] = tuple(background.shape)
+
             def shap_values(self, image, check_additivity=True):
                 import numpy as np
+
                 return np.zeros((1, image.shape[1]) + tuple(image.shape[2:]))
 
         monkeypatch.setattr(shap_mod, "DeepExplainer", _FakeExplainer)
@@ -173,6 +190,7 @@ class TestUncertaintyEstimatorAleatoric:
 
     def test_aleatoric_present_in_result(self, tmp_path):
         from pygeovision.explainability.uncertainty import UncertaintyEstimator
+
         img_path = tmp_path / "scene.tif"
         _make_geotiff(img_path, size=64)
 
@@ -180,8 +198,12 @@ class TestUncertaintyEstimatorAleatoric:
         model = self.DropoutNet()
         estimator = UncertaintyEstimator(model, n_passes=3)
         result = estimator.estimate(
-            str(img_path), str(tmp_path / "unc.tif"),
-            chip_size=64, overlap=8, save_epistemic=True, save_aleatoric=True,
+            str(img_path),
+            str(tmp_path / "unc.tif"),
+            chip_size=64,
+            overlap=8,
+            save_epistemic=True,
+            save_aleatoric=True,
         )
         assert result["success"] is True
         assert "mean_aleatoric" in result
@@ -189,6 +211,7 @@ class TestUncertaintyEstimatorAleatoric:
 
     def test_save_aleatoric_flag_genuinely_controls_output(self, tmp_path):
         from pygeovision.explainability.uncertainty import UncertaintyEstimator
+
         img_path = tmp_path / "scene.tif"
         _make_geotiff(img_path, size=64)
 
@@ -197,11 +220,23 @@ class TestUncertaintyEstimatorAleatoric:
         estimator = UncertaintyEstimator(model, n_passes=3)
 
         out_with = tmp_path / "with_aleatoric.tif"
-        estimator.estimate(str(img_path), str(out_with), chip_size=64, overlap=8,
-                            save_epistemic=True, save_aleatoric=True)
+        estimator.estimate(
+            str(img_path),
+            str(out_with),
+            chip_size=64,
+            overlap=8,
+            save_epistemic=True,
+            save_aleatoric=True,
+        )
         out_without = tmp_path / "without_aleatoric.tif"
-        estimator.estimate(str(img_path), str(out_without), chip_size=64, overlap=8,
-                            save_epistemic=True, save_aleatoric=False)
+        estimator.estimate(
+            str(img_path),
+            str(out_without),
+            chip_size=64,
+            overlap=8,
+            save_epistemic=True,
+            save_aleatoric=False,
+        )
 
         with rasterio.open(out_with) as src:
             assert "aleatoric" in src.tags().get("bands", "")
@@ -213,6 +248,7 @@ class TestUncertaintyEstimatorAleatoric:
 
     def test_save_epistemic_flag_genuinely_controls_output(self, tmp_path):
         from pygeovision.explainability.uncertainty import UncertaintyEstimator
+
         img_path = tmp_path / "scene.tif"
         _make_geotiff(img_path, size=64)
 
@@ -220,8 +256,14 @@ class TestUncertaintyEstimatorAleatoric:
         model = self.DropoutNet()
         estimator = UncertaintyEstimator(model, n_passes=3)
         out = tmp_path / "no_epistemic.tif"
-        estimator.estimate(str(img_path), str(out), chip_size=64, overlap=8,
-                            save_epistemic=False, save_aleatoric=False)
+        estimator.estimate(
+            str(img_path),
+            str(out),
+            chip_size=64,
+            overlap=8,
+            save_epistemic=False,
+            save_aleatoric=False,
+        )
         with rasterio.open(out) as src:
             assert "epistemic" not in src.tags().get("bands", "")
             assert src.count == 2  # label + entropy only
@@ -231,13 +273,15 @@ class TestUncertaintyEstimatorAleatoric:
         with a cryptic Python-internal ValueError (range() arg 3 must
         not be zero) instead of a clear, actionable message."""
         from pygeovision.explainability.uncertainty import UncertaintyEstimator
+
         img_path = tmp_path / "scene.tif"
         _make_geotiff(img_path, size=64)
 
         model = self.DropoutNet()
         estimator = UncertaintyEstimator(model, n_passes=2)
-        result = estimator.estimate(str(img_path), str(tmp_path / "bad.tif"),
-                                     chip_size=64, overlap=64)
+        result = estimator.estimate(
+            str(img_path), str(tmp_path / "bad.tif"), chip_size=64, overlap=64
+        )
         assert result["success"] is False
         assert "chip_size" in result["error"]
 
@@ -263,6 +307,7 @@ class TestGradCAMRobustness:
     def test_segmentation_model_without_class_idx(self):
         """The default class used to be a flat index into the whole logit volume (IndexError)."""
         from pygeovision.explainability.gradcam import GradCAM
+
         sal = GradCAM(SegNet()).explain(torch.randn(1, 4, 32, 32))
         assert sal.shape == (32, 32)
 
@@ -270,16 +315,19 @@ class TestGradCAMRobustness:
         """register_full_backward_hook fails on torchvision ResNets (in-place ReLU)."""
         tv = pytest.importorskip("torchvision")
         from pygeovision.explainability.gradcam import GradCAM
+
         sal = GradCAM(tv.models.resnet18(num_classes=3)).explain(torch.randn(1, 3, 64, 64))
         assert sal.shape == (64, 64) and sal.max() > 0
 
     def test_unknown_target_layer_names_the_choices(self):
         from pygeovision.explainability.gradcam import GradCAM
+
         with pytest.raises(ValueError, match="c1"):
             GradCAM(SegNet(), target_layer="nope").explain(torch.randn(1, 4, 16, 16))
 
     def test_stale_gradients_not_reused(self):
         from pygeovision.explainability.gradcam import GradCAM
+
         cam = GradCAM(SegNet())
         a = cam.explain(torch.randn(1, 4, 16, 16), class_idx=0)
         b = cam.explain(torch.randn(1, 4, 16, 16), class_idx=1)
@@ -290,6 +338,7 @@ class TestGradCAMRobustness:
         """visualise() used to read the wrong bands and call a removed matplotlib API."""
         pytest.importorskip("matplotlib")
         from pygeovision.explainability.gradcam import GradCAM
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, bands=bands, size=32)
         out = tmp_path / "o.png"
@@ -298,17 +347,22 @@ class TestGradCAMRobustness:
 
     def test_batch_explain_rejects_bad_tiling_without_raising(self, tmp_path):
         from pygeovision.explainability.gradcam import GradCAM
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=32)
-        res = GradCAM(SegNet()).batch_explain(str(img), str(tmp_path / "o.tif"), chip_size=16, overlap=16)
+        res = GradCAM(SegNet()).batch_explain(
+            str(img), str(tmp_path / "o.tif"), chip_size=16, overlap=16
+        )
         assert res["success"] is False and "overlap" in res["error"]
 
     def test_batch_explain_writes_map(self, tmp_path):
         from pygeovision.explainability.gradcam import GradCAM
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=48)
-        res = GradCAM(SegNet()).batch_explain(str(img), str(tmp_path / "o.tif"), class_idx=1,
-                                              chip_size=32, overlap=8)
+        res = GradCAM(SegNet()).batch_explain(
+            str(img), str(tmp_path / "o.tif"), class_idx=1, chip_size=32, overlap=8
+        )
         assert res["success"] and res["n_chips"] == 4
         with rasterio.open(res["output_path"]) as src:
             assert src.count == 1 and src.shape == (48, 48)
@@ -318,12 +372,13 @@ class TestUncertaintyRobustness:
     def test_batchnorm_statistics_untouched_and_model_left_in_eval(self, tmp_path):
         """A model in train mode used to have BatchNorm statistics updated during estimation."""
         from pygeovision.explainability.uncertainty import UncertaintyEstimator
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=64)
         model = SegNet().train()
         before = model.bn.running_mean.clone()
         UncertaintyEstimator(model, n_passes=3).estimate(str(img), None, chip_size=64, overlap=8)
-        assert torch.equal(before, model.bn.running_mean)
+        assert torch.equal(before, model.bn.running_mean.cpu())  # the estimator may move the model
         assert not model.training and not model.do.training
 
     def test_confident_model_gives_finite_nonnegative_aleatoric(self, tmp_path):
@@ -342,13 +397,16 @@ class TestUncertaintyRobustness:
 
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=32)
-        r = UncertaintyEstimator(Confident(), n_passes=3).estimate(str(img), None, chip_size=32, overlap=4)
+        r = UncertaintyEstimator(Confident(), n_passes=3).estimate(
+            str(img), None, chip_size=32, overlap=4
+        )
         assert np.isfinite(r["mean_aleatoric"]) and r["mean_aleatoric"] >= 0
         assert r["mean_entropy"] >= 0 and r["high_uncertainty_fraction"] == 0
 
     def test_input_not_modified_by_first_chip_normalisation(self, tmp_path):
         """Running with more chips than one must not depend on chip order or earlier chips."""
         from pygeovision.explainability.uncertainty import UncertaintyEstimator
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=96)
 
@@ -362,15 +420,22 @@ class TestUncertaintyRobustness:
 
         torch.manual_seed(0)
         m = NoDrop()
-        r1 = UncertaintyEstimator(m, n_passes=1).estimate(str(img), str(tmp_path / "a.tif"), chip_size=64, overlap=16)
-        r2 = UncertaintyEstimator(m, n_passes=1).estimate(str(img), str(tmp_path / "b.tif"), chip_size=64, overlap=16)
+        r1 = UncertaintyEstimator(m, n_passes=1).estimate(
+            str(img), str(tmp_path / "a.tif"), chip_size=64, overlap=16
+        )
+        r2 = UncertaintyEstimator(m, n_passes=1).estimate(
+            str(img), str(tmp_path / "b.tif"), chip_size=64, overlap=16
+        )
         assert r1["mean_entropy"] == r2["mean_entropy"]
 
     def test_no_dropout_warns_and_runs_once(self, tmp_path):
         from pygeovision.explainability.uncertainty import UncertaintyEstimator
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=32)
-        r = UncertaintyEstimator(nn.Conv2d(4, 3, 1), n_passes=10).estimate(str(img), None, chip_size=32, overlap=4)
+        r = UncertaintyEstimator(nn.Conv2d(4, 3, 1), n_passes=10).estimate(
+            str(img), None, chip_size=32, overlap=4
+        )
         assert r["n_dropout_layers"] == 0 and r["n_mc_passes"] == 1
         assert "no dropout" in r["warning"] and r["mean_epistemic"] == 0
 
@@ -388,15 +453,20 @@ class TestUncertaintyRobustness:
 
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=32)
-        r = UncertaintyEstimator(Clf(), n_passes=2).estimate(str(img), None, chip_size=32, overlap=4)
+        r = UncertaintyEstimator(Clf(), n_passes=2).estimate(
+            str(img), None, chip_size=32, overlap=4
+        )
         assert r["success"] is False and "(B, classes, H, W)" in r["error"]
 
     def test_output_bands_are_described(self, tmp_path):
         from pygeovision.explainability.uncertainty import UncertaintyEstimator
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=32)
         out = tmp_path / "u.tif"
-        UncertaintyEstimator(SegNet(), n_passes=2).estimate(str(img), str(out), chip_size=32, overlap=4)
+        UncertaintyEstimator(SegNet(), n_passes=2).estimate(
+            str(img), str(out), chip_size=32, overlap=4
+        )
         with rasterio.open(out) as src:
             assert list(src.descriptions) == ["label", "entropy", "epistemic", "aleatoric"]
 
@@ -417,16 +487,19 @@ class TestAttentionRobustness:
 
     def test_patch_grid_map(self):
         from pygeovision.explainability.attention import AttentionMapExtractor
+
         a = AttentionMapExtractor(self.Tiny()).extract(torch.randn(1, 3, 32, 32))
         assert a.shape == (4, 4) and np.isclose(a.sum(), 1.0, atol=1e-4)
 
     def test_class_token_is_dropped(self):
         from pygeovision.explainability.attention import AttentionMapExtractor
+
         a = AttentionMapExtractor(self.Tiny(cls_token=True)).extract(torch.randn(1, 3, 32, 32))
         assert a.shape == (4, 4)
 
     def test_single_head_selection(self):
         from pygeovision.explainability.attention import AttentionMapExtractor
+
         ex = AttentionMapExtractor(self.Tiny())
         assert ex.extract(torch.randn(1, 3, 32, 32), head_idx=0).shape == (4, 4)
         # nn.MultiheadAttention returns head-averaged weights, i.e. a single head
@@ -435,6 +508,7 @@ class TestAttentionRobustness:
 
     def test_hooks_are_removed_after_each_call(self):
         from pygeovision.explainability.attention import AttentionMapExtractor
+
         m = self.Tiny()
         ex = AttentionMapExtractor(m)
         for _ in range(3):
@@ -443,7 +517,8 @@ class TestAttentionRobustness:
 
     def test_strict_raises_and_default_returns_zeros(self):
         from pygeovision.explainability.attention import AttentionMapExtractor
-        m = nn.Sequential(nn.Conv2d(3, 4, 3, padding=1))        # no attention at all
+
+        m = nn.Sequential(nn.Conv2d(3, 4, 3, padding=1))  # no attention at all
         ex = AttentionMapExtractor(m)
         assert ex.extract(torch.randn(1, 3, 20, 12)).shape == (20, 12)
         with pytest.raises(RuntimeError, match="no attention weights"):
@@ -452,6 +527,7 @@ class TestAttentionRobustness:
     def test_visualise_writes_png(self, tmp_path):
         pytest.importorskip("matplotlib")
         from pygeovision.explainability.attention import AttentionMapExtractor
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, bands=3, size=32)
         ex = AttentionMapExtractor(self.Tiny())
@@ -464,6 +540,7 @@ class TestSHAPOutputs:
     def _patch(self, monkeypatch, values):
         import sys
         import types
+
         fake = types.ModuleType("shap")
 
         class _E:
@@ -481,14 +558,17 @@ class TestSHAPOutputs:
 
         def values(image):
             shape = tuple(image.shape)
-            return [np.zeros(shape), np.ones(shape) * 2.0]      # output 0 explains nothing, output 1 everything
+            return [
+                np.zeros(shape),
+                np.ones(shape) * 2.0,
+            ]  # output 0 explains nothing, output 1 everything
 
         self._patch(monkeypatch, values)
         g = GeospatialSHAP(TinyConvNet(in_ch=4), background_samples=2)
         img = torch.randn(1, 4, 8, 8)
         assert g.band_importance(img, class_idx=1)["band_importance"]["band_1"] == 2.0
         assert g.band_importance(img, class_idx=0)["band_importance"]["band_1"] == 0.0
-        assert g.band_importance(img)["band_importance"]["band_1"] == 1.0      # mean over outputs
+        assert g.band_importance(img)["band_importance"]["band_1"] == 1.0  # mean over outputs
         with pytest.raises(ValueError, match="out of range"):
             g.band_importance(img, class_idx=5)
 
@@ -508,9 +588,12 @@ class TestSHAPOutputs:
     def test_plot_checks_band_name_count(self):
         pytest.importorskip("matplotlib")
         from pygeovision.explainability.shap_geo import GeospatialSHAP
+
         g = GeospatialSHAP(TinyConvNet(in_ch=4))
         with pytest.raises(ValueError, match="band names"):
-            g.plot_band_importance({"band_importance": {"band_1": 1.0, "band_2": 2.0}}, band_names=["only_one"])
+            g.plot_band_importance(
+                {"band_importance": {"band_1": 1.0, "band_2": 2.0}}, band_names=["only_one"]
+            )
 
 
 class TestExplainCLI:
@@ -518,6 +601,7 @@ class TestExplainCLI:
         from click.testing import CliRunner
 
         from pygeovision.cli.main import cli
+
         img = tmp_path / "s.tif"
         _make_geotiff(img, size=32)
         res = CliRunner().invoke(cli, ["explain", "gradcam", str(img), "-m", "no_such_model_xyz"])

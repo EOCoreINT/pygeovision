@@ -13,6 +13,7 @@ synthetic tiles and a fake download client (no network):
 * month windows ended on the 28th; GDAL TILED warnings; every pygeofetch log line
   printed twice; "0.0 m/px" in the reproject log.
 """
+
 from __future__ import annotations
 
 import io
@@ -31,7 +32,7 @@ from rasterio.transform import from_bounds  # noqa: E402
 from pygeovision.ai.pipelines import BasePipeline  # noqa: E402
 from pygeovision.data.fetch import DownloadResult, SearchResult  # noqa: E402
 
-PX = 40   # pixels per tile edge
+PX = 40  # pixels per tile edge
 
 
 def _id(tile: str, date: str = "20220925", processed: str = "20220925T223429") -> str:
@@ -41,8 +42,20 @@ def _id(tile: str, date: str = "20220925", processed: str = "20220925T223429") -
 class Scene:
     """A synthetic tile: footprint, reflectance, and whether its files are complete."""
 
-    def __init__(self, tile, bbox, reflectance, *, date="20220925", cloud=1.0, provider="planetary_computer",
-                 sid=None, complete=True, scl=4, fail=False):
+    def __init__(
+        self,
+        tile,
+        bbox,
+        reflectance,
+        *,
+        date="20220925",
+        cloud=1.0,
+        provider="planetary_computer",
+        sid=None,
+        complete=True,
+        scl=4,
+        fail=False,
+    ):
         self.tile, self.bbox, self.reflectance = tile, bbox, reflectance
         self.id = sid or _id(tile, date)
         self.provider, self.cloud, self.complete, self.scl = provider, cloud, complete, scl
@@ -50,8 +63,13 @@ class Scene:
 
     def result(self) -> SearchResult:
         return SearchResult(
-            id=self.id, provider=self.provider, satellite="Sentinel-2B", datetime="2022-09-25T05:56:39Z",
-            cloud_cover=self.cloud, bbox=self.bbox, satellite_data=object(),
+            id=self.id,
+            provider=self.provider,
+            satellite="Sentinel-2B",
+            datetime="2022-09-25T05:56:39Z",
+            cloud_cover=self.cloud,
+            bbox=self.bbox,
+            satellite_data=object(),
         )
 
 
@@ -75,7 +93,11 @@ class FakePgv:
         for item in items:
             sc = self.scenes[item.id]
             if sc.fail:
-                out.append(DownloadResult(scene_id=item.id, provider=sc.provider, success=False, error="HTTP 503"))
+                out.append(
+                    DownloadResult(
+                        scene_id=item.id, provider=sc.provider, success=False, error="HTTP 503"
+                    )
+                )
                 continue
             wanted = [b for b in (kw.get("bands") or []) if b.startswith("B") or b == "SCL"]
             keys = list(dict.fromkeys(wanted))
@@ -90,12 +112,28 @@ class FakePgv:
             for k in keys:
                 dn = sc.scl if k == "SCL" else int(round(1000 + sc.reflectance * 10000))
                 p = d / f"{item.id}_{k}.tif"
-                with rasterio.open(p, "w", driver="GTiff", height=PX, width=PX, count=1, dtype="uint16",
-                                   crs="EPSG:4326", transform=tr) as dst:
+                with rasterio.open(
+                    p,
+                    "w",
+                    driver="GTiff",
+                    height=PX,
+                    width=PX,
+                    count=1,
+                    dtype="uint16",
+                    crs="EPSG:4326",
+                    transform=tr,
+                ) as dst:
                     dst.write(np.full((PX, PX), dn, dtype="uint16"), 1)
                 paths[k] = p
-            out.append(DownloadResult(scene_id=item.id, provider=sc.provider, path=next(iter(paths.values())),
-                                      asset_paths=paths, success=True))
+            out.append(
+                DownloadResult(
+                    scene_id=item.id,
+                    provider=sc.provider,
+                    path=next(iter(paths.values())),
+                    asset_paths=paths,
+                    success=True,
+                )
+            )
         return out
 
 
@@ -134,8 +172,11 @@ class TestMultiTileMosaic:
         s = Scene("42RUP", TILE_S, 0.10)
         n = Scene("42RUQ", TILE_N, 0.30)
         _run(tmp_path, [s, n])
-        stacks = sorted(p.name for p in (tmp_path / "after" / "imagery").glob("stack_*.tif")
-                        if p.name != "stack_clipped.tif")
+        stacks = sorted(
+            p.name
+            for p in (tmp_path / "after" / "imagery").glob("stack_*.tif")
+            if p.name != "stack_clipped.tif"
+        )
         assert len(stacks) == 2 and len(set(stacks)) == 2
         assert not (tmp_path / "after" / "imagery" / "stack.tif").exists()
 
@@ -159,8 +200,10 @@ class TestSceneSelection:
     def test_repeat_listings_do_not_crowd_out_the_other_tile(self, tmp_path):
         # Same southern scene listed by three providers ranks first (lowest cloud),
         # then the northern tile. With a pool of 5 the old code saw 3 copies + 1.
-        dupes = [Scene("42RUP", TILE_S, 0.10, cloud=0.0, provider=p, sid=_id("42RUP"))
-                 for p in ("planetary_computer", "aws_earth", "element84")]
+        dupes = [
+            Scene("42RUP", TILE_S, 0.10, cloud=0.0, provider=p, sid=_id("42RUP"))
+            for p in ("planetary_computer", "aws_earth", "element84")
+        ]
         extra = [Scene("42RUP", TILE_S, 0.10, cloud=0.5, date=f"2022090{i}") for i in range(1, 6)]
         n = Scene("42RUQ", TILE_N, 0.30, cloud=3.0)
         _, _, out = _run(tmp_path, dupes + extra + [n])
@@ -170,7 +213,9 @@ class TestSceneSelection:
 
     def test_dedupe_keys_match_across_providers(self):
         p = _Pipe(None)
-        pc = SimpleNamespace(id="S2B_MSIL2A_20220925T055639_R091_T42RUQ_20220925T223429", bbox=None, datetime="")
+        pc = SimpleNamespace(
+            id="S2B_MSIL2A_20220925T055639_R091_T42RUQ_20220925T223429", bbox=None, datetime=""
+        )
         e84 = SimpleNamespace(id="S2B_42RUQ_20220925_0_L2A", bbox=None, datetime="")
         other_date = SimpleNamespace(id="S2A_42RUQ_20220923_0_L2A", bbox=None, datetime="")
         other_tile = SimpleNamespace(id="S2B_42RUP_20220925_0_L2A", bbox=None, datetime="")
@@ -193,8 +238,8 @@ class TestSceneSelection:
 
 class TestFailureHandling:
     def test_failed_scene_is_replaced_by_another_covering_the_same_area(self, tmp_path):
-        s = Scene("42RUP", TILE_S, 0.10, cloud=0.0, fail=True)                  # download keeps failing
-        s_alt = Scene("42RUP", TILE_S, 0.12, cloud=2.0, date="20220923")        # same tile, other date
+        s = Scene("42RUP", TILE_S, 0.10, cloud=0.0, fail=True)  # download keeps failing
+        s_alt = Scene("42RUP", TILE_S, 0.12, cloud=2.0, date="20220923")  # same tile, other date
         n = Scene("42RUQ", TILE_N, 0.30, cloud=1.0)
         pgv, pipe, out = _run(tmp_path, [s, n, s_alt])
         assert out is not None
@@ -207,7 +252,12 @@ class TestFailureHandling:
         s = Scene("42RUP", TILE_S, 0.10, complete=False)
         pgv = FakePgv([s], tmp_path)
         out = _Pipe(pgv)._download_and_prepare_scene(
-            s.result(), tmp_path / "x", ("green", "swir1"), True, True, None,
+            s.result(),
+            tmp_path / "x",
+            ("green", "swir1"),
+            True,
+            True,
+            None,
         )
         assert out is not None
         first, second = pgv.download_calls
@@ -217,12 +267,12 @@ class TestFailureHandling:
 
 class TestCoverageReporting:
     def test_partial_coverage_is_in_the_pipeline_result(self, tmp_path):
-        s = Scene("42RUP", TILE_S, 0.10)      # the northern tile is not available
+        s = Scene("42RUP", TILE_S, 0.10)  # the northern tile is not available
         _, pipe, out = _run(tmp_path, [s])
         assert out is not None
         res = pipe._ok(out, {"flooded_area_ha": 1.0})
         frac = res.stats["aoi_coverage_fraction"]
-        assert 0.4 < frac < 0.6               # AOI is 0.6..1.4 in latitude, tile covers 0.6..1.0
+        assert 0.4 < frac < 0.6  # AOI is 0.6..1.4 in latitude, tile covers 0.6..1.0
         assert res.metadata["input_coverage"][0]["scenes_used"] == [s.id]
 
     def test_full_coverage_is_one(self, tmp_path):
@@ -252,24 +302,35 @@ class TestDownloadsOnlyWhatIsNeeded:
 
         client = PyGeoVision.__new__(PyGeoVision)
         client.data = MagicMock()
-        item = SearchResult(id="x", provider="p", satellite="s", datetime="", cloud_cover=0, bbox=None)
+        item = SearchResult(
+            id="x", provider="p", satellite="s", datetime="", cloud_cover=0, bbox=None
+        )
         client.download([item], bands=["B03", "B11"])
         assert client.data.download.call_args.kwargs["bands"] == ["B03", "B11"]
 
 
 class TestSentinel2Offset:
-    @pytest.mark.parametrize("sid,expected", [
-        ("S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111", 1000),     # Planetary Computer, 2024
-        ("S2A_MSIL2A_20220622T105631_R094_T30UXC_20240718T031007", 1000),     # 2022 scene reprocessed in 2024
-        ("S2B_30UXC_20240626_0_L2A", 1000),                                    # Earth Search
-        ("S2A_MSIL2A_20240626T105631_N0510_R094_T30UXC_20240626T151111", 1000),
-        ("S2A_MSIL2A_20210626T105631_N0300_R094_T30UXC_20210626T151111", 0),
-        ("S2A_MSIL2A_20210626T105631_R094_T30UXC_20210626T151111", 0),
-        ("S2A_MSIL2A_20220120T105631_R094_T30UXC_20220120T151111", 0),         # before 2022-01-25
-        ("S2A_MSIL2A_20220126T105631_R094_T30UXC_20220126T151111", 1000),
-        ("S2A_30UXC_20180626_0_L2A", 0),
-        ("", 0),
-    ])
+    @pytest.mark.parametrize(
+        "sid,expected",
+        [
+            (
+                "S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111",
+                1000,
+            ),  # Planetary Computer, 2024
+            (
+                "S2A_MSIL2A_20220622T105631_R094_T30UXC_20240718T031007",
+                1000,
+            ),  # 2022 scene reprocessed in 2024
+            ("S2B_30UXC_20240626_0_L2A", 1000),  # Earth Search
+            ("S2A_MSIL2A_20240626T105631_N0510_R094_T30UXC_20240626T151111", 1000),
+            ("S2A_MSIL2A_20210626T105631_N0300_R094_T30UXC_20210626T151111", 0),
+            ("S2A_MSIL2A_20210626T105631_R094_T30UXC_20210626T151111", 0),
+            ("S2A_MSIL2A_20220120T105631_R094_T30UXC_20220120T151111", 0),  # before 2022-01-25
+            ("S2A_MSIL2A_20220126T105631_R094_T30UXC_20220126T151111", 1000),
+            ("S2A_30UXC_20180626_0_L2A", 0),
+            ("", 0),
+        ],
+    )
     def test_offset_from_scene_id(self, sid, expected):
         from pygeovision.data.radiometric import sentinel2_boa_add_offset
 
@@ -281,7 +342,7 @@ class TestSentinel2Offset:
         from pygeovision.data.radiometric import dn_to_reflectance
 
         sid = "S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111"
-        dn = np.array([[[1800]], [[1300]]], dtype="uint16")             # green 0.08, nir 0.03
+        dn = np.array([[[1800]], [[1300]]], dtype="uint16")  # green 0.08, nir 0.03
         refl = dn_to_reflectance(dn, sid, is_landsat=False)
         g, n = refl[0, 0, 0], refl[1, 0, 0]
         assert (g - n) / (g + n) == pytest.approx(0.4545, abs=1e-3)
@@ -294,23 +355,39 @@ class TestSentinel2Offset:
         d = tmp_path / "planetary_computer"
         d.mkdir()
         p = d / f"{sid}.tif"
-        with rasterio.open(p, "w", driver="GTiff", height=4, width=4, count=2, dtype="uint16",
-                           crs="EPSG:4326", transform=from_bounds(0, 0, 1, 1, 4, 4)) as dst:
+        with rasterio.open(
+            p,
+            "w",
+            driver="GTiff",
+            height=4,
+            width=4,
+            count=2,
+            dtype="uint16",
+            crs="EPSG:4326",
+            transform=from_bounds(0, 0, 1, 1, 4, 4),
+        ) as dst:
             dst.write(np.full((2, 4, 4), 1500, dtype="uint16"))
-        dl = DownloadResult(scene_id=sid, provider="planetary_computer", path=p, asset_paths={"x": p}, success=True)
-        out = _Pipe(None)._prepare_downloaded_scene(dl, tmp_path, ("green", "swir1"), True, True, "imagery")
+        dl = DownloadResult(
+            scene_id=sid, provider="planetary_computer", path=p, asset_paths={"x": p}, success=True
+        )
+        out = _Pipe(None)._prepare_downloaded_scene(
+            dl, tmp_path, ("green", "swir1"), True, True, "imagery"
+        )
         with rasterio.open(out) as src:
             assert src.read(1)[0, 0] == pytest.approx(0.05, abs=1e-4)
 
 
 class TestMonthWindow:
-    @pytest.mark.parametrize("value,expected", [
-        ("2024-06", ("2024-06-01", "2024-06-30")),
-        ("2022-05", ("2022-05-01", "2022-05-31")),
-        ("2024-02", ("2024-02-01", "2024-02-29")),
-        ("2023-02", ("2023-02-01", "2023-02-28")),
-        ("2022-09-15", ("2022-09-15", "2022-09-15")),
-    ])
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("2024-06", ("2024-06-01", "2024-06-30")),
+            ("2022-05", ("2022-05-01", "2022-05-31")),
+            ("2024-02", ("2024-02-01", "2024-02-29")),
+            ("2023-02", ("2023-02-01", "2023-02-28")),
+            ("2022-09-15", ("2022-09-15", "2022-09-15")),
+        ],
+    )
     def test_date_window(self, value, expected):
         from pygeovision.data._dates import date_window
 
@@ -332,17 +409,23 @@ class TestSearchDefaults:
     def test_unusable_defaults_are_dropped(self):
         f = self._fetcher()
         out = f._drop_unusable_default_providers(
-            ["planetary_computer", "copernicus", "aws_earth", "element84", "sentinel_hub"], ["sentinel-2-l2a"])
+            ["planetary_computer", "copernicus", "aws_earth", "element84", "sentinel_hub"],
+            ["sentinel-2-l2a"],
+        )
         assert out == ["planetary_computer", "aws_earth", "element84"]
 
     def test_provider_with_credentials_is_kept(self):
         f = self._fetcher(stored=["sentinel_hub"])
-        out = f._drop_unusable_default_providers(["planetary_computer", "sentinel_hub"], ["sentinel-2-l2a"])
+        out = f._drop_unusable_default_providers(
+            ["planetary_computer", "sentinel_hub"], ["sentinel-2-l2a"]
+        )
         assert out == ["planetary_computer", "sentinel_hub"]
 
     def test_never_returns_an_empty_list(self):
         f = self._fetcher()
-        assert f._drop_unusable_default_providers(["sentinel_hub"], ["sentinel-2-l2a"]) == ["sentinel_hub"]
+        assert f._drop_unusable_default_providers(["sentinel_hub"], ["sentinel-2-l2a"]) == [
+            "sentinel_hub"
+        ]
 
     def test_cache_key_depends_on_result_cap_and_sort(self):
         f = self._fetcher()
@@ -384,7 +467,7 @@ class TestLogging:
             root_buf = io.StringIO()
             root.handlers[0].setStream(root_buf)
             pgf_buf = io.StringIO()
-            own = logging.StreamHandler(pgf_buf)           # what pygeofetch installs on its logger
+            own = logging.StreamHandler(pgf_buf)  # what pygeofetch installs on its logger
             pgf.addHandler(own)
             logging.getLogger("pygeofetch.core.engine").info("PyGeoFetch ready")
             logging.getLogger("pygeovision.data.fetch").info("Searching")
@@ -425,13 +508,29 @@ class TestGdalWarnings:
         assets = {}
         for k in ("B03", "B11"):
             p = tmp_path / f"{k}.tif"
-            with rasterio.open(p, "w", driver="GTiff", height=64, width=64, count=1, dtype="uint16",
-                               crs="EPSG:4326", transform=tr, tiled=False, blockysize=8) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=64,
+                width=64,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=tr,
+                tiled=False,
+                blockysize=8,
+            ) as dst:
                 dst.write(np.full((64, 64), 1500, dtype="uint16"), 1)
             assets[k] = p
         with caplog.at_level(logging.WARNING):
-            st = stack_and_prepare_bands(assets, tmp_path / "s.tif", bands=("green", "swir1"),
-                                         scene_id=_id("42RUP"), apply_cloud_mask=False)
+            st = stack_and_prepare_bands(
+                assets,
+                tmp_path / "s.tif",
+                bands=("green", "swir1"),
+                scene_id=_id("42RUP"),
+                apply_cloud_mask=False,
+            )
             crop_to_bbox(st, (0.1, 0.1, 0.9, 0.9), tmp_path / "c.tif")
         assert not [r for r in caplog.records if "BLOCKXSIZE" in r.getMessage()]
 
@@ -444,14 +543,25 @@ class TestReprojectLog:
 
         src = tmp_path / "scene.tif"
         tr = rasterio.transform.from_origin(500000, 5700000, 10, 10)
-        with rasterio.open(src, "w", driver="GTiff", height=50, width=50, count=1, dtype="uint16",
-                           crs=CRS.from_epsg(32630), transform=tr) as dst:
+        with rasterio.open(
+            src,
+            "w",
+            driver="GTiff",
+            height=50,
+            width=50,
+            count=1,
+            dtype="uint16",
+            crs=CRS.from_epsg(32630),
+            transform=tr,
+        ) as dst:
             dst.write(np.full((50, 50), 1500, dtype="uint16"), 1)
         f = SatelliteFetcher.__new__(SatelliteFetcher)
         with caplog.at_level(logging.INFO, logger="pygeovision.data.fetch"):
             out = f._apply_post_process(src, ["reproject:EPSG:4326"])
         assert out is not None
-        msg = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("reproject:"))
+        msg = next(
+            r.getMessage() for r in caplog.records if r.getMessage().startswith("reproject:")
+        )
         assert "deg/px" in msg and "0.0 m/px" not in msg
 
 
@@ -467,7 +577,7 @@ class TestVerifyInstallTool:
 
     def test_reports_missing_and_stale_files_and_ignores_line_endings(self, tmp_path):
         tool = self._tool()
-        (tmp_path / "a.py").write_bytes(b"print(1)\r\n")            # CRLF checkout of an LF file
+        (tmp_path / "a.py").write_bytes(b"print(1)\r\n")  # CRLF checkout of an LF file
         (tmp_path / "b.py").write_text("old")
         manifest = tmp_path / "MANIFEST.sha256"
         manifest.write_text(
@@ -478,7 +588,9 @@ class TestVerifyInstallTool:
         )
         assert tool.main(["--root", str(tmp_path), "--manifest", str(manifest)]) == 1
         (tmp_path / "b.py").write_text("new")
-        manifest.write_text(f"{tool.digest(tmp_path / 'a.py')}  a.py\n{tool.digest(tmp_path / 'b.py')}  b.py\n")
+        manifest.write_text(
+            f"{tool.digest(tmp_path / 'a.py')}  a.py\n{tool.digest(tmp_path / 'b.py')}  b.py\n"
+        )
         assert tool.main(["--root", str(tmp_path), "--manifest", str(manifest)]) == 0
 
     def test_missing_manifest_is_an_error(self, tmp_path):
@@ -499,16 +611,49 @@ class TestOnlyNeededAssetsReachTheProvider:
         from pygeovision import PyGeoVision
         from pygeovision.data.fetch import SatelliteFetcher
 
-        keys = ["AOT", "B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B09", "B11", "B12", "B8A", "SCL", "WVP"]
+        keys = [
+            "AOT",
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A",
+            "SCL",
+            "WVP",
+        ]
         sid = "S2B_MSIL2A_20240626T105619_R094_T30UXC_20240626T151111"
         sd = SatelliteData(
-            id=sid, provider="planetary_computer", satellite="Sentinel-2B", collection="sentinel-2-l2a",
-            assets={k: SatelliteAsset(key=k, href=f"https://example.invalid/{k}.tif",
-                                      type="image/tiff; application=geotiff", roles=["data"]) for k in keys},
+            id=sid,
+            provider="planetary_computer",
+            satellite="Sentinel-2B",
+            collection="sentinel-2-l2a",
+            assets={
+                k: SatelliteAsset(
+                    key=k,
+                    href=f"https://example.invalid/{k}.tif",
+                    type="image/tiff; application=geotiff",
+                    roles=["data"],
+                )
+                for k in keys
+            },
         )
-        item = SearchResult(id=sid, provider="planetary_computer", satellite="Sentinel-2B",
-                            datetime="2024-06-26T10:56:19Z", cloud_cover=0, bbox=(-1.5, 51.3, 0.1, 52.3),
-                            assets={k: {"href": f"https://x/{k}.tif"} for k in keys}, satellite_data=sd)
+        item = SearchResult(
+            id=sid,
+            provider="planetary_computer",
+            satellite="Sentinel-2B",
+            datetime="2024-06-26T10:56:19Z",
+            cloud_cover=0,
+            bbox=(-1.5, 51.3, 0.1, 52.3),
+            assets={k: {"href": f"https://x/{k}.tif"} for k in keys},
+            satellite_data=sd,
+        )
         seen: dict = {}
 
         class StubEngine:

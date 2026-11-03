@@ -10,14 +10,15 @@ Supports:
   • Early stopping and LR scheduling
   • ONNX / TorchScript export after training
 """
+
 from __future__ import annotations
 
-import logging
-import os
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
+import logging
+import os
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -45,13 +46,15 @@ class _AugmentedSegmentationDataset:
 
     def __init__(self, dataset: Any, mode: str = "medium") -> None:
         from pygeovision.ai.data.augmentations import GeoAugmentationPipeline
+
         self._dataset = dataset
         # The band count decides which radiometric transforms are valid
         # (hue/saturation and CLAHE exist only for 1- and 3-channel images).
         image, _ = dataset[0]
         n_channels = image.shape[0] if getattr(image, "ndim", 0) == 3 else None
         self._pipeline = GeoAugmentationPipeline.for_task(
-            "segmentation", mode=mode, n_channels=n_channels)
+            "segmentation", mode=mode, n_channels=n_channels
+        )
 
     def __len__(self) -> int:
         return len(self._dataset)
@@ -70,7 +73,10 @@ class _AugmentedSegmentationDataset:
         aug_image, aug_mask = result["image"], result["mask"]
         aug_image_chw = np.transpose(aug_image, (2, 0, 1)) if aug_image.ndim == 3 else aug_image
 
-        return torch.as_tensor(aug_image_chw.copy()).float(), torch.as_tensor(aug_mask.copy()).long()
+        return (
+            torch.as_tensor(aug_image_chw.copy()).float(),
+            torch.as_tensor(aug_mask.copy()).long(),
+        )
 
 
 @dataclass
@@ -109,7 +115,7 @@ class TrainingConfig:
     backbone_lr_scale: float = 1.0
 
     # ── Optimisation ──────────────────────────────────────────────────
-    optimizer: str = "adamw"          # adamw | adam | sgd | lion (needs lion-pytorch)
+    optimizer: str = "adamw"  # adamw | adam | sgd | lion (needs lion-pytorch)
     learning_rate: float = 1e-4
     weight_decay: float = 1e-4
     momentum: float = 0.9
@@ -118,7 +124,9 @@ class TrainingConfig:
     grad_accumulation_steps: int = 1
 
     # ── Scheduler ─────────────────────────────────────────────────────
-    scheduler: str = "cosine"         # cosine | cosine_warmup | warmup_cosine | linear | step | plateau | onecycle | none
+    scheduler: str = (
+        "cosine"  # cosine | cosine_warmup | warmup_cosine | linear | step | plateau | onecycle | none
+    )
     warmup_epochs: int = 5
     warmup_lr_scale: float = 0.1
     min_lr: float = 1e-6
@@ -132,11 +140,11 @@ class TrainingConfig:
     early_stopping_mode: str = "max"
 
     # ── Precision ─────────────────────────────────────────────────────
-    precision: str = "auto"           # fp32 | fp16 | bf16 | auto
-    compile_model: bool = False       # torch.compile (PyTorch 2.x)
+    precision: str = "auto"  # fp32 | fp16 | bf16 | auto
+    compile_model: bool = False  # torch.compile (PyTorch 2.x)
 
     # ── Distributed ───────────────────────────────────────────────────
-    strategy: str = "auto"            # auto | ddp | fsdp | dp
+    strategy: str = "auto"  # auto | ddp | fsdp | dp
     devices: str | int | list[int] = "auto"
     sync_batchnorm: bool = True
     find_unused_parameters: bool = False
@@ -152,7 +160,7 @@ class TrainingConfig:
     resume: bool = False
 
     # ── Augmentation ──────────────────────────────────────────────────
-    augment: bool = True              # segmentation only; needs albumentations
+    augment: bool = True  # segmentation only; needs albumentations
     #: Strength of the training augmentation: light | medium | heavy |
     #: geometric_only | radiometric_only. Values are assumed to lie in [0, 1].
     augment_mode: str = "medium"
@@ -166,7 +174,7 @@ class TrainingConfig:
     contrast_limit: float = 0.2
 
     # ── Experiment tracking ───────────────────────────────────────────
-    tracker: str = "none"             # none | mlflow | wandb | tensorboard | all
+    tracker: str = "none"  # none | mlflow | wandb | tensorboard | all
     mlflow_uri: str = "mlruns"
     wandb_project: str = "pygeovision"
     log_every_n_steps: int = 10
@@ -178,12 +186,15 @@ class TrainingConfig:
 
     def to_dict(self) -> dict[str, Any]:
         import dataclasses
+
         return dataclasses.asdict(self)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> TrainingConfig:
-        import yaml
         import dataclasses
+
+        import yaml
+
         with open(path) as f:
             d = yaml.safe_load(f) or {}
         known = {f.name for f in dataclasses.fields(cls)}
@@ -194,6 +205,7 @@ class TrainingConfig:
 
     def save(self, path: str | Path) -> None:
         import yaml
+
         Path(path).write_text(yaml.dump(self.to_dict()))
 
 
@@ -211,9 +223,9 @@ class EarlyStopping:
     def update(self, metrics: dict[str, float]) -> bool:
         val = metrics.get(self.metric, 0.0)
         improved = (
-            self.best is None or
-            (self.mode == "max" and val > self.best) or
-            (self.mode == "min" and val < self.best)
+            self.best is None
+            or (self.mode == "max" and val > self.best)
+            or (self.mode == "min" and val < self.best)
         )
         if improved:
             self.best = val
@@ -250,7 +262,7 @@ def _unwrap(model: Any) -> Any:
     for _ in range(8):
         if not isinstance(model, torch.nn.Module):
             return model
-        inner = model._modules.get("_orig_mod")                       # torch.compile
+        inner = model._modules.get("_orig_mod")  # torch.compile
         if inner is None and type(model).__name__ in ("DistributedDataParallel", "DataParallel"):
             inner = model._modules.get("module")
         if inner is None:
@@ -268,7 +280,9 @@ class CheckpointManager:
       written every epoch (atomically) whether or not it was a top-k epoch.
     """
 
-    def __init__(self, output_dir: Path, top_k: int = 3, metric: str = "val_iou", mode: str = "max") -> None:
+    def __init__(
+        self, output_dir: Path, top_k: int = 3, metric: str = "val_iou", mode: str = "max"
+    ) -> None:
         self.dir = Path(output_dir) / "checkpoints"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.top_k = top_k
@@ -289,18 +303,22 @@ class CheckpointManager:
             return None
         try:
             import torch
+
             score = float(metrics.get(self.metric, 0.0))
             if len(self._history) >= self.top_k and not self._better(score, self._history[-1][0]):
                 return None
             model = _unwrap(model)
             path = self.dir / f"epoch_{epoch:04d}_{self.metric}_{score:.4f}.pth"
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict() if hasattr(model, "state_dict") else {},
-                "metrics": metrics,
-                "metric": self.metric,
-                "score": score,
-            }, path)
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model_state_dict": model.state_dict() if hasattr(model, "state_dict") else {},
+                    "metrics": metrics,
+                    "metric": self.metric,
+                    "score": score,
+                },
+                path,
+            )
             self._history.append((score, path))
             self._history.sort(key=lambda x: x[0], reverse=(self.mode == "max"))
             while len(self._history) > self.top_k:
@@ -309,6 +327,7 @@ class CheckpointManager:
                     old_path.unlink()
             if self._history[0][1] == path:
                 import shutil
+
                 shutil.copy(path, self.dir / "best.pth")
             return path
         except Exception as exc:
@@ -319,6 +338,7 @@ class CheckpointManager:
         """Atomically write the full training state to ``last.pth``."""
         try:
             import torch
+
             tmp = self.dir / "last.pth.tmp"
             torch.save(state, tmp)
             os.replace(tmp, self.last_path)
@@ -383,10 +403,12 @@ class GeoTrainer:
         import random
 
         import numpy as np
+
         random.seed(self.cfg.seed)
         np.random.seed(self.cfg.seed)
         try:
             import torch
+
             torch.manual_seed(self.cfg.seed)
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(self.cfg.seed)
@@ -398,6 +420,7 @@ class GeoTrainer:
             return self._device
         try:
             import torch
+
             if self.cfg.devices == "auto":
                 if torch.cuda.is_available():
                     self._device = torch.device("cuda")
@@ -422,6 +445,7 @@ class GeoTrainer:
     def _build_precision_context(self):
         try:
             import torch
+
             device = self._get_device()
             precision = self.cfg.precision
             if precision == "auto":
@@ -437,14 +461,17 @@ class GeoTrainer:
                 "Mixed-precision (%s) setup failed — falling back to full "
                 "precision (fp32). Training will be correct but likely "
                 "slower/more memory-hungry than expected. Error: %s",
-                getattr(self.cfg, "precision", "?"), exc,
+                getattr(self.cfg, "precision", "?"),
+                exc,
             )
         import contextlib
+
         return contextlib.nullcontext()
 
     def _build_scaler(self):
         try:
             import torch
+
             if self.cfg.precision in ("fp16", "auto") and torch.cuda.is_available():
                 return torch.cuda.amp.GradScaler()
         except ImportError:
@@ -464,23 +491,32 @@ class GeoTrainer:
         backends = list(known) if tracker == "all" else [t for t in tracker.split(",") if t]
         unknown = [t for t in backends if t not in known]
         if unknown:
-            logger.warning("Unknown tracker(s) %s ignored; choose from %s, 'all' or 'none'.", unknown, known)
+            logger.warning(
+                "Unknown tracker(s) %s ignored; choose from %s, 'all' or 'none'.", unknown, known
+            )
         backends = [t for t in backends if t in known]
         if not backends:
             return
         try:
             from pygeovision.training.experiment import ExperimentTracker
+
             self._tracker_obj = ExperimentTracker(
-                self.cfg.experiment_name, run_name=self.cfg.run_name, backends=backends,
-                mlflow_uri=self.cfg.mlflow_uri, wandb_project=self.cfg.wandb_project,
+                self.cfg.experiment_name,
+                run_name=self.cfg.run_name,
+                backends=backends,
+                mlflow_uri=self.cfg.mlflow_uri,
+                wandb_project=self.cfg.wandb_project,
                 tb_log_dir=str(self.output_dir / "tb_logs"),
             ).start_run(self.cfg.to_dict())
             active = getattr(self._tracker_obj, "active_backends", backends)
             if active:
                 logger.info("Experiment tracking: %s", ", ".join(active))
             else:
-                logger.warning("Experiment tracking requested (%s) but no backend could start; "
-                               "continuing without it.", ", ".join(backends))
+                logger.warning(
+                    "Experiment tracking requested (%s) but no backend could start; "
+                    "continuing without it.",
+                    ", ".join(backends),
+                )
                 self._tracker_obj = None
         except Exception as exc:  # tracking must never stop training
             logger.warning("Experiment tracking could not start (%s); continuing without it.", exc)
@@ -488,8 +524,11 @@ class GeoTrainer:
 
     def _log_metrics(self, metrics: dict[str, float], step: int) -> None:
         if self._tracker_obj is not None:
-            numeric = {k: float(v) for k, v in metrics.items()
-                       if isinstance(v, (int, float)) and not isinstance(v, bool)}
+            numeric = {
+                k: float(v)
+                for k, v in metrics.items()
+                if isinstance(v, (int, float)) and not isinstance(v, bool)
+            }
             try:
                 self._tracker_obj.log(numeric, step=step)
             except Exception as exc:
@@ -499,6 +538,7 @@ class GeoTrainer:
         """Set up DDP or FSDP if multiple GPUs available."""
         try:
             import torch
+
             if not torch.cuda.is_available() or torch.cuda.device_count() <= 1:
                 return self.model
             strategy = self.cfg.strategy
@@ -512,15 +552,20 @@ class GeoTrainer:
                     self.model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.model)
                 local_rank = int(os.environ.get("LOCAL_RANK", 0))
                 return torch.nn.parallel.DistributedDataParallel(
-                    self.model, device_ids=[local_rank],
+                    self.model,
+                    device_ids=[local_rank],
                     find_unused_parameters=self.cfg.find_unused_parameters,
                 )
             elif strategy == "fsdp":
                 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
                 return FSDP(self.model)
             else:
-                logger.warning("strategy=%r is not implemented (use 'auto', 'ddp' or 'fsdp'); "
-                               "training on a single device.", strategy)
+                logger.warning(
+                    "strategy=%r is not implemented (use 'auto', 'ddp' or 'fsdp'); "
+                    "training on a single device.",
+                    strategy,
+                )
         except Exception as exc:
             logger.warning("Distributed setup failed (%s); using single-device.", exc)
         return self.model
@@ -559,12 +604,14 @@ class GeoTrainer:
             logger.warning(
                 "fit(metric_fn=...) is not used: validation always reports val_loss, val_iou, "
                 "val_f1, val_accuracy and the per-class values (val_map50 for detection). "
-                "To track your own score, evaluate best.pth after training.")
+                "To track your own score, evaluate best.pth after training."
+            )
         if self.cfg.train_val_split != TrainingConfig().train_val_split:
             logger.warning(
                 "TrainingConfig.train_val_split=%s has no effect: GeoTrainer trains on the "
                 "train set and validates on the val set you pass to fit().",
-                self.cfg.train_val_split)
+                self.cfg.train_val_split,
+            )
         self._setup_tracker()
         device = self._get_device()
         model = self._setup_distributed()
@@ -598,29 +645,42 @@ class GeoTrainer:
         # interface (see torchvision.models.detection docs).
         def _detection_collate(batch):
             return tuple(zip(*batch))
+
         collate_fn = _detection_collate if self.cfg.task == "detection" else None
 
         # Build DataLoaders if datasets provided
         if train_dataset is not None and self.cfg.augment:
             if self.cfg.task == "segmentation":
                 _defaults = TrainingConfig()
-                _ignored = [n for n in ("flip_prob", "rotate_limit", "scale_limit",
-                                        "brightness_limit", "contrast_limit")
-                            if getattr(self.cfg, n) != getattr(_defaults, n)]
+                _ignored = [
+                    n
+                    for n in (
+                        "flip_prob",
+                        "rotate_limit",
+                        "scale_limit",
+                        "brightness_limit",
+                        "contrast_limit",
+                    )
+                    if getattr(self.cfg, n) != getattr(_defaults, n)
+                ]
                 if _ignored:
                     logger.warning(
                         "TrainingConfig fields %s have no effect: augmentation "
                         "strength is chosen with augment_mode (%r).",
-                        _ignored, self.cfg.augment_mode)
+                        _ignored,
+                        self.cfg.augment_mode,
+                    )
                 train_dataset = _AugmentedSegmentationDataset(
-                    train_dataset, mode=self.cfg.augment_mode)
+                    train_dataset, mode=self.cfg.augment_mode
+                )
             else:
                 logger.warning(
                     "cfg.augment=True has no effect for task=%r -- the real "
                     "augmentation pipeline (GeoAugmentationPipeline) is only "
                     "wired in for segmentation, since detection samples have "
                     "a genuinely different real format (boxes/labels, not a "
-                    "mask) it isn't built for.", self.cfg.task,
+                    "mask) it isn't built for.",
+                    self.cfg.task,
                 )
         if train_loader is None and train_dataset is not None:
             train_loader = torch.utils.data.DataLoader(
@@ -672,8 +732,11 @@ class GeoTrainer:
                         "%d missing key(s), %d unexpected key(s). This is expected if "
                         "finetuning into a different num_classes/head; unexpected if "
                         "you intended an exact match. missing=%s unexpected=%s",
-                        self.cfg.checkpoint_path, len(result.missing_keys),
-                        len(result.unexpected_keys), result.missing_keys[:5], result.unexpected_keys[:5],
+                        self.cfg.checkpoint_path,
+                        len(result.missing_keys),
+                        len(result.unexpected_keys),
+                        result.missing_keys[:5],
+                        result.unexpected_keys[:5],
                     )
                 else:
                     logger.info("Loaded checkpoint %s (exact match).", self.cfg.checkpoint_path)
@@ -703,8 +766,15 @@ class GeoTrainer:
         ckpt_mgr = CheckpointManager(self.output_dir, self.cfg.save_top_k, ckpt_metric, ckpt_mode)
         # SegmentationMetrics (per-pixel confusion matrix / IoU) does not apply to
         # bounding-box detection outputs, so it is skipped for the detection task.
-        metrics_obj = SegmentationMetrics(self.cfg.num_classes) if self.cfg.task != "detection" else None
-        history: dict[str, list] = {"train_loss": [], "val_loss": [], "val_iou": [], "val_map50": []}
+        metrics_obj = (
+            SegmentationMetrics(self.cfg.num_classes) if self.cfg.task != "detection" else None
+        )
+        history: dict[str, list] = {
+            "train_loss": [],
+            "val_loss": [],
+            "val_iou": [],
+            "val_map50": [],
+        }
         global_step = 0
 
         # ── Resume an interrupted run ──────────────────────────────────────
@@ -713,7 +783,9 @@ class GeoTrainer:
         if self.cfg.resume:
             if ckpt_mgr.last_path.exists():
                 try:
-                    resume_state = torch.load(ckpt_mgr.last_path, map_location="cpu", weights_only=True)
+                    resume_state = torch.load(
+                        ckpt_mgr.last_path, map_location="cpu", weights_only=True
+                    )
                     _unwrap(model).load_state_dict(resume_state["model_state_dict"])
                 except Exception as exc:
                     raise RuntimeError(
@@ -722,8 +794,11 @@ class GeoTrainer:
                         f"file (or set resume=False) to start a fresh run."
                     ) from exc
                 if "optimizer_state_dict" not in resume_state:
-                    logger.warning("%s holds weights only (no optimizer state); starting epoch 1 "
-                                   "from those weights.", ckpt_mgr.last_path)
+                    logger.warning(
+                        "%s holds weights only (no optimizer state); starting epoch 1 "
+                        "from those weights.",
+                        ckpt_mgr.last_path,
+                    )
                     resume_state = None
                 else:
                     start_epoch = int(resume_state["epoch"])
@@ -731,28 +806,36 @@ class GeoTrainer:
                     global_step = int(resume_state.get("global_step", 0))
                     logger.info("Resuming from %s after epoch %d.", ckpt_mgr.last_path, start_epoch)
             else:
-                logger.info("resume=True but %s does not exist; starting a fresh run.", ckpt_mgr.last_path)
+                logger.info(
+                    "resume=True but %s does not exist; starting a fresh run.", ckpt_mgr.last_path
+                )
 
         # ── Freezing (all-or-nothing, or staged) ───────────────────────────
         # freeze_backbone=True freezes the encoder for the whole run.
         # unfreeze_backbone_epoch=N freezes it for the first N epochs only.
         staged = self.cfg.unfreeze_backbone_epoch is not None
         n_unfreeze = int(self.cfg.unfreeze_backbone_epoch or 0)
-        freeze_now = (self.cfg.freeze_backbone or staged) and not (staged and start_epoch >= n_unfreeze)
+        freeze_now = (self.cfg.freeze_backbone or staged) and not (
+            staged and start_epoch >= n_unfreeze
+        )
         if self.cfg.freeze_backbone or staged:
             n_backbone = sum(1 for n, _ in model.named_parameters() if _is_backbone(n))
             if n_backbone == 0:
                 logger.warning(
                     "Backbone freezing requested but no parameters matched the backbone-name "
                     "patterns %s, so nothing was frozen. Check model.named_parameters() for "
-                    "this architecture's encoder prefix.", _BACKBONE_KEYS,
+                    "this architecture's encoder prefix.",
+                    _BACKBONE_KEYS,
                 )
             elif freeze_now:
                 for n, prm in model.named_parameters():
                     if _is_backbone(n):
                         prm.requires_grad = False
-                logger.info("Froze %d backbone parameter tensor(s)%s.", n_backbone,
-                            f" for the first {n_unfreeze} epoch(s)" if staged else "")
+                logger.info(
+                    "Froze %d backbone parameter tensor(s)%s.",
+                    n_backbone,
+                    f" for the first {n_unfreeze} epoch(s)" if staged else "",
+                )
 
         # ── Optimizer and scheduler ────────────────────────────────────────
         # A separate backbone learning rate (or a later unfreeze) needs the
@@ -761,11 +844,17 @@ class GeoTrainer:
         # stay untrained even after it is unfrozen.
         has_backbone = any(_is_backbone(n) for n, _ in model.named_parameters())
         if has_backbone and (staged or self.cfg.backbone_lr_scale != 1.0):
-            head = [prm for n, prm in model.named_parameters() if not _is_backbone(n) and prm.requires_grad]
+            head = [
+                prm
+                for n, prm in model.named_parameters()
+                if not _is_backbone(n) and prm.requires_grad
+            ]
             groups = [{"params": head, "lr": self.cfg.learning_rate}]
             if not (self.cfg.freeze_backbone and not staged):
                 backbone = [prm for n, prm in model.named_parameters() if _is_backbone(n)]
-                groups.append({"params": backbone, "lr": self.cfg.learning_rate * self.cfg.backbone_lr_scale})
+                groups.append(
+                    {"params": backbone, "lr": self.cfg.learning_rate * self.cfg.backbone_lr_scale}
+                )
             optimizer = build_optimizer(model, self.cfg, param_groups=groups)
         else:
             optimizer = build_optimizer(model, self.cfg)
@@ -796,7 +885,8 @@ class GeoTrainer:
                 raise RuntimeError(
                     f"Cannot resume from {ckpt_mgr.last_path}: it was written with the {saved_opt} optimizer "
                     f"but this run builds {type(optimizer).__name__}. Use the original optimizer to resume, "
-                    f"or resume=False (with checkpoint_path=<best.pth> to keep the weights).")
+                    f"or resume=False (with checkpoint_path=<best.pth> to keep the weights)."
+                )
             try:
                 optimizer.load_state_dict(resume_state["optimizer_state_dict"])
                 if scheduler is not None and resume_state.get("scheduler_state_dict"):
@@ -817,7 +907,11 @@ class GeoTrainer:
                     "restored from last.pth was laid out for %d epochs, so the rate will not follow a "
                     "fresh %d-epoch curve. To train longer, start a new run with "
                     "checkpoint_path=<best.pth> instead.",
-                    self.cfg.max_epochs, saved_max, saved_max, self.cfg.max_epochs)
+                    self.cfg.max_epochs,
+                    saved_max,
+                    saved_max,
+                    self.cfg.max_epochs,
+                )
             es_state = resume_state.get("early_stopping", {})
             early_stopping.best = es_state.get("best")
             early_stopping.counter = int(es_state.get("counter", 0))
@@ -826,8 +920,13 @@ class GeoTrainer:
 
         t_start = time.time()
 
-        logger.info("Starting training: %d epochs | device=%s | precision=%s | strategy=%s",
-                    self.cfg.max_epochs, device, self.cfg.precision, self.cfg.strategy)
+        logger.info(
+            "Starting training: %d epochs | device=%s | precision=%s | strategy=%s",
+            self.cfg.max_epochs,
+            device,
+            self.cfg.precision,
+            self.cfg.strategy,
+        )
 
         epoch = start_epoch
         for epoch in range(start_epoch + 1, self.cfg.max_epochs + 1):
@@ -837,8 +936,11 @@ class GeoTrainer:
                     if _is_backbone(n):
                         prm.requires_grad = True
                 freeze_now = False
-                logger.info("Epoch %d: backbone unfrozen (learning rate x%g).",
-                            epoch, self.cfg.backbone_lr_scale)
+                logger.info(
+                    "Epoch %d: backbone unfrozen (learning rate x%g).",
+                    epoch,
+                    self.cfg.backbone_lr_scale,
+                )
 
             # ── Train ───────────────────────────────────────────────
             model.train()
@@ -855,15 +957,19 @@ class GeoTrainer:
                         images_raw, targets_raw = batch
                         try:
                             images = [img.to(device, non_blocking=True) for img in images_raw]
-                            targets = [{k: v.to(device, non_blocking=True) for k, v in t.items()}
-                                       for t in targets_raw]
+                            targets = [
+                                {k: v.to(device, non_blocking=True) for k, v in t.items()}
+                                for t in targets_raw
+                            ]
                         except Exception as exc:
                             logger.warning(
                                 "Skipping detection batch %d — failed to move to "
                                 "device=%r: %s. Check that your dataset returns "
                                 "(image_tensor, {'boxes': ..., 'labels': ...}) pairs "
                                 "matching torchvision's real detection target format.",
-                                batch_idx, device, exc,
+                                batch_idx,
+                                device,
+                                exc,
                             )
                             continue
                         with autocast_ctx:
@@ -887,7 +993,9 @@ class GeoTrainer:
                                 "Skipping batch %d — failed to move to device=%r: %s. "
                                 "If this happens repeatedly, check your dataset/collate_fn "
                                 "for malformed samples (e.g. a missing 'mask'/'label' key).",
-                                batch_idx, device, exc,
+                                batch_idx,
+                                device,
+                                exc,
                             )
                             continue
 
@@ -903,7 +1011,9 @@ class GeoTrainer:
                         loss.backward()
 
                     # Gradient accumulation (the last, partial window is flushed too)
-                    if (batch_idx + 1) % accum == 0 or (n_loader is not None and batch_idx + 1 == n_loader):
+                    if (batch_idx + 1) % accum == 0 or (
+                        n_loader is not None and batch_idx + 1 == n_loader
+                    ):
                         if self.cfg.grad_clip > 0:
                             if scaler is not None:
                                 scaler.unscale_(optimizer)
@@ -960,6 +1070,7 @@ class GeoTrainer:
                     # forward call), at the real cost of double compute
                     # during detection validation specifically.
                     from pygeovision.training.metrics import DetectionMetrics
+
                     det_metrics = DetectionMetrics(num_classes=self.cfg.num_classes)
                     model.train()
                     with torch.no_grad():
@@ -967,9 +1078,14 @@ class GeoTrainer:
                             images_raw, targets_raw = batch
                             try:
                                 images = [img.to(device) for img in images_raw]
-                                targets = [{k: v.to(device) for k, v in t.items()} for t in targets_raw]
+                                targets = [
+                                    {k: v.to(device) for k, v in t.items()} for t in targets_raw
+                                ]
                             except Exception as exc:
-                                logger.warning("Skipping detection val batch — failed to move to device: %s", exc)
+                                logger.warning(
+                                    "Skipping detection val batch — failed to move to device: %s",
+                                    exc,
+                                )
                                 continue
                             with autocast_ctx:
                                 loss_dict = model(images, targets)
@@ -987,7 +1103,8 @@ class GeoTrainer:
                             except Exception as exc:
                                 logger.warning(
                                     "Skipping real mAP update for a detection val batch "
-                                    "(val_loss is still accumulated correctly): %s", exc,
+                                    "(val_loss is still accumulated correctly): %s",
+                                    exc,
                                 )
                             model.train()
                     model.eval()  # restore for any caller inspecting the model after fit()
@@ -1015,7 +1132,8 @@ class GeoTrainer:
                                 logger.warning(
                                     "Validation metrics update failed for a batch "
                                     "(val_loss is still accumulated correctly, but "
-                                    "other metrics may be incomplete): %s", exc,
+                                    "other metrics may be incomplete): %s",
+                                    exc,
                                 )
 
                 computed = metrics_obj.compute() if metrics_obj is not None else {}
@@ -1043,11 +1161,15 @@ class GeoTrainer:
                         val_metrics["_map_note"] = det_computed["note"]
                 # A metric name that validation does not produce would read as 0.0 forever and
                 # end the run after `patience` epochs for no visible reason: fail loudly instead.
-                for _what, _name in (("early_stopping_metric", es_metric), ("checkpoint_metric", ckpt_metric)):
+                for _what, _name in (
+                    ("early_stopping_metric", es_metric),
+                    ("checkpoint_metric", ckpt_metric),
+                ):
                     if _name not in val_metrics:
                         raise ValueError(
                             f"{_what}={_name!r} is not produced by validation. Available: "
-                            f"{sorted(k for k, v in val_metrics.items() if isinstance(v, (int, float)))}")
+                            f"{sorted(k for k, v in val_metrics.items() if isinstance(v, (int, float)))}"
+                        )
                 history["val_loss"].append(val_metrics["val_loss"])
                 history["val_iou"].append(val_metrics["val_iou"])
                 history.setdefault("lr", []).append(float(val_metrics["lr"]))
@@ -1068,20 +1190,29 @@ class GeoTrainer:
                 _shown = "val_map50" if self.cfg.task == "detection" else "val_iou"
                 logger.info(
                     "Epoch %d/%d | loss=%.4f | val_loss=%.4f | %s=%.4f | lr=%.2e",
-                    epoch, self.cfg.max_epochs,
-                    avg_train_loss, val_metrics["val_loss"],
-                    _shown, val_metrics.get(_shown, 0.0), optimizer.param_groups[0]["lr"],
+                    epoch,
+                    self.cfg.max_epochs,
+                    avg_train_loss,
+                    val_metrics["val_loss"],
+                    _shown,
+                    val_metrics.get(_shown, 0.0),
+                    optimizer.param_groups[0]["lr"],
                 )
 
                 # Early stopping bookkeeping (the break happens after this epoch's state is saved)
                 early_stopping.update(val_metrics)
             else:
                 val_metrics = {}
-                logger.info("Epoch %d/%d | train_loss=%.4f", epoch, self.cfg.max_epochs, avg_train_loss)
+                logger.info(
+                    "Epoch %d/%d | train_loss=%.4f", epoch, self.cfg.max_epochs, avg_train_loss
+                )
 
             # Epoch-based schedules (cosine, step) advance once per epoch.
-            if (scheduler is not None and not per_batch_scheduler
-                    and not isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)):
+            if (
+                scheduler is not None
+                and not per_batch_scheduler
+                and not isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+            ):
                 scheduler.step()
 
             # Best-k weights (needs validation metrics)
@@ -1092,25 +1223,35 @@ class GeoTrainer:
 
             # Full state of the finished epoch, for resume=True (written atomically)
             if self.cfg.save_last:
-                ckpt_mgr.save_state({
-                    "epoch": epoch,
-                    "model_state_dict": _unwrap(model).state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "optimizer_class": type(optimizer).__name__,
-                    "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
-                    "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
-                    "history": history,
-                    "global_step": global_step,
-                    "early_stopping": {"best": early_stopping.best, "counter": early_stopping.counter,
-                                       "should_stop": early_stopping.should_stop},
-                    "checkpoints": ckpt_mgr.state(),
-                    "metrics": val_metrics,
-                    "max_epochs": self.cfg.max_epochs,
-                })
+                ckpt_mgr.save_state(
+                    {
+                        "epoch": epoch,
+                        "model_state_dict": _unwrap(model).state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "optimizer_class": type(optimizer).__name__,
+                        "scheduler_state_dict": (
+                            scheduler.state_dict() if scheduler is not None else None
+                        ),
+                        "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
+                        "history": history,
+                        "global_step": global_step,
+                        "early_stopping": {
+                            "best": early_stopping.best,
+                            "counter": early_stopping.counter,
+                            "should_stop": early_stopping.should_stop,
+                        },
+                        "checkpoints": ckpt_mgr.state(),
+                        "metrics": val_metrics,
+                        "max_epochs": self.cfg.max_epochs,
+                    }
+                )
 
             if val_loader is not None and early_stopping.should_stop:
-                logger.info("Early stopping at epoch %d (patience=%d)",
-                            epoch, self.cfg.early_stopping_patience)
+                logger.info(
+                    "Early stopping at epoch %d (patience=%d)",
+                    epoch,
+                    self.cfg.early_stopping_patience,
+                )
                 break
 
         duration = time.time() - t_start
@@ -1149,24 +1290,31 @@ class GeoTrainer:
         # real mAP metric.
         if es_metric == "val_map50":
             result["best_val_map50"] = early_stopping.best
-        logger.info("Training complete: %.1f min | best=%s=%.4f",
-                    duration / 60,
-                    es_metric,
-                    early_stopping.best or 0.0)
+        logger.info(
+            "Training complete: %.1f min | best=%s=%.4f",
+            duration / 60,
+            es_metric,
+            early_stopping.best or 0.0,
+        )
         return result
 
     def _export_onnx(self, model: Any, device: Any) -> Path | None:
         try:
             import torch
+
             out_path = self.output_dir / "model.onnx"
             from pygeovision._onnx import export_onnx
+
             model = _unwrap(model)
             model.eval()
             dummy = torch.randn(1, self.cfg.in_channels, 512, 512).to(device)
             export_onnx(
-                model, dummy, out_path,
+                model,
+                dummy,
+                out_path,
                 opset_version=self.cfg.onnx_opset,
-                input_names=["input"], output_names=["output"],
+                input_names=["input"],
+                output_names=["output"],
                 dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
             )
             logger.info("ONNX model exported → %s", out_path)
@@ -1178,6 +1326,7 @@ class GeoTrainer:
     def _export_torchscript(self, model: Any, device: Any) -> Path | None:
         try:
             import torch
+
             out_path = self.output_dir / "model_scripted.pt"
             model.eval()
             scripted = torch.jit.script(model)

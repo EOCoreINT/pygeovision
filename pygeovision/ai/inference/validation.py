@@ -13,9 +13,9 @@ Example:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import json
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -160,6 +160,7 @@ class PredictionValidator:
                 # before this fix). dst_crs must match dst_transform's
                 # own CRS, i.e. the prediction's.
                 from rasterio.warp import reproject
+
                 gt_resampled = np.zeros(pred.shape, dtype=np.int64)
                 with rasterio.open(ground_truth_path) as gt_src:
                     reproject(
@@ -181,7 +182,7 @@ class PredictionValidator:
             output_error_map = Path(output_error_map)
             output_error_map.parent.mkdir(parents=True, exist_ok=True)
             pred_profile.update(dtype="uint8", count=1, compress="lzw")
-            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
                 pred_profile.pop(_k, None)
             with rasterio.open(output_error_map, "w", **pred_profile) as dst:
                 dst.write(error_map[np.newaxis, ...])

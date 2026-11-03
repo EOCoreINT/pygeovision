@@ -17,6 +17,7 @@ output convention (a flat, real 1-D vector per image, ready for
 `cosine_similarity`/`nearest` below) and the real, honest failure
 behavior every underlying method already has.
 """
+
 from __future__ import annotations
 
 import logging
@@ -69,25 +70,38 @@ class GeoEmbeddings:
         correctly embeds both 9-band Sentinel-2 and 3-band NAIP input).
         """
         from pygeovision.models.foundation.dofa import extract_dofa_embedding, load_dofa_hf
-        if self._dofa_model is None or getattr(self._dofa_model, "_pygeovision_model_name", None) != model_name:
-            self._dofa_model = load_dofa_hf(model_name, device=self.device, allow_random_init=allow_random_init)
-            self._dofa_model._pygeovision_model_name = model_name
-        return extract_dofa_embedding(self._dofa_model, image, sensor=sensor, wavelengths=wavelengths)
 
-    def prithvi(self, image_path: str, source: str = "hls", variant: str = "prithvi_eo_2_0") -> np.ndarray:
+        if (
+            self._dofa_model is None
+            or getattr(self._dofa_model, "_pygeovision_model_name", None) != model_name
+        ):
+            self._dofa_model = load_dofa_hf(
+                model_name, device=self.device, allow_random_init=allow_random_init
+            )
+            self._dofa_model._pygeovision_model_name = model_name
+        return extract_dofa_embedding(
+            self._dofa_model, image, sensor=sensor, wavelengths=wavelengths
+        )
+
+    def prithvi(
+        self, image_path: str, source: str = "hls", variant: str = "prithvi_eo_2_0"
+    ) -> np.ndarray:
         """Real Prithvi CLS-token embedding — needs a real HLS-format
         GeoTIFF file path (not an in-memory array), per
         `Prithvi.extract_features()`'s real, documented contract.
         """
         from pygeovision.models.foundation.prithvi import Prithvi
+
         if self._prithvi is None or self._prithvi.variant != variant:
             self._prithvi = Prithvi(variant=variant, device=self.device).load()
         return self._prithvi.extract_features(image_path, source=source).squeeze()
 
     def dinov3(self, image: str | Any, model_name: str = "dinov3_vitl16_sat") -> np.ndarray:
         """Global DINOv3 embedding ``(D,)`` from the real ``facebook/dinov3-*`` checkpoint (gated: accept the
-        licence and authenticate; failure raises ``ModelLoadError``). Accepts a raster path or an array."""
+        licence and authenticate; failure raises ``ModelLoadError``). Accepts a raster path or an array.
+        """
         from pygeovision.models.foundation.dinov3 import DINOv3Backbone
+
         if self._dinov3 is None or getattr(self._dinov3, "model_name", None) != model_name:
             self._dinov3 = DINOv3Backbone(model_name=model_name, device=self.device)
         return self._dinov3.extract_embeddings(image).squeeze()
@@ -103,6 +117,7 @@ class GeoEmbeddings:
         on satellite imagery.
         """
         from pygeovision.models.vlm.clip import CLIPGeo
+
         if self._clip is None or self._clip.model_name != model:
             self._clip = CLIPGeo(model=model, device=self.device)
         return self._clip.embed_image(image_path)
@@ -118,6 +133,7 @@ class GeoEmbeddings:
         need the real, per-pixel stack instead).
         """
         from pygeovision.models.foundation.tessera import TesseraGeo
+
         if self._tessera is None:
             self._tessera = TesseraGeo()
         result = self._tessera.embeddings_for_bbox(bbox, year=year)
@@ -150,7 +166,9 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
-def nearest(query: np.ndarray, candidates: dict[str, np.ndarray], top_k: int = 5) -> list[tuple[str, float]]:
+def nearest(
+    query: np.ndarray, candidates: dict[str, np.ndarray], top_k: int = 5
+) -> list[tuple[str, float]]:
     """Real nearest-neighbor search by cosine similarity over a real,
     named set of candidate embeddings (e.g. `{"scene_1.tif": emb1, ...}`).
 

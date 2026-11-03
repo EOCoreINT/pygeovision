@@ -3,13 +3,14 @@
 Build locally with ``make -C docs html`` (English plus every translation, see ``tools/build_all.sh``).
 Set ``DOCS_SKIP_OTHER_LANGS=1`` for a fast English-only build while writing.
 """
+
 from __future__ import annotations
 
 import importlib.metadata
 import os
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -21,7 +22,9 @@ copyright = "PyGeoVision Contributors, MIT licence"  # noqa: A001 - Sphinx's own
 try:
     release = importlib.metadata.version("pygeovision")
 except importlib.metadata.PackageNotFoundError:
-    release = re.search(r'"([^"]+)"', (ROOT / "pygeovision" / "_version.py").read_text(encoding="utf-8")).group(1)
+    release = re.search(
+        r'"([^"]+)"', (ROOT / "pygeovision" / "_version.py").read_text(encoding="utf-8")
+    ).group(1)
 version = ".".join(release.split(".")[:2])
 
 extensions = [
@@ -33,11 +36,26 @@ extensions = [
 
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 root_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "_generated_src", "README.md", "locale", "tools"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "_generated_src",
+    "README.md",
+    "locale",
+    "tools",
+]
 templates_path = ["_templates"]
 
 # --- Markdown (MyST) -----------------------------------------------------------------------------------------------
-myst_enable_extensions = ["colon_fence", "deflist", "fieldlist", "attrs_inline", "tasklist", "substitution"]
+myst_enable_extensions = [
+    "colon_fence",
+    "deflist",
+    "fieldlist",
+    "attrs_inline",
+    "tasklist",
+    "substitution",
+]
 myst_heading_anchors = 3
 myst_substitutions = {"version": release}
 suppress_warnings = ["myst.header"]
@@ -90,10 +108,35 @@ _MOVED = {
     "inference/engine": "inference/index",
 }
 # The generated Python API reference (one page per package) was removed; its old addresses lead to the Python guide.
-for _name in ("advanced", "benchmark", "builders-3d", "builders-change-detection", "builders-classification", "builders-detection",
-              "builders-foundation", "builders-segmentation", "builders-vlm", "client", "core", "data-access", "data-prepare",
-              "datasets", "deployment", "engine", "explainability", "inference", "labeling", "losses", "models", "monitoring",
-              "obia", "pipelines", "reporting", "training", "workflows"):
+for _name in (
+    "advanced",
+    "benchmark",
+    "builders-3d",
+    "builders-change-detection",
+    "builders-classification",
+    "builders-detection",
+    "builders-foundation",
+    "builders-segmentation",
+    "builders-vlm",
+    "client",
+    "core",
+    "data-access",
+    "data-prepare",
+    "datasets",
+    "deployment",
+    "engine",
+    "explainability",
+    "inference",
+    "labeling",
+    "losses",
+    "models",
+    "monitoring",
+    "obia",
+    "pipelines",
+    "reporting",
+    "training",
+    "workflows",
+):
     _MOVED[f"reference/api/{_name}"] = "guides/python"
 
 
@@ -113,19 +156,29 @@ locale_dirs = ["locale/"]
 gettext_compact = False
 gettext_uuid = False
 LANGUAGES = [
-    ("en", "English"), ("fr", "Français"), ("es", "Español"), ("pt", "Português"),
-    ("de", "Deutsch"), ("zh_CN", "简体中文"), ("ar", "العربية"),
+    ("en", "English"),
+    ("fr", "Français"),
+    ("es", "Español"),
+    ("pt", "Português"),
+    ("de", "Deutsch"),
+    ("zh_CN", "简体中文"),
+    ("ar", "العربية"),
 ]
-html_context = {"languages": LANGUAGES, "current_language": language,
-                "pgv_rtl": language in ("ar",), "pgv_partial": False,
-                "repo_url": "https://github.com/pygeovision/pygeovision",
-                "pypi_url": "https://pypi.org/project/pygeovision/"}
+html_context = {
+    "languages": LANGUAGES,
+    "current_language": language,
+    "pgv_rtl": language in ("ar",),
+    "pgv_partial": False,
+    "repo_url": "https://github.com/pygeovision/pygeovision",
+    "pypi_url": "https://pypi.org/project/pygeovision/",
+}
 
 
 def _load_chrome(lang: str) -> dict:
     """Navigation-bar strings from locale/<lang>/LC_MESSAGES/chrome.po (empty for English or when polib is missing)."""
     try:
         import polib
+
         po = polib.pofile(str(HERE / "locale" / lang / "LC_MESSAGES" / "chrome.po"))
         return {e.msgid: e.msgstr for e in po if e.msgstr}
     except Exception:  # noqa: BLE001 - a missing translation must never break the English build
@@ -149,7 +202,6 @@ def setup(app):  # noqa: D103
     # other language into <outdir>/<lang>/, so the language switcher works without custom CI.
     # DOCS_SUBBUILD is set for those inner builds so they do not recurse.
     def _all_langs(app, exc):
-        import shutil
         import subprocess
         import tempfile
         import time
@@ -170,11 +222,28 @@ def setup(app):  # noqa: D103
                 while pending and len(running) < jobs:
                     code = pending.pop(0)
                     env = dict(os.environ, DOCS_LANG=code, DOCS_SUBBUILD="1")
-                    logfile = open(Path(scratch) / (code + ".log"), "w+")  # noqa: SIM115 - closed when the build ends
+                    logfile = open(  # noqa: SIM115 - closed when the build ends
+                        Path(scratch) / (code + ".log"), "w+"
+                    )
                     proc = subprocess.Popen(
-                        [sys.executable, "-m", "sphinx", "-b", "html", "-q", "-d", str(Path(scratch) / ("doctrees-" + code)),
-                         "-D", "language=" + code, str(app.srcdir), str(out / code)],
-                        env=env, stdout=logfile, stderr=subprocess.STDOUT)
+                        [
+                            sys.executable,
+                            "-m",
+                            "sphinx",
+                            "-b",
+                            "html",
+                            "-q",
+                            "-d",
+                            str(Path(scratch) / ("doctrees-" + code)),
+                            "-D",
+                            "language=" + code,
+                            str(app.srcdir),
+                            str(out / code),
+                        ],
+                        env=env,
+                        stdout=logfile,
+                        stderr=subprocess.STDOUT,
+                    )
                     running[code] = (proc, logfile)
                 for code, (proc, logfile) in list(running.items()):
                     if proc.poll() is None:

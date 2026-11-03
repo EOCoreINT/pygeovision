@@ -1,4 +1,5 @@
 """Mask R-CNN (ResNet-50 FPN) for satellite instance segmentation -- torchvision backed."""
+
 from __future__ import annotations
 
 from typing import Any

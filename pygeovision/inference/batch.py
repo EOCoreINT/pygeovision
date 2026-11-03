@@ -1,11 +1,12 @@
 """Batch inference engine (B2, B6) — parallel multi-file inference."""
+
 from __future__ import annotations
 
-import logging
-import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class BatchInferenceEngine:
         num_classes: int = 2,
         blend_mode: str = "gaussian",
         half_precision: bool = True,
-        on_error: str = "skip",       # skip | abort | warn
+        on_error: str = "skip",  # skip | abort | warn
         normalise: bool = True,
     ) -> None:
         self.model = model
@@ -76,7 +77,7 @@ class BatchInferenceEngine:
         """
         from pygeovision.inference.tiled import TiledInference
 
-        input_dir  = Path(input_dir)
+        input_dir = Path(input_dir)
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -84,8 +85,12 @@ class BatchInferenceEngine:
         if not all_files:
             return {"success": False, "error": f"No files matching '{pattern}' in {input_dir}"}
 
-        logger.info("BatchInference: %d files | %d workers | device=%s",
-                    len(all_files), self.n_workers, self.device)
+        logger.info(
+            "BatchInference: %d files | %d workers | device=%s",
+            len(all_files),
+            self.n_workers,
+            self.device,
+        )
 
         # Build tasks
         tasks = []
@@ -96,10 +101,17 @@ class BatchInferenceEngine:
                 continue
             tasks.append((f, out_path))
 
-        logger.info("BatchInference: %d files to process (%d skipped)",
-                    len(tasks), len(all_files) - len(tasks))
+        logger.info(
+            "BatchInference: %d files to process (%d skipped)",
+            len(tasks),
+            len(all_files) - len(tasks),
+        )
 
-        results = {"succeeded": [], "failed": [], "skipped": len(all_files) - len(tasks)}
+        results: dict[str, Any] = {
+            "succeeded": [],
+            "failed": [],
+            "skipped": len(all_files) - len(tasks),
+        }
         t_start = time.time()
 
         def _process_one(args):
@@ -114,8 +126,9 @@ class BatchInferenceEngine:
                     device=self.device,
                     half_precision=self.half_precision,
                 )
-                r = inf.infer(in_path, out_path, band_selection=band_selection,
-                              normalise=self.normalise)
+                r = inf.infer(
+                    in_path, out_path, band_selection=band_selection, normalise=self.normalise
+                )
                 # TiledInference reports most problems (wrong band count, unreadable
                 # file, ...) in the result instead of raising, so check it.
                 if isinstance(r, dict) and r.get("success") is False:
@@ -141,14 +154,21 @@ class BatchInferenceEngine:
                     progress_callback(completed, len(tasks), str(in_path))
 
         total_time = time.time() - t_start
-        results.update({
-            "n_success": len(results["succeeded"]),
-            "n_failed": len(results["failed"]),
-            "total_time_s": round(total_time, 1),
-            "throughput_fps": round(len(results["succeeded"]) / max(total_time, 0.001), 2),
-        })
-        logger.info("BatchInference complete: %d/%d | %.1fs | %.2f fps",
-                    results["n_success"], len(tasks), total_time, results["throughput_fps"])
+        results.update(
+            {
+                "n_success": len(results["succeeded"]),
+                "n_failed": len(results["failed"]),
+                "total_time_s": round(total_time, 1),
+                "throughput_fps": round(len(results["succeeded"]) / max(total_time, 0.001), 2),
+            }
+        )
+        logger.info(
+            "BatchInference complete: %d/%d | %.1fs | %.2f fps",
+            results["n_success"],
+            len(tasks),
+            total_time,
+            results["throughput_fps"],
+        )
         return results
 
     def run_multi_gpu(
@@ -167,6 +187,7 @@ class BatchInferenceEngine:
         """
         try:
             import torch
+
             n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
         except ImportError:
             n_gpus = 0
@@ -175,12 +196,18 @@ class BatchInferenceEngine:
 
         def _infer_files(files, device):
             from pygeovision.inference.tiled import TiledInference
-            results = {"succeeded": [], "failed": []}
+
+            results: dict[str, list[Any]] = {"succeeded": [], "failed": []}
             for f in files:
                 out = Path(output_dir) / Path(f).name
-                inf = TiledInference(self.model, device=device, chip_size=self.chip_size,
-                                     overlap=self.overlap, num_classes=self.num_classes,
-                                     half_precision=self.half_precision)
+                inf = TiledInference(
+                    self.model,
+                    device=device,
+                    chip_size=self.chip_size,
+                    overlap=self.overlap,
+                    num_classes=self.num_classes,
+                    half_precision=self.half_precision,
+                )
                 r = inf.infer(f, str(out), normalise=self.normalise)
                 (results["succeeded"] if r.get("success") else results["failed"]).append(f)
             return results
@@ -189,10 +216,13 @@ class BatchInferenceEngine:
             return _infer_files(list(input_files), self.device)
 
         gpu_ids = gpu_ids or list(range(n_gpus))
-        splits = [list(input_files)[i::len(gpu_ids)] for i in range(len(gpu_ids))]
+        splits = [list(input_files)[i :: len(gpu_ids)] for i in range(len(gpu_ids))]
         all_results: dict[str, Any] = {"succeeded": [], "failed": []}
         with ThreadPoolExecutor(max_workers=len(gpu_ids)) as pool:
-            futures = {pool.submit(_infer_files, splits[i], f"cuda:{gpu_ids[i]}"): i for i in range(len(gpu_ids))}
+            futures = {
+                pool.submit(_infer_files, splits[i], f"cuda:{gpu_ids[i]}"): i
+                for i in range(len(gpu_ids))
+            }
             for fut in as_completed(futures):
                 r = fut.result()
                 all_results["succeeded"].extend(r["succeeded"])

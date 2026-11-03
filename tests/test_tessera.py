@@ -11,17 +11,18 @@ encoder locally — this wraps the real `geotessera` library (confirmed via
 direct introspection of its actual API: fetch_mosaic_for_region returns
 (H, W, 128), not (128, H, W) as one might assume), not a fake stand-in.
 """
-import pytest
 
 import numpy as np
+import pytest
 
 geotessera = pytest.importorskip("geotessera", reason="geotessera not installed")
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
 
 
 def _mock_tessera(monkeypatch=None):
-    from pygeovision.models.foundation.tessera import TesseraGeo
     from unittest.mock import MagicMock
+
+    from pygeovision.models.foundation.tessera import TesseraGeo
 
     tessera = TesseraGeo.__new__(TesseraGeo)
     tessera.dataset_version = "v1"
@@ -37,11 +38,13 @@ class TestRegistrySpecExists:
 
     def test_tessera_spec_exists_in_registry(self):
         from pygeovision.models.registry import _REGISTRY
+
         assert "tessera" in _REGISTRY
 
     def test_get_model_returns_real_tesserageo(self):
-        from pygeovision.models.registry import get_model
         from pygeovision.models.foundation.tessera import TesseraGeo
+        from pygeovision.models.registry import get_model
+
         model = get_model("tessera")
         assert isinstance(model, TesseraGeo)
 
@@ -54,15 +57,22 @@ class TestTesseraGeoEmbeddingsForBbox:
 
     def test_correct_shape_and_channel_ordering(self, tmp_path):
         from rasterio.transform import from_bounds
+
         tessera = _mock_tessera()
 
         fake_mosaic = np.random.randn(20, 24, 128).astype(np.float32)  # (H, W, C)
         fake_transform = from_bounds(-0.25, 5.52, -0.20, 5.60, 24, 20)
-        tessera._client.fetch_mosaic_for_region.return_value = (fake_mosaic, fake_transform, "EPSG:4326")
+        tessera._client.fetch_mosaic_for_region.return_value = (
+            fake_mosaic,
+            fake_transform,
+            "EPSG:4326",
+        )
 
         out_path = tmp_path / "tessera.tif"
         result = tessera.embeddings_for_bbox(
-            (-0.25, 5.52, -0.20, 5.60), year=2024, output_path=str(out_path),
+            (-0.25, 5.52, -0.20, 5.60),
+            year=2024,
+            output_path=str(out_path),
         )
         assert result["success"] is True
         assert result["shape"] == (128, 20, 24)  # (C, H, W) — correctly transposed
@@ -75,10 +85,15 @@ class TestTesseraGeoEmbeddingsForBbox:
 
     def test_geotiff_tags_record_provenance(self, tmp_path):
         from rasterio.transform import from_bounds
+
         tessera = _mock_tessera()
         fake_mosaic = np.random.randn(10, 10, 128).astype(np.float32)
         fake_transform = from_bounds(0, 0, 100, 100, 10, 10)
-        tessera._client.fetch_mosaic_for_region.return_value = (fake_mosaic, fake_transform, "EPSG:4326")
+        tessera._client.fetch_mosaic_for_region.return_value = (
+            fake_mosaic,
+            fake_transform,
+            "EPSG:4326",
+        )
 
         out_path = tmp_path / "tessera.tif"
         tessera.embeddings_for_bbox((0, 0, 1, 1), year=2023, output_path=str(out_path))
@@ -99,7 +114,9 @@ class TestTesseraGeoEmbeddingsForBbox:
 class TestTesseraGeoEmbeddingsAtPoints:
     def test_returns_real_point_embeddings(self):
         tessera = _mock_tessera()
-        tessera._client.sample_embeddings_at_points.return_value = np.random.randn(3, 128).astype(np.float32)
+        tessera._client.sample_embeddings_at_points.return_value = np.random.randn(3, 128).astype(
+            np.float32
+        )
 
         points = [(-0.22, 5.55), (-0.21, 5.56), (-0.20, 5.57)]
         emb = tessera.embeddings_at_points(points, year=2024)
@@ -115,11 +132,16 @@ class TestTesseraGeoPCAVisualisation:
     def test_produces_real_uint8_rgb_geotiff(self, tmp_path):
         pytest.importorskip("sklearn", reason="scikit-learn not installed")
         from rasterio.transform import from_bounds
+
         tessera = _mock_tessera()
 
         fake_mosaic = np.random.randn(15, 15, 128).astype(np.float32)
         fake_transform = from_bounds(0, 0, 150, 150, 15, 15)
-        tessera._client.fetch_mosaic_for_region.return_value = (fake_mosaic, fake_transform, "EPSG:4326")
+        tessera._client.fetch_mosaic_for_region.return_value = (
+            fake_mosaic,
+            fake_transform,
+            "EPSG:4326",
+        )
 
         out_path = tmp_path / "pca.tif"
         result = tessera.pca_visualisation((0, 0, 1, 1), str(out_path), year=2024, n_components=3)

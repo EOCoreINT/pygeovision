@@ -1,9 +1,11 @@
 """Training callbacks — EarlyStopping, ModelCheckpoint, RichProgress, LRMonitor."""
+
 from __future__ import annotations
 
+import contextlib
 import logging
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -11,11 +13,21 @@ logger = logging.getLogger(__name__)
 
 class Callback:
     """Base callback class."""
-    def on_train_start(self, trainer: Any) -> None: pass
-    def on_epoch_start(self, trainer: Any, epoch: int) -> None: pass
-    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict) -> None: pass
-    def on_batch_end(self, trainer: Any, batch: int, loss: float) -> None: pass
-    def on_train_end(self, trainer: Any) -> None: pass
+
+    def on_train_start(self, trainer: Any) -> None:
+        pass
+
+    def on_epoch_start(self, trainer: Any, epoch: int) -> None:
+        pass
+
+    def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict) -> None:
+        pass
+
+    def on_batch_end(self, trainer: Any, batch: int, loss: float) -> None:
+        pass
+
+    def on_train_end(self, trainer: Any) -> None:
+        pass
 
 
 class EarlyStopping(Callback):
@@ -26,9 +38,14 @@ class EarlyStopping(Callback):
         cb = EarlyStopping(monitor="val_iou", patience=10, mode="max", min_delta=0.001)
     """
 
-    def __init__(self, monitor: str = "val_iou", patience: int = 10,
-                 mode: str = "max", min_delta: float = 0.0,
-                 restore_best_weights: bool = True) -> None:
+    def __init__(
+        self,
+        monitor: str = "val_iou",
+        patience: int = 10,
+        mode: str = "max",
+        min_delta: float = 0.0,
+        restore_best_weights: bool = True,
+    ) -> None:
         self.monitor = monitor
         self.patience = patience
         self.mode = mode
@@ -56,20 +73,26 @@ class EarlyStopping(Callback):
             if self.restore_best_weights and hasattr(trainer, "model"):
                 try:
                     import copy
+
                     self.best_weights = copy.deepcopy(trainer.model.state_dict())
                 except Exception as exc:
                     logger.warning(
                         "EarlyStopping: failed to snapshot best weights (%s) — "
                         "restore_best_weights=True will NOT actually restore "
-                        "the best checkpoint at the end of training.", exc,
+                        "the best checkpoint at the end of training.",
+                        exc,
                     )
         else:
             self.wait += 1
             if self.wait >= self.patience:
                 self.stopped_epoch = epoch
                 self.stop_training = True
-                logger.info("EarlyStopping triggered at epoch %d (best %s=%.4f)",
-                            epoch, self.monitor, self.best_value)
+                logger.info(
+                    "EarlyStopping triggered at epoch %d (best %s=%.4f)",
+                    epoch,
+                    self.monitor,
+                    self.best_value,
+                )
                 if self.restore_best_weights and self.best_weights and hasattr(trainer, "model"):
                     trainer.model.load_state_dict(self.best_weights)
                     logger.info("Best weights restored")
@@ -83,9 +106,15 @@ class ModelCheckpoint(Callback):
         cb = ModelCheckpoint("./checkpoints/", monitor="val_iou", mode="max", top_k=3)
     """
 
-    def __init__(self, dirpath: str = "./checkpoints/", filename: str = "epoch{epoch:03d}",
-                 monitor: str = "val_iou", mode: str = "max", save_top_k: int = 3,
-                 save_last: bool = True) -> None:
+    def __init__(
+        self,
+        dirpath: str = "./checkpoints/",
+        filename: str = "epoch{epoch:03d}",
+        monitor: str = "val_iou",
+        mode: str = "max",
+        save_top_k: int = 3,
+        save_last: bool = True,
+    ) -> None:
         self.dirpath = Path(dirpath)
         self.filename = filename
         self.monitor = monitor
@@ -98,6 +127,7 @@ class ModelCheckpoint(Callback):
 
     def on_epoch_end(self, trainer: Any, epoch: int, metrics: dict) -> None:
         import torch
+
         value = metrics.get(self.monitor, 0.0)
         ckpt_name = self.filename.format(epoch=epoch, **metrics) + ".pth"
         ckpt_path = self.dirpath / ckpt_name
@@ -117,18 +147,19 @@ class ModelCheckpoint(Callback):
             # delete this very file when the epoch scored worse than the k best so far.
             if self.save_last:
                 import shutil
+
                 shutil.copy(str(ckpt_path), str(self.dirpath / "last.pth"))
 
             # Track top-k
             self._best_k.append((value, str(ckpt_path)))
-            reverse = (self.mode == "max")
+            reverse = self.mode == "max"
             self._best_k.sort(key=lambda x: x[0], reverse=reverse)
 
             # Remove excess checkpoints
             while len(self._best_k) > self.save_top_k:
                 _, old_path = self._best_k.pop()
-                try: Path(old_path).unlink()
-                except Exception: pass
+                with contextlib.suppress(Exception):
+                    Path(old_path).unlink()
 
             self.best_model_path = self._best_k[0][1]
 
@@ -152,7 +183,7 @@ class ProgressBar(Callback):
 
     def __init__(self, total_epochs: int) -> None:
         self.total = total_epochs
-        self.t_start = None
+        self.t_start: float | None = None
 
     def on_train_start(self, trainer: Any) -> None:
         self.t_start = time.time()
@@ -166,9 +197,12 @@ class ProgressBar(Callback):
         bar_len = 30
         filled = int(bar_len * epoch / self.total)
         bar = "█" * filled + "░" * (bar_len - filled)
-        metric_str = " | ".join(f"{k}={v:.4f}" for k, v in metrics.items()
-                                 if isinstance(v, (int, float)))
-        print(f"\r  [{bar}] {epoch}/{self.total} | {metric_str} | ETA {eta:.0f}s", end="", flush=True)
+        metric_str = " | ".join(
+            f"{k}={v:.4f}" for k, v in metrics.items() if isinstance(v, (int, float))
+        )
+        print(
+            f"\r  [{bar}] {epoch}/{self.total} | {metric_str} | ETA {eta:.0f}s", end="", flush=True
+        )
         if epoch == self.total:
             print()
 

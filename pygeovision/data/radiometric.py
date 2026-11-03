@@ -31,12 +31,13 @@ reflectance as DN = 10000 * reflectance + 1000. Reflectance is therefore
 which is large for dark targets (water) and flattens every normalised
 difference index.
 """
+
 from __future__ import annotations
 
-import logging
-import re
 from datetime import date
+import logging
 from pathlib import Path
+import re
 
 from pygeovision.data._profile import writable_profile
 
@@ -52,11 +53,11 @@ logger = logging.getLogger(__name__)
 # Planetary Computer uses "B02"/"B03"/"B04"/"B08"; some STAC catalogs
 # use "blue"/"green"/"red"/"nir"). Check both forms.
 S2_BAND_ALIASES = {
-    "blue":  ("B02", "blue"),
+    "blue": ("B02", "blue"),
     "green": ("B03", "green"),
-    "red":   ("B04", "red"),
+    "red": ("B04", "red"),
     "rededge1": ("B05", "rededge1", "re1"),  # 705nm -- Sentinel-2 only, no Landsat equivalent
-    "nir":   ("B08", "nir", "nir08"),
+    "nir": ("B08", "nir", "nir08"),
     "swir1": ("B11", "swir1", "swir16"),
     "swir2": ("B12", "swir2", "swir22"),
 }
@@ -68,13 +69,23 @@ S2_BAND_ALIASES = {
 # silently select the wrong physical band for one of the two mission
 # families. Confirmed against real downloaded Landsat 7 and Landsat 8
 # filenames from production.
-LANDSAT_ETM_TM_ALIASES = {   # Landsat 4/5 TM, Landsat 7 ETM+
-    "blue": ("SR_B1",), "green": ("SR_B2",), "red": ("SR_B3",), "nir": ("SR_B4",),
-    "swir1": ("SR_B5",), "swir2": ("SR_B7",), "thermal": ("ST_B6",),
+LANDSAT_ETM_TM_ALIASES: dict[str, tuple[str, ...]] = {  # Landsat 4/5 TM, Landsat 7 ETM+
+    "blue": ("SR_B1",),
+    "green": ("SR_B2",),
+    "red": ("SR_B3",),
+    "nir": ("SR_B4",),
+    "swir1": ("SR_B5",),
+    "swir2": ("SR_B7",),
+    "thermal": ("ST_B6",),
 }
-LANDSAT_OLI_ALIASES = {      # Landsat 8/9 OLI/TIRS
-    "blue": ("SR_B2",), "green": ("SR_B3",), "red": ("SR_B4",), "nir": ("SR_B5",),
-    "swir1": ("SR_B6",), "swir2": ("SR_B7",), "thermal": ("ST_B10",),
+LANDSAT_OLI_ALIASES: dict[str, tuple[str, ...]] = {  # Landsat 8/9 OLI/TIRS
+    "blue": ("SR_B2",),
+    "green": ("SR_B3",),
+    "red": ("SR_B4",),
+    "nir": ("SR_B5",),
+    "swir1": ("SR_B6",),
+    "swir2": ("SR_B7",),
+    "thermal": ("ST_B10",),
 }
 
 # Real Landsat Collection 2 Level-2 Surface Temperature scale/offset
@@ -110,7 +121,9 @@ def identify_sensor(scene_id: str) -> tuple[bool, bool]:
     (False, False) as "unidentified — do not guess a scale/offset".
     """
     is_landsat = landsat_mission_aliases(scene_id) is not None
-    is_sentinel2 = (not is_landsat) and bool(scene_id) and scene_id[:3].upper() in ("S2A", "S2B", "S2C")
+    is_sentinel2 = (
+        (not is_landsat) and bool(scene_id) and scene_id[:3].upper() in ("S2A", "S2B", "S2C")
+    )
     return is_landsat, is_sentinel2
 
 
@@ -193,6 +206,7 @@ def dn_to_reflectance(dn, scene_id: str, *, is_landsat: bool):
     out = np.clip(out, 0.0, 1.0)
     out[:, fill] = np.nan
     return out
+
 
 # Real Landsat Collection 2 QA_PIXEL bit flags (USGS Landsat Collection
 # 2 Level-2 QA band specification). Bit 0 = Fill, 1 = Dilated Cloud,
@@ -283,23 +297,28 @@ def stack_and_prepare_bands(
                     # shape-mismatch crash or misaligned stack.
                     dst_arr = np.zeros(ref_data.shape, dtype=ref_data.dtype)
                     reproject(
-                        source=rasterio.band(src, 1), destination=dst_arr,
-                        src_transform=src.transform, src_crs=src.crs,
-                        dst_transform=ref.transform, dst_crs=ref.crs,
+                        source=rasterio.band(src, 1),
+                        destination=dst_arr,
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        dst_transform=ref.transform,
+                        dst_crs=ref.crs,
                         resampling=Resampling.bilinear,
                     )
                     stacked[i] = dst_arr
 
     # Where the scene really holds data (DN 0 / nodata is outside the swath or the tile), recorded before any
     # cloud masking so that "no imagery here" can be told from "cloud here". Written next to the stack.
-    footprint = (stacked != 0)
+    footprint = stacked != 0
     if np.issubdtype(stacked.dtype, np.floating):
         footprint &= np.isfinite(stacked)
     nodata_value = ref_profile.get("nodata")
     if nodata_value is not None and nodata_value == nodata_value and nodata_value != 0:
-        footprint &= (stacked != nodata_value)
+        footprint &= stacked != nodata_value
     footprint = footprint.any(axis=0)
-    footprint_profile = writable_profile(ref_profile, count=1, dtype="uint8", nodata=None, compress="lzw")
+    footprint_profile = writable_profile(
+        ref_profile, count=1, dtype="uint8", nodata=None, compress="lzw"
+    )
 
     # ── Radiometric scaling: raw DN -> real physical reflectance ──────
     if apply_scale:
@@ -329,9 +348,12 @@ def stack_and_prepare_bands(
                 else:
                     qa_data = np.zeros(ref_data.shape, dtype=qa_src.dtypes[0])
                     reproject(
-                        source=rasterio.band(qa_src, 1), destination=qa_data,
-                        src_transform=qa_src.transform, src_crs=qa_src.crs,
-                        dst_transform=ref.transform, dst_crs=ref.crs,
+                        source=rasterio.band(qa_src, 1),
+                        destination=qa_data,
+                        src_transform=qa_src.transform,
+                        src_crs=qa_src.crs,
+                        dst_transform=ref.transform,
+                        dst_crs=ref.crs,
                         resampling=Resampling.nearest,  # categorical data -- never interpolate
                     )
             if is_landsat:
@@ -343,23 +365,30 @@ def stack_and_prepare_bands(
             logger.info(
                 "stack_and_prepare_bands: masked %d cloud/shadow pixel(s) "
                 "(%.1f%% of scene) using %s",
-                int(cloud_mask.sum()), 100.0 * cloud_mask.mean(), qa_key,
+                int(cloud_mask.sum()),
+                100.0 * cloud_mask.mean(),
+                qa_key,
             )
         else:
             logger.warning(
                 "stack_and_prepare_bands: no %s band available for scene %r "
                 "— cloud masking skipped, output may contain unmasked "
-                "clouds/shadows.", qa_key, scene_id,
+                "clouds/shadows.",
+                qa_key,
+                scene_id,
             )
     elif apply_cloud_mask:
         logger.warning(
             "stack_and_prepare_bands: scene %r is not identifiable as "
             "Landsat or Sentinel-2 — cloud masking skipped (don't know "
             "which QA band/scheme applies), output may contain unmasked "
-            "clouds/shadows.", scene_id,
+            "clouds/shadows.",
+            scene_id,
         )
 
-    ref_profile = writable_profile(ref_profile, count=len(selected), dtype=out_dtype, nodata=out_nodata)
+    ref_profile = writable_profile(
+        ref_profile, count=len(selected), dtype=out_dtype, nodata=out_nodata
+    )
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     footprint_path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -404,8 +433,8 @@ def crop_to_bbox(
     match. If bbox doesn't actually intersect the raster at all, raises
     a clear error rather than silently producing a degenerate crop.
     """
-    import rasterio
     import numpy as np
+    import rasterio
     from rasterio.warp import transform_bounds
 
     input_path = Path(input_path)
@@ -435,6 +464,7 @@ def crop_to_bbox(
         # Every pixel the box touches is kept, with its data (a masked crop blanked the edge row/column that the
         # box only partly covers, which showed up as a strip of missing data along the AOI border).
         from rasterio.windows import Window, from_bounds
+
         win = from_bounds(left, bottom, right, top, transform=src.transform)
         eps = 1e-6
         c0 = max(0, int(np.floor(win.col_off + eps)))
@@ -445,7 +475,10 @@ def crop_to_bbox(
         cropped = src.read(window=window)
         cropped_transform = src.window_transform(window)
         out_profile = writable_profile(
-            src.profile, height=cropped.shape[1], width=cropped.shape[2], transform=cropped_transform,
+            src.profile,
+            height=cropped.shape[1],
+            width=cropped.shape[2],
+            transform=cropped_transform,
         )
 
     with rasterio.open(output_path, "w", **out_profile) as dst:
@@ -459,10 +492,14 @@ def crop_to_bbox(
 
     logger.info(
         "crop_to_bbox: %s (%s) -> %s (%dx%d, cropped to requested bbox)",
-        input_path.name, tuple(round(v, 4) for v in raster_bounds),
-        output_path.name, cropped.shape[2], cropped.shape[1],
+        input_path.name,
+        tuple(round(v, 4) for v in raster_bounds),
+        output_path.name,
+        cropped.shape[2],
+        cropped.shape[1],
     )
     return output_path
+
 
 def real_pixel_area_ha(bounds, width: int, height: int, crs) -> float:
     """Real, geodesically-accurate per-pixel area in hectares.
@@ -495,6 +532,7 @@ def real_pixel_area_ha(bounds, width: int, height: int, crs) -> float:
         return (res_x * res_y) / 10000
 
     from pyproj import Geod
+
     geod = Geod(ellps="WGS84")
     lons = [bounds.left, bounds.right, bounds.right, bounds.left]
     lats = [bounds.bottom, bounds.bottom, bounds.top, bounds.top]

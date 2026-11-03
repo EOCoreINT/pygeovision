@@ -1,4 +1,5 @@
 """U-Net for geospatial segmentation (segmentation-models-pytorch backed)."""
+
 from __future__ import annotations
 
 import logging
@@ -43,7 +44,9 @@ def build_unet(
         logger.warning(
             "segmentation-models-pytorch is not installed: returning a plain U-Net; "
             "backbone=%r and pretrained=%r are IGNORED.  pip install "
-            "segmentation-models-pytorch for encoder-based U-Nets.", backbone, pretrained,
+            "segmentation-models-pytorch for encoder-based U-Nets.",
+            backbone,
+            pretrained,
         )
         return _build_simple_unet(in_channels, num_classes)
     return smp.Unet(
@@ -63,8 +66,12 @@ def _build_simple_unet(in_ch: int, n_classes: int) -> Any:
 
     def _block(ci, co, p=1):
         return nn.Sequential(
-            nn.Conv2d(ci, co, 3, padding=p), nn.BatchNorm2d(co), nn.ReLU(inplace=True),
-            nn.Conv2d(co, co, 3, padding=p), nn.BatchNorm2d(co), nn.ReLU(inplace=True),
+            nn.Conv2d(ci, co, 3, padding=p),
+            nn.BatchNorm2d(co),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(co, co, 3, padding=p),
+            nn.BatchNorm2d(co),
+            nn.ReLU(inplace=True),
         )
 
     class UNet(nn.Module):

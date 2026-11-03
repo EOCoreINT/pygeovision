@@ -117,7 +117,7 @@ Two co-registered images in, a change map out.
 
 Listed only:
 - `changestar-r18`: no implementation available; get_model() raises NotImplementedError (use changeformer, bit-r50 or dsamnet)
-- `changeformer-mit-b4`: registered for discovery; the published model is not implemented here and get_model() raises NotImplementedError (use changeformer-mit-b0, bit-r50 or dsamnet)
+- `changeformer-mit-b4`: the published backbone is not implemented; get_model() raises NotImplementedError (use changeformer-mit-b0, bit-r50 or dsamnet)
 
 ### Foundation models (13)
 
@@ -156,7 +156,7 @@ Models that connect images and text: captions, questions, text search.
 
 Listed only:
 - `chatearthnet`: no verified checkpoint or construction code here; get_model() raises NotImplementedError
-- `lisat-7b`: geospatial reasoning segmentation VLM (Quenum et al. 2025, arXiv:2505.02829); real, published SOTA model, but no verified build path here; get_model() raises NotImplementedError and explains what loading it would need
+- `lisat-7b`: geospatial reasoning segmentation VLM (Quenum et al. 2025, arXiv:2505.02829); real, published SOTA model, but no verified build path here -- see family=='lisat' dispatch
 
 ### 3-D and point clouds (6)
 

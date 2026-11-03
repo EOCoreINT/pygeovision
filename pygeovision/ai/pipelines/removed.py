@@ -10,6 +10,7 @@ Asking for one of these through ``get_pipeline`` / ``client.pipeline`` /
 nobody gets a silent "unknown pipeline". Each reason also says what would
 be needed to bring the pipeline back.
 """
+
 from __future__ import annotations
 
 _UNTRAINED = (

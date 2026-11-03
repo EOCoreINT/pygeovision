@@ -1,4 +1,5 @@
 """Uncertainty estimation via Monte Carlo Dropout (G6)."""
+
 from __future__ import annotations
 
 import logging
@@ -32,8 +33,7 @@ class UncertaintyEstimator:
         )
     """
 
-    def __init__(self, model: Any, n_passes: int = 20,
-                 device: str | None = None) -> None:
+    def __init__(self, model: Any, n_passes: int = 20, device: str | None = None) -> None:
         self.model = model
         self.n_passes = n_passes
         self.device = device or self._auto_device()
@@ -41,8 +41,11 @@ class UncertaintyEstimator:
     @staticmethod
     def _auto_device():
         try:
-            import torch; return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError: return "cpu"
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
 
     def _enable_dropout(self) -> int:
         """Put the model in eval mode, then switch every dropout layer back on.
@@ -52,6 +55,7 @@ class UncertaintyEstimator:
         dropout layers found.
         """
         import torch.nn as nn
+
         self.model.eval()
         n = 0
         for m in self.model.modules():
@@ -106,8 +110,10 @@ class UncertaintyEstimator:
         n_passes = self.n_passes
         warning = None
         if n_dropout == 0:
-            warning = ("model has no dropout layers, so every pass is identical: "
-                       "epistemic uncertainty is 0. Use a model trained with dropout.")
+            warning = (
+                "model has no dropout layers, so every pass is identical: "
+                "epistemic uncertainty is 0. Use a model trained with dropout."
+            )
             logger.warning(warning)
             n_passes = 1
 
@@ -130,7 +136,7 @@ class UncertaintyEstimator:
                         mn, mx = chip[b].min(), chip[b].max()
                         chip[b] = (chip[b] - mn) / (mx - mn + 1e-8)
                     padded = np.zeros((image.shape[0], chip_size, chip_size), np.float32)
-                    padded[:, :chip.shape[1], :chip.shape[2]] = chip
+                    padded[:, : chip.shape[1], : chip.shape[2]] = chip
                     chip_t = torch.tensor(padded).unsqueeze(0).to(self.device)
 
                     ah, aw = r2 - row, c2 - col
@@ -139,19 +145,29 @@ class UncertaintyEstimator:
                         for _ in range(n_passes):
                             out = self.model(chip_t)
                             if out.ndim != 4:
-                                return {"success": False, "error": (
-                                    "model output must be (B, classes, H, W) class scores; "
-                                    f"got shape {tuple(out.shape)}")}
+                                return {
+                                    "success": False,
+                                    "error": (
+                                        "model output must be (B, classes, H, W) class scores; "
+                                        f"got shape {tuple(out.shape)}"
+                                    ),
+                                }
                             p = torch.softmax(out, dim=1)[0, :, :ah, :aw].double().cpu().numpy()
                             ent = np.maximum(-np.sum(p * np.log(p + 1e-10), axis=0), 0.0)
                             if s1 is None:
-                                s1, s2, s_ent = p.copy(), p ** 2, ent
+                                s1, s2, s_ent = p.copy(), p**2, ent
                             else:
-                                s1 += p; s2 += p ** 2; s_ent += ent
+                                s1 += p
+                                s2 += p**2
+                                s_ent += ent
                     mean_p = s1 / n_passes
-                    entropy[row:r2, col:c2] = np.maximum(-np.sum(mean_p * np.log(mean_p + 1e-10), axis=0), 0.0)
+                    entropy[row:r2, col:c2] = np.maximum(
+                        -np.sum(mean_p * np.log(mean_p + 1e-10), axis=0), 0.0
+                    )
                     # variance across passes, averaged over classes
-                    epistemic[row:r2, col:c2] = np.maximum(s2 / n_passes - mean_p ** 2, 0).mean(axis=0)
+                    epistemic[row:r2, col:c2] = np.maximum(s2 / n_passes - mean_p**2, 0).mean(
+                        axis=0
+                    )
                     aleatoric[row:r2, col:c2] = s_ent / n_passes
                     label[row:r2, col:c2] = np.argmax(mean_p, axis=0)
         finally:
@@ -172,6 +188,7 @@ class UncertaintyEstimator:
 
         if output_path:
             from pathlib import Path
+
             op = Path(output_path)
             op.parent.mkdir(parents=True, exist_ok=True)
 
@@ -188,7 +205,7 @@ class UncertaintyEstimator:
 
             out_profile = profile.copy()
             out_profile.update(count=len(bands), dtype="float32", compress="lzw")
-            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
                 out_profile.pop(_k, None)
             with rasterio.open(str(op), "w", **out_profile) as dst:
                 dst.write(np.stack(bands))

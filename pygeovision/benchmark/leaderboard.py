@@ -1,4 +1,5 @@
 """Persistent benchmark leaderboard (Phase 4.4)."""
+
 from __future__ import annotations
 
 import json
@@ -31,13 +32,20 @@ class Leaderboard:
         A failed evaluation is refused (``ValueError``): its zeros are not scores.
         """
         if result.failed:
-            raise ValueError(f"not adding failed evaluation of {result.model_name!r}: {result.error}")
+            raise ValueError(
+                f"not adding failed evaluation of {result.model_name!r}: {result.error}"
+            )
         entry = result.to_dict()
         # Remove existing entry for same model+dataset+split
-        self._entries = [e for e in self._entries
-                         if not (e["model"] == result.model_name and
-                                 e["dataset"] == result.dataset_name and
-                                 e.get("split") == result.split)]
+        self._entries = [
+            e
+            for e in self._entries
+            if not (
+                e["model"] == result.model_name
+                and e["dataset"] == result.dataset_name
+                and e.get("split") == result.split
+            )
+        ]
         self._entries.append(entry)
         self._save()
 
@@ -60,19 +68,24 @@ class Leaderboard:
             print("No leaderboard entries.")
             return
         title = "Leaderboard"
-        if dataset: title += f" | {dataset}"
-        if task: title += f" | {task}"
+        if dataset:
+            title += f" | {dataset}"
+        if task:
+            title += f" | {task}"
         print(f"\n{'═'*80}")
         print(f"  {title}")
         print(f"{'═'*80}")
         print(f"  {'#':<3} {'Model':<30} {'Dataset':<20} {'Primary':>10} {'mIoU':>8}")
         print(f"  {'─'*75}")
         for i, e in enumerate(entries[:20], 1):
-            print(f"  {i:<3} {e['model']:<30} {e['dataset']:<20} {e.get('primary_metric',0):>10.4f} {e.get('mean_iou',0):>8.4f}")
+            print(
+                f"  {i:<3} {e['model']:<30} {e['dataset']:<20} {e.get('primary_metric',0):>10.4f} {e.get('mean_iou',0):>8.4f}"
+            )
         print(f"{'═'*80}")
 
     def export_csv(self, path: str | Path) -> None:
         import csv
+
         entries = self.get()
         if not entries:
             return

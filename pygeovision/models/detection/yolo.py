@@ -9,6 +9,7 @@
   boxes in pixel, CRS and lon/lat coordinates (optionally as GeoJSON).
 * ``fit`` trains, resumes an interrupted run, and returns the best weights.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,24 +28,91 @@ logger = logging.getLogger(__name__)
 # "ship", since class_names=["ship"] has only one entry and every
 # detection's class index got clamped to it.
 COCO_CLASS_NAMES = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
-    "truck", "boat", "traffic light", "fire hydrant", "stop sign",
-    "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
-    "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
-    "sports ball", "kite", "baseball bat", "baseball glove", "skateboard",
-    "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork",
-    "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
-    "couch", "potted plant", "bed", "dining table", "toilet", "tv",
-    "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
-    "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
-    "scissors", "teddy bear", "hair drier", "toothbrush",
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "traffic light",
+    "fire hydrant",
+    "stop sign",
+    "parking meter",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "backpack",
+    "umbrella",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "sports ball",
+    "kite",
+    "baseball bat",
+    "baseball glove",
+    "skateboard",
+    "surfboard",
+    "tennis racket",
+    "bottle",
+    "wine glass",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "hot dog",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "potted plant",
+    "bed",
+    "dining table",
+    "toilet",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "cell phone",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "teddy bear",
+    "hair drier",
+    "toothbrush",
 ]
 # Real, relevant COCO class indices for the specific detection targets
 # this module exposes -- not every COCO class, just the ones that
 # genuinely correspond to "ship"/"car" from an overhead view.
-COCO_SHIP_CLASSES = {8}   # "boat" -- the closest real COCO class to "ship"
+COCO_SHIP_CLASSES = {8}  # "boat" -- the closest real COCO class to "ship"
 COCO_CAR_CLASSES = {2, 7}  # "car", "truck"
 
 
@@ -61,9 +129,16 @@ def build_yolo(variant: str = "yolov8-m", num_classes: int = 5, **kwargs) -> Any
     """
     try:
         from ultralytics import YOLO
-        size_map = {"yolov8-n": "yolov8n", "yolov8-s": "yolov8s", "yolov8-m": "yolov8m",
-                    "yolov8-l": "yolov8l", "yolov8-x": "yolov8x",
-                    "yolov9-c": "yolov9c", "yolov9-e": "yolov9e"}
+
+        size_map = {
+            "yolov8-n": "yolov8n",
+            "yolov8-s": "yolov8s",
+            "yolov8-m": "yolov8m",
+            "yolov8-l": "yolov8l",
+            "yolov8-x": "yolov8x",
+            "yolov9-c": "yolov9c",
+            "yolov9-e": "yolov9e",
+        }
         model_str = size_map.get(variant, "yolov8m") + ".pt"
         model = YOLO(model_str)
         return model
@@ -71,11 +146,10 @@ def build_yolo(variant: str = "yolov8-m", num_classes: int = 5, **kwargs) -> Any
         raise ImportError("pip install ultralytics") from err
 
 
-
-
 # --------------------------------------------------------------------------
 # Pure helpers (no ultralytics needed -- unit-testable on their own)
 # --------------------------------------------------------------------------
+
 
 def tile_starts(dim: int, tile: int, stride: int) -> list[int]:
     """Window start offsets along one axis.
@@ -94,6 +168,7 @@ def tile_starts(dim: int, tile: int, stride: int) -> list[int]:
 
 def _iou_matrix(a, b):
     import numpy as np
+
     ix1 = np.maximum(a[:, None, 0], b[None, :, 0])
     iy1 = np.maximum(a[:, None, 1], b[None, :, 1])
     ix2 = np.minimum(a[:, None, 2], b[None, :, 2])
@@ -104,8 +179,9 @@ def _iou_matrix(a, b):
     return inter, aa, ab
 
 
-def merge_tile_detections(boxes, scores, classes, touches_seam=None,
-                          iou_thr: float = 0.5, contain_thr: float | None = 0.8):
+def merge_tile_detections(
+    boxes, scores, classes, touches_seam=None, iou_thr: float = 0.5, contain_thr: float | None = 0.8
+):
     """Cross-tile de-duplication. Returns indices to keep.
 
     1. Seam-fragment removal (first!): an object cut by an *interior* tile
@@ -135,14 +211,17 @@ def merge_tile_detections(boxes, scores, classes, touches_seam=None,
         for i in np.flatnonzero(np.asarray(touches_seam, bool)):
             if area[i] <= 0:
                 continue
-            same = (classes == classes[i])
+            same = classes == classes[i]
             same[i] = False
             big = same & (area > area[i] * 1.05) & (inter[i] / area[i] >= contain_thr)
             drop[i] = big.any()
         alive = alive[~drop]
-    keep = batched_nms(torch.as_tensor(boxes[alive], dtype=torch.float32),
-                       torch.as_tensor(scores[alive], dtype=torch.float32),
-                       torch.as_tensor(classes[alive], dtype=torch.int64), iou_thr).numpy()
+    keep = batched_nms(
+        torch.as_tensor(boxes[alive], dtype=torch.float32),
+        torch.as_tensor(scores[alive], dtype=torch.float32),
+        torch.as_tensor(classes[alive], dtype=torch.int64),
+        iou_thr,
+    ).numpy()
     return alive[keep]
 
 
@@ -166,6 +245,7 @@ def _geo_box_to_lonlat(crs, gbox):
     if crs.is_geographic and (crs.to_epsg() == 4326):
         return list(gbox)
     from rasterio.warp import transform as warp_transform
+
     x1, y1, x2, y2 = gbox
     xs, ys = warp_transform(crs, "EPSG:4326", [x1, x2, x2, x1], [y1, y1, y2, y2])
     return [min(xs), min(ys), max(xs), max(ys)]
@@ -177,16 +257,24 @@ def detections_to_geojson(detections: list[dict], path: str | None = None) -> di
     for d in detections:
         bb = d.get("bbox_lonlat")
         if bb is None:
-            raise ValueError("detections have no lon/lat: the raster has no CRS, "
-                             "so GeoJSON cannot be written")
+            raise ValueError(
+                "detections have no lon/lat: the raster has no CRS, " "so GeoJSON cannot be written"
+            )
         x1, y1, x2, y2 = bb
-        feats.append({
-            "type": "Feature",
-            "geometry": {"type": "Polygon",
-                         "coordinates": [[[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]]]},
-            "properties": {k: d[k] for k in ("class", "class_id", "confidence",
-                                             "area_m2", "bbox_px") if k in d},
-        })
+        feats.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]]],
+                },
+                "properties": {
+                    k: d[k]
+                    for k in ("class", "class_id", "confidence", "area_m2", "bbox_px")
+                    if k in d
+                },
+            }
+        )
     fc = {"type": "FeatureCollection", "features": feats}
     if path:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -198,6 +286,7 @@ def _count_train_labels(data_yaml: str, split: str = "train") -> int | None:
     """Number of non-empty YOLO label files for ``split``; None if unknown."""
     try:
         import yaml
+
         cfg = yaml.safe_load(Path(data_yaml).read_text())
         root = Path(cfg.get("path") or Path(data_yaml).parent)
         ent = cfg.get(split)
@@ -206,15 +295,23 @@ def _count_train_labels(data_yaml: str, split: str = "train") -> int | None:
         for e in ents:
             p = Path(e) if Path(e).is_absolute() else root / e
             if p.is_dir():
-                imgs = [q for q in p.rglob("*") if q.suffix.lower() in
-                        {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}]
+                imgs = [
+                    q
+                    for q in p.rglob("*")
+                    if q.suffix.lower() in {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+                ]
             elif p.suffix == ".txt":
-                imgs = [Path(ln.strip() if Path(ln.strip()).is_absolute() else root / ln.strip())
-                        for ln in p.read_text().splitlines() if ln.strip()]
+                imgs = [
+                    Path(ln.strip() if Path(ln.strip()).is_absolute() else root / ln.strip())
+                    for ln in p.read_text().splitlines()
+                    if ln.strip()
+                ]
             else:
                 return None
             for im in imgs:
-                lab = Path(str(im).replace(f"{os.sep}images{os.sep}", f"{os.sep}labels{os.sep}")).with_suffix(".txt")
+                lab = Path(
+                    str(im).replace(f"{os.sep}images{os.sep}", f"{os.sep}labels{os.sep}")
+                ).with_suffix(".txt")
                 if lab.exists() and lab.stat().st_size > 0 and lab.read_text().strip():
                     n += 1
         return n
@@ -231,6 +328,7 @@ class _ArrayRaster:
         import numpy as np
         from rasterio.crs import CRS
         from rasterio.transform import Affine
+
         arr = np.asarray(arr)
         if arr.ndim == 2:
             arr = arr[None]
@@ -244,10 +342,11 @@ class _ArrayRaster:
 
     def read(self, bands, window=None, out_shape=None):
         import numpy as np
+
         a = self.arr[[b - 1 for b in bands]]
         if window is not None:
             x0, y0 = int(window.col_off), int(window.row_off)
-            a = a[:, y0:y0 + int(window.height), x0:x0 + int(window.width)]
+            a = a[:, y0 : y0 + int(window.height), x0 : x0 + int(window.width)]
         if out_shape is not None:
             _, oh, ow = out_shape
             ys = np.linspace(0, a.shape[1] - 1, oh).astype(int)
@@ -273,10 +372,14 @@ class GeoYOLO:
     ``detect_tiled`` for orthomosaics larger than the model input size.
     """
 
-    def __init__(self, variant: str = "yolov8-m", num_classes: int = 5,
-                 class_names: list[str] | None = None,
-                 coco_class_filter: set[int] | None = None,
-                 weights: str | os.PathLike | None = None) -> None:
+    def __init__(
+        self,
+        variant: str = "yolov8-m",
+        num_classes: int = 5,
+        class_names: list[str] | None = None,
+        coco_class_filter: set[int] | None = None,
+        weights: str | os.PathLike | None = None,
+    ) -> None:
         self.variant = variant
         self.num_classes = num_classes
         self._explicit_names = class_names is not None
@@ -286,10 +389,14 @@ class GeoYOLO:
         # names are used (never a blind relabel).
         self.coco_class_filter = coco_class_filter
         self.weights = str(weights) if weights is not None else None
-        if self.weights and self.weights.endswith(".pt") and not os.path.exists(self.weights) \
-                and (os.sep in self.weights or "/" in self.weights):
+        if (
+            self.weights
+            and self.weights.endswith(".pt")
+            and not os.path.exists(self.weights)
+            and (os.sep in self.weights or "/" in self.weights)
+        ):
             raise FileNotFoundError(f"weights file not found: {self.weights}")
-        self._model = None
+        self._model: Any = None
         self.best_weights: str | None = None
         self.last_save_dir: str | None = None
 
@@ -330,6 +437,7 @@ class GeoYOLO:
         raster, from a decimated read so every tile shares one stretch),
         'none' (data already 0-255), or a (lo, hi) pair."""
         import numpy as np
+
         if isinstance(stretch, (tuple, list)) and len(stretch) == 2:
             return [(float(stretch[0]), float(stretch[1]))] * len(bands)
         if stretch == "none":
@@ -358,6 +466,7 @@ class GeoYOLO:
         """(bands,H,W) -> uint8 (H,W,3) **BGR** (what ultralytics expects for
         numpy input; RGB would make the model see red and blue swapped)."""
         import numpy as np
+
         data = np.nan_to_num(data.astype("float64"), nan=0.0, posinf=0.0, neginf=0.0)
         if data.shape[0] == 1:
             data = np.repeat(data, 3, axis=0)
@@ -399,10 +508,17 @@ class GeoYOLO:
         }
 
     # --------------------------------------------------------------- detection
-    def detect(self, image_path: str, conf: float = 0.25, iou: float = 0.45,
-               output_path: str | None = None, imgsz: int | None = None,
-               stretch="percentile", bands: list[int] | None = None,
-               device: str | None = None) -> dict[str, Any]:
+    def detect(
+        self,
+        image_path: str,
+        conf: float = 0.25,
+        iou: float = 0.45,
+        output_path: str | None = None,
+        imgsz: int | None = None,
+        stretch="percentile",
+        bands: list[int] | None = None,
+        device: str | None = None,
+    ) -> dict[str, Any]:
         """Detect objects in a whole GeoTIFF (single pass, no tiling).
 
         For rasters much larger than the model input use ``detect_tiled``.
@@ -415,6 +531,7 @@ class GeoYOLO:
         self._load()
         try:
             import rasterio
+
             with rasterio.open(image_path) as src:
                 bands = bands or list(range(1, min(src.count, 3) + 1))
                 lims = self._stretch_limits(src, bands, stretch)
@@ -427,27 +544,45 @@ class GeoYOLO:
         for r in self._predict([bgr], conf, iou, imgsz, device):
             if r.boxes is None or len(r.boxes) == 0:
                 continue
-            for box, cls, sc in zip(r.boxes.xyxy.cpu().numpy(),
-                                    r.boxes.cls.cpu().numpy().astype(int),
-                                    r.boxes.conf.cpu().numpy()):
+            for box, cls, sc in zip(
+                r.boxes.xyxy.cpu().numpy(),
+                r.boxes.cls.cpu().numpy().astype(int),
+                r.boxes.conf.cpu().numpy(),
+            ):
                 if self.coco_class_filter is not None and int(cls) not in self.coco_class_filter:
                     continue  # not a real match for the requested target -- skip, don't relabel
                 detections.append(self._record(box, cls, sc, transform, crs))
 
-        out = {"n_detections": len(detections), "detections": detections,
-               "model": self.weights or self.variant, "image_path": image_path}
+        out = {
+            "n_detections": len(detections),
+            "detections": detections,
+            "model": self.weights or self.variant,
+            "image_path": image_path,
+        }
         if output_path:
             detections_to_geojson(detections, output_path)
             out["geojson_path"] = str(output_path)
         return out
 
-    def detect_tiled(self, image, tile_size: int = 640, overlap: float = 0.2,
-                     conf: float = 0.25, iou: float = 0.45, merge_iou: float = 0.5,
-                     contain_thr: float | None = 0.8, batch_size: int = 8,
-                     stretch="percentile", bands: list[int] | None = None,
-                     skip_empty: bool = True, output_path: str | None = None,
-                     device: str | None = None, transform=None, crs=None,
-                     nodata=None) -> dict[str, Any]:
+    def detect_tiled(
+        self,
+        image,
+        tile_size: int = 640,
+        overlap: float = 0.2,
+        conf: float = 0.25,
+        iou: float = 0.45,
+        merge_iou: float = 0.5,
+        contain_thr: float | None = 0.8,
+        batch_size: int = 8,
+        stretch="percentile",
+        bands: list[int] | None = None,
+        skip_empty: bool = True,
+        output_path: str | None = None,
+        device: str | None = None,
+        transform=None,
+        crs=None,
+        nodata=None,
+    ) -> dict[str, Any]:
         """Detect objects in a large GeoTIFF / orthomosaic (or an in-memory array).
 
         ``image`` is a raster path, or a ``(bands, H, W)`` array together with
@@ -467,6 +602,7 @@ class GeoYOLO:
         containing it whole. ``output_path`` (optional) writes GeoJSON.
         """
         import numpy as np
+
         if not 0 <= overlap < 1:
             raise ValueError("overlap must be in [0, 1)")
         self._load()
@@ -504,11 +640,18 @@ class GeoYOLO:
                     c = r.boxes.cls.cpu().numpy().astype(int)
                     s = r.boxes.conf.cpu().numpy()
                     for bb, cc, ss in zip(b, c, s):
-                        if self.coco_class_filter is not None and int(cc) not in self.coco_class_filter:
+                        if (
+                            self.coco_class_filter is not None
+                            and int(cc) not in self.coco_class_filter
+                        ):
                             continue
                         # which tile borders are interior seams (not the raster edge)?
-                        seam = ((x0 > 0 and bb[0] <= 2) or (y0 > 0 and bb[1] <= 2) or
-                                (x0 + w < W and bb[2] >= w - 2) or (y0 + h < H and bb[3] >= h - 2))
+                        seam = (
+                            (x0 > 0 and bb[0] <= 2)
+                            or (y0 > 0 and bb[1] <= 2)
+                            or (x0 + w < W and bb[2] >= w - 2)
+                            or (y0 + h < H and bb[3] >= h - 2)
+                        )
                         all_boxes.append([bb[0] + x0, bb[1] + y0, bb[2] + x0, bb[3] + y0])
                         all_scores.append(ss)
                         all_cls.append(cc)
@@ -521,7 +664,8 @@ class GeoYOLO:
                     raw = src.read(bands, window=Window(x0, y0, w, h))
                     if skip_empty:
                         empty = (not np.isfinite(raw).any()) or (
-                            (raw == nd).all() if nd is not None else (raw == 0).all())
+                            (raw == nd).all() if nd is not None else (raw == 0).all()
+                        )
                         if empty:
                             n_skipped += 1
                             continue
@@ -535,18 +679,29 @@ class GeoYOLO:
             boxes = np.asarray(all_boxes, dtype=np.float32)
             scores = np.asarray(all_scores, dtype=np.float32)
             classes = np.asarray(all_cls, dtype=np.int64)
-            keep = merge_tile_detections(boxes, scores, classes, np.asarray(all_seam),
-                                         iou_thr=merge_iou, contain_thr=contain_thr)
+            keep = merge_tile_detections(
+                boxes,
+                scores,
+                classes,
+                np.asarray(all_seam),
+                iou_thr=merge_iou,
+                contain_thr=contain_thr,
+            )
             order = keep[np.argsort(-scores[keep])]
         else:
             boxes, scores, classes = np.zeros((0, 4)), np.zeros(0), np.zeros(0, int)
             order = np.zeros(0, dtype=int)
 
         detections = [self._record(boxes[i], classes[i], scores[i], transform, crs) for i in order]
-        out = {"n_detections": len(detections), "detections": detections,
-               "model": self.weights or self.variant, "image_path": image_path,
-               "n_tiles": n_tiles, "n_tiles_skipped_empty": n_skipped,
-               "crs": crs.to_string() if crs is not None else None}
+        out = {
+            "n_detections": len(detections),
+            "detections": detections,
+            "model": self.weights or self.variant,
+            "image_path": image_path,
+            "n_tiles": n_tiles,
+            "n_tiles_skipped_empty": n_skipped,
+            "crs": crs.to_string() if crs is not None else None,
+        }
         if output_path:
             detections_to_geojson(detections, output_path)
             out["geojson_path"] = str(output_path)
@@ -557,46 +712,91 @@ class GeoYOLO:
     def _auto_device() -> str:
         try:
             import torch
+
             return "0" if torch.cuda.is_available() else "cpu"
         except Exception:
             return "cpu"
 
-    def train(self, data_yaml: str, epochs: int = 100, imgsz: int = 640,
-              batch: int = 16, device: str | None = None, **kwargs) -> Any:
+    def train(
+        self,
+        data_yaml: str,
+        epochs: int = 100,
+        imgsz: int = 640,
+        batch: int = 16,
+        device: str | None = None,
+        **kwargs,
+    ) -> Any:
         """Fine-tune on a YOLO-format dataset. Returns ultralytics' metrics.
 
         ``device`` defaults to the GPU when one exists, else CPU. See
         ``fit`` for resume support and a ready-to-use result dict.
         """
         self._load()
-        res = self._model.train(data=data_yaml, epochs=epochs, imgsz=imgsz, batch=batch,
-                                device=device or self._auto_device(), **kwargs)
+        res = self._model.train(
+            data=data_yaml,
+            epochs=epochs,
+            imgsz=imgsz,
+            batch=batch,
+            device=device or self._auto_device(),
+            **kwargs,
+        )
         tr = getattr(self._model, "trainer", None)
         if tr is not None:
             self.last_save_dir = str(tr.save_dir)
             w = Path(tr.save_dir) / "weights"
-            self.best_weights = str(w / "best.pt") if (w / "best.pt").exists() else str(w / "last.pt")
+            self.best_weights = (
+                str(w / "best.pt") if (w / "best.pt").exists() else str(w / "last.pt")
+            )
         return res
 
-    def evaluate(self, data_yaml: str, split: str = "val", imgsz: int = 640,
-                 batch: int = 16, device: str | None = None, conf: float = 0.001,
-                 **kwargs) -> dict[str, Any]:
+    def evaluate(
+        self,
+        data_yaml: str,
+        split: str = "val",
+        imgsz: int = 640,
+        batch: int = 16,
+        device: str | None = None,
+        conf: float = 0.001,
+        **kwargs,
+    ) -> dict[str, Any]:
         """Score the loaded model on a dataset split.
 
         Returns ``{"map50","map50_95","precision","recall"}`` as floats. An
         empty split scores 0 -- check the labels before trusting the number.
         """
         self._load()
-        m = self._model.val(data=data_yaml, split=split, imgsz=imgsz, batch=batch,
-                            device=device or self._auto_device(), conf=conf,
-                            verbose=False, plots=False, **kwargs)
+        m = self._model.val(
+            data=data_yaml,
+            split=split,
+            imgsz=imgsz,
+            batch=batch,
+            device=device or self._auto_device(),
+            conf=conf,
+            verbose=False,
+            plots=False,
+            **kwargs,
+        )
         b = m.box
-        return {"map50": float(b.map50), "map50_95": float(b.map),
-                "precision": float(b.mp), "recall": float(b.mr)}
+        return {
+            "map50": float(b.map50),
+            "map50_95": float(b.map),
+            "precision": float(b.mp),
+            "recall": float(b.mr),
+        }
 
-    def fit(self, data_yaml: str, epochs: int = 100, imgsz: int = 640, batch: int = 16,
-            device: str | None = None, project: str = "runs/geoyolo", name: str = "train",
-            resume: bool = False, allow_empty: bool = False, **kwargs) -> dict[str, Any]:
+    def fit(
+        self,
+        data_yaml: str,
+        epochs: int = 100,
+        imgsz: int = 640,
+        batch: int = 16,
+        device: str | None = None,
+        project: str = "runs/geoyolo",
+        name: str = "train",
+        resume: bool = False,
+        allow_empty: bool = False,
+        **kwargs,
+    ) -> dict[str, Any]:
         """Train (or resume) and return where the weights went.
 
         * Runs land in a fixed ``project/name`` directory (``exist_ok``), so
@@ -611,6 +811,7 @@ class GeoYOLO:
         "resumed","already_finished"}``; ``self.best_weights`` is also set.
         """
         import torch
+
         project = os.path.abspath(project)
         save_dir = Path(project) / name
         last = save_dir / "weights" / "last.pt"
@@ -620,6 +821,7 @@ class GeoYOLO:
         results = None
         if resume and last.exists():
             from ultralytics import YOLO
+
             ck = torch.load(str(last), map_location="cpu", weights_only=False)
             if ck.get("epoch", 0) == -1 or ck.get("optimizer") is None:
                 finished = True
@@ -636,19 +838,34 @@ class GeoYOLO:
                     raise ValueError(
                         f"No non-empty label files found for the training split of {data_yaml}. "
                         "Training on empty labels produces a model that detects nothing. "
-                        "Label the images first (or pass allow_empty=True to override).")
+                        "Label the images first (or pass allow_empty=True to override)."
+                    )
             self._load()
-            results = self._model.train(data=data_yaml, epochs=epochs, imgsz=imgsz, batch=batch,
-                                        device=device, project=project, name=name,
-                                        exist_ok=True, **kwargs)
+            results = self._model.train(
+                data=data_yaml,
+                epochs=epochs,
+                imgsz=imgsz,
+                batch=batch,
+                device=device,
+                project=project,
+                name=name,
+                exist_ok=True,
+                **kwargs,
+            )
 
         w = save_dir / "weights"
         best = w / "best.pt" if (w / "best.pt").exists() else w / "last.pt"
         self.best_weights, self.last_save_dir = str(best), str(save_dir)
         metrics = {}
         if results is not None and hasattr(results, "results_dict"):
-            metrics = {k: float(v) for k, v in results.results_dict.items()
-                       if isinstance(v, (int, float))}
-        return {"best_weights": str(best), "last_weights": str(w / "last.pt"),
-                "save_dir": str(save_dir), "metrics": metrics,
-                "resumed": resumed, "already_finished": finished}
+            metrics = {
+                k: float(v) for k, v in results.results_dict.items() if isinstance(v, (int, float))
+            }
+        return {
+            "best_weights": str(best),
+            "last_weights": str(w / "last.pt"),
+            "save_dir": str(save_dir),
+            "metrics": metrics,
+            "resumed": resumed,
+            "already_finished": finished,
+        }

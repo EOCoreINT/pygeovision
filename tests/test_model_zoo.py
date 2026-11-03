@@ -1,13 +1,20 @@
 """Tests for Phase 2: ModelZoo — 98+ architectures."""
+
 from __future__ import annotations
+
+import pathlib
+import sys
+
 import pytest
-import sys; import pathlib; sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
 class TestModelZoo:
     @pytest.fixture(autouse=True)
     def _zoo(self):
         from pygeovision.ai.models.zoo import ModelZoo
+
         self.zoo = ModelZoo()
 
     def test_zoo_size(self):
@@ -105,8 +112,17 @@ class TestModelZoo:
             assert m.params_m >= 0, f"Model '{m.name}' invalid params_m"
 
     def test_tasks_are_known(self):
-        KNOWN = {"segmentation","detection","classification","change_detection",
-                 "foundation","vlm","3d","timeseries","super_resolution"}
+        KNOWN = {
+            "segmentation",
+            "detection",
+            "classification",
+            "change_detection",
+            "foundation",
+            "vlm",
+            "3d",
+            "timeseries",
+            "super_resolution",
+        }
         for m in self.zoo.all():
             assert m.task in KNOWN, f"Model '{m.name}' has unknown task '{m.task}'"
 

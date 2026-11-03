@@ -4,13 +4,14 @@ These tests do not build the Sphinx site (``make -C docs html`` does, with warni
 cannot: that generated pages are current, that hand-written reference tables name everything that exists, that example
 commands name real pipelines, and that Markdown does not contain constructs that silently swallow the rest of a page.
 """
+
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 import yaml
@@ -26,19 +27,28 @@ def _md_files():
 
 
 def _run_check(script: str):
-    return subprocess.run([sys.executable, str(ROOT / "tools" / script), "--check"], cwd=ROOT,
-                          capture_output=True, text=True, env={**__import__("os").environ, "PYTHONPATH": str(ROOT)})
+    return subprocess.run(
+        [sys.executable, str(ROOT / "tools" / script), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        env={**__import__("os").environ, "PYTHONPATH": str(ROOT)},
+    )
 
 
 # --------------------------------------------------------------------------- generated pages
 def test_cli_reference_is_current():
     r = _run_check("generate_reference_docs.py")
-    assert r.returncode == 0, f"run: PYTHONPATH=. python tools/generate_reference_docs.py\n{r.stdout}{r.stderr}"
+    assert (
+        r.returncode == 0
+    ), f"run: PYTHONPATH=. python tools/generate_reference_docs.py\n{r.stdout}{r.stderr}"
 
 
 def test_pipeline_pages_are_current():
     r = _run_check("generate_pipeline_pages.py")
-    assert r.returncode == 0, f"run: PYTHONPATH=. python tools/generate_pipeline_pages.py\n{r.stdout}{r.stderr}"
+    assert (
+        r.returncode == 0
+    ), f"run: PYTHONPATH=. python tools/generate_pipeline_pages.py\n{r.stdout}{r.stderr}"
 
 
 def test_every_cli_group_has_notes_and_a_page():
@@ -50,7 +60,9 @@ def test_every_cli_group_has_notes_and_a_page():
     for g in groups:
         assert (DOCS / "reference" / "cli" / f"{g}.md").exists(), f"no CLI page for {g}"
     for g, n in notes.items():
-        assert {"intro", "when", "expect"} <= set(n), f"cli_notes.yaml: '{g}' needs intro, when and expect"
+        assert {"intro", "when", "expect"} <= set(
+            n
+        ), f"cli_notes.yaml: '{g}' needs intro, when and expect"
 
 
 # --------------------------------------------------------------------------- hand-written reference tables
@@ -67,12 +79,17 @@ def test_exceptions_page_marks_raised_classes_correctly():
     """The 'raised today' column must match the source: a class marked reserved must not be raised, and vice versa."""
     import pygeovision.core.exceptions as ex
 
-    sources = {p: p.read_text(errors="ignore") for p in (ROOT / "pygeovision").rglob("*.py")
-               if p.name != "exceptions.py"}
+    sources = {
+        p: p.read_text(errors="ignore")
+        for p in (ROOT / "pygeovision").rglob("*.py")
+        if p.name != "exceptions.py"
+    }
     page = (DOCS / "reference" / "exceptions.md").read_text()
     rows: dict[str, str] = {}
     for m in re.finditer(r"^\| `(\w+)`.*$", page, re.M):
-        rows.setdefault(m.group(1), m.group(0))      # the class table comes first; later tables repeat names
+        rows.setdefault(
+            m.group(1), m.group(0)
+        )  # the class table comes first; later tables repeat names
     for name, cls in inspect.getmembers(ex, inspect.isclass):
         if not issubclass(cls, ex.PyGeoVisionError) or name not in rows:
             continue
@@ -82,7 +99,9 @@ def test_exceptions_page_marks_raised_classes_correctly():
         if status == "base":
             continue
         if raised:
-            assert "**yes**" in status, f"{name} is raised in the source but not marked '**yes**' on the page"
+            assert (
+                "**yes**" in status
+            ), f"{name} is raised in the source but not marked '**yes**' on the page"
         else:
             assert "**yes**" not in status, f"{name} is marked raised but nothing raises it"
 
@@ -95,7 +114,9 @@ def test_config_page_lists_every_setting():
         ann = field.annotation
         if inspect.isclass(ann) and hasattr(ann, "model_fields"):
             for key in ann.model_fields:
-                assert f"`{section}.{key}`" in text, f"docs/reference/config.md misses {section}.{key}"
+                assert (
+                    f"`{section}.{key}`" in text
+                ), f"docs/reference/config.md misses {section}.{key}"
         else:
             assert f"`{section}`" in text, f"docs/reference/config.md misses {section}"
 
@@ -104,7 +125,9 @@ def test_config_page_names_every_environment_variable():
     src = (ROOT / "pygeovision" / "core" / "config.py").read_text()
     text = (DOCS / "reference" / "config.md").read_text()
     for var in re.findall(r'"(PYGEOVISION_[A-Z_]+)"', src):
-        assert var in text, f"{var} is read by config.py but not documented in docs/reference/config.md"
+        assert (
+            var in text
+        ), f"{var} is read by config.py but not documented in docs/reference/config.md"
 
 
 # --------------------------------------------------------------------------- examples name real things
@@ -131,8 +154,10 @@ def test_example_commands_give_a_checkpoint_to_pipelines_that_need_one():
         text = page.read_text()
         for m in re.finditer(r"pygeovision channel (\w+)((?:[^\n`]|\\\n)*)", text):
             if m.group(1) in needs:
-                block = text[m.start(): m.start() + 600].split("```")[0]
-                assert "--checkpoint" in block, f"{page.relative_to(DOCS)}: '{m.group(1)}' needs --checkpoint"
+                block = text[m.start() : m.start() + 600].split("```")[0]
+                assert (
+                    "--checkpoint" in block
+                ), f"{page.relative_to(DOCS)}: '{m.group(1)}' needs --checkpoint"
 
 
 def test_example_commands_use_real_pipeline_parameters():
@@ -146,7 +171,7 @@ def test_example_commands_use_real_pipeline_parameters():
             name = m.group(1)
             # the command ends at the first line that does not continue with a backslash
             rest = ""
-            for line in text[m.end():].split("\n"):
+            for line in text[m.end() :].split("\n"):
                 rest += " " + line
                 if not line.rstrip().endswith("\\"):
                     break
@@ -156,8 +181,9 @@ def test_example_commands_use_real_pipeline_parameters():
             params = inspect.signature(cls.run).parameters
             for key in re.findall(r"--param\s+([A-Za-z_]+)=", rest):
                 documented = (DOCS / "pipelines" / "catalog" / f"{name}.md").read_text()
-                assert key in params or f"| `{key}` |" in documented, \
-                    f"{page.name}: --param {key} is not a parameter of {name} (see its page for the argument table)"
+                assert (
+                    key in params or f"| `{key}` |" in documented
+                ), f"{page.name}: --param {key} is not a parameter of {name} (see its page for the argument table)"
 
 
 # --------------------------------------------------------------------------- markdown hygiene
@@ -192,6 +218,8 @@ def test_code_fences_are_balanced():
 def test_relative_links_point_at_existing_files():
     bad = []
     for p in _md_files():
+        if p.name.startswith("_"):
+            continue  # include fragments: links resolve relative to the page that includes them
         text = re.sub(r"```.*?```", "", p.read_text(), flags=re.S)
         for target in re.findall(r"\]\(([^)\s]+?\.md)(?:#[^)]*)?\)", text):
             if target.startswith(("http://", "https://")):
@@ -210,8 +238,12 @@ def test_counts_in_the_home_page_match_the_code():
     ready = sum(1 for k in kinds.values() if k == "ready")
     # the landing page shows each figure as a tile: a card titled with the number, then its caption
     assert f"{{grid-item-card}} {len(kinds)}\n" in home
-    assert f"pipelines: {ready} run out of the box, {len(kinds) - ready} run your trained network" in home
+    assert (
+        f"pipelines: {ready} run out of the box, {len(kinds) - ready} run your trained network"
+        in home
+    )
     n_groups = len(cli.commands)
+
     def leaves(cmd):
         return sum(leaves(c) for c in cmd.commands.values()) if hasattr(cmd, "commands") else 1
 
@@ -223,21 +255,27 @@ def test_counts_in_the_home_page_match_the_code():
 # --------------------------------------------------------------------------- more generated pages and their completeness
 def test_model_pages_are_current():
     r = _run_check("generate_model_pages.py")
-    assert r.returncode == 0, f"run: PYTHONPATH=. python tools/generate_model_pages.py\n{r.stdout}{r.stderr}"
+    assert (
+        r.returncode == 0
+    ), f"run: PYTHONPATH=. python tools/generate_model_pages.py\n{r.stdout}{r.stderr}"
 
 
 def test_flow_figures_are_current():
     r = _run_check("make_flow_figures.py")
-    assert r.returncode == 0, f"run: PYTHONPATH=. python tools/make_flow_figures.py\n{r.stdout}{r.stderr}"
+    assert (
+        r.returncode == 0
+    ), f"run: PYTHONPATH=. python tools/make_flow_figures.py\n{r.stdout}{r.stderr}"
 
 
 def test_every_redirect_points_at_a_page_that_exists_and_no_redirect_shadows_a_page():
     text = (DOCS / "conf.py").read_text(encoding="utf-8")
     start = text.index("_MOVED = {")
-    moved = eval(text[start + len("_MOVED = "): text.index("\n}\n", start) + 2])
+    moved = eval(text[start + len("_MOVED = ") : text.index("\n}\n", start) + 2])
     for old, new in moved.items():
         assert (DOCS / f"{new}.md").exists(), f"redirect {old} -> {new}: no such page"
-        assert not (DOCS / f"{old}.md").exists(), f"{old}.md exists, so its redirect would never be used"
+        assert not (
+            DOCS / f"{old}.md"
+        ).exists(), f"{old}.md exists, so its redirect would never be used"
 
 
 def test_every_page_is_in_a_sidebar_toctree_or_deliberately_excluded():
@@ -248,25 +286,37 @@ def test_every_page_is_in_a_sidebar_toctree_or_deliberately_excluded():
     for p in DOCS.rglob("*.md"):
         if "_build" in p.parts:
             continue
-        for block in re.findall(r"```\{toctree\}(.*?)```", p.read_text(encoding="utf-8"), flags=re.S):
+        for block in re.findall(
+            r"```\{toctree\}(.*?)```", p.read_text(encoding="utf-8"), flags=re.S
+        ):
             for line in block.splitlines():
                 line = line.strip()
                 if not line or line.startswith(":"):
                     continue
-                m = re.match(r"^.*<(.+)>$", line)                       # "Title <path>"
-                target = (m.group(1) if m else line)
+                m = re.match(r"^.*<(.+)>$", line)  # "Title <path>"
+                target = m.group(1) if m else line
                 if target.startswith(("http://", "https://")):
                     continue
                 # entries are relative to the page that holds the toctree (or to the root when they start with a slash)
                 base = DOCS if target.startswith("/") else p.parent
-                listed.add(Path(os.path.normpath(base / target.lstrip("/"))).relative_to(DOCS).as_posix())
+                listed.add(
+                    Path(os.path.normpath(base / target.lstrip("/"))).relative_to(DOCS).as_posix()
+                )
     conf = (DOCS / "conf.py").read_text(encoding="utf-8")
-    excluded = re.findall(r'"([^"]+)"', conf[conf.index("exclude_patterns"): conf.index("]", conf.index("exclude_patterns"))])
+    excluded = re.findall(
+        r'"([^"]+)"',
+        conf[conf.index("exclude_patterns") : conf.index("]", conf.index("exclude_patterns"))],
+    )
     orphans = []
     for p in DOCS.rglob("*.md"):
         rel = p.relative_to(DOCS).as_posix()
         doc = rel[:-3]
-        if rel.startswith(("_build", "locale", "_")) or "/_" in rel or rel == "index.md" or p.name == "README.md":
+        if (
+            rel.startswith(("_build", "locale", "_"))
+            or "/_" in rel
+            or rel == "index.md"
+            or p.name == "README.md"
+        ):
             continue
         if doc in listed or any(Path(rel).match(e) for e in excluded):
             continue

@@ -6,11 +6,13 @@ Selects the top-ranked catalogue datasets per task and writes benchmark
 It does not download data, create splits or run models: the split ratios are
 recorded for you to apply, and ``ModelEvaluator`` does the scoring.
 """
+
 from __future__ import annotations
 
+import contextlib
+from dataclasses import dataclass, field
 import json
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -18,15 +20,15 @@ logger = logging.getLogger(__name__)
 
 # EarthNets canonical tasks and their short names
 BENCHMARK_TASKS = {
-    "segmentation":     "Semantic segmentation of land cover / objects",
-    "detection":        "Object detection with bounding boxes",
-    "classification":   "Scene / patch-level classification",
+    "segmentation": "Semantic segmentation of land cover / objects",
+    "detection": "Object detection with bounding boxes",
+    "classification": "Scene / patch-level classification",
     "change_detection": "Bi-temporal change detection",
-    "multi_label":      "Multi-label scene classification",
-    "regression":       "Pixel or scene-level regression (height, biomass…)",
-    "prediction":       "Temporal sequence prediction",
-    "self_supervised":  "Self-supervised pre-training datasets",
-    "vqa":              "Visual question answering",
+    "multi_label": "Multi-label scene classification",
+    "regression": "Pixel or scene-level regression (height, biomass…)",
+    "prediction": "Temporal sequence prediction",
+    "self_supervised": "Self-supervised pre-training datasets",
+    "vqa": "Visual question answering",
 }
 
 # Standard EarthNets split ratios
@@ -36,29 +38,36 @@ SPLIT_RATIOS = {"train": 0.60, "val": 0.20, "test": 0.20}
 @dataclass
 class BenchmarkConfig:
     """Configuration for a standardised EarthNets benchmark."""
+
     task: str
     dataset_names: list[str]
     split_ratios: dict[str, float] = field(default_factory=lambda: dict(SPLIT_RATIOS))
     seed: int = 42
-    metric: str = ""              # primary metric (auto-assigned by task)
+    metric: str = ""  # primary metric (auto-assigned by task)
     notes: str = ""
 
     def __post_init__(self) -> None:
         missing = {"train", "val", "test"} - set(self.split_ratios)
-        if missing or abs(sum(self.split_ratios.values()) - 1.0) > 1e-6 or min(self.split_ratios.values()) < 0:
-            raise ValueError(f"split_ratios must have train/val/test keys, be non-negative and sum to 1; "
-                             f"got {self.split_ratios}")
+        if (
+            missing
+            or abs(sum(self.split_ratios.values()) - 1.0) > 1e-6
+            or min(self.split_ratios.values()) < 0
+        ):
+            raise ValueError(
+                f"split_ratios must have train/val/test keys, be non-negative and sum to 1; "
+                f"got {self.split_ratios}"
+            )
         if not self.metric:
             _metric_map = {
-                "segmentation":     "mean_iou",
-                "detection":        "mAP50",
-                "classification":   "accuracy",
+                "segmentation": "mean_iou",
+                "detection": "mAP50",
+                "classification": "accuracy",
                 "change_detection": "iou_change",
-                "multi_label":      "mean_f1",
-                "regression":       "rmse",
-                "prediction":       "mae",
-                "self_supervised":  "linear_probe_accuracy",
-                "vqa":              "accuracy",
+                "multi_label": "mean_f1",
+                "regression": "rmse",
+                "prediction": "mae",
+                "self_supervised": "linear_probe_accuracy",
+                "vqa": "accuracy",
             }
             self.metric = _metric_map.get(self.task, "mean_iou")
 
@@ -104,6 +113,7 @@ class BenchmarkBuilder:
     def __init__(self, registry: Any | None = None) -> None:
         if registry is None:
             from pygeovision.datasets.registry import dataset_registry
+
             registry = dataset_registry
         self.registry = registry
 
@@ -111,8 +121,9 @@ class BenchmarkBuilder:
         """Build benchmark config for one task using EarthNets top-n selection."""
         top = self.registry.top_for_task(task, n=n)
         if not top:
-            raise ValueError(f"No datasets found for task '{task}'. "
-                             f"Available: {list(BENCHMARK_TASKS)}")
+            raise ValueError(
+                f"No datasets found for task '{task}'. " f"Available: {list(BENCHMARK_TASKS)}"
+            )
         cfg = BenchmarkConfig(task=task, dataset_names=[d.name for d in top])
         logger.info("Benchmark '%s': %s", task, cfg.dataset_names)
         return cfg
@@ -121,10 +132,8 @@ class BenchmarkBuilder:
         """Build benchmark configs for all supported tasks."""
         configs = {}
         for task in BENCHMARK_TASKS:
-            try:
+            with contextlib.suppress(ValueError):  # no datasets for this task yet
                 configs[task] = self.build(task, n=n)
-            except ValueError:
-                pass  # No datasets for this task yet
         return configs
 
     def print_all(self, n: int = 5) -> None:
@@ -138,10 +147,14 @@ class BenchmarkBuilder:
                 continue
             print(f"\n  {task.upper()} — {description}")
             print(f"  {'─'*65}")
-            print(f"  {'#':<3} {'Dataset':<28} {'Domain':<14} {'Modality':<14} {'Year':>4} {'Samples':>10}")
+            print(
+                f"  {'#':<3} {'Dataset':<28} {'Domain':<14} {'Modality':<14} {'Year':>4} {'Samples':>10}"
+            )
             print(f"  {'─'*78}")
             for i, d in enumerate(top, 1):
-                print(f"  {i:<3} {d.name:<28} {d.domain:<14} {d.modality:<14} {d.year:>4} {d.n_samples:>10,}")
+                print(
+                    f"  {i:<3} {d.name:<28} {d.domain:<14} {d.modality:<14} {d.year:>4} {d.n_samples:>10,}"
+                )
         print(f"\n{'═'*75}")
 
     def save_all(self, output_dir: str = "./benchmarks", n: int = 5) -> list[str]:
@@ -193,15 +206,17 @@ class BenchmarkBuilder:
         for name in cfg.dataset_names:
             try:
                 d = self.registry[name]
-                datasets.append({
-                    "name": d.name,
-                    "year": d.year,
-                    "n_samples": d.n_samples,
-                    "resolution_m": d.resolution_m,
-                    "modality": d.modality,
-                    "paper_url": d.paper_url,
-                    "download_url": d.download_url,
-                })
+                datasets.append(
+                    {
+                        "name": d.name,
+                        "year": d.year,
+                        "n_samples": d.n_samples,
+                        "resolution_m": d.resolution_m,
+                        "modality": d.modality,
+                        "paper_url": d.paper_url,
+                        "download_url": d.download_url,
+                    }
+                )
             except KeyError:
                 pass
         return {

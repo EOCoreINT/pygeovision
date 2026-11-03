@@ -13,4 +13,3 @@ from pygeovision.core.exceptions import (  # noqa: F401
     PyGeoVisionError,
     TrainingError,
 )
-

@@ -14,14 +14,14 @@ A download can take minutes, so each call **reports what it is doing** (``verbos
 the library's own search/download messages, and a heartbeat every few seconds with the elapsed time and the bytes that
 arrived. A heartbeat that says "no new data" means the network is slow or stalled, not that Python is frozen.
 """
+
 from __future__ import annotations
 
 import contextlib
 import logging
-import sys
+from pathlib import Path
 import threading
 import time
-from pathlib import Path
 
 import numpy as np
 
@@ -33,8 +33,11 @@ DEFAULT_BANDS = ("blue", "green", "red", "nir", "swir1", "swir2")
 MINE_OSM_FILTERS = ('["landuse"="quarry"]', '["industrial"="mine"]')
 
 
-_LOGGERS = ("pygeovision", "pygeofetch")      # the loggers whose INFO messages describe a search / download
-_KEEP = 6                                      # warnings/errors remembered for the failure message
+_LOGGERS = (
+    "pygeovision",
+    "pygeofetch",
+)  # the loggers whose INFO messages describe a search / download
+_KEEP = 6  # warnings/errors remembered for the failure message
 
 
 def _stamp() -> str:
@@ -49,7 +52,7 @@ def _dir_bytes(path: Path | None) -> int:
         try:
             if f.is_file():
                 total += f.stat().st_size
-        except OSError:                        # a file that vanishes mid-scan (partial download renamed) is not an error
+        except OSError:  # a file that vanishes mid-scan (partial download renamed) is not an error
             pass
     return total
 
@@ -60,9 +63,13 @@ class _Echo(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = record.getMessage()
-            tag = "" if record.levelno < logging.WARNING else ("WARNING: " if record.levelno < logging.ERROR else "ERROR: ")
+            tag = (
+                ""
+                if record.levelno < logging.WARNING
+                else ("WARNING: " if record.levelno < logging.ERROR else "ERROR: ")
+            )
             print(f"[{_stamp()}]   {tag}{msg}", flush=True)
-        except Exception:                      # noqa: BLE001 - logging must never break the download
+        except Exception:  # noqa: BLE001 - logging must never break the download
             pass
 
 
@@ -72,18 +79,20 @@ class _Collect(logging.Handler):
     def __init__(self) -> None:
         super().__init__(level=logging.WARNING)
         self.problems: list[str] = []
-        self.ok = True            # the step's caller sets False when it returned without raising but did not succeed
+        self.ok = True  # the step's caller sets False when it returned without raising but did not succeed
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             self.problems.append(record.getMessage())
             del self.problems[:-_KEEP]
-        except Exception:                      # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pass
 
 
 @contextlib.contextmanager
-def _progress(label: str, verbose: bool = True, watch_dir: Path | None = None, heartbeat: float = 10.0):
+def _progress(
+    label: str, verbose: bool = True, watch_dir: Path | None = None, heartbeat: float = 10.0
+):
     """Make a long network step visible and explainable.
 
     * ``verbose``: print a line when the step starts and ends, echo the library's INFO/WARNING/ERROR messages, and print
@@ -111,7 +120,9 @@ def _progress(label: str, verbose: bool = True, watch_dir: Path | None = None, h
     stop = threading.Event()
 
     def beat() -> None:
-        base = _dir_bytes(watch_dir)           # files already there from an earlier run do not count as received now
+        base = _dir_bytes(
+            watch_dir
+        )  # files already there from an earlier run do not count as received now
         last, last_change = base, time.time()
         while not stop.wait(heartbeat):
             now = time.time()
@@ -140,7 +151,10 @@ def _progress(label: str, verbose: bool = True, watch_dir: Path | None = None, h
                 lg.removeHandler(echo)
             lg.setLevel(lvl)
         if verbose:
-            print(f"[{_stamp()}] {label}: {'done' if ok and collect.ok else 'FAILED'} after {time.time() - t0:.1f} s", flush=True)
+            print(
+                f"[{_stamp()}] {label}: {'done' if ok and collect.ok else 'FAILED'} after {time.time() - t0:.1f} s",
+                flush=True,
+            )
 
 
 def _why(collect: _Collect) -> str:
@@ -172,8 +186,17 @@ def _scene_fetcher(client):
     return _FETCHER(client)
 
 
-def fetch_scene(client, bbox, date: str, out_dir: str | Path, bands=DEFAULT_BANDS,
-                cloud_cover_max: float = 30.0, verbose: bool = True, heartbeat: float = 10.0, **kw) -> RasterData:
+def fetch_scene(
+    client,
+    bbox,
+    date: str,
+    out_dir: str | Path,
+    bands=DEFAULT_BANDS,
+    cloud_cover_max: float = 30.0,
+    verbose: bool = True,
+    heartbeat: float = 10.0,
+    **kw,
+) -> RasterData:
     """Download a cloud-masked Sentinel-2 L2A image for ``bbox`` and return it as :class:`RasterData`.
 
     ``date`` is a day, a month (``"2024-01"``) or a ``"start/end"`` window, as everywhere in PyGeoVision. Pixels hidden
@@ -192,26 +215,39 @@ def fetch_scene(client, bbox, date: str, out_dir: str | Path, bands=DEFAULT_BAND
     out_dir.mkdir(parents=True, exist_ok=True)
     bbox = tuple(bbox)
     say = (lambda m: print(f"[{_stamp()}] {m}", flush=True)) if verbose else (lambda m: None)
-    say(f"Sentinel-2 L2A, bbox={bbox}, date={date!r}, cloud cover <= {cloud_cover_max:g}%, bands={list(bands)}")
+    say(
+        f"Sentinel-2 L2A, bbox={bbox}, date={date!r}, cloud cover <= {cloud_cover_max:g}%, bands={list(bands)}"
+    )
     say("(a scene is a few hundred MB: expect minutes on a slow link; progress is reported below)")
     with _progress("search and download", verbose, out_dir, heartbeat) as collect:
         path = _scene_fetcher(client)._search_and_download(
-            bbox, date, out_dir, bands=tuple(bands), cloud_cover_max=cloud_cover_max, **kw)
+            bbox, date, out_dir, bands=tuple(bands), cloud_cover_max=cloud_cover_max, **kw
+        )
         collect.ok = path is not None
     if path is None:
-        raise RuntimeError(f"no usable Sentinel-2 scene for bbox={bbox} date={date!r} "
-                           f"(cloud cover <= {cloud_cover_max}%); check the network, credentials and dates."
-                           + _why(collect))
+        raise RuntimeError(
+            f"no usable Sentinel-2 scene for bbox={bbox} date={date!r} "
+            f"(cloud cover <= {cloud_cover_max}%); check the network, credentials and dates."
+            + _why(collect)
+        )
     rd = load_raster(str(path), band_names=list(bands))
     rd.meta.update(source=str(path), date=date, bbox=bbox)
     if verbose:
         nodata = 100 * (1 - float(np.isfinite(rd.image).all(axis=0).mean()))
-        say(f"scene ready: {rd.image.shape[1]} x {rd.image.shape[2]} px, CRS {rd.crs}, {nodata:.1f}% no data (cloud/shadow) -> {path}")
+        say(
+            f"scene ready: {rd.image.shape[1]} x {rd.image.shape[2]} px, CRS {rd.crs}, {nodata:.1f}% no data (cloud/shadow) -> {path}"
+        )
     return rd
 
 
-def fetch_worldcover(client, bbox, out_path: str | Path, like: RasterData | None = None,
-                     verbose: bool = True, heartbeat: float = 10.0):
+def fetch_worldcover(
+    client,
+    bbox,
+    out_path: str | Path,
+    like: RasterData | None = None,
+    verbose: bool = True,
+    heartbeat: float = 10.0,
+):
     """Download ESA WorldCover for ``bbox``; return ``(array, path)``.
 
     With ``like`` the map is resampled (nearest neighbour) onto that image's grid and CRS, so the two line up pixel for
@@ -229,10 +265,14 @@ def fetch_worldcover(client, bbox, out_path: str | Path, like: RasterData | None
         ref = str(out_path.with_name(out_path.stem + "_grid.tif"))
         save_raster(ref, np.zeros(like.shape, np.uint8), like.transform, like.crs, dtype="uint8")
     import rasterio
+
     with _progress("ESA WorldCover download", verbose, out_path.parent, heartbeat) as collect:
-        with rasterio.Env(GDAL_HTTP_TIMEOUT="60", GDAL_HTTP_MAX_RETRY="3", GDAL_HTTP_RETRY_DELAY="2"):
-            res = client.labeling.esa_worldcover(bbox, output_path=str(out_path),
-                                                 **({"reference_raster": ref} if ref else {}))
+        with rasterio.Env(
+            GDAL_HTTP_TIMEOUT="60", GDAL_HTTP_MAX_RETRY="3", GDAL_HTTP_RETRY_DELAY="2"
+        ):
+            res = client.labeling.esa_worldcover(
+                bbox, output_path=str(out_path), **({"reference_raster": ref} if ref else {})
+            )
         collect.ok = bool(res.get("success"))
     if not res.get("success"):
         raise RuntimeError(f"WorldCover download failed: {res.get('error')}" + _why(collect))
@@ -241,12 +281,21 @@ def fetch_worldcover(client, bbox, out_path: str | Path, like: RasterData | None
         arr = src.read(1)
     if verbose:
         found = {int(k): int(v) for k, v in zip(*np.unique(arr[arr > 0], return_counts=True))}
-        print(f"[{_stamp()}] WorldCover ready: {arr.shape[0]} x {arr.shape[1]} px, class codes {found} -> {got}", flush=True)
+        print(
+            f"[{_stamp()}] WorldCover ready: {arr.shape[0]} x {arr.shape[1]} px, class codes {found} -> {got}",
+            flush=True,
+        )
     return arr, got
 
 
-def fetch_osm_polygons(bbox, filters=MINE_OSM_FILTERS, timeout: int = 60, retries: int = 2,
-                       verbose: bool = True, heartbeat: float = 10.0):
+def fetch_osm_polygons(
+    bbox,
+    filters=MINE_OSM_FILTERS,
+    timeout: int = 60,
+    retries: int = 2,
+    verbose: bool = True,
+    heartbeat: float = 10.0,
+):
     """OpenStreetMap polygons inside ``bbox`` as a GeoDataFrame in EPSG:4326.
 
     ``filters`` are Overpass tag filters, one per alternative: the default outlines mines and quarries
@@ -277,10 +326,15 @@ def fetch_osm_polygons(bbox, filters=MINE_OSM_FILTERS, timeout: int = 60, retrie
         data = labeler._fetch_overpass(query)
         collect.ok = data is not None
     if data is None:
-        raise RuntimeError("Overpass request failed" + (f" ({labeler._last_error})" if labeler._last_error else "")
-                           + _why(collect))
+        raise RuntimeError(
+            "Overpass request failed"
+            + (f" ({labeler._last_error})" if labeler._last_error else "")
+            + _why(collect)
+        )
     if data.get("remark") and not data.get("elements"):
-        raise RuntimeError(f"Overpass could not complete the query: {data['remark']}. Use a smaller bbox.")
+        raise RuntimeError(
+            f"Overpass could not complete the query: {data['remark']}. Use a smaller bbox."
+        )
 
     rows, geoms = [], []
     for elem in data.get("elements", []):
@@ -296,9 +350,16 @@ def fetch_osm_polygons(bbox, filters=MINE_OSM_FILTERS, timeout: int = 60, retrie
             continue
         if not geom.is_valid:
             geom = geom.buffer(0)
-        rows.append({"osm_id": elem.get("id"), "osm_type": etype, "name": tags.get("name"),
-                     **{k: tags.get(k) for k in ("landuse", "industrial", "resource")}})
+        rows.append(
+            {
+                "osm_id": elem.get("id"),
+                "osm_type": etype,
+                "name": tags.get("name"),
+                **{k: tags.get(k) for k in ("landuse", "industrial", "resource")},
+            }
+        )
         geoms.append(geom)
     import pandas as pd
+
     cols = ["osm_id", "osm_type", "name", "landuse", "industrial", "resource"]
     return gpd.GeoDataFrame(pd.DataFrame(rows, columns=cols), geometry=geoms, crs="EPSG:4326")

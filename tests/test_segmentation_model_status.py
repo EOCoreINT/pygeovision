@@ -8,10 +8,13 @@ input -- a shape assertion alone would also be satisfied by a fake fallback.
 
 Entries that remain refusals are listed explicitly so a change in either direction is noticed.
 """
+
 import pytest
 
 torch = pytest.importorskip("torch", reason="torch not installed")
-pytest.importorskip("segmentation_models_pytorch", reason="segmentation-models-pytorch not installed")
+pytest.importorskip(
+    "segmentation_models_pytorch", reason="segmentation-models-pytorch not installed"
+)
 pytest.importorskip("transformers", reason="transformers not installed")
 
 from pygeovision.models.registry import get_model, model_registry  # noqa: E402
@@ -21,11 +24,22 @@ def _params_m(model):
     return sum(p.numel() for p in model.parameters()) / 1e6
 
 
-@pytest.mark.parametrize("name", [
-    "unet-r50", "unet-r101", "unet-efficientb4",
-    "deeplab-r50", "deeplab-r101", "pspnet-r50", "fcn-r50", "upernet-swin-b",
-    "segformer-b0", "segformer-b2", "segformer-b5",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "unet-r50",
+        "unet-r101",
+        "unet-efficientb4",
+        "deeplab-r50",
+        "deeplab-r101",
+        "pspnet-r50",
+        "fcn-r50",
+        "upernet-swin-b",
+        "segformer-b0",
+        "segformer-b2",
+        "segformer-b5",
+    ],
+)
 class TestSegmentationModelsAreRealAndMultispectral:
     @pytest.mark.parametrize("bands", [3, 4, 13])
     def test_forward_gives_full_resolution_logits(self, name, bands):
@@ -55,14 +69,19 @@ class TestUNetVariantsAreDistinctNetworks:
     """The original bug: all three names returned the same fallback network."""
 
     def test_three_variants_have_different_encoders(self):
-        sizes = {n: _params_m(get_model(n, num_classes=2, in_channels=3, pretrained=False))
-                 for n in ("unet-r50", "unet-r101", "unet-efficientb4")}
+        sizes = {
+            n: _params_m(get_model(n, num_classes=2, in_channels=3, pretrained=False))
+            for n in ("unet-r50", "unet-r101", "unet-efficientb4")
+        }
         assert len({round(v, 1) for v in sizes.values()}) == 3, sizes
         assert sizes["unet-r101"] > sizes["unet-r50"] > sizes["unet-efficientb4"]
 
     def test_native_registry_equivalent_still_builds(self):
         from pygeovision.ai.models.registry import registry as native_registry
-        model = native_registry.build("unet_resnet50", num_classes=2, in_channels=3, pretrained=False)
+
+        model = native_registry.build(
+            "unet_resnet50", num_classes=2, in_channels=3, pretrained=False
+        )
         assert model(torch.randn(1, 3, 64, 64)).shape == (1, 2, 64, 64)
 
 

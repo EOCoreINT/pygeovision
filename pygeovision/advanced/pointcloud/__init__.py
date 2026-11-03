@@ -4,6 +4,7 @@ Needs ``laspy`` (``pip install laspy``; add ``lazrs`` for ``.laz``). ``classify_
 All coordinates are used in the file's own units; the functions that report metres or square metres assume a
 projected CRS in metres (the norm for airborne LiDAR) and refuse a geographic one where it would give wrong areas.
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,13 +22,16 @@ def _require_laspy():
     try:
         import laspy
     except ImportError as exc:
-        raise ImportError("laspy is required for point clouds: pip install laspy (and lazrs for .laz files)") from exc
+        raise ImportError(
+            "laspy is required for point clouds: pip install laspy (and lazrs for .laz files)"
+        ) from exc
     return laspy
 
 
 def _grid(xmin: float, ymin: float, xmax: float, ymax: float, resolution: float):
     """Cell grid with exactly ``resolution``-sized cells covering the extent (north-up)."""
     from rasterio.transform import from_origin
+
     if resolution <= 0:
         raise ValueError(f"resolution must be > 0, got {resolution}")
     w = max(1, math.ceil((xmax - xmin) / resolution))
@@ -40,6 +44,7 @@ def _to_crs(crs_str: str):
         return None
     try:
         import pyproj
+
         return pyproj.CRS.from_user_input(crs_str)
     except Exception:
         return None
@@ -92,8 +97,10 @@ class PointCloudProcessor:
         try:
             las = laspy.read(path)
         except Exception as exc:
-            raise ValueError(f"could not read {path} as LAS/LAZ ({type(exc).__name__}: {exc}); "
-                             "for .laz files install lazrs or laszip") from exc
+            raise ValueError(
+                f"could not read {path} as LAS/LAZ ({type(exc).__name__}: {exc}); "
+                "for .laz files install lazrs or laszip"
+            ) from exc
         if len(las.x) == 0:
             raise ValueError(f"{path} contains no points")
         x, y, z = np.asarray(las.x), np.asarray(las.y), np.asarray(las.z)
@@ -106,8 +113,14 @@ class PointCloudProcessor:
             crs = None
         return {
             "n_points": int(len(x)),
-            "x": x, "y": y, "z": z,
-            "intensity": np.asarray(las.intensity) if "intensity" in las.point_format.dimension_names else None,
+            "x": x,
+            "y": y,
+            "z": z,
+            "intensity": (
+                np.asarray(las.intensity)
+                if "intensity" in las.point_format.dimension_names
+                else None
+            ),
             "classification": np.asarray(las.classification),
             "crs": crs or "unknown",
             "bounds": (float(x.min()), float(y.min()), float(x.max()), float(y.max())),
@@ -163,15 +176,19 @@ class PointCloudProcessor:
 
         ground = cls == 2 if filter_ground else np.ones(len(cls), dtype=bool)
         if filter_ground and not ground.any():
-            raise ValueError(f"{las_path} has no ground points (LAS class 2), so no terrain model can be built. "
-                             "Classify the ground first, or pass filter_ground=False to use the lowest point per cell.")
+            raise ValueError(
+                f"{las_path} has no ground points (LAS class 2), so no terrain model can be built. "
+                "Classify the ground first, or pass filter_ground=False to use the lowest point per cell."
+            )
 
         xmin, ymin, xmax, ymax = float(x.min()), float(y.min()), float(x.max()), float(y.max())
         W, H, transform = _grid(xmin, ymin, xmax, ymax, resolution)
 
         def cells(xs, ys):
-            return (np.clip(((ymax - ys) / resolution).astype(int), 0, H - 1),
-                    np.clip(((xs - xmin) / resolution).astype(int), 0, W - 1))
+            return (
+                np.clip(((ymax - ys) / resolution).astype(int), 0, H - 1),
+                np.clip(((xs - xmin) / resolution).astype(int), 0, W - 1),
+            )
 
         dsm = np.full((H, W), -np.inf)
         r, c = cells(x, y)
@@ -194,6 +211,7 @@ class PointCloudProcessor:
 
         if not dtm_valid.all():
             from scipy.ndimage import distance_transform_edt
+
             _, nearest = distance_transform_edt(~dtm_valid, return_indices=True)
             dtm = dtm[tuple(nearest)]
 
@@ -202,21 +220,38 @@ class PointCloudProcessor:
         crs_str = pc["crs"]
         out_crs = _to_crs(crs_str)
         if out_crs is None:
-            logger.warning("%s: no usable CRS in the file header (%r); the GeoTIFF is written without a CRS. "
-                           "Set it yourself once you know the EPSG code.", las_path, crs_str)
+            logger.warning(
+                "%s: no usable CRS in the file header (%r); the GeoTIFF is written without a CRS. "
+                "Set it yourself once you know the EPSG code.",
+                las_path,
+                crs_str,
+            )
 
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         nodata = -9999.0
-        with rasterio.open(output_path, "w", driver="GTiff", height=H, width=W, count=1, dtype="float32",
-                           crs=out_crs, transform=transform, compress="lzw", nodata=nodata) as dst:
+        with rasterio.open(
+            output_path,
+            "w",
+            driver="GTiff",
+            height=H,
+            width=W,
+            count=1,
+            dtype="float32",
+            crs=out_crs,
+            transform=transform,
+            compress="lzw",
+            nodata=nodata,
+        ) as dst:
             dst.write(np.where(np.isnan(chm), nodata, chm).astype("float32")[np.newaxis])
             dst.update_tags(source="LiDAR_CHM", resolution=str(resolution))
 
         valid = ~np.isnan(chm)
         vals = chm[valid]
         return {
-            "success": True, "output_path": output_path,
-            "n_points": int(len(x)), "resolution": resolution,
+            "success": True,
+            "output_path": output_path,
+            "n_points": int(len(x)),
+            "resolution": resolution,
             "crs": str(out_crs) if out_crs else "unset (unknown source CRS)",
             "grid": {"width": W, "height": H},
             "empty_cells_fraction": round(float(1 - valid.mean()), 3),
@@ -291,8 +326,16 @@ class PointCloudProcessor:
         codes = list(class_codes) if class_codes is not None else list(range(num_classes))
         if len(codes) != num_classes:
             raise ValueError(f"class_codes has {len(codes)} entries for num_classes={num_classes}")
-        if block_size <= 0 or max_points < 16 or min_points < 1 or coord_scale <= 0 or intensity_scale <= 0:
-            raise ValueError("block_size, coord_scale and intensity_scale must be > 0, max_points >= 16, min_points >= 1")
+        if (
+            block_size <= 0
+            or max_points < 16
+            or min_points < 1
+            or coord_scale <= 0
+            or intensity_scale <= 0
+        ):
+            raise ValueError(
+                "block_size, coord_scale and intensity_scale must be > 0, max_points >= 16, min_points >= 1"
+            )
         min_points = min(min_points, max_points)
 
         laspy = _require_laspy()
@@ -300,12 +343,15 @@ class PointCloudProcessor:
         las = laspy.read(las_path)
         max_code = 31 if las.header.point_format.id <= 5 else 255
         if min(codes) < 0 or max(codes) > max_code:
-            raise ValueError(f"class_codes must be within 0..{max_code} for LAS point format {las.header.point_format.id}")
+            raise ValueError(
+                f"class_codes must be within 0..{max_code} for LAS point format {las.header.point_format.id}"
+            )
 
         from pygeovision.models.registry import get_model
+
         registry_name = "randlanet" if model == "randlanet" else "pointnet2-ssg"
         rng_state = torch.get_rng_state()
-        torch.manual_seed(seed)            # also fixes the random initial weights when no checkpoint is given
+        torch.manual_seed(seed)  # also fixes the random initial weights when no checkpoint is given
         net = get_model(registry_name, num_classes=num_classes, in_channels=4, pretrained=False)
         device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         net = net.to(device).eval()
@@ -320,17 +366,25 @@ class PointCloudProcessor:
             try:
                 net.load_state_dict(state)
             except RuntimeError as exc:
-                raise ValueError(f"checkpoint {checkpoint_path} does not fit a {registry_name} with "
-                                 f"num_classes={num_classes} and 4 input channels (xyz + intensity): {exc}") from exc
+                raise ValueError(
+                    f"checkpoint {checkpoint_path} does not fit a {registry_name} with "
+                    f"num_classes={num_classes} and 4 input channels (xyz + intensity): {exc}"
+                ) from exc
             warning = None
         else:
-            warning = ("no checkpoint_path: the network has random weights, so the classes are meaningless "
-                       "(plumbing test only). Train a model and pass its state_dict.")
+            warning = (
+                "no checkpoint_path: the network has random weights, so the classes are meaningless "
+                "(plumbing test only). Train a model and pass its state_dict."
+            )
             logger.warning("classify_points: %s", warning)
 
         x, y, z = pc["x"], pc["y"], pc["z"]
         n = len(x)
-        inten = pc["intensity"].astype("float64") / intensity_scale if pc["intensity"] is not None else np.zeros(n)
+        inten = (
+            pc["intensity"].astype("float64") / intensity_scale
+            if pc["intensity"] is not None
+            else np.zeros(n)
+        )
         rng = np.random.default_rng(seed)
 
         ix = np.floor((x - x.min()) / block_size).astype(np.int64)
@@ -352,10 +406,18 @@ class PointCloudProcessor:
                 for idx in chunks:
                     use = idx
                     if len(use) < min_points:
-                        use = np.concatenate([idx, rng.choice(idx, min_points - len(idx), replace=True)])
+                        use = np.concatenate(
+                            [idx, rng.choice(idx, min_points - len(idx), replace=True)]
+                        )
                     cx, cy, cz = x[use].mean(), y[use].mean(), z[use].mean()
-                    feats = np.stack([(x[use] - cx) / coord_scale, (y[use] - cy) / coord_scale,
-                                      (z[use] - cz) / coord_scale, inten[use]]).astype(np.float32)
+                    feats = np.stack(
+                        [
+                            (x[use] - cx) / coord_scale,
+                            (y[use] - cy) / coord_scale,
+                            (z[use] - cz) / coord_scale,
+                            inten[use],
+                        ]
+                    ).astype(np.float32)
                     logits = net(torch.from_numpy(feats).unsqueeze(0).to(device))
                     pred[idx] = logits.argmax(dim=1)[0].cpu().numpy()[: len(idx)]
         finally:
@@ -366,7 +428,10 @@ class PointCloudProcessor:
         las.write(output_path)
 
         result = {
-            "success": True, "output_path": output_path, "n_points": int(n), "model": registry_name,
+            "success": True,
+            "output_path": output_path,
+            "n_points": int(n),
+            "model": registry_name,
             "used_pretrained_checkpoint": checkpoint_path is not None,
             "meaningful": checkpoint_path is not None,
             "n_chunks": len(chunks),
@@ -407,8 +472,8 @@ class PointCloudProcessor:
         import json
 
         import numpy as np
-        from scipy.ndimage import binary_closing
         from rasterio.features import shapes as rio_shapes
+        from scipy.ndimage import binary_closing
         from shapely.geometry import shape as shp_shape
 
         if resolution <= 0 or gap_fill_m < 0 or min_area_m2 < 0 or simplify_m < 0:
@@ -416,17 +481,25 @@ class PointCloudProcessor:
         pc = self.read(las_path)
         out_crs = _to_crs(pc["crs"])
         if out_crs is not None and out_crs.is_geographic:
-            raise ValueError(f"{las_path} is in a geographic CRS ({pc['crs']}); building areas need a projected "
-                             "CRS in metres. Reproject the point cloud first.")
+            raise ValueError(
+                f"{las_path} is in a geographic CRS ({pc['crs']}); building areas need a projected "
+                "CRS in metres. Reproject the point cloud first."
+            )
         if out_crs is None:
-            logger.warning("%s: no CRS in the header; assuming coordinates are in metres.", las_path)
+            logger.warning(
+                "%s: no CRS in the header; assuming coordinates are in metres.", las_path
+            )
 
         x, y, cls = pc["x"], pc["y"], pc["classification"]
         mask = cls == building_class
         if not mask.any():
-            return {"success": False,
-                    "error": (f"No points with classification={building_class} found. Run classify_points() first "
-                              "if this file lacks building classification, or pass the correct class id.")}
+            return {
+                "success": False,
+                "error": (
+                    f"No points with classification={building_class} found. Run classify_points() first "
+                    "if this file lacks building classification, or pass the correct class id."
+                ),
+            }
 
         xmin, ymin, xmax, ymax = pc["bounds"]
         W, H, transform = _grid(xmin, ymin, xmax, ymax, resolution)
@@ -438,7 +511,9 @@ class PointCloudProcessor:
         # closing with n iterations bridges gaps up to 2n cells; pad so buildings at the tile edge are not eroded
         n_iter = max(1, math.ceil(gap_fill_m / (2 * resolution)))
         padded = np.pad(raster, n_iter + 1)
-        closed = binary_closing(padded, iterations=n_iter)[n_iter + 1:-(n_iter + 1), n_iter + 1:-(n_iter + 1)]
+        closed = binary_closing(padded, iterations=n_iter)[
+            n_iter + 1 : -(n_iter + 1), n_iter + 1 : -(n_iter + 1)
+        ]
 
         features = []
         for geom, val in rio_shapes(closed.astype(np.uint8), mask=closed, transform=transform):
@@ -449,8 +524,13 @@ class PointCloudProcessor:
                 poly = poly.simplify(simplify_m, preserve_topology=True)
             if poly.is_empty or poly.area < min_area_m2:
                 continue
-            features.append({"type": "Feature", "geometry": poly.__geo_interface__,
-                             "properties": {"area_m2": round(poly.area, 1), "source": "LiDAR"}})
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": poly.__geo_interface__,
+                    "properties": {"area_m2": round(poly.area, 1), "source": "LiDAR"},
+                }
+            )
 
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         fc: dict[str, Any] = {"type": "FeatureCollection", "features": features}
@@ -460,7 +540,9 @@ class PointCloudProcessor:
         with open(output_path, "w") as f:
             json.dump(fc, f)
         return {
-            "success": True, "output_path": output_path, "n_buildings": len(features),
+            "success": True,
+            "output_path": output_path,
+            "n_buildings": len(features),
             "n_building_points": int(mask.sum()),
             "total_area_m2": round(sum(ft["properties"]["area_m2"] for ft in features), 1),
         }

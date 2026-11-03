@@ -9,8 +9,8 @@ with imagery tiles.
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 import numpy as np
@@ -34,8 +34,16 @@ OSM_TILE_CLASSES: dict[str, dict[str, int]] = {
     "water": {"water": 1},
     "landuse": {"residential": 1, "commercial": 2, "agricultural": 3, "vegetation": 4},
     "all": {  # same numbers as OSMLabeler.label()
-        "buildings": 1, "roads": 2, "water": 3, "vegetation": 4, "agricultural": 5,
-        "commercial": 6, "residential": 7, "solar_panels": 8, "parking": 9, "sports": 10,
+        "buildings": 1,
+        "roads": 2,
+        "water": 3,
+        "vegetation": 4,
+        "agricultural": 5,
+        "commercial": 6,
+        "residential": 7,
+        "solar_panels": 8,
+        "parking": 9,
+        "sports": 10,
     },
 }
 
@@ -90,7 +98,7 @@ class OSMLabeler(BaseLabeler):
     def supported_tasks(self) -> list[str]:
         return ["segmentation", "detection", "classification"]
 
-    def label_tile(
+    def label_tile(  # type: ignore[override]
         self,
         tile: TileMetadata,
         output_dir: Path,
@@ -117,12 +125,14 @@ class OSMLabeler(BaseLabeler):
         """
         feature_type = kwargs.get("feature_type", self.feature_type)
         if feature_type not in OSM_TILE_CLASSES:
-            raise OSMLabelingError(f"Invalid feature_type '{feature_type}'. Choose from {set(OSM_TILE_CLASSES)}")
+            raise OSMLabelingError(
+                f"Invalid feature_type '{feature_type}'. Choose from {set(OSM_TILE_CLASSES)}"
+            )
 
         # Build bounding box (min_lon, min_lat, max_lon, max_lat)
         # Handle both legacy (bounds obj) and new TileMetadata (tuple)
-        raw_bounds = tile.bounds
-        if hasattr(raw_bounds, 'left'):
+        raw_bounds: Any = tile.bounds
+        if hasattr(raw_bounds, "left"):
             bounds = (raw_bounds.left, raw_bounds.bottom, raw_bounds.right, raw_bounds.top)
         else:
             bounds = tuple(raw_bounds)
@@ -159,7 +169,9 @@ class OSMLabeler(BaseLabeler):
         # Filter by coverage
         positive_fraction = float(np.mean(mask > 0))
         if positive_fraction < 0.001:
-            return self._skip_tile(tile, f"Positive pixel fraction too low: {positive_fraction:.4f}")
+            return self._skip_tile(
+                tile, f"Positive pixel fraction too low: {positive_fraction:.4f}"
+            )
 
         # Write label GeoTIFF
         label_path = self._write_label_geotiff(mask, tile, output_dir)
@@ -198,7 +210,9 @@ class OSMLabeler(BaseLabeler):
         return area._osm_to_geojson(data, categories)
 
     @staticmethod
-    def _rasterize_geojson(geojson: dict[str, Any], tile: TileMetadata, classes: dict[str, int]) -> np.ndarray:
+    def _rasterize_geojson(
+        geojson: dict[str, Any], tile: TileMetadata, classes: dict[str, int]
+    ) -> np.ndarray:
         """Burn categorised lon/lat features onto ``tile``'s exact pixel grid."""
         from affine import Affine  # noqa: PLC0415
 
@@ -209,8 +223,13 @@ class OSMLabeler(BaseLabeler):
         import rasterio.crs  # noqa: PLC0415
 
         label, _ = AreaLabeler()._burn(
-            geojson, transform, tile.width, tile.height, rasterio.crs.CRS.from_user_input(crs),
-            all_touched=False, value_map=classes,
+            geojson,
+            transform,
+            tile.width,
+            tile.height,
+            rasterio.crs.CRS.from_user_input(crs),
+            all_touched=False,
+            value_map=classes,
         )
         return label
 
@@ -225,82 +244,6 @@ class OSMLabeler(BaseLabeler):
     # ------------------------------------------------------------------
     # Rasterization
     # ------------------------------------------------------------------
-
-    def _rasterize_features(
-        self,
-        features: list[dict[str, Any]],
-        bounds: tuple[float, float, float, float],
-        height: int,
-        width: int,
-        feature_type: str,
-    ) -> np.ndarray:
-        """
-        Rasterize OSM features to a label mask.
-
-        Parameters
-        ----------
-        features : list of dict
-            OSM elements returned by Overpass.
-        bounds : tuple
-            (min_lon, min_lat, max_lon, max_lat).
-        height, width : int
-            Output mask dimensions.
-        feature_type : str
-            Determines class assignment.
-
-        Returns
-        -------
-        np.ndarray
-            Label mask of shape (H, W) with integer class IDs.
-        """
-        try:
-            import shapely.geometry as sg  # noqa: PLC0415
-            from rasterio.features import rasterize as rio_rasterize  # noqa: PLC0415
-            from rasterio.transform import from_bounds  # noqa: PLC0415
-        except ImportError as exc:
-            raise OSMLabelingError(
-                "rasterio and shapely are required for OSM rasterization. "
-                "Install with: pip install rasterio shapely"
-            ) from exc
-
-        min_lon, min_lat, max_lon, max_lat = bounds
-        transform = from_bounds(min_lon, min_lat, max_lon, max_lat, width, height)
-
-        # Build node lookup for way reconstruction
-        nodes: dict[int, tuple[float, float]] = {}
-        for elem in features:
-            if elem["type"] == "node":
-                nodes[elem["id"]] = (elem["lon"], elem["lat"])
-
-        shapes: list[tuple[Any, int]] = []
-        for elem in features:
-            if elem["type"] != "way":
-                continue
-            coords = [nodes[nid] for nid in elem.get("nd", []) if nid in nodes]
-            if len(coords) < 3:
-                continue
-
-            try:
-                geom = sg.Polygon(coords)
-                if not geom.is_valid:
-                    geom = geom.buffer(0)
-            except Exception:  # noqa: BLE001
-                continue
-
-            class_id = self._get_class_id(elem.get("tags", {}), feature_type)
-            shapes.append((sg.mapping(geom), class_id))
-
-        if not shapes:
-            return np.zeros((height, width), dtype=np.uint8)
-
-        mask = rio_rasterize(
-            shapes,
-            out_shape=(height, width),
-            transform=transform,
-            fill=0,
-            dtype=np.uint8,
-        )
-        return mask
 
     @staticmethod
     def _get_class_names(feature_type: str) -> list[str]:

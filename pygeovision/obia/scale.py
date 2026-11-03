@@ -13,6 +13,7 @@ only ever joins objects, so one pass can be paused at each scale):
   segmentation-quality score D (0 = perfect) at every scale so you can see the
   trade-off between over- and under-segmentation and pick the minimum.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -24,16 +25,33 @@ from .merging import RegionMerger
 from .segmentation import _prepare, _relabel, _slic
 
 
-def _merger(image, rescale, color_weight, compactness_weight, init, init_segments, band_weights,
-            band_names=None, transform=None, crs=None):
+def _merger(
+    image,
+    rescale,
+    color_weight,
+    compactness_weight,
+    init,
+    init_segments,
+    band_weights,
+    band_names=None,
+    transform=None,
+    crs=None,
+):
     rd = as_raster_data(image, band_names, transform, crs)
     img, valid = _prepare(rd, rescale)
     H, W = img.shape[1:]
     if init == "auto":
         init = "pixels" if H * W <= 10_000 else "superpixels"
-    init_labels = (np.arange(H * W).reshape(H, W) if init == "pixels"
-                   else _slic(img, init_segments or max(H * W // 16, 50), 0.1, 0.0))
-    return img, valid, RegionMerger(img, init_labels, color_weight, compactness_weight, band_weights)
+    init_labels = (
+        np.arange(H * W).reshape(H, W)
+        if init == "pixels"
+        else _slic(img, init_segments or max(H * W // 16, 50), 0.1, 0.0)
+    )
+    return (
+        img,
+        valid,
+        RegionMerger(img, init_labels, color_weight, compactness_weight, band_weights),
+    )
 
 
 def _local_variance(img: np.ndarray, labels: np.ndarray) -> float:
@@ -51,8 +69,18 @@ def _local_variance(img: np.ndarray, labels: np.ndarray) -> float:
     return float(np.mean(lvs))
 
 
-def scale_diagnostics(image, scales, *, rescale=True, color_weight=0.9, compactness_weight=0.5,
-                      init="auto", init_segments=None, band_weights=None, **kw) -> pd.DataFrame:
+def scale_diagnostics(
+    image,
+    scales,
+    *,
+    rescale=True,
+    color_weight=0.9,
+    compactness_weight=0.5,
+    init="auto",
+    init_segments=None,
+    band_weights=None,
+    **kw,
+) -> pd.DataFrame:
     """Object count, LV and ROC-LV at each scale.
 
     Returns a DataFrame indexed by scale with ``n_objects``, ``lv``, ``roc_lv``
@@ -62,8 +90,9 @@ def scale_diagnostics(image, scales, *, rescale=True, color_weight=0.9, compactn
     scales = sorted(float(s) for s in scales)
     if len(scales) < 3:
         raise ValueError("give at least 3 scales")
-    img, valid, m = _merger(image, rescale, color_weight, compactness_weight, init, init_segments,
-                            band_weights, **kw)
+    img, valid, m = _merger(
+        image, rescale, color_weight, compactness_weight, init, init_segments, band_weights, **kw
+    )
     rows = []
     for s in scales:
         m.run(s)
@@ -80,9 +109,19 @@ def scale_diagnostics(image, scales, *, rescale=True, color_weight=0.9, compactn
     return df
 
 
-def scale_vs_reference(image, scales, reference_labels, *, rescale=True, color_weight=0.9,
-                       compactness_weight=0.5, init="auto", init_segments=None,
-                       band_weights=None, **kw) -> pd.DataFrame:
+def scale_vs_reference(
+    image,
+    scales,
+    reference_labels,
+    *,
+    rescale=True,
+    color_weight=0.9,
+    compactness_weight=0.5,
+    init="auto",
+    init_segments=None,
+    band_weights=None,
+    **kw,
+) -> pd.DataFrame:
     """Segmentation quality at each scale against reference objects.
 
     Columns: ``n_objects``, ``mean_over_seg``, ``mean_under_seg``, ``mean_D``,
@@ -90,14 +129,22 @@ def scale_vs_reference(image, scales, reference_labels, *, rescale=True, color_w
     these reference objects.
     """
     scales = sorted(float(s) for s in scales)
-    _, valid, m = _merger(image, rescale, color_weight, compactness_weight, init, init_segments,
-                          band_weights, **kw)
+    _, valid, m = _merger(
+        image, rescale, color_weight, compactness_weight, init, init_segments, band_weights, **kw
+    )
     rows = []
     for s in scales:
         m.run(s)
         lab = _relabel(m.labels(), valid)
         _, summ = segmentation_quality(lab, reference_labels)
-        rows.append({"scale": s, "n_objects": int(lab.max()),
-                     "mean_over_seg": summ["mean_over_seg"], "mean_under_seg": summ["mean_under_seg"],
-                     "mean_D": summ["mean_D"], "mean_QR": summ["mean_QR"]})
+        rows.append(
+            {
+                "scale": s,
+                "n_objects": int(lab.max()),
+                "mean_over_seg": summ["mean_over_seg"],
+                "mean_under_seg": summ["mean_under_seg"],
+                "mean_D": summ["mean_D"],
+                "mean_QR": summ["mean_QR"],
+            }
+        )
     return pd.DataFrame(rows).set_index("scale")

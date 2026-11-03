@@ -5,6 +5,7 @@ Both produce a binary ``uint8`` raster (0 background, 1 building) plus, optional
 GeoJSON. Footprints are *model-derived from imagery* (not surveyed), so they carry the errors of the
 model that made them; see ``docs/labeling/buildings.md``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,8 +20,15 @@ def _sibling(path: Path, suffix: str) -> Path:
     return path.with_name(path.stem + suffix)
 
 
-def rasterise_footprints(geojson: dict, bbox, output_path: Path, resolution_m: float,
-                         reference_raster: str | None, tag: str, all_touched: bool = False) -> None:
+def rasterise_footprints(
+    geojson: dict,
+    bbox,
+    output_path: Path,
+    resolution_m: float,
+    reference_raster: str | None,
+    tag: str,
+    all_touched: bool = False,
+) -> None:
     """Burn polygon footprints (lon/lat) into a binary label raster.
 
     With ``reference_raster`` the output has exactly that grid and CRS (footprints are reprojected to
@@ -35,7 +43,7 @@ def rasterise_footprints(geojson: dict, bbox, output_path: Path, resolution_m: f
         from rasterio.warp import transform_geom
         from shapely.geometry import shape
     except ImportError as exc:
-        raise ImportError(f"rasterio + shapely required: {exc}")
+        raise ImportError(f"rasterio + shapely required: {exc}") from exc
     from pygeovision.labeling.osm import OSMLabeler
 
     if reference_raster:
@@ -54,13 +62,32 @@ def rasterise_footprints(geojson: dict, bbox, output_path: Path, resolution_m: f
         if to_target:
             g = transform_geom("EPSG:4326", crs, g)
         shapes.append((shape(g).__geo_interface__, 1))
-    label = (rasterize(shapes, out_shape=(height, width), transform=transform, fill=0, dtype=np.uint8,
-                       all_touched=all_touched)
-             if shapes else np.zeros((height, width), np.uint8))
+    label = (
+        rasterize(
+            shapes,
+            out_shape=(height, width),
+            transform=transform,
+            fill=0,
+            dtype=np.uint8,
+            all_touched=all_touched,
+        )
+        if shapes
+        else np.zeros((height, width), np.uint8)
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(str(output_path), "w", driver="GTiff", height=height, width=width, count=1,
-                       dtype="uint8", crs=crs, transform=transform, compress="lzw") as dst:
+    with rasterio.open(
+        str(output_path),
+        "w",
+        driver="GTiff",
+        height=height,
+        width=width,
+        count=1,
+        dtype="uint8",
+        crs=crs,
+        transform=transform,
+        compress="lzw",
+    ) as dst:
         dst.write(label[np.newaxis])
         dst.update_tags(source=tag, n_footprints=str(len(shapes)))
 
@@ -68,6 +95,7 @@ def rasterise_footprints(geojson: dict, bbox, output_path: Path, resolution_m: f
 def _in_bbox(geom_dict: dict, bbox) -> bool:
     """True when the footprint really intersects the bbox (not just its first vertex)."""
     from shapely.geometry import box, shape
+
     try:
         return shape(geom_dict).intersects(box(*bbox))
     except Exception:
@@ -94,7 +122,9 @@ class MicrosoftBuildingsLabeler:
         )
     """
 
-    MANIFEST_URL = "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
+    MANIFEST_URL = (
+        "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
+    )
 
     def __init__(self, min_confidence: float = 0.5, quadkey_zoom: int = 9) -> None:
         self.min_confidence = min_confidence
@@ -110,9 +140,11 @@ class MicrosoftBuildingsLabeler:
             return self._manifest_cache
         import pandas as pd
         import requests
+
         resp = requests.get(self.MANIFEST_URL, timeout=60)
         resp.raise_for_status()
         import io
+
         self._manifest_cache = pd.read_csv(io.StringIO(resp.text), dtype=str)
         return self._manifest_cache
 
@@ -120,14 +152,22 @@ class MicrosoftBuildingsLabeler:
     def _bbox_to_quadkeys(bbox: tuple[float, ...], zoom: int) -> list[str]:
         """Bing Maps tile-system quadkeys covering the bbox at `zoom`."""
         import math
+
         lon_min, lat_min, lon_max, lat_max = bbox
 
         def deg2tile(lat, lon, z):
             lat = max(min(lat, 85.05112878), -85.05112878)
-            n = 2 ** z
+            n = 2**z
             x = int((lon + 180.0) / 360.0 * n)
-            y = int((1.0 - math.log(math.tan(math.radians(lat)) +
-                     1.0 / math.cos(math.radians(lat))) / math.pi) / 2.0 * n)
+            y = int(
+                (
+                    1.0
+                    - math.log(math.tan(math.radians(lat)) + 1.0 / math.cos(math.radians(lat)))
+                    / math.pi
+                )
+                / 2.0
+                * n
+            )
             return max(0, min(n - 1, x)), max(0, min(n - 1, y))
 
         def tile_to_quadkey(x, y, z):
@@ -167,8 +207,14 @@ class MicrosoftBuildingsLabeler:
 
         import requests
 
-        meta = {"n_files_matched": 0, "n_files_read": 0, "n_files_failed": 0, "truncated": False,
-                "manifest_error": None, "n_no_confidence": 0}
+        meta = {
+            "n_files_matched": 0,
+            "n_files_read": 0,
+            "n_files_failed": 0,
+            "truncated": False,
+            "manifest_error": None,
+            "n_no_confidence": 0,
+        }
         empty = {"type": "FeatureCollection", "features": [], **meta}
         try:
             manifest = self._load_manifest()
@@ -191,8 +237,11 @@ class MicrosoftBuildingsLabeler:
         meta["n_files_matched"] = len(matched_urls)
         if len(matched_urls) > self.MAX_FILES:
             meta["truncated"] = True
-            logger.warning("%d building files match; reading only the first %d (set MAX_FILES to change).",
-                           len(matched_urls), self.MAX_FILES)
+            logger.warning(
+                "%d building files match; reading only the first %d (set MAX_FILES to change).",
+                len(matched_urls),
+                self.MAX_FILES,
+            )
 
         features = []
         for url in matched_urls[: self.MAX_FILES]:
@@ -226,17 +275,25 @@ class MicrosoftBuildingsLabeler:
                         continue
                     if not _in_bbox(geom, bbox):
                         continue
-                    features.append({
-                        "type": "Feature",
-                        "geometry": geom,
-                        "properties": {"confidence": conf, "label_value": 1, "source": "Microsoft"},
-                    })
+                    features.append(
+                        {
+                            "type": "Feature",
+                            "geometry": geom,
+                            "properties": {
+                                "confidence": conf,
+                                "label_value": 1,
+                                "source": "Microsoft",
+                            },
+                        }
+                    )
             except Exception as exc:
                 meta["n_files_failed"] += 1
                 logger.warning("MS Buildings download failed for %s: %s", url, exc)
 
         if not features:
-            logger.warning("No MS Buildings found for bbox=%s (confidence>=%.1f)", bbox, self.min_confidence)
+            logger.warning(
+                "No MS Buildings found for bbox=%s (confidence>=%.1f)", bbox, self.min_confidence
+            )
         return {"type": "FeatureCollection", "features": features, **meta}
 
     def label(
@@ -262,13 +319,21 @@ class MicrosoftBuildingsLabeler:
         vector_path = None
         if save_vector:
             import json
+
             vector_path = _sibling(output_path, "_ms_buildings.geojson")
             vector_path.parent.mkdir(parents=True, exist_ok=True)
             with open(vector_path, "w") as f:
                 json.dump({k: v for k, v in geojson.items() if k in ("type", "features")}, f)
 
-        rasterise_footprints(geojson, bbox, output_path, resolution_m, reference_raster,
-                             "Microsoft_ML_Buildings", all_touched)
+        rasterise_footprints(
+            geojson,
+            bbox,
+            output_path,
+            resolution_m,
+            reference_raster,
+            "Microsoft_ML_Buildings",
+            all_touched,
+        )
         if n > 0:
             error = None
         elif geojson.get("manifest_error"):
@@ -276,13 +341,18 @@ class MicrosoftBuildingsLabeler:
         elif geojson.get("n_files_matched", 0) == 0:
             error = f"no Microsoft building files cover bbox={bbox} (the dataset has no coverage there)."
         elif geojson.get("n_files_read", 0) == 0:
-            error = (f"{geojson['n_files_failed']} building file(s) matched bbox={bbox} but none could be "
-                     "downloaded.")
+            error = (
+                f"{geojson['n_files_failed']} building file(s) matched bbox={bbox} but none could be "
+                "downloaded."
+            )
         else:
             error = f"0 Microsoft building footprints found inside bbox={bbox}."
         return {
-            "success": n > 0, "n_buildings": n, "output_path": str(output_path),
-            "vector_path": str(vector_path) if vector_path else None, "source": "Microsoft",
+            "success": n > 0,
+            "n_buildings": n,
+            "output_path": str(output_path),
+            "vector_path": str(vector_path) if vector_path else None,
+            "source": "Microsoft",
             "n_files_matched": geojson.get("n_files_matched", 0),
             "n_files_read": geojson.get("n_files_read", 0),
             "n_files_failed": geojson.get("n_files_failed", 0),
@@ -292,8 +362,14 @@ class MicrosoftBuildingsLabeler:
         }
 
     def _rasterise_buildings(self, geojson, bbox, output_path, resolution_m, reference_raster):
-        rasterise_footprints(geojson, bbox, Path(output_path), resolution_m, reference_raster,
-                             "Microsoft_ML_Buildings")
+        rasterise_footprints(
+            geojson,
+            bbox,
+            Path(output_path),
+            resolution_m,
+            reference_raster,
+            "Microsoft_ML_Buildings",
+        )
 
 
 class GoogleBuildingsLabeler:
@@ -330,6 +406,7 @@ class GoogleBuildingsLabeler:
         """
         try:
             import s2sphere
+
             lon_min, lat_min, lon_max, lat_max = bbox
             region = s2sphere.LatLngRect(
                 s2sphere.LatLng.from_degrees(lat_min, lon_min),
@@ -374,7 +451,9 @@ class GoogleBuildingsLabeler:
         lon_min, lat_min, lon_max, lat_max = bbox
         truncated = len(cells) > self.MAX_CELLS
         if truncated:
-            logger.warning("%d S2 cells cover the bbox; reading only the first %d.", len(cells), self.MAX_CELLS)
+            logger.warning(
+                "%d S2 cells cover the bbox; reading only the first %d.", len(cells), self.MAX_CELLS
+            )
         all_features = []
         n_cells_read = n_cells_failed = 0
         for cell in cells[: self.MAX_CELLS]:
@@ -383,25 +462,36 @@ class GoogleBuildingsLabeler:
                 resp = requests.get(url, timeout=120)
                 if resp.status_code != 200:
                     n_cells_failed += 1
-                    logger.warning("Google Buildings cell %s: HTTP %s (no coverage or unreachable)",
-                                   cell, resp.status_code)
+                    logger.warning(
+                        "Google Buildings cell %s: HTTP %s (no coverage or unreachable)",
+                        cell,
+                        resp.status_code,
+                    )
                     continue
                 df = pd.read_csv(io.BytesIO(gzip.decompress(resp.content)))
                 n_cells_read += 1
                 df = df[df["confidence"] >= self.min_confidence]
-                if {"latitude", "longitude"} <= set(df.columns):     # cheap vectorised pre-filter
+                if {"latitude", "longitude"} <= set(df.columns):  # cheap vectorised pre-filter
                     pad = 0.01
-                    df = df[df["longitude"].between(lon_min - pad, lon_max + pad)
-                            & df["latitude"].between(lat_min - pad, lat_max + pad)]
+                    df = df[
+                        df["longitude"].between(lon_min - pad, lon_max + pad)
+                        & df["latitude"].between(lat_min - pad, lat_max + pad)
+                    ]
                 for _, row in df.iterrows():
                     geom = shapely_mapping(shapely_wkt.loads(row["geometry"]))
                     if not _in_bbox(geom, bbox):
                         continue
-                    all_features.append({
-                        "type": "Feature",
-                        "geometry": geom,
-                        "properties": {"confidence": float(row["confidence"]), "label_value": 1, "source": "Google"},
-                    })
+                    all_features.append(
+                        {
+                            "type": "Feature",
+                            "geometry": geom,
+                            "properties": {
+                                "confidence": float(row["confidence"]),
+                                "label_value": 1,
+                                "source": "Google",
+                            },
+                        }
+                    )
             except Exception as exc:
                 n_cells_failed += 1
                 logger.warning("Google Buildings cell %s failed: %s", cell, exc)
@@ -412,24 +502,39 @@ class GoogleBuildingsLabeler:
         vector_path = None
         if save_vector:
             import json
+
             vector_path = _sibling(output_path, "_google_buildings.geojson")
             vector_path.parent.mkdir(parents=True, exist_ok=True)
             with open(vector_path, "w") as f:
                 json.dump(geojson, f)
 
-        rasterise_footprints(geojson, bbox, output_path, resolution_m, reference_raster,
-                             "Google_Open_Buildings", all_touched)
+        rasterise_footprints(
+            geojson,
+            bbox,
+            output_path,
+            resolution_m,
+            reference_raster,
+            "Google_Open_Buildings",
+            all_touched,
+        )
         n_buildings = len(all_features)
         if n_buildings > 0:
             error = None
         elif n_cells_read == 0:
-            error = (f"none of the {min(len(cells), self.MAX_CELLS)} S2 cell file(s) for bbox={bbox} could be "
-                     "downloaded -- the dataset has no coverage here or the bucket is unreachable.")
+            error = (
+                f"none of the {min(len(cells), self.MAX_CELLS)} S2 cell file(s) for bbox={bbox} could be "
+                "downloaded -- the dataset has no coverage here or the bucket is unreachable."
+            )
         else:
             error = f"0 Google building footprints (confidence >= {self.min_confidence}) found inside bbox={bbox}."
         return {
-            "success": n_buildings > 0, "n_buildings": n_buildings, "output_path": str(output_path),
-            "vector_path": str(vector_path) if vector_path else None, "source": "Google",
-            "n_cells_read": n_cells_read, "n_cells_failed": n_cells_failed, "truncated": truncated,
+            "success": n_buildings > 0,
+            "n_buildings": n_buildings,
+            "output_path": str(output_path),
+            "vector_path": str(vector_path) if vector_path else None,
+            "source": "Google",
+            "n_cells_read": n_cells_read,
+            "n_cells_failed": n_cells_failed,
+            "truncated": truncated,
             "error": error,
         }

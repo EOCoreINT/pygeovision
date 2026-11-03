@@ -3,6 +3,7 @@ line-length    = 100
 target-version = "py310"
 indent-width   = 4
 extend-include = ["*.pyi"]
+extend-exclude = ["**/*.ipynb"]   # notebooks are demo material, not linted
 
 [lint]
 select  = ["E", "F", "W", "I", "B", "C4", "UP", "N", "SIM"]
@@ -15,12 +16,32 @@ ignore  = [
     "SIM108", # ternary operator — readability preference
     "SIM117", # nested with — geospatial code often has rasterio.open chains
     "UP007",  # use X | Y for union type — requires Python 3.10+, already set
+    "N803",   # argument names from the maths and imaging (H, W, B, G, L, C1, C2)
+    "N815",   # metric names such as mAP50 are the published spelling
+    "N818",   # public exception names are API; renaming would break users
+    "N811", "N813", "N814", "N817",   # conventional import aliases (DDP, FSDP, _PGF, _P, _R)
+    "E741",   # `l`, `I` in short mathematical expressions
 ]
 fixable   = ["ALL"]
 unfixable = []
 
 [lint.per-file-ignores]
-"tests/*"                = ["S101", "D", "ANN"]    # allow assert + no docstring
+"tests/*"                = [
+    "S101", "D", "ANN",
+    "E402",   # pytest.importorskip("torch") must run before the imports that need it
+    "E741",   # short names (l, O) in small test helpers
+    "E731",   # lambda stubs and fakes
+    "B017", "SIM115", "F401", "N818", "E742",   # test doubles and importorskip availability checks
+]
+"conftest.py"            = ["E402"]                # sys.path set up before imports
+"examples/**"            = ["E402", "E702"]        # runnable demos: compact one-liners, path setup first
+"docs/**"                = ["E402", "E702", "UP031"]
+"notebooks/**"           = ["E402", "E702", "UP031"]
+"book/**"                = ["E402", "E702", "UP031"]
+"**/__init__.py"         = ["F401", "UP035"]      # re-exports; legacy typing names kept for old imports
+"pygeovision/ai/training/callbacks.py" = ["B024", "B027"]   # hooks are optional no-ops, not abstract
+"pygeovision/models/adapters/sar_channel_manager.py" = ["N801"]   # SAR_DCE is the published model name
+"pygeovision/reporting/pdf.py" = ["N802"]           # showPage overrides the reportlab method
 "pygeovision/cli/*"      = ["B006", "FBT001"]      # Click defaults
 "pygeovision/data/pgf_bridge.py" = ["N803"]        # CRS/bbox uppercase arg names
 

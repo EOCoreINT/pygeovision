@@ -28,6 +28,7 @@ Usage::
     # From numpy array directly
     ndvi_arr = client.indices.ndvi_array(red=red_arr, nir=nir_arr)
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,12 +38,13 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_EPS = 1e-10   # avoid divide-by-zero
+_EPS = 1e-10  # avoid divide-by-zero
 
 
 def _require_rasterio():
     try:
         import rasterio
+
         return rasterio
     except ImportError:
         raise ImportError("pip install rasterio") from None
@@ -72,9 +74,11 @@ def _save_index(arr: np.ndarray, ref_path: str, output_path: str, nodata: float 
     with r.open(ref_path) as ref:
         profile = ref.profile.copy()
     profile.update(count=1, dtype="float32", nodata=nodata, compress="lzw")
-    for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+    for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
         profile.pop(_k, None)
-    out = np.where(np.isfinite(arr), arr, nodata).astype(np.float32)   # no data stays no data, never 0
+    out = np.where(np.isfinite(arr), arr, nodata).astype(
+        np.float32
+    )  # no data stays no data, never 0
     with r.open(output_path, "w", **profile) as dst:
         dst.write(out[np.newaxis])
     return output_path
@@ -82,7 +86,8 @@ def _save_index(arr: np.ndarray, ref_path: str, output_path: str, nodata: float 
 
 def _validate_arr(arr: np.ndarray, name: str) -> np.ndarray:
     """Make an index result finite-or-NaN: Inf becomes NaN. NaN is kept so that "no data" survives to the output
-    (a file gets its nodata value there; an array result has it replaced by 0 in :meth:`SpectralIndices._out`)."""
+    (a file gets its nodata value there; an array result has it replaced by 0 in :meth:`SpectralIndices._out`).
+    """
     arr = np.where(np.isfinite(arr), arr, np.nan).astype(np.float32)
     return arr
 
@@ -95,6 +100,7 @@ def _pygeofetch_indices():
     computation)."""
     try:
         from pygeofetch.processing.indices import SpectralIndices as _PgfIndices
+
         return _PgfIndices()
     except ImportError:
         return None
@@ -131,6 +137,7 @@ def _delegate_or_native(
         return native_fn()
 
     import tempfile
+
     r = _require_rasterio()
     tmp_dir = tempfile.mkdtemp(prefix="pygeovision_indices_")
     tmp_paths: dict[str, str] = {}
@@ -141,7 +148,7 @@ def _delegate_or_native(
                 band_arr = src.read(band_idx)
                 band_profile = profile.copy()
                 band_profile.update(count=1, dtype=band_arr.dtype)
-                for _k in ("blockxsize", "blockysize", "tiled"):      # illegal without TILED=YES
+                for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
                     band_profile.pop(_k, None)
                 band_path = str(pathlib.Path(tmp_dir) / f"{param_name}.tif")
                 with r.open(band_path, "w", **band_profile) as dst:
@@ -155,7 +162,9 @@ def _delegate_or_native(
         if not result.success:
             logger.warning(
                 "pygeofetch.%s failed (%s) — falling back to pygeovision's "
-                "native formula for this call.", pgf_method, result.error,
+                "native formula for this call.",
+                pgf_method,
+                result.error,
             )
             return native_fn()
 
@@ -165,6 +174,7 @@ def _delegate_or_native(
         if output_path:
             pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             import shutil
+
             shutil.copy(result.output_path, output_path)
             logger.info("Saved %s → %s (via pygeofetch)", name.upper(), output_path)
             return output_path
@@ -172,17 +182,21 @@ def _delegate_or_native(
     except Exception as exc:
         logger.warning(
             "pygeofetch delegation for %s failed (%s) — falling back to "
-            "pygeovision's native formula for this call.", name, exc,
+            "pygeovision's native formula for this call.",
+            name,
+            exc,
         )
         return native_fn()
     finally:
         import shutil
+
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 # ===========================================================================
 # SpectralIndices class
 # ===========================================================================
+
 
 class SpectralIndices:
     """Validated spectral and spatial indices for satellite imagery.
@@ -212,6 +226,7 @@ class SpectralIndices:
     def __init__(self, validator=None):
         if validator is None:
             from pygeovision.data.validator import DataValidator
+
             validator = DataValidator(mode="fix")
         self._v = validator
 
@@ -241,6 +256,7 @@ class SpectralIndices:
         Returns:
             float32 numpy array or path string.
         """
+
         def _native():
             red, nir, ref = self._get_two_bands(source, red_band, nir_band)
             result = (nir - red) / (nir + red + _EPS)
@@ -248,17 +264,24 @@ class SpectralIndices:
             return self._out(result, ref, output_path, "ndvi")
 
         return _delegate_or_native(
-            source, {"red": red_band, "nir": nir_band}, "ndvi", _native,
-            output_path, "ndvi",
+            source,
+            {"red": red_band, "nir": nir_band},
+            "ndvi",
+            _native,
+            output_path,
+            "ndvi",
         )
 
     def evi(
         self,
         source: str | np.ndarray,
         blue_band: int = 1,
-        red_band:  int = 3,
-        nir_band:  int = 4,
-        G: float = 2.5, C1: float = 6.0, C2: float = 7.5, L: float = 1.0,
+        red_band: int = 3,
+        nir_band: int = 4,
+        G: float = 2.5,
+        C1: float = 6.0,
+        C2: float = 7.5,
+        L: float = 1.0,
         output_path: str | None = None,
     ) -> str | np.ndarray:
         """Enhanced Vegetation Index (Huete et al. 2002).
@@ -269,7 +292,7 @@ class SpectralIndices:
         """
         data, _, ref = self._get_three_bands(source, blue_band, red_band, nir_band)
         blue, red, nir = data
-        result = G * (nir - red) / (nir + C1*red - C2*blue + L + _EPS)
+        result = G * (nir - red) / (nir + C1 * red - C2 * blue + L + _EPS)
         result = np.clip(_validate_arr(result, "EVI"), -1.0, 1.0)
         return self._out(result, ref, output_path, "evi")
 
@@ -304,8 +327,8 @@ class SpectralIndices:
         MSAVI = (2×NIR + 1 − sqrt((2×NIR+1)² − 8×(NIR−Red))) / 2
         """
         red, nir, ref = self._get_two_bands(source, red_band, nir_band)
-        inner = np.maximum(0.0, (2*nir + 1)**2 - 8*(nir - red))
-        result = (2*nir + 1 - np.sqrt(inner)) / 2.0
+        inner = np.maximum(0.0, (2 * nir + 1) ** 2 - 8 * (nir - red))
+        result = (2 * nir + 1 - np.sqrt(inner)) / 2.0
         result = _validate_arr(result, "MSAVI")
         return self._out(result, ref, output_path, "msavi")
 
@@ -313,8 +336,8 @@ class SpectralIndices:
         self,
         source: str | np.ndarray,
         blue_band: int = 1,
-        red_band:  int = 3,
-        nir_band:  int = 4,
+        red_band: int = 3,
+        nir_band: int = 4,
         gamma: float = 1.0,
         output_path: str | None = None,
     ) -> str | np.ndarray:
@@ -379,7 +402,7 @@ class SpectralIndices:
         Better dynamic range than NDVI in high biomass areas.
         """
         red, nir, ref = self._get_two_bands(source, red_band, nir_band)
-        result = (alpha*nir - red) / (alpha*nir + red + _EPS)
+        result = (alpha * nir - red) / (alpha * nir + red + _EPS)
         result = np.clip(_validate_arr(result, "WDRVI"), -1.0, 1.0)
         return self._out(result, ref, output_path, "wdrvi")
 
@@ -388,7 +411,7 @@ class SpectralIndices:
         source: str | np.ndarray,
         blue_band: int = 1,
         green_band: int = 2,
-        red_band:   int = 3,
+        red_band: int = 3,
         output_path: str | None = None,
     ) -> str | np.ndarray:
         """Visible Atmospherically Resistant Index (Gitelson et al. 2002).
@@ -408,7 +431,7 @@ class SpectralIndices:
         source: str | np.ndarray,
         blue_band: int = 1,
         green_band: int = 2,
-        red_band:   int = 3,
+        red_band: int = 3,
         output_path: str | None = None,
     ) -> str | np.ndarray:
         """Excess Green Index (Woebbecke et al. 1995).
@@ -420,8 +443,8 @@ class SpectralIndices:
         data, _, ref = self._get_three_bands(source, blue_band, green_band, red_band)
         blue, green, red = data
         total = red + green + blue + _EPS
-        r_, g_, b_ = red/total, green/total, blue/total
-        result = _validate_arr(2*g_ - r_ - b_, "ExG")
+        r_, g_, b_ = red / total, green / total, blue / total
+        result = _validate_arr(2 * g_ - r_ - b_, "ExG")
         return self._out(result, ref, output_path, "exg")
 
     # ------------------------------------------------------------------
@@ -432,7 +455,7 @@ class SpectralIndices:
         self,
         source: str | np.ndarray,
         green_band: int = 2,
-        nir_band:   int = 4,
+        nir_band: int = 4,
         output_path: str | None = None,
     ) -> str | np.ndarray:
         """Normalized Difference Water Index — Gao (1996).
@@ -441,6 +464,7 @@ class SpectralIndices:
 
         Detects open water bodies.  Values > 0 indicate water.
         """
+
         def _native():
             green, nir, ref = self._get_two_bands(source, green_band, nir_band)
             result = (green - nir) / (green + nir + _EPS)
@@ -448,8 +472,12 @@ class SpectralIndices:
             return self._out(result, ref, output_path, "ndwi")
 
         return _delegate_or_native(
-            source, {"green": green_band, "nir": nir_band}, "ndwi", _native,
-            output_path, "ndwi",
+            source,
+            {"green": green_band, "nir": nir_band},
+            "ndwi",
+            _native,
+            output_path,
+            "ndwi",
         )
 
     def mndwi(
@@ -473,7 +501,7 @@ class SpectralIndices:
     def lswi(
         self,
         source: str | np.ndarray,
-        nir_band:  int = 4,
+        nir_band: int = 4,
         swir1_band: int = 5,
         output_path: str | None = None,
     ) -> str | np.ndarray:
@@ -492,8 +520,8 @@ class SpectralIndices:
         self,
         source: str | np.ndarray,
         green_band: int = 2,
-        red_band:   int = 3,
-        nir_band:   int = 4,
+        red_band: int = 3,
+        nir_band: int = 4,
         swir1_band: int = 5,
         output_path: str | None = None,
     ) -> str | np.ndarray:
@@ -518,7 +546,7 @@ class SpectralIndices:
         self,
         source: str | np.ndarray,
         swir1_band: int = 5,
-        nir_band:   int = 4,
+        nir_band: int = 4,
         output_path: str | None = None,
     ) -> str | np.ndarray:
         """Normalized Difference Built-up Index (Zha et al. 2003).
@@ -535,9 +563,9 @@ class SpectralIndices:
     def bsi(
         self,
         source: str | np.ndarray,
-        blue_band:  int = 1,
-        red_band:   int = 3,
-        nir_band:   int = 4,
+        blue_band: int = 1,
+        red_band: int = 3,
+        nir_band: int = 4,
         swir1_band: int = 5,
         output_path: str | None = None,
     ) -> str | np.ndarray:
@@ -550,7 +578,7 @@ class SpectralIndices:
         data, _, ref = self._get_three_bands(source, blue_band, red_band, nir_band)
         blue, red, nir = data
         swir1 = self._load_one(source, swir1_band)
-        result = ((swir1+red) - (nir+blue)) / ((swir1+red) + (nir+blue) + _EPS)
+        result = ((swir1 + red) - (nir + blue)) / ((swir1 + red) + (nir + blue) + _EPS)
         result = np.clip(_validate_arr(result, "BSI"), -1.0, 1.0)
         return self._out(result, ref, output_path, "bsi")
 
@@ -561,7 +589,7 @@ class SpectralIndices:
     def nbr(
         self,
         source: str | np.ndarray,
-        nir_band:  int = 4,
+        nir_band: int = 4,
         swir2_band: int = 6,
         output_path: str | None = None,
     ) -> str | np.ndarray:
@@ -590,7 +618,7 @@ class SpectralIndices:
         High values indicate charcoal / burned area.
         """
         red, nir, ref = self._get_two_bands(source, red_band, nir_band)
-        result = 1.0 / ((0.1 - red)**2 + (0.06 - nir)**2 + _EPS)
+        result = 1.0 / ((0.1 - red) ** 2 + (0.06 - nir) ** 2 + _EPS)
         result = np.clip(_validate_arr(result, "BAI"), 0.0, 5000.0)
         return self._out(result, ref, output_path, "bai")
 
@@ -623,10 +651,10 @@ class SpectralIndices:
     def tct(
         self,
         source: str,
-        blue_band:  int = 1,
+        blue_band: int = 1,
         green_band: int = 2,
-        red_band:   int = 3,
-        nir_band:   int = 4,
+        red_band: int = 3,
+        nir_band: int = 4,
         swir1_band: int = 5,
         swir2_band: int = 6,
         sensor: str = "sentinel2",
@@ -648,13 +676,13 @@ class SpectralIndices:
         COEF = {
             "sentinel2": {
                 "brightness": [0.3510, 0.3813, 0.3437, 0.7196, 0.2396, 0.1949],
-                "greenness":  [-0.3599, -0.3533, -0.4734, 0.6633, 0.0087, -0.2856],
-                "wetness":    [0.2578, 0.2305, 0.0883, 0.1071, -0.7611, -0.5308],
+                "greenness": [-0.3599, -0.3533, -0.4734, 0.6633, 0.0087, -0.2856],
+                "wetness": [0.2578, 0.2305, 0.0883, 0.1071, -0.7611, -0.5308],
             },
             "landsat8": {
                 "brightness": [0.3029, 0.2786, 0.4733, 0.5599, 0.5080, 0.1872],
-                "greenness":  [-0.2941, -0.2430, -0.5424, 0.7276, 0.0713, -0.1608],
-                "wetness":    [0.1511, 0.1973, 0.3283, 0.3407, -0.7117, -0.4559],
+                "greenness": [-0.2941, -0.2430, -0.5424, 0.7276, 0.0713, -0.1608],
+                "wetness": [0.1511, 0.1973, 0.3283, 0.3407, -0.7117, -0.4559],
             },
         }
         if sensor not in COEF:
@@ -694,7 +722,7 @@ class SpectralIndices:
         Returns:
             ``(n_components, H, W)`` array or dict of paths.
         """
-        data, profile = _load_multiband(source)   # (C, H, W)
+        data, profile = _load_multiband(source)  # (C, H, W)
         C, H, W = data.shape
         n_components = min(n_components, C)
 
@@ -749,19 +777,34 @@ class SpectralIndices:
                 output_dir="./indices/",
             )
         """
-        ALL = ["ndvi","evi","savi","msavi","ndre","rvi","wdrvi",
-               "ndwi","mndwi","lswi","ndbi","bsi","nbr","bai","ndsi"]
+        ALL = [
+            "ndvi",
+            "evi",
+            "savi",
+            "msavi",
+            "ndre",
+            "rvi",
+            "wdrvi",
+            "ndwi",
+            "mndwi",
+            "lswi",
+            "ndbi",
+            "bsi",
+            "nbr",
+            "bai",
+            "ndsi",
+        ]
         targets = indices or ALL
         bm = band_map or {}
 
         # Default Sentinel-2 band map (1-based)
         B = {
-            "blue":     bm.get("blue",  1),
-            "green":    bm.get("green", 2),
-            "red":      bm.get("red",   3),
-            "nir":      bm.get("nir",   4),
-            "swir1":    bm.get("swir1", 5),
-            "swir2":    bm.get("swir2", 6),
+            "blue": bm.get("blue", 1),
+            "green": bm.get("green", 2),
+            "red": bm.get("red", 3),
+            "nir": bm.get("nir", 4),
+            "swir1": bm.get("swir1", 5),
+            "swir2": bm.get("swir2", 6),
             "red_edge": bm.get("red_edge", 5),
         }
 
@@ -772,29 +815,37 @@ class SpectralIndices:
             return str(pathlib.Path(output_dir) / f"{name}.tif") if output_dir else None
 
         _MAP = {
-            "ndvi":  lambda: self.ndvi( source, B["red"],  B["nir"],  _path("ndvi")),
-            "evi":   lambda: self.evi(  source, B["blue"], B["red"],  B["nir"],  output_path=_path("evi")),
-            "savi":  lambda: self.savi( source, B["red"],  B["nir"],  _path("savi")),
-            "msavi": lambda: self.msavi(source, B["red"],  B["nir"],  _path("msavi")),
-            "arvi":  lambda: self.arvi( source, B["blue"], B["red"],  B["nir"],  output_path=_path("arvi")),
-            "ndre":  lambda: self.ndre( source, B["red_edge"], B["nir"], _path("ndre")),
-            "rvi":   lambda: self.rvi(  source, B["red"],  B["nir"],  _path("rvi")),
-            "wdrvi": lambda: self.wdrvi(source, B["red"],  B["nir"],  _path("wdrvi")),
-            "ndwi":  lambda: self.ndwi( source, B["green"],B["nir"],  _path("ndwi")),
-            "mndwi": lambda: self.mndwi(source, B["green"],B["swir1"],_path("mndwi")),
-            "lswi":  lambda: self.lswi( source, B["nir"],  B["swir1"],_path("lswi")),
-            "ndbi":  lambda: self.ndbi( source, B["swir1"],B["nir"],  _path("ndbi")),
-            "bsi":   lambda: self.bsi(  source, B["blue"], B["red"],  B["nir"],  output_path=_path("bsi")),
-            "nbr":   lambda: self.nbr(  source, B["nir"],  B["swir2"],_path("nbr")),
-            "bai":   lambda: self.bai(  source, B["red"],  B["nir"],  _path("bai")),
-            "ndsi":  lambda: self.ndsi( source, B["green"],B["swir1"],_path("ndsi")),
+            "ndvi": lambda: self.ndvi(source, B["red"], B["nir"], _path("ndvi")),
+            "evi": lambda: self.evi(
+                source, B["blue"], B["red"], B["nir"], output_path=_path("evi")
+            ),
+            "savi": lambda: self.savi(source, B["red"], B["nir"], output_path=_path("savi")),
+            "msavi": lambda: self.msavi(source, B["red"], B["nir"], _path("msavi")),
+            "arvi": lambda: self.arvi(
+                source, B["blue"], B["red"], B["nir"], output_path=_path("arvi")
+            ),
+            "ndre": lambda: self.ndre(source, B["red_edge"], B["nir"], _path("ndre")),
+            "rvi": lambda: self.rvi(source, B["red"], B["nir"], _path("rvi")),
+            "wdrvi": lambda: self.wdrvi(source, B["red"], B["nir"], output_path=_path("wdrvi")),
+            "ndwi": lambda: self.ndwi(source, B["green"], B["nir"], _path("ndwi")),
+            "mndwi": lambda: self.mndwi(source, B["green"], B["swir1"], _path("mndwi")),
+            "lswi": lambda: self.lswi(source, B["nir"], B["swir1"], _path("lswi")),
+            "ndbi": lambda: self.ndbi(source, B["swir1"], B["nir"], _path("ndbi")),
+            "bsi": lambda: self.bsi(
+                source, B["blue"], B["red"], B["nir"], output_path=_path("bsi")
+            ),
+            "nbr": lambda: self.nbr(source, B["nir"], B["swir2"], _path("nbr")),
+            "bai": lambda: self.bai(source, B["red"], B["nir"], _path("bai")),
+            "ndsi": lambda: self.ndsi(source, B["green"], B["swir1"], _path("ndsi")),
         }
 
         results = {}
         for name in targets:
             if name == "ndre" and "red_edge" not in bm:
-                logger.warning("Skipping ndre: the default six-band stack (B02,B03,B04,B08,B11,B12) has no red-edge "
-                               "band. Pass band_map={'red_edge': <1-based band>} to compute it.")
+                logger.warning(
+                    "Skipping ndre: the default six-band stack (B02,B03,B04,B08,B11,B12) has no red-edge "
+                    "band. Pass band_map={'red_edge': <1-based band>} to compute it."
+                )
                 continue
             if name in _MAP:
                 try:
@@ -810,9 +861,7 @@ class SpectralIndices:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_two_bands(
-        self, source, b1: int, b2: int
-    ) -> tuple[np.ndarray, np.ndarray, str | None]:
+    def _get_two_bands(self, source, b1: int, b2: int) -> tuple[np.ndarray, np.ndarray, str | None]:
         ref = str(source) if isinstance(source, (str, pathlib.Path)) else None
         arr1 = _load_band(source, b1)
         arr2 = _load_band(source, b2)
@@ -822,9 +871,7 @@ class SpectralIndices:
         self, source, b1: int, b2: int, b3: int
     ) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], None, str | None]:
         ref = str(source) if isinstance(source, (str, pathlib.Path)) else None
-        return ((_load_band(source, b1),
-                  _load_band(source, b2),
-                  _load_band(source, b3)), None, ref)
+        return ((_load_band(source, b1), _load_band(source, b2), _load_band(source, b3)), None, ref)
 
     def _load_one(self, source, band: int) -> np.ndarray:
         return _load_band(source, band)

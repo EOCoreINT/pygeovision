@@ -21,13 +21,15 @@ question about pipeline design correctness:
      low red reflectance, well below the 0.3 threshold) while
      potentially flagging bright bare/urban surfaces instead.
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
 
+from unittest.mock import MagicMock
+
 import numpy as np
 from rasterio.transform import from_bounds
-from unittest.mock import MagicMock
 
 
 class TestCropToBbox:
@@ -37,8 +39,17 @@ class TestCropToBbox:
         size = 200
         full_transform = from_bounds(-1.0, 4.0, 1.0, 6.0, size, size)
         full_path = tmp_path / "full_scene.tif"
-        with rasterio.open(full_path, "w", driver="GTiff", height=size, width=size, count=3,
-                            dtype="float32", crs="EPSG:4326", transform=full_transform) as dst:
+        with rasterio.open(
+            full_path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=3,
+            dtype="float32",
+            crs="EPSG:4326",
+            transform=full_transform,
+        ) as dst:
             dst.write(np.ones((3, size, size), dtype="float32"))
 
         requested_bbox = (-0.45, 5.50, 0.05, 5.75)
@@ -59,8 +70,17 @@ class TestCropToBbox:
         size = 50
         transform = from_bounds(-1.0, 4.0, 1.0, 6.0, size, size)
         path = tmp_path / "scene.tif"
-        with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="float32", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="float32",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             dst.write(np.ones((1, size, size), dtype="float32"))
 
         with pytest.raises(ValueError, match="does not intersect"):
@@ -72,8 +92,17 @@ class TestCropToBbox:
         size = 50
         transform = from_bounds(-1.0, 4.0, 1.0, 6.0, size, size)
         path = tmp_path / "scene.tif"
-        with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="float32", crs="EPSG:4326", transform=transform) as dst:
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="float32",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
             dst.write(np.ones((1, size, size), dtype="float32"))
 
         result = crop_to_bbox(path, (-0.45, 5.50, 0.05, 5.75))
@@ -82,8 +111,8 @@ class TestCropToBbox:
 
 class TestSearchAndDownloadCropsToBbox:
     def test_full_chain_returns_cropped_not_full_scene(self, tmp_path):
-        from pygeovision.data.fetch import DownloadResult, SearchResult
         from pygeovision.ai.pipelines import LandCoverPipeline
+        from pygeovision.data.fetch import DownloadResult, SearchResult
 
         imagery_dir = tmp_path / "imagery"
         imagery_dir.mkdir(parents=True)
@@ -95,14 +124,26 @@ class TestSearchAndDownloadCropsToBbox:
         asset_paths = {}
         for key, suffix in asset_files.items():
             p = imagery_dir / f"{scene_id}_{scene_id}_{suffix}.TIF"
-            with rasterio.open(p, "w", driver="GTiff", height=size, width=size, count=1,
-                                dtype="uint16", crs="EPSG:4326", transform=full_transform) as dst:
+            with rasterio.open(
+                p,
+                "w",
+                driver="GTiff",
+                height=size,
+                width=size,
+                count=1,
+                dtype="uint16",
+                crs="EPSG:4326",
+                transform=full_transform,
+            ) as dst:
                 dst.write(rng.integers(500, 3000, (size, size)).astype("uint16"), 1)
             asset_paths[key] = p
 
         fake_download_result = DownloadResult(
-            scene_id=scene_id, provider="planetary_computer",
-            path=asset_paths["SR_B4"], asset_paths=asset_paths, success=True,
+            scene_id=scene_id,
+            provider="planetary_computer",
+            path=asset_paths["SR_B4"],
+            asset_paths=asset_paths,
+            success=True,
         )
         mock_pgv = MagicMock()
         # Real fix: MagicMock(spec=SearchResult) doesn't work here --
@@ -112,8 +153,11 @@ class TestSearchAndDownloadCropsToBbox:
         # with a concrete bbox is also what this test actually needs to
         # exercise the real coverage/crop logic meaningfully.
         real_search_result = SearchResult(
-            id=scene_id, provider="planetary_computer", satellite="landsat-8",
-            datetime="2024-06-15", cloud_cover=5.0,
+            id=scene_id,
+            provider="planetary_computer",
+            satellite="landsat-8",
+            datetime="2024-06-15",
+            cloud_cover=5.0,
             bbox=(-1.0, 4.0, 1.0, 6.0),  # covers the full scene extent above
         )
         mock_pgv.search.return_value = [real_search_result]

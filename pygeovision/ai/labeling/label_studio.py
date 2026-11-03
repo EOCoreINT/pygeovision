@@ -22,11 +22,11 @@ Example:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import json
 import logging
-import time
-from dataclasses import dataclass, field
 from pathlib import Path
+import time
 from typing import Any
 
 import numpy as np
@@ -35,6 +35,7 @@ from pygeovision.ai.labeling.base_labeler import BaseLabeler, LabelingResult
 from pygeovision.core.exceptions import LabelingError
 
 logger = logging.getLogger(__name__)
+
 
 def decode_ls_rle(rle: list[int]) -> np.ndarray:
     """Decode a Label Studio brush ``rle`` (a list of byte values) to a flat ``uint8`` array.
@@ -52,7 +53,7 @@ def decode_ls_rle(rle: list[int]) -> np.ndarray:
         nonlocal pos
         if pos + n > len(bits):
             raise ValueError("Label Studio RLE ended unexpectedly")
-        v = int(bits[pos:pos + n], 2)
+        v = int(bits[pos : pos + n], 2)
         pos += n
         return v
 
@@ -82,14 +83,14 @@ def encode_ls_rle(flat: np.ndarray) -> list[int]:
     num = flat.size
     word_size = 8
     # one run-length field size is enough: wide enough for the longest run
-    runs: list[tuple[int, int, int]] = []     # (repeated, length, value)
+    runs: list[tuple[int, int, int]] = []  # (repeated, length, value)
     i = 0
     while i < num:
         j = i
         while j + 1 < num and flat[j + 1] == flat[i]:
             j += 1
         n_run = j - i + 1
-        while n_run > 0:                      # the run-length field is at most 16 bits wide
+        while n_run > 0:  # the run-length field is at most 16 bits wide
             take = min(n_run, 1 << 16)
             runs.append((1, take, int(flat[i])))
             n_run -= take
@@ -100,7 +101,7 @@ def encode_ls_rle(flat: np.ndarray) -> list[int]:
     for _rep, length, value in runs:
         bits += "1" + "00" + f"{length - 1:0{field}b}" + f"{value:0{word_size}b}"
     bits += "0" * (-len(bits) % 8)
-    return [int(bits[k:k + 8], 2) for k in range(0, len(bits), 8)]
+    return [int(bits[k : k + 8], 2) for k in range(0, len(bits), 8)]
 
 
 # Label Studio annotation types
@@ -227,9 +228,7 @@ class LabelStudioLabeler(BaseLabeler):
             skip_existing=skip_existing,
         )
         if task_type not in _TASK_TYPES:
-            raise ValueError(
-                f"task_type must be one of {_TASK_TYPES}, got {task_type!r}"
-            )
+            raise ValueError(f"task_type must be one of {_TASK_TYPES}, got {task_type!r}")
         if not api_key:
             raise LabelingError(
                 "Label Studio API key is required. "
@@ -290,8 +289,7 @@ class LabelStudioLabeler(BaseLabeler):
                 uploaded += 1
 
         logger.info(
-            "Uploaded %d tiles to Label Studio project %d",
-            uploaded, self.config.project_id
+            "Uploaded %d tiles to Label Studio project %d", uploaded, self.config.project_id
         )
 
         if wait_for_completion:
@@ -305,17 +303,17 @@ class LabelStudioLabeler(BaseLabeler):
 
     @property
     def name(self) -> str:
-        return 'label_studio'
+        return "label_studio"
 
     @property
     def supported_tasks(self) -> list:
-        return ['segmentation', 'detection', 'classification']
+        return ["segmentation", "detection", "classification"]
 
     # ------------------------------------------------------------------
     # BaseLabeler interface
     # ------------------------------------------------------------------
 
-    def label_tile(
+    def label_tile(  # type: ignore[override]
         self,
         tile_path: Path,
         tile_metadata: Any,
@@ -357,25 +355,26 @@ class LabelStudioLabeler(BaseLabeler):
             task = self._find_task_for_tile(tile_path)
             if task is None:
                 logger.warning(
-                    "No Label Studio task found for %s. "
-                    "Run export_tiles() first.",
+                    "No Label Studio task found for %s. " "Run export_tiles() first.",
                     tile_path.name,
                 )
                 # No label file is written: an all-background raster would look like a real
                 # "nothing here" annotation to anything reading the output directory.
                 return LabelingResult(
-                    tile_id=str(tile_path), label_path=None, source="label_studio",
+                    tile_id=str(tile_path),
+                    label_path=None,
+                    source="label_studio",
                     error="no_task_found",
                 )
 
             # Check annotation completeness
             annotations = task.get("annotations", [])
             if not annotations:
-                logger.warning(
-                    "Task for %s has no annotations yet.", tile_path.name
-                )
+                logger.warning("Task for %s has no annotations yet.", tile_path.name)
                 return LabelingResult(
-                    tile_id=str(tile_path), label_path=None, source="label_studio",
+                    tile_id=str(tile_path),
+                    label_path=None,
+                    source="label_studio",
                     error="no_annotations",
                 )
 
@@ -402,8 +401,10 @@ class LabelStudioLabeler(BaseLabeler):
 
             unique = np.unique(mask)
             stats = {
-                self.config.class_names[c] if c < len(self.config.class_names) else f"class_{c}":
-                float(np.sum(mask == c)) / mask.size
+                (
+                    self.config.class_names[c] if c < len(self.config.class_names) else f"class_{c}"
+                ): float(np.sum(mask == c))
+                / mask.size
                 for c in unique
             }
 
@@ -422,9 +423,7 @@ class LabelStudioLabeler(BaseLabeler):
             )
 
         except Exception as exc:
-            logger.error(
-                "LabelStudioLabeler failed for %s: %s", tile_path, exc
-            )
+            logger.error("LabelStudioLabeler failed for %s: %s", tile_path, exc)
             return LabelingResult(
                 tile_id=str(tile_path),
                 label_path=None,
@@ -439,11 +438,10 @@ class LabelStudioLabeler(BaseLabeler):
     def _get_session(self) -> Any:
         """Get or create an authenticated requests.Session."""
         import requests
+
         if self._session is None:
             self._session = requests.Session()
-            self._session.headers.update(
-                {"Authorization": f"Token {self.config.api_key}"}
-            )
+            self._session.headers.update({"Authorization": f"Token {self.config.api_key}"})
         return self._session
 
     def _api_get(self, endpoint: str) -> Any:
@@ -459,8 +457,7 @@ class LabelStudioLabeler(BaseLabeler):
         session = self._get_session()
         url = f"{self.config.url}/api/{endpoint}"
         if files:
-            resp = session.post(url, data=data, files=files,
-                                timeout=self.config.request_timeout)
+            resp = session.post(url, data=data, files=files, timeout=self.config.request_timeout)
         else:
             resp = session.post(url, json=data, timeout=self.config.request_timeout)
         resp.raise_for_status()
@@ -478,13 +475,14 @@ class LabelStudioLabeler(BaseLabeler):
         label_elements = "\n    ".join(
             f'<Label value="{name}"/>' for name in self.config.class_names
         )
-        label_config = _LS_CONFIGS[self.config.task_type].format(
-            label_elements=label_elements
+        label_config = _LS_CONFIGS[self.config.task_type].format(label_elements=label_elements)
+        result = self._api_post(
+            "projects",
+            {
+                "title": title,
+                "label_config": label_config,
+            },
         )
-        result = self._api_post("projects", {
-            "title": title,
-            "label_config": label_config,
-        })
         return result["id"]
 
     def _export_tile_image(self, tile_path: Path) -> Path:
@@ -496,8 +494,8 @@ class LabelStudioLabeler(BaseLabeler):
         Returns:
             Path to the exported PNG image.
         """
-        import rasterio
         from PIL import Image
+        import rasterio
 
         out_path = self.config.tile_export_dir / (tile_path.stem + ".png")
         if out_path.exists():
@@ -558,12 +556,16 @@ class LabelStudioLabeler(BaseLabeler):
         last_first = None
         page = 1
         while True:
-            chunk = self._api_get(f"projects/{self.config.project_id}/tasks?page={page}&page_size={self._PAGE}")
+            chunk = self._api_get(
+                f"projects/{self.config.project_id}/tasks?page={page}&page_size={self._PAGE}"
+            )
             chunk = chunk.get("tasks", chunk) if isinstance(chunk, dict) else chunk
             if not chunk:
                 break
             first = chunk[0].get("id")
-            if first is not None and first == last_first:      # server ignored ``page``: stop, don't loop
+            if (
+                first is not None and first == last_first
+            ):  # server ignored ``page``: stop, don't loop
                 break
             last_first = first
             tasks.extend(chunk)
@@ -574,7 +576,7 @@ class LabelStudioLabeler(BaseLabeler):
         return tasks
 
     def label_tiles(self, *args: Any, **kwargs: Any) -> list[LabelingResult]:
-        self._tasks_cache = None           # annotators may have finished more tasks since the last call
+        self._tasks_cache = None  # annotators may have finished more tasks since the last call
         return super().label_tiles(*args, **kwargs)
 
     def _find_task_for_tile(self, tile_path: Path) -> dict[str, Any] | None:
@@ -621,9 +623,7 @@ class LabelStudioLabeler(BaseLabeler):
         mask = np.zeros((height, width), dtype=np.uint8)
         results = annotation.get("result", [])
 
-        class_map = {
-            name: idx for idx, name in enumerate(self.config.class_names)
-        }
+        class_map = {name: idx for idx, name in enumerate(self.config.class_names)}
 
         for result in results:
             r_type = result.get("type", "")
@@ -653,7 +653,8 @@ class LabelStudioLabeler(BaseLabeler):
         if label not in class_map:
             raise LabelingError(
                 f"annotation uses label {label!r} which is not in class_names={list(class_map)}; "
-                "class_names must list the project's labels in raster-value order, background first")
+                "class_names must list the project's labels in raster-value order, background first"
+            )
         return class_map[label]
 
     def _parse_brush_label(
@@ -672,18 +673,24 @@ class LabelStudioLabeler(BaseLabeler):
         class_id = self._class_id(labels[0], class_map)
         rle = value.get("rle")
         if not rle:
-            raise LabelingError("brush annotation has no 'rle' data (is it a non-RLE export format?)")
+            raise LabelingError(
+                "brush annotation has no 'rle' data (is it a non-RLE export format?)"
+            )
         oh, ow = original_size
         if not oh or not ow:
             raise LabelingError("brush annotation lacks original_width/original_height")
 
         flat = decode_ls_rle(rle)
         if flat.size != oh * ow * 4:
-            raise LabelingError(f"Label Studio RLE decodes to {flat.size} values, expected {oh * ow * 4} "
-                                f"for a {ow}x{oh} image")
+            raise LabelingError(
+                f"Label Studio RLE decodes to {flat.size} values, expected {oh * ow * 4} "
+                f"for a {ow}x{oh} image"
+            )
         brush = flat.reshape(oh, ow, 4)[:, :, 3]
         if brush.shape != mask.shape:
-            brush = np.array(Image.fromarray(brush).resize((mask.shape[1], mask.shape[0]), Image.NEAREST))
+            brush = np.array(
+                Image.fromarray(brush).resize((mask.shape[1], mask.shape[0]), Image.NEAREST)
+            )
         mask[brush > 0] = class_id
         return mask
 
@@ -733,10 +740,7 @@ class LabelStudioLabeler(BaseLabeler):
             return mask
 
         # Convert percentage coords to pixels
-        pixel_points = [
-            (int(p[0] / 100 * width), int(p[1] / 100 * height))
-            for p in points
-        ]
+        pixel_points = [(int(p[0] / 100 * width), int(p[1] / 100 * height)) for p in points]
 
         img = PILImage.fromarray(mask)
         draw = ImageDraw.Draw(img)
@@ -747,8 +751,10 @@ class LabelStudioLabeler(BaseLabeler):
         """Block until the completion threshold is reached."""
         if self.config.project_id is None:
             return
-        logger.info("Waiting for Label Studio annotations (threshold=%.0f%%)…",
-                    self.config.completion_threshold * 100)
+        logger.info(
+            "Waiting for Label Studio annotations (threshold=%.0f%%)…",
+            self.config.completion_threshold * 100,
+        )
         while True:
             try:
                 stats = self._api_get(f"projects/{self.config.project_id}/")
@@ -756,9 +762,7 @@ class LabelStudioLabeler(BaseLabeler):
                 done = stats.get("num_tasks_with_annotations", 0)
                 if total > 0:
                     frac = done / total
-                    logger.info(
-                        "Annotation progress: %d/%d (%.1f%%)", done, total, frac * 100
-                    )
+                    logger.info("Annotation progress: %d/%d (%.1f%%)", done, total, frac * 100)
                     if frac >= self.config.completion_threshold:
                         logger.info("Annotation threshold reached.")
                         break

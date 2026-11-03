@@ -7,15 +7,16 @@ account, so they are not exercised against live services in PyGeoVision's own te
 treat them as a starting point and read the provider's console/logs when a deployment
 does not come up. Every ``deploy`` returns a dict with ``success`` and, on failure, ``error``.
 """
+
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import json
 import logging
 import os
+from pathlib import Path
 import tarfile
 import tempfile
-from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -75,8 +76,10 @@ def build_sagemaker_archive(model_path: str | Path, output_path: str | Path | No
     if not model_path.is_file():
         raise FileNotFoundError(f"model file not found: {model_path}")
     if model_path.suffix != ".onnx":
-        raise ValueError(f"expected an .onnx file, got {model_path.name!r}; for other formats "
-                         "build your own model.tar.gz with a code/inference.py handler")
+        raise ValueError(
+            f"expected an .onnx file, got {model_path.name!r}; for other formats "
+            "build your own model.tar.gz with a code/inference.py handler"
+        )
     out = Path(output_path) if output_path else model_path.with_suffix(".tar.gz")
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -135,24 +138,26 @@ class AWSDeployer(CloudDeployer):
         prediction = deployer.predict("pgv-buildings-v1", image_array)
     """
 
-    def __init__(self, region: str = "us-east-1",
-                 role_arn: str | None = None,
-                 bucket: str | None = None) -> None:
+    def __init__(
+        self, region: str = "us-east-1", role_arn: str | None = None, bucket: str | None = None
+    ) -> None:
         super().__init__("aws", region)
         self.role_arn = role_arn or os.environ.get("AWS_SAGEMAKER_ROLE_ARN", "")
-        self.bucket   = bucket   or os.environ.get("AWS_S3_BUCKET", "")
+        self.bucket = bucket or os.environ.get("AWS_S3_BUCKET", "")
         self._client = None
 
     def _get_client(self):
-        if self._client: return self._client
+        if self._client:
+            return self._client
         try:
             import boto3
+
             self._client = boto3.client("sagemaker", region_name=self.region)
             return self._client
-        except ImportError:
-            raise ImportError("pip install boto3")
+        except ImportError as exc:
+            raise ImportError("pip install boto3") from exc
 
-    def deploy(
+    def deploy(  # type: ignore[override]
         self,
         model_path: str | Path,
         endpoint_name: str,
@@ -175,8 +180,14 @@ class AWSDeployer(CloudDeployer):
             import sagemaker
             from sagemaker.model import Model
 
-            missing = [n for n, v in (("bucket (AWS_S3_BUCKET)", self.bucket),
-                                      ("role_arn (AWS_SAGEMAKER_ROLE_ARN)", self.role_arn)) if not v]
+            missing = [
+                n
+                for n, v in (
+                    ("bucket (AWS_S3_BUCKET)", self.bucket),
+                    ("role_arn (AWS_SAGEMAKER_ROLE_ARN)", self.role_arn),
+                )
+                if not v
+            ]
             if missing:
                 return {"success": False, "error": "AWSDeployer needs " + " and ".join(missing)}
 
@@ -184,7 +195,9 @@ class AWSDeployer(CloudDeployer):
             if not model_path.is_file():
                 return {"success": False, "error": f"model file not found: {model_path}"}
             if not model_path.name.endswith(".tar.gz"):
-                model_path = build_sagemaker_archive(model_path, Path(tempfile.mkdtemp()) / (model_path.stem + ".tar.gz"))
+                model_path = build_sagemaker_archive(
+                    model_path, Path(tempfile.mkdtemp()) / (model_path.stem + ".tar.gz")
+                )
 
             # Upload model to S3
             s3 = boto3.client("s3", region_name=self.region)
@@ -252,13 +265,15 @@ class AWSDeployer(CloudDeployer):
     def _setup_autoscaling(self, endpoint_name: str, min_cap: int, max_cap: int) -> None:
         try:
             import boto3
+
             asg = boto3.client("application-autoscaling", region_name=self.region)
             resource_id = f"endpoint/{endpoint_name}/variant/AllTraffic"
             asg.register_scalable_target(
                 ServiceNamespace="sagemaker",
                 ResourceId=resource_id,
                 ScalableDimension="sagemaker:variant:DesiredInstanceCount",
-                MinCapacity=min_cap, MaxCapacity=max_cap,
+                MinCapacity=min_cap,
+                MaxCapacity=max_cap,
             )
             asg.put_scaling_policy(
                 PolicyName=f"{endpoint_name}-autoscale",
@@ -271,7 +286,8 @@ class AWSDeployer(CloudDeployer):
                     "PredefinedMetricSpecification": {
                         "PredefinedMetricType": "SageMakerVariantInvocationsPerInstance"
                     },
-                    "ScaleOutCooldown": 60, "ScaleInCooldown": 300,
+                    "ScaleOutCooldown": 60,
+                    "ScaleInCooldown": 300,
                 },
             )
             logger.info("Auto-scaling configured: %d-%d instances", min_cap, max_cap)
@@ -293,6 +309,7 @@ class AWSDeployer(CloudDeployer):
 
             import boto3
             import numpy as np
+
             runtime = boto3.client("sagemaker-runtime", region_name=self.region)
             if isinstance(input_data, np.ndarray):
                 payload = _json.dumps({"inputs": input_data.tolist(), "argmax": bool(argmax)})
@@ -310,6 +327,7 @@ class AWSDeployer(CloudDeployer):
     def delete_endpoint(self, endpoint_name: str) -> dict[str, Any]:
         try:
             import boto3
+
             sm = boto3.client("sagemaker", region_name=self.region)
             sm.delete_endpoint(EndpointName=endpoint_name)
             return {"success": True, "deleted": endpoint_name}
@@ -321,7 +339,10 @@ class AWSDeployer(CloudDeployer):
             resp = self._get_client().list_endpoints(StatusEquals="InService")
             return [e["EndpointName"] for e in resp.get("Endpoints", [])]
         except Exception as exc:
-            logger.warning("could not list SageMaker endpoints (an empty list does NOT mean there are none): %s", exc)
+            logger.warning(
+                "could not list SageMaker endpoints (an empty list does NOT mean there are none): %s",
+                exc,
+            )
             return []
 
     def generate_iam_policy(self) -> str:
@@ -335,24 +356,47 @@ class AWSDeployer(CloudDeployer):
         policy = {
             "Version": "2012-10-17",
             "Statement": [
-                {"Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
-                 "Resource": [f"arn:aws:s3:::{self.bucket}/*", f"arn:aws:s3:::{self.bucket}"]},
-                {"Effect": "Allow", "Action": [
-                    "sagemaker:CreateModel", "sagemaker:CreateEndpointConfig", "sagemaker:CreateEndpoint",
-                    "sagemaker:DescribeModel", "sagemaker:DescribeEndpointConfig", "sagemaker:DescribeEndpoint",
-                    "sagemaker:InvokeEndpoint", "sagemaker:ListEndpoints",
-                    "sagemaker:DeleteEndpoint", "sagemaker:DeleteEndpointConfig", "sagemaker:DeleteModel"],
-                 "Resource": "*"},
-                {"Effect": "Allow", "Action": "iam:PassRole",
-                 "Resource": self.role_arn or "*",
-                 "Condition": {"StringEquals": {"iam:PassedToService": "sagemaker.amazonaws.com"}}},
-                {"Effect": "Allow", "Action": [
-                    "application-autoscaling:RegisterScalableTarget",
-                    "application-autoscaling:PutScalingPolicy",
-                    "application-autoscaling:DescribeScalableTargets",
-                    "iam:CreateServiceLinkedRole"],
-                 "Resource": "*"},
-            ]
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
+                    "Resource": [f"arn:aws:s3:::{self.bucket}/*", f"arn:aws:s3:::{self.bucket}"],
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "sagemaker:CreateModel",
+                        "sagemaker:CreateEndpointConfig",
+                        "sagemaker:CreateEndpoint",
+                        "sagemaker:DescribeModel",
+                        "sagemaker:DescribeEndpointConfig",
+                        "sagemaker:DescribeEndpoint",
+                        "sagemaker:InvokeEndpoint",
+                        "sagemaker:ListEndpoints",
+                        "sagemaker:DeleteEndpoint",
+                        "sagemaker:DeleteEndpointConfig",
+                        "sagemaker:DeleteModel",
+                    ],
+                    "Resource": "*",
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": "iam:PassRole",
+                    "Resource": self.role_arn or "*",
+                    "Condition": {
+                        "StringEquals": {"iam:PassedToService": "sagemaker.amazonaws.com"}
+                    },
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "application-autoscaling:RegisterScalableTarget",
+                        "application-autoscaling:PutScalingPolicy",
+                        "application-autoscaling:DescribeScalableTargets",
+                        "iam:CreateServiceLinkedRole",
+                    ],
+                    "Resource": "*",
+                },
+            ],
         }
         return json.dumps(policy, indent=2)
 
@@ -378,10 +422,10 @@ class AzureDeployer(CloudDeployer):
     ) -> None:
         super().__init__("azure", region)
         self.subscription_id = subscription_id or os.environ.get("AZURE_SUBSCRIPTION_ID", "")
-        self.resource_group  = resource_group  or os.environ.get("AZURE_RESOURCE_GROUP", "")
-        self.workspace_name  = workspace_name  or os.environ.get("AZURE_ML_WORKSPACE", "")
+        self.resource_group = resource_group or os.environ.get("AZURE_RESOURCE_GROUP", "")
+        self.workspace_name = workspace_name or os.environ.get("AZURE_ML_WORKSPACE", "")
 
-    def deploy(
+    def deploy(  # type: ignore[override]
         self,
         model_path: str | Path,
         endpoint_name: str,
@@ -398,21 +442,29 @@ class AzureDeployer(CloudDeployer):
         try:
             from azure.ai.ml import MLClient
             from azure.ai.ml.entities import (
-                CodeConfiguration,
-                Environment,
+                CodeConfiguration,  # noqa: F401
+                Environment,  # noqa: F401
                 ManagedOnlineDeployment,
                 ManagedOnlineEndpoint,
             )
             from azure.ai.ml.entities import Model as AzModel
             from azure.identity import DefaultAzureCredential
 
-            ml = MLClient(DefaultAzureCredential(),
-                           self.subscription_id, self.resource_group, self.workspace_name)
+            ml = MLClient(
+                DefaultAzureCredential(),
+                self.subscription_id,
+                self.resource_group,
+                self.workspace_name,
+            )
 
             # Register model
             model = ml.models.create_or_update(
-                AzModel(path=str(model_path), name=endpoint_name,
-                         type="custom_model", description="PyGeoVision model")
+                AzModel(
+                    path=str(model_path),
+                    name=endpoint_name,
+                    type="custom_model",
+                    description="PyGeoVision model",
+                )
             )
             logger.info("Azure model registered: %s v%s", model.name, model.version)
 
@@ -448,16 +500,25 @@ class AzureDeployer(CloudDeployer):
         try:
             import json as _json
 
-            import numpy as np
             from azure.ai.ml import MLClient
             from azure.identity import DefaultAzureCredential
-            ml = MLClient(DefaultAzureCredential(), self.subscription_id,
-                           self.resource_group, self.workspace_name)
-            payload = {"inputs": input_data.tolist() if hasattr(input_data, "tolist") else input_data}
-            with tempfile.TemporaryDirectory() as tmp:                 # invoke() wants a file path
+            import numpy as np  # noqa: F401
+
+            ml = MLClient(
+                DefaultAzureCredential(),
+                self.subscription_id,
+                self.resource_group,
+                self.workspace_name,
+            )
+            payload = {
+                "inputs": input_data.tolist() if hasattr(input_data, "tolist") else input_data
+            }
+            with tempfile.TemporaryDirectory() as tmp:  # invoke() wants a file path
                 request = Path(tmp) / "request.json"
                 request.write_text(_json.dumps(payload))
-                return ml.online_endpoints.invoke(endpoint_name=endpoint_name, request_file=str(request))
+                return ml.online_endpoints.invoke(
+                    endpoint_name=endpoint_name, request_file=str(request)
+                )
         except ImportError:
             return {"error": "pip install azure-ai-ml"}
 
@@ -465,8 +526,13 @@ class AzureDeployer(CloudDeployer):
         try:
             from azure.ai.ml import MLClient
             from azure.identity import DefaultAzureCredential
-            ml = MLClient(DefaultAzureCredential(), self.subscription_id,
-                           self.resource_group, self.workspace_name)
+
+            ml = MLClient(
+                DefaultAzureCredential(),
+                self.subscription_id,
+                self.resource_group,
+                self.workspace_name,
+            )
             ml.online_endpoints.begin_delete(name=endpoint_name).result()
             return {"success": True, "deleted": endpoint_name}
         except Exception as exc:
@@ -476,11 +542,19 @@ class AzureDeployer(CloudDeployer):
         try:
             from azure.ai.ml import MLClient
             from azure.identity import DefaultAzureCredential
-            ml = MLClient(DefaultAzureCredential(), self.subscription_id,
-                           self.resource_group, self.workspace_name)
+
+            ml = MLClient(
+                DefaultAzureCredential(),
+                self.subscription_id,
+                self.resource_group,
+                self.workspace_name,
+            )
             return [e.name for e in ml.online_endpoints.list()]
         except Exception as exc:
-            logger.warning("could not list Azure ML endpoints (an empty list does NOT mean there are none): %s", exc)
+            logger.warning(
+                "could not list Azure ML endpoints (an empty list does NOT mean there are none): %s",
+                exc,
+            )
             return []
 
 
@@ -498,7 +572,7 @@ class GCPDeployer(CloudDeployer):
         super().__init__("gcp", region)
         self.project_id = project_id or os.environ.get("GCP_PROJECT_ID", "")
 
-    def deploy(
+    def deploy(  # type: ignore[override]
         self,
         model_path: str | Path,
         endpoint_name: str,
@@ -524,7 +598,7 @@ class GCPDeployer(CloudDeployer):
             bucket = gcs_bucket or os.environ.get("GCS_BUCKET", f"{self.project_id}-pgv")
             gcs_client = storage.Client(project=self.project_id)
             gcs_bucket_obj = gcs_client.bucket(bucket)
-            prefix = f"pygeovision/models/{endpoint_name}"           # one folder per endpoint
+            prefix = f"pygeovision/models/{endpoint_name}"  # one folder per endpoint
             blob = gcs_bucket_obj.blob(f"{prefix}/{Path(model_path).name}")
             blob.upload_from_filename(str(model_path))
             model_gcs_uri = f"gs://{bucket}/{prefix}/"
@@ -561,13 +635,17 @@ class GCPDeployer(CloudDeployer):
                 "model_gcs_uri": model_gcs_uri,
             }
         except ImportError:
-            return {"success": False, "error": "pip install google-cloud-aiplatform google-cloud-storage"}
+            return {
+                "success": False,
+                "error": "pip install google-cloud-aiplatform google-cloud-storage",
+            }
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     def predict(self, endpoint_name: str, input_data: Any) -> Any:
         try:
             from google.cloud import aiplatform
+
             aiplatform.init(project=self.project_id, location=self.region)
             endpoints = aiplatform.Endpoint.list(filter=f"display_name={endpoint_name}")
             if not endpoints:
@@ -582,6 +660,7 @@ class GCPDeployer(CloudDeployer):
     def delete_endpoint(self, endpoint_name: str) -> dict[str, Any]:
         try:
             from google.cloud import aiplatform
+
             aiplatform.init(project=self.project_id, location=self.region)
             endpoints = aiplatform.Endpoint.list(filter=f"display_name={endpoint_name}")
             for ep in endpoints:
@@ -594,8 +673,12 @@ class GCPDeployer(CloudDeployer):
     def list_endpoints(self) -> list[str]:
         try:
             from google.cloud import aiplatform
+
             aiplatform.init(project=self.project_id, location=self.region)
             return [e.display_name for e in aiplatform.Endpoint.list()]
         except Exception as exc:
-            logger.warning("could not list Vertex AI endpoints (an empty list does NOT mean there are none): %s", exc)
+            logger.warning(
+                "could not list Vertex AI endpoints (an empty list does NOT mean there are none): %s",
+                exc,
+            )
             return []

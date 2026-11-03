@@ -25,16 +25,17 @@ end instead of a stack trace on step one.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import sys
 import time
 import traceback
-from pathlib import Path
 from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────
 # Step runner — labeled sections with timing, pass/fail tracking, and
 # graceful continuation (one failed step doesn't abort the whole script).
 # ─────────────────────────────────────────────────────────────────────────
+
 
 class Step:
     results: list[tuple[str, bool, float, str]] = []
@@ -87,6 +88,7 @@ class Step:
 # rather than assuming the previous step produced something usable.
 # ─────────────────────────────────────────────────────────────────────────
 
+
 def test_status(client: Any) -> dict:
     print(repr(client))
     status = client.status()
@@ -94,7 +96,9 @@ def test_status(client: Any) -> dict:
     pgf = status.get("pygeofetch", {})
     torch_info = status.get("torch", {})
     print(f"  pygeofetch: available={pgf.get('available')}  version={pgf.get('version')}")
-    print(f"  torch:      available={torch_info.get('available')}  version={torch_info.get('version', '')}")
+    print(
+        f"  torch:      available={torch_info.get('available')}  version={torch_info.get('version', '')}"
+    )
     return status
 
 
@@ -187,9 +191,9 @@ def test_native_segment(client: Any, downloads: list) -> None:
         (d for d in downloads if d.success and d.path and Path(d.path).exists()),
         None,
     )
-    assert target is not None, (
-        "No successfully downloaded file with a valid, existing path to segment"
-    )
+    assert (
+        target is not None
+    ), "No successfully downloaded file with a valid, existing path to segment"
 
     print(f"  Segmenting buildings in: {target.path}")
     out_vector = str(Path(target.path).with_suffix("")) + "_buildings.geojson"
@@ -205,42 +209,53 @@ def test_native_segment(client: Any, downloads: list) -> None:
 # Main
 # ─────────────────────────────────────────────────────────────────────────
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="PyGeoVision live integration smoke test (real network calls)."
     )
     parser.add_argument(
-        "--bbox", nargs=4, type=float, default=[-74.1, 40.6, -73.7, 40.9],
+        "--bbox",
+        nargs=4,
+        type=float,
+        default=[-74.1, 40.6, -73.7, 40.9],
         metavar=("MIN_LON", "MIN_LAT", "MAX_LON", "MAX_LAT"),
         help="Bounding box in WGS84. Default: NYC area.",
     )
     parser.add_argument("--start-date", default="2024-06-01")
     parser.add_argument("--end-date", default="2025-06-30")
     parser.add_argument(
-        "--providers", nargs="+", default=["planetary_computer", "aws_earth"],
+        "--providers",
+        nargs="+",
+        default=["planetary_computer", "aws_earth"],
     )
     parser.add_argument("--cloud-max", type=float, default=20.0)
     parser.add_argument("--max-results", type=int, default=20)
-    parser.add_argument("--download-count", type=int, default=3,
-                         help="How many top search results to download.")
+    parser.add_argument(
+        "--download-count", type=int, default=3, help="How many top search results to download."
+    )
     parser.add_argument("--output-dir", default="./sentinel2_test/")
     parser.add_argument("--parallel", type=int, default=4)
     parser.add_argument(
-        "--post-process", nargs="+", default=["reproject:EPSG:4326", "cog"],
+        "--post-process",
+        nargs="+",
+        default=["reproject:EPSG:4326", "cog"],
     )
     parser.add_argument(
-        "--use-cache", action="store_true",
+        "--use-cache",
+        action="store_true",
         help="Allow the 1-hour search cache (off by default for testing — "
-             "you almost always want fresh results with assets here).",
+        "you almost always want fresh results with assets here).",
     )
-    parser.add_argument("--clear-cache", action="store_true",
-                         help="Clear the local search cache before running.")
+    parser.add_argument(
+        "--clear-cache", action="store_true", help="Clear the local search cache before running."
+    )
     parser.add_argument("--skip-download", action="store_true")
     parser.add_argument("--skip-segment", action="store_true")
     parser.add_argument(
-        "--fail-fast", action="store_true",
-        help="Stop at the first failed step instead of continuing and "
-             "printing a summary.",
+        "--fail-fast",
+        action="store_true",
+        help="Stop at the first failed step instead of continuing and " "printing a summary.",
     )
     args = parser.parse_args()
 
@@ -248,6 +263,7 @@ def main() -> int:
     Step.fail_fast = args.fail_fast
 
     import pygeovision as pgv
+
     client = pgv.PyGeoVision()
 
     results: list = []
@@ -278,8 +294,12 @@ def main() -> int:
     else:
         with Step("Download + post-process"):
             downloads = test_download(
-                client, results, args.output_dir, args.parallel,
-                args.post_process, args.download_count,
+                client,
+                results,
+                args.output_dir,
+                args.parallel,
+                args.post_process,
+                args.download_count,
             )
 
     if args.skip_segment:

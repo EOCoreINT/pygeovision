@@ -13,12 +13,12 @@ Example:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
-import shutil
-from dataclasses import dataclass, field
 from pathlib import Path
+import shutil
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ class CachedModel:
         checksum: SHA-256 hash of the checkpoint (if verified).
         metadata: Additional model info (task, classes, etc.).
     """
+
     name: str
     local_path: Path
     source_url: str = ""
@@ -113,9 +114,11 @@ class ModelHub:
             # the codebase. Falls back here instead of failing outright.
             logger.info(
                 "Model '%s' not in the legacy ai.models registry — "
-                "trying the full pygeovision.models registry.", model_name,
+                "trying the full pygeovision.models registry.",
+                model_name,
             )
             from pygeovision.models.registry import get_model
+
             model = get_model(model_name, device=device, **model_kwargs)
 
         if checkpoint is not None:
@@ -185,18 +188,21 @@ class ModelHub:
         for name, info in self._manifest.items():
             path = Path(info.get("local_path", ""))
             if path.exists():
-                cached.append(CachedModel(
-                    name=name,
-                    local_path=path,
-                    source_url=info.get("source_url", ""),
-                    checksum=info.get("checksum", ""),
-                    metadata=info.get("metadata", {}),
-                ))
+                cached.append(
+                    CachedModel(
+                        name=name,
+                        local_path=path,
+                        source_url=info.get("source_url", ""),
+                        checksum=info.get("checksum", ""),
+                        metadata=info.get("metadata", {}),
+                    )
+                )
         return cached
 
     def list_available(self) -> None:
         """Print a summary of all models available in the PyGeoVision registry."""
         from pygeovision.ai.models.registry import registry
+
         print(registry.summary())
 
     def clear_cache(self, model_name: str | None = None) -> None:
@@ -249,7 +255,9 @@ class ModelHub:
         if actual != expected:
             logger.error(
                 "Checksum mismatch for '%s': expected %s, got %s",
-                model_name, expected[:8], actual[:8],
+                model_name,
+                expected[:8],
+                actual[:8],
             )
             return False
         return True
@@ -280,6 +288,7 @@ class ModelHub:
         # Assume HuggingFace Hub ID
         try:
             from huggingface_hub import hf_hub_download
+
             local = hf_hub_download(
                 repo_id=checkpoint,
                 filename="model.pth",

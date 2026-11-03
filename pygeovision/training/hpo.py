@@ -1,10 +1,12 @@
 """
 Hyperparameter Optimisation — Optuna + Ray Tune integration (Phase 4.1).
 """
+
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
+import contextlib
+import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,7 @@ class OptunaHPO:
         storage: str | None = None,
         n_jobs: int = 1,
         timeout: float | None = None,
-        pruner: str = "median",          # median | hyperband | none
+        pruner: str = "median",  # median | hyperband | none
     ) -> None:
         self.n_trials = n_trials
         self.direction = direction
@@ -55,6 +57,7 @@ class OptunaHPO:
     def _make_pruner(self) -> Any:
         try:
             import optuna
+
             if self.pruner == "median":
                 return optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=10)
             elif self.pruner == "hyperband":
@@ -76,6 +79,7 @@ class OptunaHPO:
         """
         try:
             import optuna
+
             optuna.logging.set_verbosity(optuna.logging.WARNING)
         except ImportError as exc:
             raise ImportError("OptunaHPO needs optuna: pip install optuna") from exc
@@ -104,8 +108,10 @@ class OptunaHPO:
                 elif kind == "categorical":
                     params[name] = trial.suggest_categorical(name, list(spec[1]))
                 else:
-                    raise ValueError(f"search_space[{name!r}]: unknown kind {kind!r}; use float, float_log, "
-                                     f"int, int_log or categorical")
+                    raise ValueError(
+                        f"search_space[{name!r}]: unknown kind {kind!r}; use float, float_log, "
+                        f"int, int_log or categorical"
+                    )
             return objective_fn(params)
 
         self._study.optimize(
@@ -119,13 +125,14 @@ class OptunaHPO:
         best = self._study.best_trial
         logger.info(
             "HPO complete: best value=%.4f | params=%s",
-            best.value, best.params,
+            best.value,
+            best.params,
         )
         return {
-            "best_params":  best.params,
-            "best_value":   best.value,
-            "n_trials":     len(self._study.trials),
-            "study_name":   self.study_name,
+            "best_params": best.params,
+            "best_value": best.value,
+            "n_trials": len(self._study.trials),
+            "study_name": self.study_name,
         }
 
     @property
@@ -136,6 +143,7 @@ class OptunaHPO:
         """Return hyperparameter importance scores."""
         try:
             import optuna
+
             if self._study is None:
                 return {}
             return optuna.importance.get_param_importances(self._study)
@@ -146,6 +154,7 @@ class OptunaHPO:
         """Plot optimisation history."""
         try:
             import optuna.visualization as vis
+
             if self._study is None:
                 return
             fig = vis.plot_optimization_history(self._study)
@@ -185,8 +194,10 @@ class ModelOptimizer:
         """
         try:
             import torch
+
             self.model.eval()
             from pygeovision._onnx import export_onnx as _export_onnx
+
             try:
                 device = next(self.model.parameters()).device
             except StopIteration:
@@ -197,9 +208,13 @@ class ModelOptimizer:
                 axes[0] = "batch"
             if dynamic_spatial:
                 axes.update({2: "height", 3: "width"})
-            dynamic_axes: dict[str, Any] = {"input": dict(axes), "output": dict(axes)} if axes else {}
+            dynamic_axes: dict[str, Any] = (
+                {"input": dict(axes), "output": dict(axes)} if axes else {}
+            )
             _export_onnx(
-                self.model, dummy, output_path,
+                self.model,
+                dummy,
+                output_path,
                 opset_version=opset,
                 input_names=["input"],
                 output_names=["output"],
@@ -211,6 +226,7 @@ class ModelOptimizer:
                 try:
                     import onnx
                     import onnxsim
+
                     model_onnx = onnx.load(output_path)
                     simplified, check = onnxsim.simplify(model_onnx)
                     if check:
@@ -221,7 +237,7 @@ class ModelOptimizer:
             logger.info("ONNX exported → %s  (opset=%d)", output_path, opset)
             return output_path
         except ImportError as exc:
-            raise ImportError(f"torch required: {exc}")
+            raise ImportError(f"torch required: {exc}") from exc
 
     def export_torchscript(
         self,
@@ -232,6 +248,7 @@ class ModelOptimizer:
         """Export to TorchScript (trace or script)."""
         try:
             import torch
+
             self.model.eval()
             if method == "trace":
                 dummy = torch.randn(1, self.in_channels, input_size, input_size)
@@ -242,13 +259,13 @@ class ModelOptimizer:
             logger.info("TorchScript exported → %s  (method=%s)", output_path, method)
             return output_path
         except Exception as exc:
-            raise RuntimeError(f"TorchScript export failed: {exc}")
+            raise RuntimeError(f"TorchScript export failed: {exc}") from exc
 
     def quantize_int8(
         self,
         calibration_loader: Any,
         output_path: str = "model_int8.pth",
-        backend: str = "fbgemm",   # fbgemm (x86) | qnnpack (ARM/mobile)
+        backend: str = "fbgemm",  # fbgemm (x86) | qnnpack (ARM/mobile)
     ) -> Any:
         """Apply post-training static INT8 quantisation (CPU inference).
 
@@ -266,7 +283,7 @@ class ModelOptimizer:
             import torch.nn as nn
             import torch.quantization as tq
         except ImportError as exc:
-            raise ImportError(f"torch required for quantisation: {exc}")
+            raise ImportError(f"torch required for quantisation: {exc}") from exc
 
         class _Quantized(nn.Module):
             def __init__(self, inner: nn.Module) -> None:
@@ -294,26 +311,32 @@ class ModelOptimizer:
                 wrapped(images.float())
                 n_calibrated += 1
         if n_calibrated == 0:
-            raise ValueError("calibration_loader produced no batches; the quantiser has nothing to calibrate on")
+            raise ValueError(
+                "calibration_loader produced no batches; the quantiser has nothing to calibrate on"
+            )
         tq.convert(wrapped, inplace=True)
         try:
             with torch.no_grad():
-                wrapped(images.float())          # fails here, not later, if an operation cannot run in INT8
+                wrapped(images.float())  # fails here, not later, if an operation cannot run in INT8
         except Exception as exc:
             raise RuntimeError(
                 f"INT8 quantisation produced a model that cannot run ({exc}). This architecture has "
                 f"operations PyTorch cannot quantise; export to ONNX and quantise there instead."
             ) from exc
         torch.save(wrapped.state_dict(), output_path)
-        logger.info("INT8 quantised model → %s  (backend=%s, %d calibration batches)",
-                    output_path, backend, n_calibrated)
+        logger.info(
+            "INT8 quantised model → %s  (backend=%s, %d calibration batches)",
+            output_path,
+            backend,
+            n_calibrated,
+        )
         self.model = wrapped
         return wrapped
 
     def prune(
         self,
         amount: float = 0.3,
-        method: str = "l1",      # l1 | global
+        method: str = "l1",  # l1 | global
         structured: bool = False,
         make_permanent: bool = True,
     ) -> Any:
@@ -332,6 +355,7 @@ class ModelOptimizer:
         try:
             import torch.nn as nn
             import torch.nn.utils.prune as prune
+
             # Convolution and linear layers only: zeroing batch-norm scales would switch whole channels off.
             modules = [
                 (m, "weight")
@@ -355,24 +379,20 @@ class ModelOptimizer:
                         prune.l1_unstructured(module, name=name, amount=amount)
             if make_permanent:
                 for module, name in modules:
-                    try:
+                    with contextlib.suppress(ValueError):
                         prune.remove(module, name)
-                    except ValueError:
-                        pass
             # Count sparsity
-            n_zeros = sum(
-                (p == 0).sum().item()
-                for p in self.model.parameters()
-                if p is not None
-            )
+            n_zeros = sum((p == 0).sum().item() for p in self.model.parameters() if p is not None)
             n_total = sum(p.numel() for p in self.model.parameters())
             logger.info(
                 "Pruning done: sparsity=%.1f%%  (%d/%d zeros)",
-                100 * n_zeros / max(n_total, 1), n_zeros, n_total,
+                100 * n_zeros / max(n_total, 1),
+                n_zeros,
+                n_total,
             )
             return self.model
         except ImportError as exc:
-            raise ImportError(f"torch required for pruning: {exc}")
+            raise ImportError(f"torch required for pruning: {exc}") from exc
 
     def onnx_inference(
         self,
@@ -383,10 +403,13 @@ class ModelOptimizer:
         try:
             import numpy as np
             import onnxruntime as ort
+
             sess_opts = ort.SessionOptions()
             sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             available = ort.get_available_providers()
-            providers = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in available]
+            providers = [
+                p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in available
+            ]
             sess = ort.InferenceSession(onnx_path, sess_options=sess_opts, providers=providers)
             inp_name = sess.get_inputs()[0].name
             if hasattr(input_array, "numpy"):
@@ -394,8 +417,8 @@ class ModelOptimizer:
             if input_array.ndim == 3:
                 input_array = input_array[None]
             return sess.run(None, {inp_name: input_array.astype(np.float32)})[0]
-        except ImportError:
-            raise ImportError("onnxruntime required: pip install onnxruntime-gpu")
+        except ImportError as exc:
+            raise ImportError("onnxruntime required: pip install onnxruntime-gpu") from exc
 
     def benchmark_speed(
         self,
@@ -403,12 +426,13 @@ class ModelOptimizer:
         n_runs: int = 100,
         warmup: int = 10,
         device: str = "cuda",
-    ) -> dict[str, float]:
+    ) -> dict[str, Any]:
         """Benchmark model inference speed (ms/image, FPS)."""
         try:
             import time
 
             import torch
+
             dev = torch.device(device if torch.cuda.is_available() else "cpu")
             self.model.to(dev).eval()
             dummy = torch.randn(1, self.in_channels, input_size, input_size, device=dev)
@@ -426,16 +450,17 @@ class ModelOptimizer:
                         torch.cuda.synchronize()
                     times.append((time.perf_counter() - t0) * 1000)
             import statistics
+
             mean_ms = statistics.mean(times)
-            std_ms  = statistics.stdev(times) if len(times) > 1 else 0.0
+            std_ms = statistics.stdev(times) if len(times) > 1 else 0.0
             return {
-                "mean_ms":   round(mean_ms, 2),
-                "std_ms":    round(std_ms, 2),
-                "fps":       round(1000 / mean_ms, 1),
-                "p95_ms":    round(sorted(times)[int(0.95 * len(times))], 2),
-                "device":    str(dev),
+                "mean_ms": round(mean_ms, 2),
+                "std_ms": round(std_ms, 2),
+                "fps": round(1000 / mean_ms, 1),
+                "p95_ms": round(sorted(times)[int(0.95 * len(times))], 2),
+                "device": str(dev),
                 "input_size": input_size,
-                "n_runs":    n_runs,
+                "n_runs": n_runs,
             }
         except ImportError as exc:
             return {"error": str(exc)}

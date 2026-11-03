@@ -18,9 +18,11 @@ returning a :class:`ClassificationResult`:
 Rule strings are evaluated with ``pandas.DataFrame.eval`` against the feature
 columns.  Treat rule sets as trusted code, not as untrusted user input.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -33,11 +35,11 @@ UNCLASSIFIED = "unclassified"
 class ClassificationResult:
     """Class per object plus the evidence behind it."""
 
-    classes: pd.Series                     # index obj_id -> class name
+    classes: pd.Series  # index obj_id -> class name
     class_names: list[str]
     method: str
-    scores: pd.DataFrame | None = None     # membership / probability per class
-    stability: pd.Series | None = None     # best - second best score
+    scores: pd.DataFrame | None = None  # membership / probability per class
+    stability: pd.Series | None = None  # best - second best score
     extra: dict = field(default_factory=dict)
 
     def codes(self) -> dict[str, int]:
@@ -56,6 +58,7 @@ class ClassificationResult:
     def to_vector(self, labels, transform=None, crs=None, features: pd.DataFrame | None = None):
         """Classified objects as a GeoDataFrame (``class`` column, scores, stability)."""
         from .vector import labels_to_gdf
+
         attr = pd.DataFrame({"class": self.classes})
         if self.stability is not None:
             attr["stability"] = self.stability
@@ -112,8 +115,9 @@ class RuleBasedClassifier:
             res = features.eval(expr, engine="python")
         except Exception as exc:  # unknown column, bad syntax, ...
             cols = ", ".join(map(str, features.columns[:25]))
-            raise ValueError(f"cannot evaluate rule {expr!r}: {exc}\n"
-                             f"available columns include: {cols}") from exc
+            raise ValueError(
+                f"cannot evaluate rule {expr!r}: {exc}\n" f"available columns include: {cols}"
+            ) from exc
         res = pd.Series(res, index=features.index)
         if res.dtype != bool:
             raise ValueError(f"rule {expr!r} must give True/False, got {res.dtype}")
@@ -138,8 +142,9 @@ class RuleBasedClassifier:
         rows, decided = [], False
         for cname, expr in self.rules:
             ok = bool(self._eval(row, expr).iloc[0])
-            rows.append({"class": cname, "rule": expr, "condition_true": ok,
-                         "decides": ok and not decided})
+            rows.append(
+                {"class": cname, "rule": expr, "condition_true": ok, "decides": ok and not decided}
+            )
             decided = decided or ok
         return pd.DataFrame(rows)
 
@@ -233,8 +238,13 @@ class FuzzyClassifier:
     min_membership : best membership below this -> unclassified.
     """
 
-    def __init__(self, descriptions, combine: str = "min", min_membership: float = 0.1,
-                 default: str = UNCLASSIFIED):
+    def __init__(
+        self,
+        descriptions,
+        combine: str = "min",
+        min_membership: float = 0.1,
+        default: str = UNCLASSIFIED,
+    ):
         if combine not in ("min", "product", "mean"):
             raise ValueError("combine must be 'min', 'product' or 'mean'")
         if not descriptions:
@@ -254,13 +264,18 @@ class FuzzyClassifier:
             parts = []
             for fname, fn in feats.items():
                 if fname not in features.columns:
-                    raise KeyError(f"class {cname!r} uses feature {fname!r}, which is not in the "
-                                   f"feature table (have e.g. {list(features.columns[:15])})")
+                    raise KeyError(
+                        f"class {cname!r} uses feature {fname!r}, which is not in the "
+                        f"feature table (have e.g. {list(features.columns[:15])})"
+                    )
                 m = fn(features[fname].to_numpy())
                 parts.append(np.nan_to_num(np.asarray(m, dtype=float), nan=0.0))
             arr = np.vstack(parts)
-            cols[cname] = (arr.min(0) if self.combine == "min"
-                           else arr.prod(0) if self.combine == "product" else arr.mean(0))
+            cols[cname] = (
+                arr.min(0)
+                if self.combine == "min"
+                else arr.prod(0) if self.combine == "product" else arr.mean(0)
+            )
         return pd.DataFrame(cols, index=features.index)
 
     def classify(self, features: pd.DataFrame) -> ClassificationResult:
@@ -285,8 +300,14 @@ class ObjectClassifier:
     map"; pass ``feature_columns`` to choose features explicitly.
     """
 
-    def __init__(self, method: str = "rf", feature_columns=None, exclude=_DEFAULT_EXCLUDE,
-                 random_state: int = 0, **model_params):
+    def __init__(
+        self,
+        method: str = "rf",
+        feature_columns=None,
+        exclude=_DEFAULT_EXCLUDE,
+        random_state: int = 0,
+        **model_params,
+    ):
         if method not in ("rf", "knn", "svm", "tree"):
             raise ValueError("method must be 'rf', 'knn', 'svm' or 'tree'")
         self.method = method
@@ -294,7 +315,7 @@ class ObjectClassifier:
         self.exclude = tuple(exclude)
         self.random_state = random_state
         self.model_params = model_params
-        self.model_ = None
+        self.model_: Any = None
         self.columns_: list[str] = []
         self.medians_: pd.Series | None = None
 
@@ -305,16 +326,21 @@ class ObjectClassifier:
         from sklearn.preprocessing import StandardScaler
         from sklearn.svm import SVC
         from sklearn.tree import DecisionTreeClassifier
+
         p = self.model_params
         if self.method == "rf":
-            return RandomForestClassifier(**{"n_estimators": 300, "random_state": self.random_state,
-                                             "n_jobs": 1, **p})
+            return RandomForestClassifier(
+                **{"n_estimators": 300, "random_state": self.random_state, "n_jobs": 1, **p}
+            )
         if self.method == "tree":
-            return DecisionTreeClassifier(**{"random_state": self.random_state, "max_depth": 4, **p})
+            return DecisionTreeClassifier(
+                **{"random_state": self.random_state, "max_depth": 4, **p}
+            )
         if self.method == "knn":
             return make_pipeline(StandardScaler(), KNeighborsClassifier(**{"n_neighbors": 3, **p}))
-        return make_pipeline(StandardScaler(), SVC(**{"probability": True,
-                                                      "random_state": self.random_state, **p}))
+        return make_pipeline(
+            StandardScaler(), SVC(**{"probability": True, "random_state": self.random_state, **p})
+        )
 
     def _select(self, features: pd.DataFrame) -> list[str]:
         if self.feature_columns:
@@ -329,7 +355,7 @@ class ObjectClassifier:
         X = features[self.columns_].replace([np.inf, -np.inf], np.nan)
         return X.fillna(self.medians_)
 
-    def fit(self, features: pd.DataFrame, samples: pd.Series) -> "ObjectClassifier":
+    def fit(self, features: pd.DataFrame, samples: pd.Series) -> ObjectClassifier:
         s = pd.Series(samples).dropna()
         s = s[s.index.isin(features.index)]
         if s.nunique() < 2:
@@ -360,7 +386,9 @@ class ObjectClassifier:
     def feature_importances_(self) -> pd.Series | None:
         est = self.model_[-1] if hasattr(self.model_, "steps") else self.model_
         if hasattr(est, "feature_importances_"):
-            return pd.Series(est.feature_importances_, index=self.columns_).sort_values(ascending=False)
+            return pd.Series(est.feature_importances_, index=self.columns_).sort_values(
+                ascending=False
+            )
         return None
 
     def export_rules(self) -> str:
@@ -368,6 +396,7 @@ class ObjectClassifier:
         if self.method != "tree" or self.model_ is None:
             raise RuntimeError("export_rules() needs a fitted method='tree' classifier")
         from sklearn.tree import export_text
+
         return export_text(self.model_, feature_names=self.columns_)
 
     def cross_validate(self, features: pd.DataFrame, samples: pd.Series, k: int = 5) -> dict:
@@ -377,7 +406,9 @@ class ObjectClassifier:
         this is optimistic; use an independent reference for the real accuracy.
         """
         from sklearn.model_selection import StratifiedKFold, cross_val_predict
+
         from .accuracy import confusion_report
+
         s = pd.Series(samples).dropna()
         s = s[s.index.isin(features.index)].astype(str)
         cols = self._select(features)
@@ -386,16 +417,21 @@ class ObjectClassifier:
         kk = int(min(k, s.value_counts().min()))
         if kk < 2:
             raise ValueError("every class needs at least 2 samples for cross-validation")
-        pred = cross_val_predict(self._build(), X, s.to_numpy(),
-                                 cv=StratifiedKFold(kk, shuffle=True, random_state=self.random_state))
+        pred = cross_val_predict(
+            self._build(),
+            X,
+            s.to_numpy(),
+            cv=StratifiedKFold(kk, shuffle=True, random_state=self.random_state),
+        )
         rep = confusion_report(s, pd.Series(pred, index=s.index))
         rep["folds"] = kk
         return rep
 
 
 # ---------------------------------------------------------------- sample tools
-def samples_from_geometries(labels, gdf, class_column: str, transform=None,
-                            min_coverage: float | None = None, crs=None) -> pd.Series:
+def samples_from_geometries(
+    labels, gdf, class_column: str, transform=None, min_coverage: float | None = None, crs=None
+) -> pd.Series:
     """Give each image object the reference class that covers most of it.
 
     Polygons (training areas or reference data) are rasterised onto the label
@@ -410,11 +446,14 @@ def samples_from_geometries(labels, gdf, class_column: str, transform=None,
     nearly always a coordinate-system mix-up (degrees against metres), not an empty result.
     """
     from .vector import rasterize_geometries
+
     lab = np.asarray(labels).astype(np.int64)
     if crs is not None:
         if getattr(gdf, "crs", None) is None:
-            raise ValueError("the reference geometries have no coordinate system; set one with "
-                             "gdf.set_crs(...) so they can be placed on the image")
+            raise ValueError(
+                "the reference geometries have no coordinate system; set one with "
+                "gdf.set_crs(...) so they can be placed on the image"
+            )
         if gdf.crs != crs:
             gdf = gdf.to_crs(crs)
     if transform is not None and len(gdf):
@@ -426,7 +465,8 @@ def samples_from_geometries(labels, gdf, class_column: str, transform=None,
             raise ValueError(
                 f"the reference geometries (x {gx0:.5g}..{gx1:.5g}, y {gy0:.5g}..{gy1:.5g}) lie outside the image "
                 f"(x {minx:.5g}..{maxx:.5g}, y {miny:.5g}..{maxy:.5g}). This is usually a coordinate-system mismatch: "
-                "pass crs=<the image's CRS> or reproject the geometries with gdf.to_crs(...).")
+                "pass crs=<the image's CRS> or reproject the geometries with gdf.to_crs(...)."
+            )
     ref, codes = rasterize_geometries(gdf, lab.shape, transform, class_column)
     if min_coverage is None:
         pts = all(g.geom_type in ("Point", "MultiPoint") for g in gdf.geometry if g is not None)
@@ -439,9 +479,13 @@ def samples_from_geometries(labels, gdf, class_column: str, transform=None,
     key = lab[m] * K + ref[m]
     uniq, cnt = np.unique(key, return_counts=True)
     df = pd.DataFrame({"obj": uniq // K, "code": uniq % K, "n": cnt})
-    best = df.sort_values(["obj", "n"], ascending=[True, False]).drop_duplicates("obj").set_index("obj")
+    best = (
+        df.sort_values(["obj", "n"], ascending=[True, False])
+        .drop_duplicates("obj")
+        .set_index("obj")
+    )
     area = np.bincount(lab.ravel(), minlength=int(lab.max()) + 1)
-    best = best[best.index > 0]                     # label 0 = no data, never an object
+    best = best[best.index > 0]  # label 0 = no data, never an object
     best["cov"] = best["n"] / area[best.index.to_numpy()]
     best = best[best["cov"] >= min_coverage]
     s = best["code"].map(inv).astype(object)
@@ -450,8 +494,9 @@ def samples_from_geometries(labels, gdf, class_column: str, transform=None,
     return s
 
 
-def samples_from_raster(labels, class_raster, mapping: dict | None = None, min_purity: float = 0.6,
-                        nodata: int = 0) -> pd.DataFrame:
+def samples_from_raster(
+    labels, class_raster, mapping: dict | None = None, min_purity: float = 0.6, nodata: int = 0
+) -> pd.DataFrame:
     """Turn an existing land-cover map (ESA WorldCover, Dynamic World, an older classification) into
     *weak* training samples: each object gets the class that most of its pixels carry.
 
@@ -468,7 +513,9 @@ def samples_from_raster(labels, class_raster, mapping: dict | None = None, min_p
     lab = np.asarray(labels).astype(np.int64)
     ras = np.asarray(class_raster)
     if lab.shape != ras.shape:
-        raise ValueError(f"labels {lab.shape} and class raster {ras.shape} must be on the same grid")
+        raise ValueError(
+            f"labels {lab.shape} and class raster {ras.shape} must be on the same grid"
+        )
     if not 0.0 < min_purity <= 1.0:
         raise ValueError("min_purity must be in (0, 1]")
     raw = ras.astype(np.int64)
@@ -476,7 +523,7 @@ def samples_from_raster(labels, class_raster, mapping: dict | None = None, min_p
     if mapping is None:
         mapping = {int(c): str(c) for c in uniq_codes}
     names = sorted(set(mapping.values()))
-    cls_of = {int(c): names.index(n) + 1 for c, n in mapping.items()}   # 1..K, 0 = unmapped
+    cls_of = {int(c): names.index(n) + 1 for c, n in mapping.items()}  # 1..K, 0 = unmapped
     K = len(names) + 1
     code = np.zeros(raw.shape, np.int64)
     for c, k in cls_of.items():
@@ -490,9 +537,19 @@ def samples_from_raster(labels, class_raster, mapping: dict | None = None, min_p
     total = df.groupby("obj")["n"].transform("sum")
     df["purity"] = df["n"] / total
     df["n_px"] = total
-    best = df[df["code"] > 0].sort_values(["obj", "n"], ascending=[True, False]).drop_duplicates("obj").set_index("obj")
+    best = (
+        df[df["code"] > 0]
+        .sort_values(["obj", "n"], ascending=[True, False])
+        .drop_duplicates("obj")
+        .set_index("obj")
+    )
     best = best[best["purity"] >= min_purity]
-    out = pd.DataFrame({"class": best["code"].map(lambda k: names[int(k) - 1]).astype(object),
-                        "purity": best["purity"], "n_px": best["n_px"].astype(int)})
+    out = pd.DataFrame(
+        {
+            "class": best["code"].map(lambda k: names[int(k) - 1]).astype(object),
+            "purity": best["purity"],
+            "n_px": best["n_px"].astype(int),
+        }
+    )
     out.index.name = "obj_id"
     return out

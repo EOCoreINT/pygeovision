@@ -1,4 +1,5 @@
 """Checkpoint management — save, load, resume training."""
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,13 @@ class CheckpointManager:
         cm.load_best(model, optimizer)
     """
 
-    def __init__(self, dirpath: str = "./checkpoints/", keep_top_k: int = 3,
-                 monitor: str = "val_iou", mode: str = "max") -> None:
+    def __init__(
+        self,
+        dirpath: str = "./checkpoints/",
+        keep_top_k: int = 3,
+        monitor: str = "val_iou",
+        mode: str = "max",
+    ) -> None:
         self.dirpath = Path(dirpath)
         self.keep_top_k = keep_top_k
         self.monitor = monitor
@@ -37,14 +43,20 @@ class CheckpointManager:
     def _save_index(self) -> None:
         self._index_path.write_text(json.dumps(self._index, indent=2))
 
-    def save(self, epoch: int, model: Any, optimizer: Any = None,
-              scheduler: Any = None, metrics: dict | None = None,
-              extra: dict | None = None) -> str:
+    def save(
+        self,
+        epoch: int,
+        model: Any,
+        optimizer: Any = None,
+        scheduler: Any = None,
+        metrics: dict | None = None,
+        extra: dict | None = None,
+    ) -> str:
         """Save a training checkpoint."""
         try:
             import torch
-        except ImportError:
-            raise ImportError("torch required")
+        except ImportError as exc:
+            raise ImportError("torch required") from exc
 
         ckpt_path = self.dirpath / f"epoch_{epoch:04d}.pth"
         state = {
@@ -62,11 +74,15 @@ class CheckpointManager:
 
         # Update index
         value = (metrics or {}).get(self.monitor, 0.0)
-        entry = {"path": str(ckpt_path), "epoch": epoch,
-                 "metrics": metrics or {}, "monitor_value": value}
+        entry = {
+            "path": str(ckpt_path),
+            "epoch": epoch,
+            "metrics": metrics or {},
+            "monitor_value": value,
+        }
         self._index["checkpoints"].append(entry)
 
-        reverse = (self.mode == "max")
+        reverse = self.mode == "max"
         self._index["checkpoints"].sort(key=lambda x: x["monitor_value"], reverse=reverse)
 
         if self._index["checkpoints"]:
@@ -83,18 +99,25 @@ class CheckpointManager:
 
         # Save last checkpoint link
         import shutil
+
         shutil.copy(str(ckpt_path), str(self.dirpath / "last.pth"))
         self._save_index()
         logger.info("Checkpoint saved: epoch=%d %s=%.4f", epoch, self.monitor, value)
         return str(ckpt_path)
 
-    def load(self, path: str, model: Any, optimizer: Any = None,
-              scheduler: Any = None, strict: bool = True) -> dict:
+    def load(
+        self,
+        path: str,
+        model: Any,
+        optimizer: Any = None,
+        scheduler: Any = None,
+        strict: bool = True,
+    ) -> dict:
         """Load a checkpoint into model and optionally optimizer/scheduler."""
         try:
             import torch
-        except ImportError:
-            raise ImportError("torch required")
+        except ImportError as exc:
+            raise ImportError("torch required") from exc
 
         state = torch.load(path, map_location="cpu")
         model.load_state_dict(state["model_state_dict"], strict=strict)
@@ -105,8 +128,7 @@ class CheckpointManager:
         logger.info("Checkpoint loaded: %s (epoch=%d)", path, state.get("epoch", "?"))
         return state
 
-    def load_best(self, model: Any, optimizer: Any = None,
-                   scheduler: Any = None) -> dict | None:
+    def load_best(self, model: Any, optimizer: Any = None, scheduler: Any = None) -> dict | None:
         """Load the best checkpoint."""
         best = self._index.get("best")
         if not best or not Path(best).exists():
@@ -114,8 +136,7 @@ class CheckpointManager:
             return None
         return self.load(best, model, optimizer, scheduler)
 
-    def load_last(self, model: Any, optimizer: Any = None,
-                   scheduler: Any = None) -> dict | None:
+    def load_last(self, model: Any, optimizer: Any = None, scheduler: Any = None) -> dict | None:
         """Load the last checkpoint (resume training)."""
         last = self.dirpath / "last.pth"
         if not last.exists():

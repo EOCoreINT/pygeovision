@@ -1,4 +1,5 @@
 """The configuration file and PYGEOVISION_* variables must reach the objects that use them."""
+
 import pytest
 
 from pygeovision import PyGeoVision
@@ -36,5 +37,9 @@ def test_project_file_overrides_user_file_and_env_overrides_both(home, monkeypat
 
 def test_defaults_without_any_file(home):
     c = PyGeoVision()
-    assert c.data._resolve_providers(None, None, None) == ["planetary_computer", "aws_earth", "element84"]
+    assert c.data._resolve_providers(None, None, None) == [
+        "planetary_computer",
+        "aws_earth",
+        "element84",
+    ]
     assert c.data._cache_ttl == 3600

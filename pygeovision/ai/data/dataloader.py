@@ -14,8 +14,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import random
 from pathlib import Path
+import random
 from typing import TYPE_CHECKING, Any
 
 from pygeovision.ai.data.augmentations import GeoAugmentationPipeline
@@ -135,9 +135,7 @@ class GeoDataLoader:
             If data preparation fails.
         """
         if val_split + test_split >= 1.0:
-            raise DatasetError(
-                f"val_split ({val_split}) + test_split ({test_split}) must be < 1.0"
-            )
+            raise DatasetError(f"val_split ({val_split}) + test_split ({test_split}) must be < 1.0")
 
         # Resolve output directory
         dataset_dir = self._resolve_output_dir(output_dir, data_source, task, tile_size)
@@ -310,12 +308,11 @@ class GeoDataLoader:
 
         logger.info("Downloading %d scenes via PyGeoFetch → %s", len(results), download_dir)
 
-        from pygeofetch.models.download_task import DownloadOptions
-
         download_results = self._pygeofetch.download(
             results,
-            destination=download_dir,
-            options=DownloadOptions(parallel=4, resume=True),
+            output_dir=download_dir,
+            parallel=4,
+            resume=True,
         )
 
         paths: list[Path] = []
@@ -366,13 +363,25 @@ class GeoDataLoader:
                 continue
             ok = [r for r in results if getattr(r, "success", False)]
             skipped = [r for r in results if getattr(r, "skipped", False)]
-            bad = [r for r in results if not getattr(r, "success", False) and not getattr(r, "skipped", False)]
+            bad = [
+                r
+                for r in results
+                if not getattr(r, "success", False) and not getattr(r, "skipped", False)
+            ]
             n_labelled += len(ok)
-            logger.info("Labeler '%s': %d labelled, %d skipped, %d failed (of %d tiles)",
-                        strat, len(ok), len(skipped), len(bad), len(tiles))
+            logger.info(
+                "Labeler '%s': %d labelled, %d skipped, %d failed (of %d tiles)",
+                strat,
+                len(ok),
+                len(skipped),
+                len(bad),
+                len(tiles),
+            )
             if bad:
                 first_error = first_error or f"{strat}: {bad[0].error}"
-                logger.warning("Labeler '%s': %d tile(s) failed; first: %s", strat, len(bad), bad[0].error)
+                logger.warning(
+                    "Labeler '%s': %d tile(s) failed; first: %s", strat, len(bad), bad[0].error
+                )
             elif skipped and not ok:
                 first_error = first_error or f"{strat}: {skipped[0].error}"
 
@@ -474,11 +483,13 @@ class GeoDataLoader:
             logger.warning(
                 "Only %d source file(s): splitting each into contiguous bands of tiles (train | val | test) "
                 "instead of by file. Tiles on either side of a band edge share up to `overlap` pixels; "
-                "use more scenes for a fully independent validation set.", n)
-            split_map = {}
+                "use more scenes for a fully independent validation set.",
+                n,
+            )
+            split_map: dict[str, str] = {}
             for group in source_groups.values():
                 split_map.update(GeoDataLoader._band_split(group, val_split, test_split))
-            counts = {}
+            counts: dict[str, int] = {}
             for v in split_map.values():
                 counts[v] = counts.get(v, 0) + 1
             logger.info("Split: %s", counts)
@@ -488,7 +499,7 @@ class GeoDataLoader:
         val_sources = set(sources[n_test : n_test + n_val])
         # Remaining are train
 
-        split_map: dict[str, str] = {}
+        split_map = {}
         for src, src_tiles in source_groups.items():
             if src in test_sources:
                 split = "test"
@@ -499,33 +510,38 @@ class GeoDataLoader:
             for tile in src_tiles:
                 split_map[tile.tile_id] = split
 
-        counts: dict[str, int] = {}
+        counts = {}
         for v in split_map.values():
             counts[v] = counts.get(v, 0) + 1
         logger.info("Split: %s", counts)
         return split_map
 
     @staticmethod
-    def _band_split(tiles: list[TileMetadata], val_split: float, test_split: float) -> dict[str, str]:
+    def _band_split(
+        tiles: list[TileMetadata], val_split: float, test_split: float
+    ) -> dict[str, str]:
         """Split the tiles of ONE scene into train | val | test bands (rows of tiles, else columns)."""
         for axis in ("row_off", "col_off"):
             keys = sorted({getattr(t, axis) for t in tiles})
             if len(keys) >= 3:
                 break
         else:
-            logger.warning("Scene has fewer than 3 distinct tile rows and columns: all %d tile(s) go to "
-                           "'train' (no validation/test split is possible).", len(tiles))
+            logger.warning(
+                "Scene has fewer than 3 distinct tile rows and columns: all %d tile(s) go to "
+                "'train' (no validation/test split is possible).",
+                len(tiles),
+            )
             return {t.tile_id: "train" for t in tiles}
         n = len(keys)
         n_test = max(1, round(n * test_split)) if test_split > 0 else 0
         n_val = max(1, round(n * val_split)) if val_split > 0 else 0
-        while n - n_test - n_val < 1:                 # always leave at least one band for training
+        while n - n_test - n_val < 1:  # always leave at least one band for training
             if n_val >= n_test and n_val > 0:
                 n_val -= 1
             elif n_test > 0:
                 n_test -= 1
         train_keys = set(keys[: n - n_val - n_test])
-        val_keys = set(keys[n - n_val - n_test: n - n_test])
+        val_keys = set(keys[n - n_val - n_test : n - n_test])
         out = {}
         for t in tiles:
             k = getattr(t, axis)
@@ -558,17 +574,32 @@ class GeoDataLoader:
         # ESA WorldCover classes
         if "esa_worldcover" in strategies:
             return [
-                "tree_cover", "shrubland", "grassland", "cropland",
-                "built_up", "bare_sparse_veg", "snow_ice", "perm_water",
-                "herbaceous_wetland", "mangroves", "moss_lichen",
+                "tree_cover",
+                "shrubland",
+                "grassland",
+                "cropland",
+                "built_up",
+                "bare_sparse_veg",
+                "snow_ice",
+                "perm_water",
+                "herbaceous_wetland",
+                "mangroves",
+                "moss_lichen",
             ]
 
         # Generic land cover
         if "landcover" in task.lower():
             return [
-                "water", "trees", "grass", "flooded_vegetation",
-                "crops", "shrub", "built_area", "bare_ground",
-                "snow_ice", "clouds",
+                "water",
+                "trees",
+                "grass",
+                "flooded_vegetation",
+                "crops",
+                "shrub",
+                "built_area",
+                "bare_ground",
+                "snow_ice",
+                "clouds",
             ]
 
         # Solar panels

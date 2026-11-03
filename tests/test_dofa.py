@@ -1,4 +1,5 @@
 """DOFA integration: validation of inputs, and no silent random-weight substitution (torchgeo is faked)."""
+
 from __future__ import annotations
 
 import sys

@@ -13,8 +13,8 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -26,9 +26,7 @@ from pygeovision.core.exceptions import LabelingError
 logger = logging.getLogger(__name__)
 
 # Google Open Buildings dataset hosted on Google Cloud Storage
-_GOB_BASE_URL = (
-    "https://storage.googleapis.com/open-buildings-data/v3/polygons_s2_level_4_gzip"
-)
+_GOB_BASE_URL = "https://storage.googleapis.com/open-buildings-data/v3/polygons_s2_level_4_gzip"
 
 # S2 cell ID lookup endpoint
 _S2_LOOKUP_URL = "https://storage.googleapis.com/open-buildings-data/v3/tiles.csv.gz"
@@ -90,9 +88,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
             skip_existing=skip_existing,
         )
         if not 0.0 <= confidence_threshold <= 1.0:
-            raise ValueError(
-                f"confidence_threshold must be in [0, 1], got {confidence_threshold}"
-            )
+            raise ValueError(f"confidence_threshold must be in [0, 1], got {confidence_threshold}")
 
         self.config = GoogleBuildingsConfig(
             confidence_threshold=confidence_threshold,
@@ -108,17 +104,17 @@ class GoogleBuildingsLabeler(BaseLabeler):
 
     @property
     def name(self) -> str:
-        return 'google_buildings'
+        return "google_buildings"
 
     @property
     def supported_tasks(self) -> list:
-        return ['segmentation', 'detection']
+        return ["segmentation", "detection"]
 
     # ------------------------------------------------------------------
     # BaseLabeler interface
     # ------------------------------------------------------------------
 
-    def label_tile(
+    def label_tile(  # type: ignore[override]
         self,
         tile_path: Path,
         tile_metadata: Any,
@@ -154,9 +150,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
 
             # Reproject bounds to EPSG:4326 for GOB query
             wgs84 = pyproj.CRS("EPSG:4326")
-            project = pyproj.Transformer.from_crs(
-                crs, wgs84, always_xy=True
-            ).transform
+            project = pyproj.Transformer.from_crs(crs, wgs84, always_xy=True).transform
             tile_box = box(bounds.left, bounds.bottom, bounds.right, bounds.top)
             tile_box_wgs84 = shapely_transform(project, tile_box)
             bbox_wgs84 = tile_box_wgs84.bounds  # (minx, miny, maxx, maxy)
@@ -211,9 +205,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
             )
 
         except Exception as exc:
-            logger.error(
-                "GoogleBuildingsLabeler failed for %s: %s", tile_path, exc
-            )
+            logger.error("GoogleBuildingsLabeler failed for %s: %s", tile_path, exc)
             return LabelingResult(
                 tile_id=str(tile_path),
                 label_path=None,
@@ -238,11 +230,20 @@ class GoogleBuildingsLabeler(BaseLabeler):
         """
         from pygeovision.data import footprints as fp  # noqa: PLC0415
 
-        gdf = fp.google_footprints(bbox_wgs84, min_confidence=self.config.confidence_threshold,
-                                   cache_dir=self.config.cache_dir)
-        buildings = [{"geometry": g, "confidence": float(c)} for g, c in zip(gdf.geometry, gdf["confidence"])]
-        logger.debug("Fetched %d buildings (confidence >= %.2f) for bbox %s", len(buildings),
-                     self.config.confidence_threshold, bbox_wgs84)
+        gdf = fp.google_footprints(
+            bbox_wgs84,
+            min_confidence=self.config.confidence_threshold,
+            cache_dir=self.config.cache_dir,
+        )
+        buildings = [
+            {"geometry": g, "confidence": float(c)} for g, c in zip(gdf.geometry, gdf["confidence"])
+        ]
+        logger.debug(
+            "Fetched %d buildings (confidence >= %.2f) for bbox %s",
+            len(buildings),
+            self.config.confidence_threshold,
+            bbox_wgs84,
+        )
         return buildings
 
     def _rasterize_polygons(
@@ -280,9 +281,7 @@ class GoogleBuildingsLabeler(BaseLabeler):
             from shapely.ops import transform as shapely_transform
 
             # Reproject polygons from WGS-84 to tile CRS
-            project = pyproj.Transformer.from_crs(
-                src_crs, dst_crs, always_xy=True
-            ).transform
+            project = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True).transform
 
             shapes = []
             for bldg in polygons:

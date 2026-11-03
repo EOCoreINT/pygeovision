@@ -23,7 +23,6 @@ DownloadResult.asset_paths had two real bugs of its own:
 Every filename tested here is a real, exact filename from one of two
 separate actual production failure logs, not a synthetic approximation.
 """
-import pytest
 
 
 class TestDeriveAssetKeyRealSentinel2Filenames:
@@ -32,22 +31,34 @@ class TestDeriveAssetKeyRealSentinel2Filenames:
 
     def test_aot(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = "S2A_MSIL2A_20240615T153941_R011_T18TXL_20240616T010729_T18TXL_20240615T153941_AOT_10m"
+
+        stem = (
+            "S2A_MSIL2A_20240615T153941_R011_T18TXL_20240616T010729_T18TXL_20240615T153941_AOT_10m"
+        )
         assert _derive_asset_key(stem) == "AOT"
 
     def test_b02(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = "S2A_MSIL2A_20240615T153941_R011_T18TXL_20240616T010729_T18TXL_20240615T153941_B02_10m"
+
+        stem = (
+            "S2A_MSIL2A_20240615T153941_R011_T18TXL_20240616T010729_T18TXL_20240615T153941_B02_10m"
+        )
         assert _derive_asset_key(stem) == "B02"
 
     def test_b8a(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = "S2A_MSIL2A_20240615T153941_R011_T18TXL_20240616T010729_T18TXL_20240615T153941_B8A_20m"
+
+        stem = (
+            "S2A_MSIL2A_20240615T153941_R011_T18TXL_20240616T010729_T18TXL_20240615T153941_B8A_20m"
+        )
         assert _derive_asset_key(stem) == "B8A"
 
     def test_scl(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = "S2A_MSIL2A_20240615T153941_R011_T18TXL_20240616T010729_T18TXL_20240615T153941_SCL_20m"
+
+        stem = (
+            "S2A_MSIL2A_20240615T153941_R011_T18TXL_20240616T010729_T18TXL_20240615T153941_SCL_20m"
+        )
         assert _derive_asset_key(stem) == "SCL"
 
 
@@ -61,48 +72,61 @@ class TestDeriveAssetKeyRealLandsatFilenames:
         '4326' token was previously mis-treated as a resolution suffix,
         deriving 'EPSG' as the key instead of 'SR_B1'."""
         from pygeovision.data.fetch import _derive_asset_key
-        stem = ("LE07_L2SP_013032_20180616_02_T1_LE07_L2SP_013032_20180616_"
-                "20200829_02_T1_SR_B1_EPSG_4326")
+
+        stem = (
+            "LE07_L2SP_013032_20180616_02_T1_LE07_L2SP_013032_20180616_"
+            "20200829_02_T1_SR_B1_EPSG_4326"
+        )
         assert _derive_asset_key(stem) == "SR_B1"
 
     def test_qa_pixel_not_truncated_to_pixel(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = ("LC08_L2SP_014031_20240615_02_T1_LC08_L2SP_014031_20240615_"
-                "20240705_02_T1_QA_PIXEL")
+
+        stem = (
+            "LC08_L2SP_014031_20240615_02_T1_LC08_L2SP_014031_20240615_" "20240705_02_T1_QA_PIXEL"
+        )
         assert _derive_asset_key(stem) == "QA_PIXEL"
 
     def test_st_qa(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = ("LE07_L2SP_013032_20180616_02_T1_LE07_L2SP_013032_20180616_"
-                "20200829_02_T1_ST_QA")
+
+        stem = "LE07_L2SP_013032_20180616_02_T1_LE07_L2SP_013032_20180616_" "20200829_02_T1_ST_QA"
         assert _derive_asset_key(stem) == "ST_QA"
 
     def test_sr_b3(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = ("LE07_L2SP_013032_20180616_02_T1_LE07_L2SP_013032_20180616_"
-                "20200829_02_T1_SR_B3")
+
+        stem = "LE07_L2SP_013032_20180616_02_T1_LE07_L2SP_013032_20180616_" "20200829_02_T1_SR_B3"
         assert _derive_asset_key(stem) == "SR_B3"
 
     def test_st_b10(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = ("LC08_L2SP_014031_20240615_02_T1_LC08_L2SP_014031_20240615_"
-                "20240705_02_T1_ST_B10")
+
+        stem = "LC08_L2SP_014031_20240615_02_T1_LC08_L2SP_014031_20240615_" "20240705_02_T1_ST_B10"
         assert _derive_asset_key(stem) == "ST_B10"
 
     def test_sr_qa_aerosol(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = ("LC08_L2SP_014031_20240615_02_T1_LC08_L2SP_014031_20240615_"
-                "20240705_02_T1_SR_QA_AEROSOL")
+
+        stem = (
+            "LC08_L2SP_014031_20240615_02_T1_LC08_L2SP_014031_20240615_"
+            "20240705_02_T1_SR_QA_AEROSOL"
+        )
         assert _derive_asset_key(stem) == "SR_QA_AEROSOL"
 
     def test_sr_atmos_opacity(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = ("LE07_L2SP_013032_20180616_02_T1_LE07_L2SP_013032_20180616_"
-                "20200829_02_T1_SR_ATMOS_OPACITY")
+
+        stem = (
+            "LE07_L2SP_013032_20180616_02_T1_LE07_L2SP_013032_20180616_"
+            "20200829_02_T1_SR_ATMOS_OPACITY"
+        )
         assert _derive_asset_key(stem) == "SR_ATMOS_OPACITY"
 
     def test_qa_radsat(self):
         from pygeovision.data.fetch import _derive_asset_key
-        stem = ("LC08_L2SP_014031_20240615_02_T1_LC08_L2SP_014031_20240615_"
-                "20240705_02_T1_QA_RADSAT")
+
+        stem = (
+            "LC08_L2SP_014031_20240615_02_T1_LC08_L2SP_014031_20240615_" "20240705_02_T1_QA_RADSAT"
+        )
         assert _derive_asset_key(stem) == "QA_RADSAT"

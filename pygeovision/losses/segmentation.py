@@ -11,10 +11,12 @@ Includes:
     OhemCrossEntropy  — online hard example mining
     GeospatialMixedLoss — production-ready composite
 """
+
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
+import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +24,10 @@ logger = logging.getLogger(__name__)
 def _check_torch():
     try:
         import torch
+
         return torch
-    except ImportError:
-        raise ImportError("torch required: pip install torch")
+    except ImportError as exc:
+        raise ImportError("torch required: pip install torch") from exc
 
 
 class DiceLoss:
@@ -61,23 +64,23 @@ class DiceLoss:
         torch = _check_torch()
         import torch.nn.functional as F
 
-        probs = torch.softmax(predictions, dim=1)   # (B, C, H, W)
+        probs = torch.softmax(predictions, dim=1)  # (B, C, H, W)
         B, C, H, W = probs.shape
 
-        mask = (targets != self.ignore_index)
+        mask = targets != self.ignore_index
         targets_masked = targets.clone()
         targets_masked[~mask] = 0
 
         targets_one_hot = F.one_hot(targets_masked.long(), num_classes=C)  # (B, H, W, C)
-        targets_one_hot = targets_one_hot.permute(0, 3, 1, 2).float()     # (B, C, H, W)
+        targets_one_hot = targets_one_hot.permute(0, 3, 1, 2).float()  # (B, C, H, W)
         # Zero out ignored pixels
         mask_exp = mask.unsqueeze(1).expand_as(probs)
         probs = probs * mask_exp
         targets_one_hot = targets_one_hot * mask_exp
 
-        dims = (0, 2, 3)   # average over batch, H, W
+        dims = (0, 2, 3)  # average over batch, H, W
         intersection = (probs * targets_one_hot).sum(dims)
-        cardinality   = probs.sum(dims) + targets_one_hot.sum(dims)
+        cardinality = probs.sum(dims) + targets_one_hot.sum(dims)
         dice = (2.0 * intersection + self.smooth) / (cardinality + self.smooth)
         if self.classes is not None:
             if max(self.classes) >= C or min(self.classes) < 0:
@@ -130,8 +133,9 @@ class FocalLoss:
         torch = _check_torch()
         import torch.nn.functional as F
 
-        ce = F.cross_entropy(predictions, targets.long(),
-                              ignore_index=self.ignore_index, reduction="none")
+        ce = F.cross_entropy(
+            predictions, targets.long(), ignore_index=self.ignore_index, reduction="none"
+        )
         pt = torch.exp(-ce)
         if isinstance(self.alpha, list):
             if len(self.alpha) != predictions.shape[1]:
@@ -186,16 +190,17 @@ class TverskyLoss:
 
         probs = torch.softmax(predictions, dim=1)
         B, C, H, W = probs.shape
-        mask = (targets != self.ignore_index)
-        targets_c = targets.clone(); targets_c[~mask] = 0
-        targets_oh = F.one_hot(targets_c.long(), C).permute(0,3,1,2).float()
+        mask = targets != self.ignore_index
+        targets_c = targets.clone()
+        targets_c[~mask] = 0
+        targets_oh = F.one_hot(targets_c.long(), C).permute(0, 3, 1, 2).float()
         mask_exp = mask.unsqueeze(1).expand_as(probs)
         p, t = probs * mask_exp, targets_oh * mask_exp
 
-        tp = (p * t).sum(dim=(0,2,3))
-        fp = (p * (1 - t)).sum(dim=(0,2,3))
-        fn = ((1 - p) * t).sum(dim=(0,2,3))
-        tversky = (tp + self.smooth) / (tp + self.alpha*fp + self.beta*fn + self.smooth)
+        tp = (p * t).sum(dim=(0, 2, 3))
+        fp = (p * (1 - t)).sum(dim=(0, 2, 3))
+        fn = ((1 - p) * t).sum(dim=(0, 2, 3))
+        tversky = (tp + self.smooth) / (tp + self.alpha * fp + self.beta * fn + self.smooth)
         if self.classes is not None:
             if max(self.classes) >= C or min(self.classes) < 0:
                 raise ValueError(f"TverskyLoss classes={self.classes} out of range for {C} classes")
@@ -225,6 +230,7 @@ class ComboLoss:
     def __call__(self, predictions: Any, targets: Any) -> Any:
         _check_torch()
         import torch.nn.functional as F
+
         dice = self._dice(predictions, targets)
         ce = F.cross_entropy(predictions, targets.long(), ignore_index=self.ignore_index)
         return self.dice_weight * dice + self.ce_weight * ce
@@ -267,12 +273,18 @@ class BoundaryAwareLoss:
         ignore_index: int = 255,
     ) -> None:
         if base_loss not in ("combo", "dice"):
-            raise ValueError(f"BoundaryAwareLoss base_loss must be 'combo' or 'dice', got {base_loss!r}")
+            raise ValueError(
+                f"BoundaryAwareLoss base_loss must be 'combo' or 'dice', got {base_loss!r}"
+            )
         self.boundary_weight = boundary_weight
         self.base_loss_name = base_loss
         self.kernel_size = kernel_size
         self.ignore_index = ignore_index
-        self._base_loss = ComboLoss(ignore_index=ignore_index) if base_loss == "combo" else DiceLoss(ignore_index=ignore_index)
+        self._base_loss = (
+            ComboLoss(ignore_index=ignore_index)
+            if base_loss == "combo"
+            else DiceLoss(ignore_index=ignore_index)
+        )
 
     def _extract_boundaries(self, targets: Any) -> Any:
         """Extract boundary pixels via morphological erosion."""
@@ -296,8 +308,7 @@ class BoundaryAwareLoss:
 
         if boundaries.sum() > 0:
             boundary_ce = F.cross_entropy(
-                predictions, targets.long(),
-                ignore_index=self.ignore_index, reduction="none"
+                predictions, targets.long(), ignore_index=self.ignore_index, reduction="none"
             )
             boundary_loss = (boundary_ce * boundaries.float()).sum() / boundaries.sum().clamp(min=1)
             return base + self.boundary_weight * boundary_loss
@@ -326,8 +337,9 @@ class OhemCrossEntropy:
         _check_torch()
         import torch.nn.functional as F
 
-        ce = F.cross_entropy(predictions, targets.long(),
-                              ignore_index=self.ignore_index, reduction="none")
+        ce = F.cross_entropy(
+            predictions, targets.long(), ignore_index=self.ignore_index, reduction="none"
+        )
         ce_flat = ce.view(-1)
         valid = ce_flat[ce_flat > 0]
         if valid.numel() == 0:
@@ -366,7 +378,7 @@ class LovaszLoss:
         losses = []
         for c in range(C):
             fg = (targets == c).float()
-            mask = (targets != self.ignore_index)
+            mask = targets != self.ignore_index
             if fg.sum() == 0:
                 continue
             errors = (fg - probs[:, c]).abs()
@@ -416,30 +428,29 @@ class GeospatialMixedLoss:
         self.weights = weights or {"combo": 0.5, "boundary": 0.3, "ohem": 0.2}
         unknown = sorted(set(self.weights) - self.COMPONENTS)
         if unknown:
-            raise ValueError(f"GeospatialMixedLoss: unknown component(s) {unknown}; "
-                             f"choose from {sorted(self.COMPONENTS)}")
-        self._combo    = ComboLoss(ignore_index=ignore_index)
+            raise ValueError(
+                f"GeospatialMixedLoss: unknown component(s) {unknown}; "
+                f"choose from {sorted(self.COMPONENTS)}"
+            )
+        self._combo = ComboLoss(ignore_index=ignore_index)
         self._boundary = BoundaryAwareLoss(ignore_index=ignore_index)
-        self._ohem     = OhemCrossEntropy(ignore_index=ignore_index)
+        self._ohem = OhemCrossEntropy(ignore_index=ignore_index)
 
     def __call__(self, predictions: Any, targets: Any) -> Any:
         _check_torch()
         total = None
         for name, weight in self.weights.items():
             if name == "combo":
-                l = self._combo(predictions, targets)
+                loss_i = self._combo(predictions, targets)
             elif name == "boundary":
-                l = self._boundary(predictions, targets)
+                loss_i = self._boundary(predictions, targets)
             elif name == "ohem":
-                l = self._ohem(predictions, targets)
+                loss_i = self._ohem(predictions, targets)
             elif name == "dice":
-                l = DiceLoss()(predictions, targets)
+                loss_i = DiceLoss()(predictions, targets)
             elif name == "focal":
-                l = FocalLoss()(predictions, targets)
+                loss_i = FocalLoss()(predictions, targets)
             elif name == "tversky":
-                l = TverskyLoss()(predictions, targets)
-            total = l * weight if total is None else total + l * weight
+                loss_i = TverskyLoss()(predictions, targets)
+            total = loss_i * weight if total is None else total + loss_i * weight
         return total if total is not None else predictions.sum() * 0
-
-
-from typing import Any

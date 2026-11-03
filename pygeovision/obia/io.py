@@ -1,4 +1,5 @@
 """Reading rasters into the (bands, rows, cols) layout used across ``obia``."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,9 +12,9 @@ import numpy as np
 class RasterData:
     """A multi-band image plus the georeferencing needed to export results."""
 
-    image: np.ndarray                 # (bands, rows, cols), float32
+    image: np.ndarray  # (bands, rows, cols), float32
     band_names: list[str]
-    transform: Any = None             # rasterio Affine or None
+    transform: Any = None  # rasterio Affine or None
     crs: Any = None
     nodata: float | None = None
     meta: dict = field(default_factory=dict)
@@ -30,8 +31,9 @@ class RasterData:
         return abs(self.transform.a * self.transform.e)
 
 
-def load_raster(path: str, bands: list[int] | None = None,
-                band_names: list[str] | None = None) -> RasterData:
+def load_raster(
+    path: str, bands: list[int] | None = None, band_names: list[str] | None = None
+) -> RasterData:
     """Read a GeoTIFF into a :class:`RasterData`.
 
     ``bands`` are 1-based indices (default: all). Band names come from
@@ -115,17 +117,32 @@ def to_uint8(rgb: np.ndarray) -> np.ndarray:
     return np.nan_to_num(rgb, nan=0.0).astype(np.uint8)
 
 
-def save_raster(path: str, array: np.ndarray, transform=None, crs=None,
-                band_names: list[str] | None = None, dtype: str | None = None) -> str:
+def save_raster(
+    path: str,
+    array: np.ndarray,
+    transform=None,
+    crs=None,
+    band_names: list[str] | None = None,
+    dtype: str | None = None,
+) -> str:
     """Write a 2-D (rows, cols) or 3-D (bands, rows, cols) array as a GeoTIFF."""
-    import rasterio
     from affine import Affine
+    import rasterio
+
     arr = np.asarray(array)
     if arr.ndim == 2:
         arr = arr[None]
-    with rasterio.open(path, "w", driver="GTiff", height=arr.shape[1], width=arr.shape[2],
-                       count=arr.shape[0], dtype=dtype or str(arr.dtype), crs=crs,
-                       transform=transform or Affine.identity()) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=arr.shape[1],
+        width=arr.shape[2],
+        count=arr.shape[0],
+        dtype=dtype or str(arr.dtype),
+        crs=crs,
+        transform=transform or Affine.identity(),
+    ) as dst:
         dst.write(arr.astype(dtype or arr.dtype))
         if band_names:
             for i, n in enumerate(band_names, start=1):

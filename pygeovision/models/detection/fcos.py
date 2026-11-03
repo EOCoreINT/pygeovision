@@ -1,4 +1,5 @@
 """FCOS (ResNet-50 FPN), an anchor-free detector -- torchvision backed."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -26,6 +27,8 @@ def build_fcos(
     )
     widen_detector_for_bands(model, in_channels, pretrained, image_mean, image_std)
     model.head.classification_head = FCOSClassificationHead(
-        model.backbone.out_channels, model.head.classification_head.num_anchors, num_classes + 1,
+        model.backbone.out_channels,
+        model.head.classification_head.num_anchors,
+        num_classes + 1,
     )
     return model

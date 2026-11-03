@@ -8,6 +8,7 @@ torchvision's segmentation models return a dict.  Used unwrapped, a loss against
 the full-resolution mask fails (or, worse, silently broadcasts), and tiled
 inference stitches tiles at the wrong scale.  These wrappers fix that in one place.
 """
+
 from __future__ import annotations
 
 from typing import Any

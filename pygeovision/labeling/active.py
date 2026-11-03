@@ -5,12 +5,14 @@ Active learning -- choose which unlabeled images are worth a human's time.
 It does **not** train a model and does not annotate anything: you label the selection, call ``update``,
 retrain with your own code (``GeoTrainer``), and ask for the next round. See ``docs/labeling/active.md``.
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
-import random
 from pathlib import Path
-from typing import Any, Callable
+import random
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +132,11 @@ class ActiveLearner:
             else:
                 raise TypeError(
                     f"the model returned {type(logits).__name__}; ActiveLearner needs a logits tensor "
-                    "(classification (1, C) or segmentation (1, C, H, W)). Detection models are not supported.")
+                    "(classification (1, C) or segmentation (1, C, H, W)). Detection models are not supported."
+                )
         if logits.shape[0] != 1:
             raise ValueError("the model must return a batch of one")
-        if logits.shape[1] == 1:                       # single-logit sigmoid head
+        if logits.shape[1] == 1:  # single-logit sigmoid head
             s = torch.sigmoid(logits[0])
             return torch.cat([1 - s, s], dim=0)
         return torch.softmax(logits[0], dim=0)
@@ -183,7 +186,9 @@ class ActiveLearner:
         pool = list(unlabeled_pool)
         n_select = n_select or min(self.batch_size, self.remaining_budget)
         if n_select <= 0:
-            logger.warning("ActiveLearner: annotation budget (%d) is spent; nothing to select.", self.budget)
+            logger.warning(
+                "ActiveLearner: annotation budget (%d) is spent; nothing to select.", self.budget
+            )
             return []
         n_select = min(n_select, len(pool))
 
@@ -211,7 +216,9 @@ class ActiveLearner:
     def _wrap(self, item: Any, i: int, score: float) -> dict:
         return {**item, "score": score} if isinstance(item, dict) else {"idx": i, "score": score}
 
-    def _score_pool(self, pool: list, fn: Callable[[Any, Any], Any], device: Any) -> list[tuple[int, Any]]:
+    def _score_pool(
+        self, pool: list, fn: Callable[[Any, Any], Any], device: Any
+    ) -> list[tuple[int, Any]]:
         """Apply ``fn(tensor, item)`` to every item; failures are skipped, counted and reported."""
         import torch
 
@@ -223,16 +230,29 @@ class ActiveLearner:
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"item {i}: {type(exc).__name__}: {exc}")
         if errors:
-            logger.warning("ActiveLearner: %d of %d pool items could not be scored; first: %s",
-                           len(errors), len(pool), errors[0])
+            logger.warning(
+                "ActiveLearner: %d of %d pool items could not be scored; first: %s",
+                len(errors),
+                len(pool),
+                errors[0],
+            )
         if not out:
-            raise RuntimeError(f"no pool item could be scored. First error: {errors[0] if errors else 'empty pool'}")
+            raise RuntimeError(
+                f"no pool item could be scored. First error: {errors[0] if errors else 'empty pool'}"
+            )
         return out
 
     def _uncertainty_select(self, model, pool, n_select, device) -> list[dict]:
-        scored = self._score_pool(pool, lambda x, _: self._score_probs(self._probs(model(x))), device)
+        scored = self._score_pool(
+            pool, lambda x, _: self._score_probs(self._probs(model(x))), device
+        )
         scored.sort(key=lambda t: t[1], reverse=True)
-        logger.info("ActiveLearner (%s): selected %d/%d samples", self.strategy, min(n_select, len(scored)), len(scored))
+        logger.info(
+            "ActiveLearner (%s): selected %d/%d samples",
+            self.strategy,
+            min(n_select, len(scored)),
+            len(scored),
+        )
         return [self._wrap(pool[i], i, s) for i, s in scored[:n_select]]
 
     def _embed(self, model, x) -> Any:
@@ -253,7 +273,7 @@ class ActiveLearner:
         feats = np.stack([f for _, f in embedded])
         rng = np.random.default_rng(self.seed + self._iteration)
         chosen = [int(rng.integers(len(feats)))]
-        picked_at = [0.0]                         # distance to the already-picked set when each was chosen
+        picked_at = [0.0]  # distance to the already-picked set when each was chosen
         d = np.linalg.norm(feats - feats[chosen[0]], axis=1)
         while len(chosen) < min(n_select, len(feats)):
             d[chosen] = -1.0
@@ -271,10 +291,11 @@ class ActiveLearner:
         if not drops:
             raise ValueError(
                 "strategy='committee' uses Monte-Carlo dropout and the model has no dropout layers, so every "
-                "pass would be identical. Add nn.Dropout/Dropout2d, or use strategy='entropy'.")
+                "pass would be identical. Add nn.Dropout/Dropout2d, or use strategy='entropy'."
+            )
 
         def score(x, _):
-            ps = torch.stack([self._probs(model(x)) for _ in range(self.mc_passes)])     # (T, C, ...)
+            ps = torch.stack([self._probs(model(x)) for _ in range(self.mc_passes)])  # (T, C, ...)
             mean = ps.mean(0)
             h_mean = -(mean * torch.log(mean + 1e-10)).sum(0)
             mean_h = (-(ps * torch.log(ps + 1e-10)).sum(1)).mean(0)
@@ -290,7 +311,9 @@ class ActiveLearner:
         return [self._wrap(pool[i], i, s) for i, s in scored[:n_select]]
 
     # ── lifecycle ──────────────────────────────────────────────────────────────
-    def update(self, newly_labeled: list[dict], metrics: dict[str, float] | None = None) -> ActiveLearner:
+    def update(
+        self, newly_labeled: list[dict], metrics: dict[str, float] | None = None
+    ) -> ActiveLearner:
         """Record annotated samples (counts against the budget) and, optionally, the model's metrics after retraining.
 
         ``metrics`` (e.g. ``{"val_iou": 0.71}``) are stored with the running total of labelled samples
@@ -299,20 +322,30 @@ class ActiveLearner:
         self._labeled.extend(newly_labeled)
         self._iteration += 1
         if metrics:
-            self._curve.append({"n_labeled": len(self._labeled), "iteration": self._iteration, **metrics})
-        logger.info("ActiveLearner: %d total labeled samples (round %d, budget left %d)",
-                    len(self._labeled), self._iteration, self.remaining_budget)
+            self._curve.append(
+                {"n_labeled": len(self._labeled), "iteration": self._iteration, **metrics}
+            )
+        logger.info(
+            "ActiveLearner: %d total labeled samples (round %d, budget left %d)",
+            len(self._labeled),
+            self._iteration,
+            self.remaining_budget,
+        )
         return self
 
-    def train_iteration(self, model: Any, config: Any = None, unlabeled_pool: Any = None) -> dict[str, Any]:
+    def train_iteration(
+        self, model: Any, config: Any = None, unlabeled_pool: Any = None
+    ) -> dict[str, Any]:
         """Select the next batch to annotate. **Despite the name this does not train.**
 
         ``config`` is ignored (a warning is logged if given). Kept for backward compatibility; the same
         as calling :meth:`select` and recording the round.
         """
         if config is not None:
-            logger.warning("ActiveLearner.train_iteration does not train: config is ignored. Retrain with "
-                           "GeoTrainer yourself, then call update().")
+            logger.warning(
+                "ActiveLearner.train_iteration does not train: config is ignored. Retrain with "
+                "GeoTrainer yourself, then call update()."
+            )
         selected = self.select(model, unlabeled_pool if unlabeled_pool is not None else [])
         result = {
             "iteration": self._iteration + 1,
@@ -340,8 +373,11 @@ class ActiveLearner:
         """Plot ``metric`` against the number of labelled samples (needs ``update(..., metrics=...)``)."""
         points = [c for c in self._curve if metric in c]
         if not points:
-            logger.warning("No '%s' recorded: call update(batch, metrics={'%s': value}) after each retrain.",
-                           metric, metric)
+            logger.warning(
+                "No '%s' recorded: call update(batch, metrics={'%s': value}) after each retrain.",
+                metric,
+                metric,
+            )
             return
         try:
             import matplotlib.pyplot as plt
@@ -349,7 +385,9 @@ class ActiveLearner:
             logger.warning("matplotlib required for plot")
             return
         fig, ax = plt.subplots(figsize=(8, 4))
-        ax.plot([p["n_labeled"] for p in points], [p[metric] for p in points], "o-", color="steelblue")
+        ax.plot(
+            [p["n_labeled"] for p in points], [p[metric] for p in points], "o-", color="steelblue"
+        )
         ax.set_xlabel("Labelled samples")
         ax.set_ylabel(metric)
         ax.set_title(f"Active learning ({self.strategy})")

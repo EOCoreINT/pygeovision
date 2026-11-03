@@ -1,5 +1,6 @@
 # ruff: noqa: E702, N802, C408, E731
 """Behaviour documented on docs/training/resuming.md: what resume restores, refuses and does at the edges."""
+
 import logging
 
 import pytest
@@ -19,8 +20,18 @@ class _Ds(torch.utils.data.Dataset):
 
 
 def _fit(path, model=None, **kw):
-    base = dict(output_dir=str(path), num_classes=2, in_channels=3, batch_size=2, num_workers=0, pin_memory=False,
-                persistent_workers=False, devices="cpu", augment=False, warmup_epochs=0)
+    base = dict(
+        output_dir=str(path),
+        num_classes=2,
+        in_channels=3,
+        batch_size=2,
+        num_workers=0,
+        pin_memory=False,
+        persistent_workers=False,
+        devices="cpu",
+        augment=False,
+        warmup_epochs=0,
+    )
     base.update(kw)
     return GeoTrainer(model or torch.nn.Conv2d(3, 2, 1), TrainingConfig(**base)).fit(_Ds(), _Ds())
 
@@ -28,9 +39,20 @@ def _fit(path, model=None, **kw):
 def test_last_pth_holds_the_documented_keys(tmp_path):
     _fit(tmp_path, max_epochs=2)
     state = torch.load(tmp_path / "checkpoints" / "last.pth", weights_only=True)
-    assert {"epoch", "model_state_dict", "optimizer_state_dict", "optimizer_class", "scheduler_state_dict",
-            "scaler_state_dict", "history", "global_step", "early_stopping", "checkpoints", "metrics",
-            "max_epochs"} <= set(state)
+    assert {
+        "epoch",
+        "model_state_dict",
+        "optimizer_state_dict",
+        "optimizer_class",
+        "scheduler_state_dict",
+        "scaler_state_dict",
+        "history",
+        "global_step",
+        "early_stopping",
+        "checkpoints",
+        "metrics",
+        "max_epochs",
+    } <= set(state)
     assert state["epoch"] == 2 and state["optimizer_class"] == "AdamW"
     assert not (tmp_path / "checkpoints" / "last.pth.tmp").exists()
 
@@ -38,7 +60,11 @@ def test_last_pth_holds_the_documented_keys(tmp_path):
 def test_resuming_a_finished_run_trains_nothing(tmp_path):
     _fit(tmp_path, max_epochs=3)
     res = _fit(tmp_path, max_epochs=3, resume=True)
-    assert res["epochs_trained"] == 3 and res["resumed_from_epoch"] == 3 and len(res["history"]["val_loss"]) == 3
+    assert (
+        res["epochs_trained"] == 3
+        and res["resumed_from_epoch"] == 3
+        and len(res["history"]["val_loss"]) == 3
+    )
 
 
 def test_resuming_an_early_stopped_run_trains_one_more_epoch(tmp_path):

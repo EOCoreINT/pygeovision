@@ -18,6 +18,7 @@ method          idea                                        main parameter(s)
 Note that ``scale`` means something different for ``multires`` and for
 ``felzenszwalb``: it is a good exercise to show students why.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -39,7 +40,9 @@ class SegmentationResult:
     method: str
     params: dict = field(default_factory=dict)
     raster: RasterData | None = None
-    valid: np.ndarray | None = None      # pixels that held data; label 0 marks the others (cloud, nodata)
+    valid: np.ndarray | None = (
+        None  # pixels that held data; label 0 marks the others (cloud, nodata)
+    )
 
     @property
     def n_objects(self) -> int:
@@ -56,11 +59,13 @@ class SegmentationResult:
     def to_vector(self, attributes=None):
         """Objects as a GeoDataFrame (one row per object)."""
         from .vector import labels_to_gdf
+
         return labels_to_gdf(self.labels, self.transform, self.crs, attributes)
 
     def boundaries(self) -> np.ndarray:
         """Boolean mask of pixels lying on an object boundary."""
         from skimage.segmentation import find_boundaries
+
         return find_boundaries(self.labels, mode="inner") & (self.labels > 0)
 
     def overlay(self, bands=(0, 1, 2), color=(255, 255, 0)) -> np.ndarray:
@@ -74,12 +79,21 @@ class SegmentationResult:
 
     def save(self, path: str):
         """Write the label raster as a GeoTIFF."""
-        import rasterio
         from affine import Affine
+        import rasterio
+
         h, w = self.labels.shape
-        with rasterio.open(path, "w", driver="GTiff", height=h, width=w, count=1,
-                           dtype="int32", crs=self.crs,
-                           transform=self.transform or Affine.identity()) as dst:
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=h,
+            width=w,
+            count=1,
+            dtype="int32",
+            crs=self.crs,
+            transform=self.transform or Affine.identity(),
+        ) as dst:
             dst.write(self.labels.astype(np.int32), 1)
         return path
 
@@ -91,15 +105,24 @@ def _hwc01(img: np.ndarray) -> np.ndarray:
 
 def _slic(img, n_segments, compactness, sigma):
     from skimage.segmentation import slic
-    lab = slic(_hwc01(img), n_segments=int(n_segments), compactness=compactness,
-               sigma=sigma, channel_axis=-1, convert2lab=False, start_label=1,
-               enforce_connectivity=True)
+
+    lab = slic(
+        _hwc01(img),
+        n_segments=int(n_segments),
+        compactness=compactness,
+        sigma=sigma,
+        channel_axis=-1,
+        convert2lab=False,
+        start_label=1,
+        enforce_connectivity=True,
+    )
     return lab
 
 
 def _watershed(img, spacing, compactness):
     from scipy import ndimage as ndi
     from skimage.segmentation import watershed
+
     grad = np.zeros(img.shape[1:])
     for b in range(img.shape[0]):
         g = ndi.gaussian_gradient_magnitude(img[b], sigma=1.0)
@@ -133,6 +156,7 @@ def _relabel(lab: np.ndarray, valid: np.ndarray | None = None) -> np.ndarray:
     takes seconds.
     """
     from scipy import ndimage as ndi
+
     src = np.asarray(lab).astype(np.int64)
     # Compact the ids to 1..k (find_objects skips 0 and sizes its answer by the largest id);
     # pixels outside ``valid`` become 0 and stay out.
@@ -165,6 +189,7 @@ def _prepare(rd: RasterData, rescale: bool):
     image, and the caller sets their label to 0 afterwards.
     """
     from scipy import ndimage as ndi
+
     valid = valid_mask(rd)
     if not valid.any():
         raise ValueError("the image has no valid pixels (every pixel is NaN or nodata)")
@@ -175,8 +200,16 @@ def _prepare(rd: RasterData, rescale: bool):
     return img, valid
 
 
-def segment(image, method: str = "multires", *, band_names=None, transform=None,
-            crs=None, rescale: bool = True, **params) -> SegmentationResult:
+def segment(
+    image,
+    method: str = "multires",
+    *,
+    band_names=None,
+    transform=None,
+    crs=None,
+    rescale: bool = True,
+    **params,
+) -> SegmentationResult:
     """Segment an image into objects.
 
     Parameters
@@ -197,8 +230,14 @@ def segment(image, method: str = "multires", *, band_names=None, transform=None,
     H, W = img.shape[1:]
 
     if method == "multires":
-        p = dict(scale=30.0, color_weight=0.9, compactness_weight=0.5,
-                 init="auto", init_segments=None, band_weights=None)
+        p: dict[str, Any] = {
+            "scale": 30.0,
+            "color_weight": 0.9,
+            "compactness_weight": 0.5,
+            "init": "auto",
+            "init_segments": None,
+            "band_weights": None,
+        }
         p.update(params)
         init = p["init"]
         if isinstance(init, np.ndarray):
@@ -213,53 +252,77 @@ def segment(image, method: str = "multires", *, band_names=None, transform=None,
                 init_labels = _slic(img, nseg, 0.1, 0.0)
             else:
                 raise ValueError("init must be 'auto', 'pixels', 'superpixels' or an array")
-        m = RegionMerger(img, init_labels, p["color_weight"], p["compactness_weight"],
-                         p["band_weights"]).run(p["scale"])
+        m = RegionMerger(
+            img, init_labels, p["color_weight"], p["compactness_weight"], p["band_weights"]
+        ).run(p["scale"])
         lab = m.labels()
         used = {k: v for k, v in p.items() if k != "init"}
         used["init"] = init if not isinstance(init, np.ndarray) else "array"
         params = used
     elif method == "slic":
-        p = dict(n_segments=500, compactness=0.1, sigma=1.0)
+        p = {"n_segments": 500, "compactness": 0.1, "sigma": 1.0}
         p.update(params)
         lab = _slic(img, p["n_segments"], p["compactness"], p["sigma"])
         params = p
     elif method == "felzenszwalb":
         from skimage.segmentation import felzenszwalb
-        p = dict(scale=100.0, sigma=0.8, min_size=20)
+
+        p = {"scale": 100.0, "sigma": 0.8, "min_size": 20}
         p.update(params)
         import warnings
+
         with warnings.catch_warnings():
             # skimage warns that a 4-band image might be a 3-D volume; channel_axis
             # is passed explicitly so the multichannel reading is intended.
             warnings.simplefilter("ignore", RuntimeWarning)
-            lab = felzenszwalb(_hwc01(img), scale=p["scale"], sigma=p["sigma"],
-                               min_size=int(p["min_size"]), channel_axis=-1) + 1
+            lab = (
+                felzenszwalb(
+                    _hwc01(img),
+                    scale=p["scale"],
+                    sigma=p["sigma"],
+                    min_size=int(p["min_size"]),
+                    channel_axis=-1,
+                )
+                + 1
+            )
         params = p
     elif method == "quickshift":
         from skimage.segmentation import quickshift
-        p = dict(kernel_size=3, max_dist=6.0, ratio=0.5, sigma=0.0)
+
+        p = {"kernel_size": 3, "max_dist": 6.0, "ratio": 0.5, "sigma": 0.0}
         p.update(params)
-        lab = quickshift(_hwc01(img), kernel_size=p["kernel_size"], max_dist=p["max_dist"],
-                         ratio=p["ratio"], sigma=p["sigma"], convert2lab=False,
-                         channel_axis=-1) + 1
+        lab = (
+            quickshift(
+                _hwc01(img),
+                kernel_size=p["kernel_size"],
+                max_dist=p["max_dist"],
+                ratio=p["ratio"],
+                sigma=p["sigma"],
+                convert2lab=False,
+                channel_axis=-1,
+            )
+            + 1
+        )
         params = p
     elif method == "watershed":
-        p = dict(spacing=10, compactness=0.0)
+        p = {"spacing": 10, "compactness": 0.0}
         p.update(params)
         lab = _watershed(img, int(p["spacing"]), p["compactness"])
         params = p
     else:  # chessboard
-        p = dict(size=16)
+        p = {"size": 16}
         p.update(params)
         lab = _chessboard((H, W), int(p["size"]))
         params = p
 
-    return SegmentationResult(_relabel(lab, valid), method, params, rd, None if valid.all() else valid)
+    return SegmentationResult(
+        _relabel(lab, valid), method, params, rd, None if valid.all() else valid
+    )
 
 
-def from_labels(labels, image=None, *, band_names=None, transform=None, crs=None,
-                method="external") -> SegmentationResult:
+def from_labels(
+    labels, image=None, *, band_names=None, transform=None, crs=None, method="external"
+) -> SegmentationResult:
     """Wrap an existing label raster (e.g. SAM masks, eCognition export) as image objects.
 
     Disconnected pieces sharing an id are split into separate objects and ids
@@ -274,8 +337,9 @@ def from_labels(labels, image=None, *, band_names=None, transform=None, crs=None
     return SegmentationResult(_relabel(lab), method, {}, rd)
 
 
-def segment_levels(image, scales, *, band_names=None, transform=None, crs=None,
-                   rescale=True, **params) -> dict[float, SegmentationResult]:
+def segment_levels(
+    image, scales, *, band_names=None, transform=None, crs=None, rescale=True, **params
+) -> dict[float, SegmentationResult]:
     """Nested multi-level segmentation from ONE merging run.
 
     Because region merging only ever joins objects, each coarser level is
@@ -287,19 +351,30 @@ def segment_levels(image, scales, *, band_names=None, transform=None, crs=None,
     rd = as_raster_data(image, band_names, transform, crs)
     img, valid = _prepare(rd, rescale)
     H, W = img.shape[1:]
-    p = dict(color_weight=0.9, compactness_weight=0.5, init="auto",
-             init_segments=None, band_weights=None)
+    p = {
+        "color_weight": 0.9,
+        "compactness_weight": 0.5,
+        "init": "auto",
+        "init_segments": None,
+        "band_weights": None,
+    }
     p.update(params)
     init = p["init"]
     if init == "auto":
         init = "pixels" if H * W <= 10_000 else "superpixels"
-    init_labels = (np.arange(H * W).reshape(H, W) if init == "pixels"
-                   else _slic(img, p["init_segments"] or max(H * W // 16, 50), 0.1, 0.0))
-    m = RegionMerger(img, init_labels, p["color_weight"], p["compactness_weight"],
-                     p["band_weights"])
+    init_labels = (
+        np.arange(H * W).reshape(H, W)
+        if init == "pixels"
+        else _slic(img, p["init_segments"] or max(H * W // 16, 50), 0.1, 0.0)
+    )
+    m = RegionMerger(
+        img, init_labels, p["color_weight"], p["compactness_weight"], p["band_weights"]
+    )
     out = {}
     for s in scales:
         m.run(s)
         q = dict(p, scale=s)
-        out[s] = SegmentationResult(_relabel(m.labels(), valid), "multires", q, rd, None if valid.all() else valid)
+        out[s] = SegmentationResult(
+            _relabel(m.labels(), valid), "multires", q, rd, None if valid.all() else valid
+        )
     return out

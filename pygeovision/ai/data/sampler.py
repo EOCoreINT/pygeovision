@@ -8,8 +8,8 @@ sees a balanced view of the data.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator
+import logging
 
 import numpy as np
 
@@ -166,12 +166,7 @@ class GeographicBlockSampler(Sampler if TORCH_AVAILABLE else object):  # type: i
     def _build_blocks(self) -> list[list[int]]:
         """Sort tiles geographically and group into blocks."""
         # Compute centroids
-        centroids = np.array(
-            [
-                ((b[0] + b[2]) / 2, (b[1] + b[3]) / 2)
-                for b in self.tile_bounds
-            ]
-        )
+        centroids = np.array([((b[0] + b[2]) / 2, (b[1] + b[3]) / 2) for b in self.tile_bounds])
 
         # Sort by Hilbert curve approximation: sort by (x + y) then (x - y)
         primary = centroids[:, 0] + centroids[:, 1]
@@ -180,10 +175,7 @@ class GeographicBlockSampler(Sampler if TORCH_AVAILABLE else object):  # type: i
 
         # Group into blocks
         n = len(order)
-        blocks = [
-            list(order[i : i + self.block_size])
-            for i in range(0, n, self.block_size)
-        ]
+        blocks = [list(order[i : i + self.block_size]) for i in range(0, n, self.block_size)]
         return blocks
 
     def __iter__(self) -> Iterator[int]:
@@ -247,9 +239,7 @@ class StratifiedTileSampler(Sampler if TORCH_AVAILABLE else object):  # type: ig
         # Group indices by class
         self._class_indices: list[list[int]] = []
         for c in range(num_classes):
-            self._class_indices.append(
-                list(np.where(self.tile_labels == c)[0])
-            )
+            self._class_indices.append(list(np.where(self.tile_labels == c)[0]))
 
     def __iter__(self) -> Iterator[int]:
         import random  # noqa: PLC0415
@@ -262,7 +252,9 @@ class StratifiedTileSampler(Sampler if TORCH_AVAILABLE else object):  # type: ig
             class_idx = self._class_indices[c]
             if not class_idx:
                 continue
-            sampled = random.choices(class_idx, k=per_class * (self._num_samples // self.batch_size + 1))
+            sampled = random.choices(
+                class_idx, k=per_class * (self._num_samples // self.batch_size + 1)
+            )
             all_indices.extend(sampled)
 
         random.shuffle(all_indices)

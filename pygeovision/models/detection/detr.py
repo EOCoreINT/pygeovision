@@ -6,6 +6,7 @@ These follow the Hugging Face detection API, not torchvision's: call
 ``cx, cy, w, h``).  ``GeoTrainer``'s detection mode is torchvision-style
 (Faster R-CNN / FCOS / Mask R-CNN), so train DETR with the Hugging Face loop or your own.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -45,5 +46,6 @@ def build_detr(
     if variant not in _IDS:
         raise ValueError(f"variant must be one of {sorted(_IDS)}, got {variant!r}")
     spec = SimpleNamespace(name=variant, family="detr", task="detection", hf_id=_IDS[variant])
-    return build_hf_model(spec, num_classes, in_channels, pretrained,
-                          allow_random_init=allow_random_init, **kwargs)
+    return build_hf_model(
+        spec, num_classes, in_channels, pretrained, allow_random_init=allow_random_init, **kwargs
+    )

@@ -1,15 +1,16 @@
 """The YAML pipeline engine does real work or fails: no 'N steps completed' for steps that did nothing."""
+
 from __future__ import annotations
 
 import json
 from types import SimpleNamespace
 
+from click.testing import CliRunner
 import numpy as np
 import pytest
 import rasterio
-import yaml
-from click.testing import CliRunner
 from rasterio.transform import from_origin
+import yaml
 
 from pygeovision.cli.main import cli
 from pygeovision.pipelines.orchestrator import Pipeline
@@ -23,6 +24,7 @@ BANDS, CLASSES = 3, 2
 @pytest.fixture(scope="module")
 def ckpt(tmp_path_factory):
     from pygeovision.ai.models.hub import ModelHub
+
     m = ModelHub().load("unet_resnet50", num_classes=CLASSES, in_channels=BANDS, pretrained=False)
     p = tmp_path_factory.mktemp("w") / "m.pth"
     torch.save(m.state_dict(), p)
@@ -32,8 +34,17 @@ def ckpt(tmp_path_factory):
 @pytest.fixture()
 def scene(tmp_path):
     p = tmp_path / "scene.tif"
-    with rasterio.open(p, "w", driver="GTiff", height=64, width=64, count=BANDS, dtype="float32",
-                       crs="EPSG:32633", transform=from_origin(500000, 5000000, 10, 10)) as d:
+    with rasterio.open(
+        p,
+        "w",
+        driver="GTiff",
+        height=64,
+        width=64,
+        count=BANDS,
+        dtype="float32",
+        crs="EPSG:32633",
+        transform=from_origin(500000, 5000000, 10, 10),
+    ) as d:
         d.write(np.random.default_rng(1).random((BANDS, 64, 64)).astype("float32"))
     return p
 
@@ -54,28 +65,52 @@ class FakeClient:
 
 
 def config(tmp_path, ckpt_path=None, fmt="geojson"):
-    infer = {"model": "unet_resnet50", "num_classes": CLASSES, "chip_size": 32, "overlap": 8,
-             "output_dir": str(tmp_path / "pred")}
+    infer = {
+        "model": "unet_resnet50",
+        "num_classes": CLASSES,
+        "chip_size": 32,
+        "overlap": 8,
+        "output_dir": str(tmp_path / "pred"),
+    }
     if ckpt_path:
         infer["checkpoint"] = str(ckpt_path)
-    return {"name": "t", "steps": [
-        {"name": "search", "action": "search", "params": {"bbox": [0, 0, 1, 1], "date_range": ["2024-01-01", "2024-02-01"]}},
-        {"name": "download", "action": "download", "depends_on": ["search"], "params": {}},
-        {"name": "infer", "action": "infer", "depends_on": ["download"], "params": infer},
-        {"name": "export", "action": "export", "depends_on": ["infer"],
-         "params": {"format": fmt, "output_dir": str(tmp_path / "vec")}}]}
+    return {
+        "name": "t",
+        "steps": [
+            {
+                "name": "search",
+                "action": "search",
+                "params": {"bbox": [0, 0, 1, 1], "date_range": ["2024-01-01", "2024-02-01"]},
+            },
+            {"name": "download", "action": "download", "depends_on": ["search"], "params": {}},
+            {"name": "infer", "action": "infer", "depends_on": ["download"], "params": infer},
+            {
+                "name": "export",
+                "action": "export",
+                "depends_on": ["infer"],
+                "params": {"format": fmt, "output_dir": str(tmp_path / "vec")},
+            },
+        ],
+    }
 
 
 def test_full_run_writes_prediction_and_vectors(tmp_path, scene, ckpt):
     res = Pipeline.from_config(config(tmp_path, ckpt)).run({"client": FakeClient(scene)})
-    assert res.success and res.steps_completed == ["search", "download", "infer", "export"], res.error
+    assert res.success and res.steps_completed == [
+        "search",
+        "download",
+        "infer",
+        "export",
+    ], res.error
     assert (tmp_path / "pred" / "scene_pred.tif").exists()
     out = tmp_path / "vec" / "scene_pred.geojson"
     assert out.exists() and json.loads(out.read_text())["type"] == "FeatureCollection"
 
 
 def test_gpkg_export_format(tmp_path, scene, ckpt):
-    res = Pipeline.from_config(config(tmp_path, ckpt, fmt="gpkg")).run({"client": FakeClient(scene)})
+    res = Pipeline.from_config(config(tmp_path, ckpt, fmt="gpkg")).run(
+        {"client": FakeClient(scene)}
+    )
     assert res.success and (tmp_path / "vec" / "scene_pred.gpkg").exists()
     assert not (tmp_path / "vec" / "scene_pred.geojson").exists()
 
@@ -87,15 +122,18 @@ def test_infer_without_checkpoint_fails_instead_of_inferring_with_random_weights
 
 
 def test_no_client_empty_search_and_failed_download_are_failures(tmp_path, scene, ckpt):
-    assert not Pipeline.from_config(config(tmp_path, ckpt)).run({}).success                    # was a "success"
+    assert not Pipeline.from_config(config(tmp_path, ckpt)).run({}).success  # was a "success"
     r = Pipeline.from_config(config(tmp_path, ckpt)).run({"client": FakeClient(scene, found=False)})
     assert not r.success and "no scenes" in r.error
-    r = Pipeline.from_config(config(tmp_path, ckpt)).run({"client": FakeClient(scene, downloaded=False)})
+    r = Pipeline.from_config(config(tmp_path, ckpt)).run(
+        {"client": FakeClient(scene, downloaded=False)}
+    )
     assert not r.success and "403" in r.error
 
 
 def test_step_errors_are_not_retried(tmp_path, scene, monkeypatch):
     import time
+
     slept = []
     monkeypatch.setattr(time, "sleep", slept.append)
     cfg = config(tmp_path)
@@ -126,13 +164,17 @@ def test_overrides(tmp_path):
 
 def test_cli_run_and_templates(tmp_path, scene, ckpt, monkeypatch):
     import pygeovision
+
     fake = FakeClient(scene)
     monkeypatch.setattr(pygeovision.PyGeoVision, "search", lambda self, **kw: fake.search(**kw))
-    monkeypatch.setattr(pygeovision.PyGeoVision, "download", lambda self, items, **kw: fake.download(items, **kw))
+    monkeypatch.setattr(
+        pygeovision.PyGeoVision, "download", lambda self, items, **kw: fake.download(items, **kw)
+    )
     cfg = config(tmp_path)
-    y = tmp_path / "p.yaml"; y.write_text(yaml.safe_dump(cfg))
+    y = tmp_path / "p.yaml"
+    y.write_text(yaml.safe_dump(cfg))
     r = CliRunner().invoke(cli, ["pipeline", "run", str(y)])
-    assert r.exit_code == 1 and "checkpoint" in r.output                       # no weights -> not a success
+    assert r.exit_code == 1 and "checkpoint" in r.output  # no weights -> not a success
     r = CliRunner().invoke(cli, ["pipeline", "run", str(y), "--set", f"infer.checkpoint={ckpt}"])
     assert r.exit_code == 0, r.output
     assert (tmp_path / "vec" / "scene_pred.geojson").exists()
@@ -145,9 +187,10 @@ def test_shipped_templates_validate_and_need_user_input(tmp_path):
     from pathlib import Path
 
     import pygeovision.pipelines as pp
+
     files = sorted((Path(pp.__file__).parent / "templates").glob("*.yaml"))
     assert len(files) == 6
     for f in files:
-        PipelineYAMLParser().load(f)                       # structurally valid
+        PipelineYAMLParser().load(f)  # structurally valid
         res = Pipeline.from_yaml(str(f)).run({"client": FakeClient(None)})
-        assert not res.success                             # no bbox/dates/checkpoint -> refuses, never "succeeds"
+        assert not res.success  # no bbox/dates/checkpoint -> refuses, never "succeeds"

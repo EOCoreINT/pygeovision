@@ -1,4 +1,5 @@
 """SAM and SAM2 for zero-shot geospatial segmentation."""
+
 from __future__ import annotations
 
 import logging
@@ -19,9 +20,9 @@ def build_sam(variant: str = "vit-large", device: str = "cpu", **kwargs) -> Any:
         masks = model.generate_masks("scene.tif")
     """
     HF_IDS = {
-        "vit-huge":     "facebook/sam-vit-huge",
-        "vit-large":    "facebook/sam-vit-large",
-        "vit-base":     "facebook/sam-vit-base",
+        "vit-huge": "facebook/sam-vit-huge",
+        "vit-large": "facebook/sam-vit-large",
+        "vit-base": "facebook/sam-vit-base",
         # transformers needs the "-hf" conversions; the un-suffixed repos are for the `sam2` package
         "sam2-hiera-l": "facebook/sam2-hiera-large-hf",
         "sam2-hiera-b": "facebook/sam2-hiera-base-plus-hf",
@@ -35,13 +36,14 @@ class GeoSAM:
     def __init__(self, hf_id: str, device: str = "cpu") -> None:
         self.hf_id = hf_id
         self.device = device
-        self._model = None
-        self._processor = None
+        self._model: Any = None
+        self._processor: Any = None
 
     def _load(self) -> None:
         if self._model is not None:
             return
         import transformers
+
         is_sam2 = "sam2" in self.hf_id.lower()
         model_cls = getattr(transformers, "Sam2Model" if is_sam2 else "SamModel", None)
         proc_cls = getattr(transformers, "Sam2Processor" if is_sam2 else "SamProcessor", None)
@@ -53,35 +55,49 @@ class GeoSAM:
         self._processor = proc_cls.from_pretrained(self.hf_id)
         self._model = model_cls.from_pretrained(self.hf_id).to(self.device).eval()
 
-    def generate_masks(self, image_path: str, output_path: str | None = None,
-                        points_per_side: int = 32, min_area_m2: float = 10.0) -> dict:
+    def generate_masks(
+        self,
+        image_path: str,
+        output_path: str | None = None,
+        points_per_side: int = 32,
+        min_area_m2: float = 10.0,
+    ) -> dict:
         """Generate segmentation masks for a full GeoTIFF."""
         from pygeovision.labeling.sam_auto import SAMAutoLabeler
+
         self._load()
         labeler = SAMAutoLabeler(model=self.hf_id, device=self.device)
         # Share the weights already in memory.  Both halves are needed: the labeler's mask
         # generator reads the processor, and with only the model set it crashed (the error
         # was swallowed and the result was "0 masks").
         labeler._model, labeler._processor = self._model, self._processor
-        return labeler.auto_label(image_path, output_path or "./output/sam_masks.tif",
-                                   points_per_side=points_per_side, min_area_m2=min_area_m2)
+        return labeler.auto_label(
+            image_path,
+            output_path or "./output/sam_masks.tif",
+            points_per_side=points_per_side,
+            min_area_m2=min_area_m2,
+        )
 
-    def predict_points(self, image: Any, input_points: list[list[float]],
-                        input_labels: list[int] | None = None) -> Any:
+    def predict_points(
+        self, image: Any, input_points: list[list[float]], input_labels: list[int] | None = None
+    ) -> Any:
         """Predict masks from point prompts."""
         import torch
+
         self._load()
         import numpy as np
         from PIL import Image as PILImage
 
         if isinstance(image, str):
             import rasterio
+
             with rasterio.open(image) as src:
                 data = src.read(list(range(1, min(src.count, 4) + 1))).astype(float)
             for b in range(data.shape[0]):
                 p2, p98 = np.percentile(data[b], (2, 98))
                 data[b] = np.clip((data[b] - p2) / (p98 - p2 + 1e-8) * 255, 0, 255)
-            if data.shape[0] == 1: data = np.repeat(data, 3, axis=0)
+            if data.shape[0] == 1:
+                data = np.repeat(data, 3, axis=0)
             image = PILImage.fromarray(data[:3].transpose(1, 2, 0).astype(np.uint8))
 
         labels = input_labels or [1] * len(input_points)

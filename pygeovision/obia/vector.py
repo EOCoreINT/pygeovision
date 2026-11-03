@@ -1,4 +1,5 @@
 """Raster <-> vector conversion for image objects and reference data."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -6,11 +7,13 @@ import numpy as np
 
 def _identity():
     from affine import Affine
+
     return Affine.identity()
 
 
-def labels_to_gdf(labels: np.ndarray, transform=None, crs=None,
-                  attributes=None, id_column: str = "obj_id"):
+def labels_to_gdf(
+    labels: np.ndarray, transform=None, crs=None, attributes=None, id_column: str = "obj_id"
+):
     """One polygon (or multipolygon) per image object.
 
     ``attributes`` is an optional DataFrame indexed by object id (e.g. the
@@ -37,8 +40,7 @@ def labels_to_gdf(labels: np.ndarray, transform=None, crs=None,
     return gdf
 
 
-def rasterize_geometries(gdf, shape: tuple[int, int], transform,
-                         value_column: str | None = None):
+def rasterize_geometries(gdf, shape: tuple[int, int], transform, value_column: str | None = None):
     """Burn polygons/points into a raster.
 
     Returns ``(raster, codes)``.  If ``value_column`` is given its distinct
@@ -59,6 +61,7 @@ def rasterize_geometries(gdf, shape: tuple[int, int], transform,
         codes = {v: i + 1 for i, v in enumerate(uniq)}
         vals = [codes[v] for v in gdf[value_column]]
     shapes_ = [(g, v) for g, v in zip(gdf.geometry, vals) if g is not None and not g.is_empty]
-    ras = rasterize(shapes_, out_shape=shape, transform=tr, fill=0,
-                    dtype="int32", all_touched=False)
+    ras = rasterize(
+        shapes_, out_shape=shape, transform=tr, fill=0, dtype="int32", all_touched=False
+    )
     return ras, codes

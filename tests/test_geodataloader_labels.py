@@ -7,6 +7,7 @@ Real defects fixed:
   3. ``augment=True`` built the pipeline without the band count, so 4+-band tiles crashed in colour jitter.
   4. With fewer than three source scenes the split put every tile into "test" and none into "train".
 """
+
 from pathlib import Path
 
 import numpy as np
@@ -21,8 +22,18 @@ from pygeovision.core.exceptions import DatasetError  # noqa: E402
 
 def _scene(path, bands=4, size=128):
     from rasterio.transform import from_origin
-    with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=bands, dtype="uint16",
-                       crs="EPSG:32632", transform=from_origin(500000, 5500000, 10, 10)) as d:
+
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=bands,
+        dtype="uint16",
+        crs="EPSG:32632",
+        transform=from_origin(500000, 5500000, 10, 10),
+    ) as d:
         d.write(np.random.randint(100, 3000, (bands, size, size)).astype("uint16"))
     return path
 
@@ -35,9 +46,13 @@ class _FakeLabeler:
         out = []
         for t in tiles:
             if self.mode == "fail":
-                out.append(LabelingResult(tile_id=t.tile_id, error="Overpass query failed: HTTP 429"))
+                out.append(
+                    LabelingResult(tile_id=t.tile_id, error="Overpass query failed: HTTP 429")
+                )
             elif self.mode == "skip":
-                out.append(LabelingResult(tile_id=t.tile_id, skipped=True, error="No OSM features found"))
+                out.append(
+                    LabelingResult(tile_id=t.tile_id, skipped=True, error="No OSM features found")
+                )
             else:
                 p = output_dir / f"{t.tile_id}.tif"
                 p.write_bytes(b"x")
@@ -54,31 +69,55 @@ def _loader(monkeypatch, mode):
 def test_all_tiles_failing_raises_with_the_reason(monkeypatch, tmp_path):
     src = _scene(tmp_path / "s.tif")
     with pytest.raises(DatasetError, match="HTTP 429"):
-        _loader(monkeypatch, "fail").prepare([str(src)], labels="openstreetmap", tile_size=64, overlap=0,
-                                            output_dir=tmp_path / "ds", augment=False)
+        _loader(monkeypatch, "fail").prepare(
+            [str(src)],
+            labels="openstreetmap",
+            tile_size=64,
+            overlap=0,
+            output_dir=tmp_path / "ds",
+            augment=False,
+        )
 
 
 def test_all_tiles_skipped_raises_with_the_reason(monkeypatch, tmp_path):
     src = _scene(tmp_path / "s.tif")
     with pytest.raises(DatasetError, match="No OSM features"):
-        _loader(monkeypatch, "skip").prepare([str(src)], labels="openstreetmap", tile_size=64, overlap=0,
-                                            output_dir=tmp_path / "ds", augment=False)
+        _loader(monkeypatch, "skip").prepare(
+            [str(src)],
+            labels="openstreetmap",
+            tile_size=64,
+            overlap=0,
+            output_dir=tmp_path / "ds",
+            augment=False,
+        )
 
 
 def test_successful_labelling_still_builds_the_dataset(monkeypatch, tmp_path, caplog):
     src = _scene(tmp_path / "s.tif")
     with caplog.at_level("INFO"):
-        ds = _loader(monkeypatch, "ok").prepare([str(src)], labels="openstreetmap", tile_size=64, overlap=0,
-                                               output_dir=tmp_path / "ds", augment=False)
+        ds = _loader(monkeypatch, "ok").prepare(
+            [str(src)],
+            labels="openstreetmap",
+            tile_size=64,
+            overlap=0,
+            output_dir=tmp_path / "ds",
+            augment=False,
+        )
     assert ds is not None and "labelled" in caplog.text
 
 
 def test_preprocessing_steps_warn_that_they_are_not_applied(monkeypatch, tmp_path, caplog):
     src = _scene(tmp_path / "s.tif")
     with caplog.at_level("WARNING"):
-        _loader(monkeypatch, "ok").prepare([str(src)], labels="openstreetmap", tile_size=64, overlap=0,
-                                          output_dir=tmp_path / "ds", augment=False,
-                                          preprocessing_steps=["normalize"])
+        _loader(monkeypatch, "ok").prepare(
+            [str(src)],
+            labels="openstreetmap",
+            tile_size=64,
+            overlap=0,
+            output_dir=tmp_path / "ds",
+            augment=False,
+            preprocessing_steps=["normalize"],
+        )
     assert "not applied" in caplog.text
 
 
@@ -87,14 +126,22 @@ def test_augmentation_pipeline_knows_the_band_count(monkeypatch, tmp_path):
     src = _scene(tmp_path / "s.tif", bands=4)
     seen = {}
     from pygeovision.ai.data import dataloader as dl
+
     real = dl.GeoAugmentationPipeline.medium
 
     def spy(task="segmentation", n_channels=None):
         seen["n"] = n_channels
         return real(task=task, n_channels=n_channels)
+
     monkeypatch.setattr(dl.GeoAugmentationPipeline, "medium", staticmethod(spy))
-    _loader(monkeypatch, "ok").prepare([str(src)], labels="openstreetmap", tile_size=64, overlap=0,
-                                      output_dir=tmp_path / "ds", augment=True)
+    _loader(monkeypatch, "ok").prepare(
+        [str(src)],
+        labels="openstreetmap",
+        tile_size=64,
+        overlap=0,
+        output_dir=tmp_path / "ds",
+        augment=True,
+    )
     assert seen["n"] == 4
 
 
@@ -102,8 +149,18 @@ def test_augmentation_pipeline_knows_the_band_count(monkeypatch, tmp_path):
 def _tile(i, src, row, col):
     from pygeovision.ai.data.dataset import TileMetadata
 
-    return TileMetadata(tile_id=f"{src}_{i}", source_file=Path(f"{src}.tif"), bounds=(0, 0, 1, 1), crs="EPSG:4326",
-                        transform=[1, 0, 0, 0, -1, 0], row_off=row, col_off=col, height=64, width=64, bands=[1])
+    return TileMetadata(
+        tile_id=f"{src}_{i}",
+        source_file=Path(f"{src}.tif"),
+        bounds=(0, 0, 1, 1),
+        crs="EPSG:4326",
+        transform=[1, 0, 0, 0, -1, 0],
+        row_off=row,
+        col_off=col,
+        height=64,
+        width=64,
+        bands=[1],
+    )
 
 
 def test_single_scene_split_leaves_training_data():
@@ -115,7 +172,9 @@ def test_single_scene_split_leaves_training_data():
     assert counts["train"] > counts["val"] > 0 and counts["test"] > 0, counts
     assert sum(counts.values()) == 100
     rows = {name: {t.row_off for t in tiles if split[t.tile_id] == name} for name in counts}
-    assert max(rows["train"]) < min(rows["val"]) < min(rows["test"])        # contiguous bands, no row shared
+    assert (
+        max(rows["train"]) < min(rows["val"]) < min(rows["test"])
+    )  # contiguous bands, no row shared
 
 
 def test_two_scenes_each_split_into_bands():
@@ -135,7 +194,7 @@ def test_many_scenes_still_split_by_file():
     by_scene = {}
     for t in tiles:
         by_scene.setdefault(str(t.source_file), set()).add(split[t.tile_id])
-    assert all(len(v) == 1 for v in by_scene.values())          # a scene is never in two splits
+    assert all(len(v) == 1 for v in by_scene.values())  # a scene is never in two splits
 
 
 def test_tiny_scene_is_all_train():

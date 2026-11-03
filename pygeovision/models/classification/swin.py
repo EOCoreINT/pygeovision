@@ -1,4 +1,5 @@
 """Swin Transformer scene classifiers (timm)."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -13,8 +14,13 @@ _IDS = {
 }
 
 
-def build_swin(variant: str = "t", num_classes: int = 10, in_channels: int = 4,
-               pretrained: bool = True, **kwargs: Any) -> Any:
+def build_swin(
+    variant: str = "t",
+    num_classes: int = 10,
+    in_channels: int = 4,
+    pretrained: bool = True,
+    **kwargs: Any,
+) -> Any:
     """Swin tiny/small/base/large classifier.
 
     Window attention is tied to the training resolution.  Pass ``img_size=<chip size>``

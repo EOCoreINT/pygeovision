@@ -1,4 +1,5 @@
 """FocalLoss per-class alpha and WeightedSumLoss."""
+
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -24,7 +25,8 @@ class TestFocalAlpha:
     def test_scalar_alpha_is_unchanged(self):
         logits, target = batch()
         assert FocalLoss(alpha=0.25)(logits, target).item() == pytest.approx(
-            reference_focal(logits, target, 0.25).item(), rel=1e-6)
+            reference_focal(logits, target, 0.25).item(), rel=1e-6
+        )
 
     def test_per_class_alpha_weights_each_pixel_by_its_class(self):
         logits, target = batch()
@@ -58,7 +60,9 @@ class TestWeightedSum:
         focal, dice = FocalLoss(alpha=[0.25, 0.75]), DiceLoss()
         loss = WeightedSumLoss([(0.5, focal), (0.5, dice)])
         value = loss(logits, target)
-        assert value.item() == pytest.approx(0.5 * focal(logits, target).item() + 0.5 * dice(logits, target).item(), rel=1e-6)
+        assert value.item() == pytest.approx(
+            0.5 * focal(logits, target).item() + 0.5 * dice(logits, target).item(), rel=1e-6
+        )
         value.backward()
         assert logits.grad is not None and torch.isfinite(logits.grad).all()
 
@@ -72,20 +76,22 @@ class TestDiceClasses:
         import torch
 
         from pygeovision.losses import DiceLoss
+
         # 10 of 100 pixels are class 1; the model predicts "all background" confidently
         tgt = torch.zeros(1, 10, 10, dtype=torch.long)
         tgt[0, 0, :] = 1
         logits = torch.zeros(1, 2, 10, 10)
-        logits[:, 0] = 8.0                                   # certain: background
+        logits[:, 0] = 8.0  # certain: background
         both = float(DiceLoss()(logits, tgt))
         fg = float(DiceLoss(classes=[1])(logits, tgt))
-        assert fg > 0.9                                      # missing the object is ~fully penalised
+        assert fg > 0.9  # missing the object is ~fully penalised
         assert both == pytest.approx((fg + float(DiceLoss(classes=[0])(logits, tgt))) / 2, abs=1e-5)
-        assert fg > both * 1.5                               # the mean hides the miss
+        assert fg > both * 1.5  # the mean hides the miss
 
     def test_bad_class_index_is_refused(self):
         import torch
 
         from pygeovision.losses import DiceLoss
+
         with pytest.raises(ValueError, match="out of range"):
             DiceLoss(classes=[5])(torch.zeros(1, 2, 4, 4), torch.zeros(1, 4, 4, dtype=torch.long))

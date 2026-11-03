@@ -7,11 +7,12 @@ Monitors:
     - Model performance degradation (mIoU/mAP over time)
     - Spatial distribution shift (which regions are being processed)
 """
+
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 def _utcnow() -> str:
     """UTC timestamp as an ISO string without a zone suffix (same format as the old ``utcnow``)."""
     from datetime import timezone
+
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
@@ -65,8 +67,7 @@ class DistributionDrift:
     MAX_CURRENT_IMAGES = 50
     SAMPLES_PER_BAND_PER_IMAGE = 10_000
 
-    def __init__(self, reference_stats: dict | None = None,
-                 n_bins: int = 10) -> None:
+    def __init__(self, reference_stats: dict | None = None, n_bins: int = 10) -> None:
         self.reference_stats = reference_stats
         self.n_bins = n_bins
         self.n_reference_images = 0
@@ -79,6 +80,7 @@ class DistributionDrift:
         PSI < 0.1: No drift | 0.1-0.2: Minor | >0.2: Major drift.
         """
         import numpy as np
+
         expected = np.asarray(expected, dtype=float)
         actual = np.asarray(actual, dtype=float)
         edges = np.histogram_bin_edges(expected, bins=self.n_bins)
@@ -89,6 +91,7 @@ class DistributionDrift:
     @staticmethod
     def _psi_from_counts(exp_counts: Any, act_counts: Any) -> float:
         import numpy as np
+
         exp = np.asarray(exp_counts, dtype=float)
         act = np.asarray(act_counts, dtype=float)
         # Proportions per bin; empty bins are floored at 1e-4 (the usual PSI convention) so
@@ -101,9 +104,11 @@ class DistributionDrift:
     def compute_kl_divergence(self, p: Any, q: Any) -> float:
         """KL divergence — measures distribution distance."""
         import numpy as np
+
         p = np.clip(np.asarray(p, dtype=float), 1e-10, None)
         q = np.clip(np.asarray(q, dtype=float), 1e-10, None)
-        p = p / p.sum(); q = q / q.sum()
+        p = p / p.sum()
+        q = q / q.sum()
         return float(np.sum(p * np.log(p / q)))
 
     def fit_reference(self, images: list[str]) -> dict[str, Any]:
@@ -142,7 +147,7 @@ class DistributionDrift:
             edges = np.histogram_bin_edges(values, bins=self.n_bins)
             self.reference_stats[band] = {
                 "mean": float(values.mean()),
-                "std":  float(values.std()),
+                "std": float(values.std()),
                 "p10": float(np.percentile(values, 10)),
                 "p90": float(np.percentile(values, 90)),
                 "histogram": np.histogram(values, bins=edges)[0].tolist(),
@@ -150,7 +155,9 @@ class DistributionDrift:
                 "n_samples": int(values.size),
             }
         if not self.reference_stats:
-            logger.warning("fit_reference: no readable reference images, so no reference statistics")
+            logger.warning(
+                "fit_reference: no readable reference images, so no reference statistics"
+            )
         return self.reference_stats
 
     def detect(self, current_images: list[str]) -> dict[str, Any]:
@@ -165,8 +172,10 @@ class DistributionDrift:
         if not self.reference_stats:
             return {"error": "Reference statistics are empty (no readable reference images)."}
         if any("bin_edges" not in v for v in self.reference_stats.values()):
-            return {"error": "Reference statistics have no bin edges (made by an older version). "
-                             "Call fit_reference() again."}
+            return {
+                "error": "Reference statistics have no bin edges (made by an older version). "
+                "Call fit_reference() again."
+            }
 
         try:
             import numpy as np
@@ -201,20 +210,26 @@ class DistributionDrift:
             kl = self.compute_kl_divergence(curr, ref)
             level = "none" if psi < 0.1 else "minor" if psi < 0.2 else "major"
             drift_report[band] = {
-                "psi": round(psi, 4), "kl": round(kl, 4), "level": level,
+                "psi": round(psi, 4),
+                "kl": round(kl, 4),
+                "level": level,
                 "mean_reference": round(ref_stats["mean"], 4),
                 "mean_current": round(float(vals.mean()), 4),
             }
 
         if not drift_report:
-            return {"error": "Nothing could be compared: no readable current images, or "
-                             "their bands do not match the reference."}
+            return {
+                "error": "Nothing could be compared: no readable current images, or "
+                "their bands do not match the reference."
+            }
 
         overall_psi = sum(b["psi"] for b in drift_report.values()) / len(drift_report)
         worst = max(drift_report, key=lambda k: drift_report[k]["psi"])
         return {
             "overall_psi": round(overall_psi, 4),
-            "drift_level": "none" if overall_psi < 0.1 else "minor" if overall_psi < 0.2 else "major",
+            "drift_level": (
+                "none" if overall_psi < 0.1 else "minor" if overall_psi < 0.2 else "major"
+            ),
             "per_band": drift_report,
             "max_psi": drift_report[worst]["psi"],
             "worst_band": worst,
@@ -247,9 +262,9 @@ class PerformanceDrift:
     ) -> None:
         self.window_size = window_size
         self.alert_thresholds = alert_thresholds or {
-            "mean_iou":  0.05,   # Alert if mIoU drops by 5pp
-            "accuracy":  0.03,
-            "mean_f1":   0.05,
+            "mean_iou": 0.05,  # Alert if mIoU drops by 5pp
+            "accuracy": 0.03,
+            "mean_f1": 0.05,
         }
         self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
@@ -302,8 +317,8 @@ class PerformanceDrift:
             drifted = drop > threshold
             drift_report[metric] = {
                 "baseline": round(self._baseline[metric], 4),
-                "recent":   round(recent_avg[metric], 4),
-                "drop":     round(drop, 4),
+                "recent": round(recent_avg[metric], 4),
+                "drop": round(drop, 4),
                 "threshold": threshold,
                 "alert": drifted,
             }
@@ -329,22 +344,32 @@ class PerformanceDrift:
     def plot_history(self, metric: str = "mean_iou", save_path: str | None = None) -> None:
         try:
             import matplotlib.pyplot as plt
+
             vals = [(e["timestamp"][:10], e[metric]) for e in self._history if metric in e]
-            if not vals: return
+            if not vals:
+                return
             dates, scores = zip(*vals)
             fig, ax = plt.subplots(figsize=(12, 4))
             ax.plot(scores, "b-", linewidth=1.5, label=metric)
             if self._baseline and metric in self._baseline:
                 ax.axhline(self._baseline[metric], color="g", linestyle="--", label="Baseline")
                 threshold = self.alert_thresholds.get(metric, 0.05)
-                ax.axhline(self._baseline[metric] - threshold, color="r", linestyle="--",
-                            label="Alert threshold")
-            ax.set_xlabel("Measurement"); ax.set_ylabel(metric)
+                ax.axhline(
+                    self._baseline[metric] - threshold,
+                    color="r",
+                    linestyle="--",
+                    label="Alert threshold",
+                )
+            ax.set_xlabel("Measurement")
+            ax.set_ylabel(metric)
             ax.set_title(f"Model Performance History — {metric}")
-            ax.legend(); ax.grid(True, alpha=0.3)
+            ax.legend()
+            ax.grid(True, alpha=0.3)
             plt.tight_layout()
-            if save_path: plt.savefig(save_path, dpi=120)
-            else: plt.show()
+            if save_path:
+                plt.savefig(save_path, dpi=120)
+            else:
+                plt.show()
         except ImportError:
             logger.warning("plot_history() requires matplotlib: pip install matplotlib")
 
@@ -352,17 +377,17 @@ class PerformanceDrift:
 class DriftDetector:
     """Unified drift detector — monitors data + prediction + performance drift."""
 
-    def __init__(self, model: Any | None = None,
-                 storage_dir: str = "./monitoring/") -> None:
+    def __init__(self, model: Any | None = None, storage_dir: str = "./monitoring/") -> None:
         self.model = model
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self.data_drift   = DistributionDrift()
-        self.perf_drift   = PerformanceDrift(storage_path=str(self.storage_dir / "perf.jsonl"))
+        self.data_drift = DistributionDrift()
+        self.perf_drift = PerformanceDrift(storage_path=str(self.storage_dir / "perf.jsonl"))
         self._reference_images: list[str] = []
 
-    def fit(self, reference_images: list[str],
-             reference_metrics: dict[str, float] | None = None) -> DriftDetector:
+    def fit(
+        self, reference_images: list[str], reference_metrics: dict[str, float] | None = None
+    ) -> DriftDetector:
         """Set the reference distribution and performance baseline."""
         self._reference_images = reference_images
         self.data_drift.fit_reference(reference_images)
@@ -371,9 +396,12 @@ class DriftDetector:
         logger.info("DriftDetector: reference set (%d images)", len(reference_images))
         return self
 
-    def check(self, current_images: list[str],
-               current_metrics: dict[str, float] | None = None,
-               recent_n: int | None = None) -> dict[str, Any]:
+    def check(
+        self,
+        current_images: list[str],
+        current_metrics: dict[str, float] | None = None,
+        recent_n: int | None = None,
+    ) -> dict[str, Any]:
         """Run full drift check and return combined report.
 
         ``recent_n`` is how many of the latest logged measurements are averaged for
@@ -385,9 +413,8 @@ class DriftDetector:
             self.perf_drift.log(current_metrics)
         perf_report = self.perf_drift.detect(recent_n)
 
-        any_drift = (
-            data_report.get("drift_level") in ("minor", "major") or
-            perf_report.get("drift_detected", False)
+        any_drift = data_report.get("drift_level") in ("minor", "major") or perf_report.get(
+            "drift_detected", False
         )
         errors = [r["error"] for r in (data_report, perf_report) if "error" in r]
         return {
@@ -395,7 +422,8 @@ class DriftDetector:
             "drift_detected": any_drift,
             "data_drift": data_report,
             "performance_drift": perf_report,
-            "action_required": data_report.get("drift_level") == "major" or perf_report.get("drift_detected"),
+            "action_required": data_report.get("drift_level") == "major"
+            or perf_report.get("drift_detected"),
             # True when the data comparison could not be made: "drift_detected: False" then means
             # "unknown", not "no drift".
             "incomplete": "error" in data_report,
@@ -403,7 +431,9 @@ class DriftDetector:
         }
 
     def save_report(self, report: dict, path: str | None = None) -> str:
-        p = path or str(self.storage_dir / f"drift_report_{datetime.now().strftime('%Y%m%d_%H%M')}.json")
+        p = path or str(
+            self.storage_dir / f"drift_report_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+        )
         with open(p, "w") as f:
             json.dump(report, f, indent=2, default=str)
         return p

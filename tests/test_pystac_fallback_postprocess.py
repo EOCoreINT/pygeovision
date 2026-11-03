@@ -30,6 +30,7 @@ Real bugs found and fixed, in the order they were uncovered:
      size alone for geographic CRS (a near 1.0 degree/pixel, ~111km, is
      the real corruption signature -- not origin proximity).
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
@@ -45,16 +46,19 @@ class TestIsPixelSpaceTransformCRSAware:
 
     def test_valid_geographic_transform_not_flagged(self):
         from pygeovision.data.fetch import _is_pixel_space_transform
+
         t = from_bounds(-74.1, 40.6, -73.7, 40.9, 40, 40)  # ~0.01 deg/pixel, genuinely valid
         assert _is_pixel_space_transform(t, crs=CRS.from_epsg(4326)) is False
 
     def test_corrupt_geographic_transform_is_flagged(self):
         from pygeovision.data.fetch import _is_pixel_space_transform
+
         t = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 40.0)  # the documented corruption signature
         assert _is_pixel_space_transform(t, crs=CRS.from_epsg(4326)) is True
 
     def test_valid_projected_utm_transform_not_flagged(self):
         from pygeovision.data.fetch import _is_pixel_space_transform
+
         t = from_bounds(500000, 4500000, 510000, 4510000, 40, 40)  # 250m/pixel, genuinely valid
         assert _is_pixel_space_transform(t, crs=CRS.from_epsg(32618)) is False
 
@@ -62,6 +66,7 @@ class TestIsPixelSpaceTransformCRSAware:
         """The original, documented Sentinel-1 corruption case -- must
         not regress."""
         from pygeovision.data.fetch import _is_pixel_space_transform
+
         t = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 500.0)
         assert _is_pixel_space_transform(t, crs=CRS.from_epsg(32618)) is True
 
@@ -69,23 +74,34 @@ class TestIsPixelSpaceTransformCRSAware:
         """Backward compatibility: omitting crs must not change behaviour
         for existing callers that only ever checked projected data."""
         from pygeovision.data.fetch import _is_pixel_space_transform
+
         t = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 500.0)
         assert _is_pixel_space_transform(t) is True
 
     def test_none_transform_is_always_flagged(self):
         from pygeovision.data.fetch import _is_pixel_space_transform
+
         assert _is_pixel_space_transform(None) is True
 
 
 def _zip_a_real_raster(tmp_path, size=40):
     inner_tif = tmp_path / "inner_extracted" / "LE07_red.TIF"
     inner_tif.parent.mkdir(parents=True)
-    with rasterio.open(inner_tif, "w", driver="GTiff", height=size, width=size, count=1,
-                        dtype="uint16", crs="EPSG:32618",
-                        transform=from_bounds(500000, 4500000, 510000, 4510000, size, size)) as dst:
+    with rasterio.open(
+        inner_tif,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=1,
+        dtype="uint16",
+        crs="EPSG:32618",
+        transform=from_bounds(500000, 4500000, 510000, 4510000, size, size),
+    ) as dst:
         dst.write(np.full((size, size), 777, dtype="uint16"), 1)
 
     import zipfile
+
     zip_path = tmp_path / "LE07_L2SP_013032_20180616_02_T1_red.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
         zf.write(inner_tif, arcname="LE07_red.TIF")
@@ -95,6 +111,7 @@ def _zip_a_real_raster(tmp_path, size=40):
 class TestApplyPostProcessRealUnzipSupport:
     def test_real_zip_with_real_raster_extracts_and_reprojects_successfully(self, tmp_path):
         from pygeovision.data.fetch import SatelliteFetcher
+
         fetcher = SatelliteFetcher.__new__(SatelliteFetcher)
         zip_path = _zip_a_real_raster(tmp_path)
 
@@ -108,6 +125,7 @@ class TestApplyPostProcessRealUnzipSupport:
 
     def test_invalid_zip_fails_clearly_not_silently(self, tmp_path):
         from pygeovision.data.fetch import SatelliteFetcher
+
         fetcher = SatelliteFetcher.__new__(SatelliteFetcher)
 
         fake_zip = tmp_path / "not_really_a_zip.zip"
@@ -117,8 +135,10 @@ class TestApplyPostProcessRealUnzipSupport:
         assert result is None
 
     def test_zip_with_no_raster_inside_fails_clearly(self, tmp_path):
-        from pygeovision.data.fetch import SatelliteFetcher
         import zipfile
+
+        from pygeovision.data.fetch import SatelliteFetcher
+
         fetcher = SatelliteFetcher.__new__(SatelliteFetcher)
 
         zip_path = tmp_path / "empty_of_rasters.zip"
@@ -132,13 +152,22 @@ class TestApplyPostProcessRealUnzipSupport:
         """A file that isn't a .zip (e.g. already a real .tif) should
         pass through the unzip step unchanged, not fail."""
         from pygeovision.data.fetch import SatelliteFetcher
+
         fetcher = SatelliteFetcher.__new__(SatelliteFetcher)
 
         size = 20
         tif_path = tmp_path / "already_a_tif.tif"
-        with rasterio.open(tif_path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="uint16", crs="EPSG:4326",
-                            transform=from_bounds(-74.1, 40.6, -73.7, 40.9, size, size)) as dst:
+        with rasterio.open(
+            tif_path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="uint16",
+            crs="EPSG:4326",
+            transform=from_bounds(-74.1, 40.6, -73.7, 40.9, size, size),
+        ) as dst:
             dst.write(np.full((size, size), 42, dtype="uint16"), 1)
 
         result = fetcher._apply_post_process(tif_path, ["unzip"])

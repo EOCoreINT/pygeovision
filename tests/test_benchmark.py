@@ -1,4 +1,5 @@
 """Tests for Phase 4.4 + 5.2: BenchmarkEvaluator + Leaderboard."""
+
 from __future__ import annotations
 
 # Skip this file if PyTorch is not installed
@@ -7,31 +8,46 @@ import pytest
 torch = pytest.importorskip("torch", reason="torch not installed — pip install torch")
 
 import json
+import pathlib
+import sys
+
 import pytest
-import sys; import pathlib; sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
 class TestBenchmarkResult:
     def test_primary_metric_segmentation(self):
         from pygeovision.benchmark.evaluator import BenchmarkResult
+
         r = BenchmarkResult("UNet", "LoveDA", "segmentation", mean_iou=0.72)
         assert abs(r.primary_metric - 0.72) < 1e-6
 
     def test_primary_metric_detection(self):
         from pygeovision.benchmark.evaluator import BenchmarkResult
+
         r = BenchmarkResult("YOLOv8", "DOTA", "detection", mAP50=0.65)
         assert abs(r.primary_metric - 0.65) < 1e-6
 
     def test_primary_metric_classification(self):
         from pygeovision.benchmark.evaluator import BenchmarkResult
+
         r = BenchmarkResult("ViT", "EuroSAT", "classification", accuracy=0.98)
         assert abs(r.primary_metric - 0.98) < 1e-6
 
     def test_to_dict(self):
         from pygeovision.benchmark.evaluator import BenchmarkResult
-        r = BenchmarkResult("SegFormer", "LoveDA", "segmentation",
-                            mean_iou=0.72, mean_f1=0.82, accuracy=0.94,
-                            n_samples=500, inference_ms_per_image=12.5)
+
+        r = BenchmarkResult(
+            "SegFormer",
+            "LoveDA",
+            "segmentation",
+            mean_iou=0.72,
+            mean_f1=0.82,
+            accuracy=0.94,
+            n_samples=500,
+            inference_ms_per_image=12.5,
+        )
         d = r.to_dict()
         assert d["model"] == "SegFormer"
         assert d["dataset"] == "LoveDA"
@@ -43,6 +59,7 @@ class TestBenchmarkResult:
 class TestModelEvaluator:
     def test_init(self):
         from pygeovision.benchmark.evaluator import ModelEvaluator
+
         ev = ModelEvaluator(task="segmentation", num_classes=5)
         assert ev.task == "segmentation"
         assert ev.num_classes == 5
@@ -59,7 +76,10 @@ class TestModelEvaluator:
                     B, C, H, W = x.shape
                     return torch.zeros(B, 2, H, W)
 
-            data = [(torch.randn(2, 3, 32, 32), torch.zeros(2, 32, 32, dtype=torch.long)) for _ in range(3)]
+            data = [
+                (torch.randn(2, 3, 32, 32), torch.zeros(2, 32, 32, dtype=torch.long))
+                for _ in range(3)
+            ]
             ev = ModelEvaluator(task="segmentation", num_classes=2)
             result = ev.evaluate(DummyModel(), data, dataset_name="TestDS", model_name="Dummy")
             assert isinstance(result, BenchmarkResult)
@@ -77,22 +97,29 @@ class TestModelEvaluator:
             from pygeovision.benchmark.evaluator import ModelEvaluator
 
             class DummyA(nn.Module):
-                def forward(self, x): return torch.ones(x.shape[0], 2, x.shape[2], x.shape[3])
-            class DummyB(nn.Module):
-                def forward(self, x): return torch.zeros(x.shape[0], 2, x.shape[2], x.shape[3])
+                def forward(self, x):
+                    return torch.ones(x.shape[0], 2, x.shape[2], x.shape[3])
 
-            data = [(torch.randn(2, 3, 32, 32), torch.zeros(2, 32, 32, dtype=torch.long)) for _ in range(2)]
+            class DummyB(nn.Module):
+                def forward(self, x):
+                    return torch.zeros(x.shape[0], 2, x.shape[2], x.shape[3])
+
+            data = [
+                (torch.randn(2, 3, 32, 32), torch.zeros(2, 32, 32, dtype=torch.long))
+                for _ in range(2)
+            ]
             ev = ModelEvaluator(task="segmentation", num_classes=2)
             results = ev.compare({"ModelA": DummyA(), "ModelB": DummyB()}, data)
             assert len(results) == 2
             # Results should be sorted descending by primary metric
             for i in range(len(results) - 1):
-                assert results[i].primary_metric >= results[i+1].primary_metric
+                assert results[i].primary_metric >= results[i + 1].primary_metric
         except ImportError:
             pytest.skip("torch not installed")
 
     def test_save_results(self, tmp_path):
         from pygeovision.benchmark.evaluator import BenchmarkResult, ModelEvaluator
+
         results = [
             BenchmarkResult("UNet", "LoveDA", "segmentation", mean_iou=0.72),
             BenchmarkResult("SegFormer", "LoveDA", "segmentation", mean_iou=0.78),
@@ -107,9 +134,14 @@ class TestModelEvaluator:
 
     def test_print_leaderboard_no_error(self, capsys):
         from pygeovision.benchmark.evaluator import BenchmarkResult, ModelEvaluator
+
         results = [
-            BenchmarkResult("UNet", "LoveDA", "segmentation", mean_iou=0.72, mean_f1=0.80, accuracy=0.91),
-            BenchmarkResult("SegFormer", "LoveDA", "segmentation", mean_iou=0.78, mean_f1=0.84, accuracy=0.93),
+            BenchmarkResult(
+                "UNet", "LoveDA", "segmentation", mean_iou=0.72, mean_f1=0.80, accuracy=0.91
+            ),
+            BenchmarkResult(
+                "SegFormer", "LoveDA", "segmentation", mean_iou=0.78, mean_f1=0.84, accuracy=0.93
+            ),
         ]
         ev = ModelEvaluator()
         ev.print_leaderboard(results)
@@ -121,10 +153,12 @@ class TestLeaderboard:
     def test_add_and_get(self, tmp_path):
         from pygeovision.benchmark.evaluator import BenchmarkResult
         from pygeovision.benchmark.leaderboard import Leaderboard
+
         lb = Leaderboard(str(tmp_path / "lb.json"))
         r1 = BenchmarkResult("UNet", "LoveDA", "segmentation", mean_iou=0.72)
         r2 = BenchmarkResult("SegFormer", "LoveDA", "segmentation", mean_iou=0.78)
-        lb.add(r1); lb.add(r2)
+        lb.add(r1)
+        lb.add(r2)
         entries = lb.get(task="segmentation", dataset="LoveDA")
         assert len(entries) == 2
         assert entries[0]["mean_iou"] >= entries[1]["mean_iou"]
@@ -132,6 +166,7 @@ class TestLeaderboard:
     def test_deduplicates(self, tmp_path):
         from pygeovision.benchmark.evaluator import BenchmarkResult
         from pygeovision.benchmark.leaderboard import Leaderboard
+
         lb = Leaderboard(str(tmp_path / "lb.json"))
         r = BenchmarkResult("UNet", "LoveDA", "segmentation", mean_iou=0.72)
         lb.add(r)
@@ -145,6 +180,7 @@ class TestLeaderboard:
     def test_persistence(self, tmp_path):
         from pygeovision.benchmark.evaluator import BenchmarkResult
         from pygeovision.benchmark.leaderboard import Leaderboard
+
         path = str(tmp_path / "lb.json")
         lb = Leaderboard(path)
         lb.add(BenchmarkResult("UNet", "ISPRS", "segmentation", mean_iou=0.81))
@@ -157,11 +193,13 @@ class TestLeaderboard:
     def test_export_csv(self, tmp_path):
         from pygeovision.benchmark.evaluator import BenchmarkResult
         from pygeovision.benchmark.leaderboard import Leaderboard
+
         lb = Leaderboard(str(tmp_path / "lb.json"))
         lb.add(BenchmarkResult("SegFormer", "LoveDA", "segmentation", mean_iou=0.78))
         csv_path = str(tmp_path / "export.csv")
         lb.export_csv(csv_path)
         import csv
+
         with open(csv_path) as f:
             rows = list(csv.DictReader(f))
         assert len(rows) == 1
@@ -170,6 +208,7 @@ class TestLeaderboard:
     def test_filter_by_task(self, tmp_path):
         from pygeovision.benchmark.evaluator import BenchmarkResult
         from pygeovision.benchmark.leaderboard import Leaderboard
+
         lb = Leaderboard(str(tmp_path / "lb.json"))
         lb.add(BenchmarkResult("YOLOv8", "DOTA", "detection", mAP50=0.65))
         lb.add(BenchmarkResult("UNet", "LoveDA", "segmentation", mean_iou=0.72))
@@ -202,13 +241,18 @@ class TestModelEvaluatorDetectionMetricsWiring:
             for _ in range(2):
                 images = [torch.rand(3, 64, 64), torch.rand(3, 64, 64)]
                 targets = [
-                    {"boxes": torch.tensor([[10., 10., 40., 40.]]), "labels": torch.tensor([1])},
-                    {"boxes": torch.tensor([[5., 5., 30., 30.]]), "labels": torch.tensor([1])},
+                    {
+                        "boxes": torch.tensor([[10.0, 10.0, 40.0, 40.0]]),
+                        "labels": torch.tensor([1]),
+                    },
+                    {"boxes": torch.tensor([[5.0, 5.0, 30.0, 30.0]]), "labels": torch.tensor([1])},
                 ]
                 yield images, targets
 
         evaluator = ModelEvaluator(task="detection", num_classes=2)
-        result = evaluator.evaluate(model, fake_loader(), dataset_name="test", model_name="faster-rcnn")
+        result = evaluator.evaluate(
+            model, fake_loader(), dataset_name="test", model_name="faster-rcnn"
+        )
 
         # The real test: this must have actually processed all 4 images
         # through the correct list-in/list-out detection calling
@@ -232,16 +276,19 @@ class TestModelEvaluatorDetectionMetricsWiring:
             def forward(self, images):
                 calls.append(images)
                 return [
-                    {"boxes": torch.zeros((0, 4)), "scores": torch.zeros(0),
-                     "labels": torch.zeros(0, dtype=torch.long)}
+                    {
+                        "boxes": torch.zeros((0, 4)),
+                        "scores": torch.zeros(0),
+                        "labels": torch.zeros(0, dtype=torch.long),
+                    }
                     for _ in images
                 ]
 
         def fake_loader():
             images = [torch.rand(3, 32, 32), torch.rand(3, 32, 32)]
             targets = [
-                {"boxes": torch.tensor([[1., 1., 5., 5.]]), "labels": torch.tensor([1])},
-                {"boxes": torch.tensor([[2., 2., 6., 6.]]), "labels": torch.tensor([1])},
+                {"boxes": torch.tensor([[1.0, 1.0, 5.0, 5.0]]), "labels": torch.tensor([1])},
+                {"boxes": torch.tensor([[2.0, 2.0, 6.0, 6.0]]), "labels": torch.tensor([1])},
             ]
             yield images, targets
 

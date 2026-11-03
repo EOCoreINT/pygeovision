@@ -20,6 +20,7 @@ a SWIR band.  The extra channels start from the mean of the RGB filters, which
 is a sensible starting point for fine-tuning, not a pretrained representation;
 every function here logs that.
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,14 +50,18 @@ def adapt_first_conv(conv: Any, in_channels: int, pretrained_loaded: bool) -> An
         return conv
     if conv.groups != 1:
         raise ValueError(
-            f"cannot adapt a grouped convolution (groups={conv.groups}) to a new "
-            f"channel count"
+            f"cannot adapt a grouped convolution (groups={conv.groups}) to a new " f"channel count"
         )
 
     new_conv = nn.Conv2d(
-        in_channels, conv.out_channels, kernel_size=conv.kernel_size,
-        stride=conv.stride, padding=conv.padding, dilation=conv.dilation,
-        bias=conv.bias is not None, padding_mode=conv.padding_mode,
+        in_channels,
+        conv.out_channels,
+        kernel_size=conv.kernel_size,
+        stride=conv.stride,
+        padding=conv.padding,
+        dilation=conv.dilation,
+        bias=conv.bias is not None,
+        padding_mode=conv.padding_mode,
     )
     new_conv = new_conv.to(device=conv.weight.device, dtype=conv.weight.dtype)
     if pretrained_loaded:
@@ -72,7 +77,9 @@ def adapt_first_conv(conv: Any, in_channels: int, pretrained_loaded: bool) -> An
             "First conv adapted from %d to %d input channels: pretrained filters kept "
             "for the first %d channel(s); the other channel(s) start from the mean "
             "pretrained filter.  They are NOT pretrained on those bands -- fine-tune.",
-            conv.in_channels, in_channels, k,
+            conv.in_channels,
+            in_channels,
+            k,
         )
     return new_conv
 

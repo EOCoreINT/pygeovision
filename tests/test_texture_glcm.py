@@ -18,6 +18,7 @@ containing both regions, not isolated per-region test patches — an
 earlier draft of this test got this wrong and produced backwards
 results purely from a quantization-range artifact, not a real bug).
 """
+
 import pytest
 
 skimage = pytest.importorskip("skimage", reason="scikit-image not installed")
@@ -35,7 +36,7 @@ def _make_smooth_vs_disturbed_scene(size=56, seed=0):
     scene = np.full((size, size), 100.0, dtype=np.float32) + rng.normal(0, 1, (size, size))
     for i in range(size // 2, size, 4):
         for j in range(0, size, 4):
-            scene[i:i + 4, j:j + 4] = rng.choice([20, 180])
+            scene[i : i + 4, j : j + 4] = rng.choice([20, 180])
     return scene
 
 
@@ -45,6 +46,7 @@ class TestGLCMDiscriminatesRealTexture:
 
     def test_contrast_higher_for_disturbed_region(self):
         from pygeovision.data.texture import compute_glcm_texture
+
         scene = _make_smooth_vs_disturbed_scene()
         result = compute_glcm_texture(scene, window=7, mode="block", levels=32)
         n_blocks = result["contrast"].shape[0]
@@ -54,6 +56,7 @@ class TestGLCMDiscriminatesRealTexture:
 
     def test_homogeneity_higher_for_smooth_region(self):
         from pygeovision.data.texture import compute_glcm_texture
+
         scene = _make_smooth_vs_disturbed_scene()
         result = compute_glcm_texture(scene, window=7, mode="block", levels=32)
         n_blocks = result["homogeneity"].shape[0]
@@ -63,17 +66,22 @@ class TestGLCMDiscriminatesRealTexture:
 
     def test_energy_and_asm_higher_for_smooth_region(self):
         from pygeovision.data.texture import compute_glcm_texture
+
         scene = _make_smooth_vs_disturbed_scene()
-        result = compute_glcm_texture(scene, window=7, mode="block", levels=32,
-                                       features=["energy", "ASM"])
+        result = compute_glcm_texture(
+            scene, window=7, mode="block", levels=32, features=["energy", "ASM"]
+        )
         n_blocks = result["energy"].shape[0]
         for feat in ("energy", "ASM"):
             smooth = result[feat][: n_blocks // 2, :].mean()
             disturbed = result[feat][n_blocks // 2 :, :].mean()
-            assert smooth > disturbed, f"{feat}: smooth={smooth} should exceed disturbed={disturbed}"
+            assert (
+                smooth > disturbed
+            ), f"{feat}: smooth={smooth} should exceed disturbed={disturbed}"
 
     def test_unknown_feature_raises_clear_error(self):
         from pygeovision.data.texture import compute_glcm_texture
+
         scene = _make_smooth_vs_disturbed_scene(size=14)
         with pytest.raises(ValueError, match="Unknown GLCM feature"):
             compute_glcm_texture(scene, window=7, features=["not_a_real_feature"])
@@ -82,28 +90,33 @@ class TestGLCMDiscriminatesRealTexture:
 class TestGLCMModes:
     def test_block_mode_output_is_coarser_than_input(self):
         from pygeovision.data.texture import compute_glcm_texture
+
         scene = _make_smooth_vs_disturbed_scene(size=56)
         result = compute_glcm_texture(scene, window=7, mode="block")
         assert result["contrast"].shape == (8, 8)  # 56/7 = 8
 
     def test_sliding_mode_output_matches_input_resolution(self):
         from pygeovision.data.texture import compute_glcm_texture
+
         small = np.zeros((10, 10), dtype=np.float32)
         small[:5, :] = 50.0
         small[5:, :] = np.random.default_rng(3).choice([10, 200], (5, 10)).astype(np.float32)
-        result = compute_glcm_texture(small, window=3, mode="sliding", levels=16,
-                                       features=["contrast"])
+        result = compute_glcm_texture(
+            small, window=3, mode="sliding", levels=16, features=["contrast"]
+        )
         assert result["contrast"].shape == (10, 10)
         assert result["contrast"][7:, :].mean() > result["contrast"][:3, :].mean()
 
     def test_invalid_mode_raises(self):
         from pygeovision.data.texture import compute_glcm_texture
+
         scene = _make_smooth_vs_disturbed_scene(size=14)
         with pytest.raises(ValueError, match="mode must be"):
             compute_glcm_texture(scene, window=7, mode="bogus")
 
     def test_window_larger_than_input_raises_clear_error(self):
         from pygeovision.data.texture import compute_glcm_texture
+
         tiny = np.zeros((5, 5), dtype=np.float32)
         with pytest.raises(ValueError, match="larger than the input"):
             compute_glcm_texture(tiny, window=10, mode="block")
@@ -117,14 +130,28 @@ class TestGLCMTextureRasterIO:
         scene = _make_smooth_vs_disturbed_scene(size=size)
         raster_path = tmp_path / "scene.tif"
         transform = from_bounds(0, 0, size * 10, size * 10, size, size)
-        with rasterio.open(raster_path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="float32", crs="EPSG:32630", transform=transform) as dst:
+        with rasterio.open(
+            raster_path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="float32",
+            crs="EPSG:32630",
+            transform=transform,
+        ) as dst:
             dst.write(scene, 1)
 
         tex = GLCMTexture()
         out_path = tmp_path / "glcm.tif"
-        result = tex.compute(str(raster_path), str(out_path), window=7, mode="block",
-                              features=["contrast", "homogeneity", "energy"])
+        result = tex.compute(
+            str(raster_path),
+            str(out_path),
+            window=7,
+            mode="block",
+            features=["contrast", "homogeneity", "energy"],
+        )
 
         assert result["success"] is True
         with rasterio.open(out_path) as src:
@@ -141,8 +168,17 @@ class TestGLCMTextureRasterIO:
         scene = _make_smooth_vs_disturbed_scene(size=size)
         raster_path = tmp_path / "scene.tif"
         transform = from_bounds(0, 0, size * 10, size * 10, size, size)
-        with rasterio.open(raster_path, "w", driver="GTiff", height=size, width=size, count=1,
-                            dtype="float32", crs="EPSG:32630", transform=transform) as dst:
+        with rasterio.open(
+            raster_path,
+            "w",
+            driver="GTiff",
+            height=size,
+            width=size,
+            count=1,
+            dtype="float32",
+            crs="EPSG:32630",
+            transform=transform,
+        ) as dst:
             dst.write(scene, 1)
 
         tex = GLCMTexture()

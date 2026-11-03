@@ -14,10 +14,10 @@ Example:
 
 from __future__ import annotations
 
-import json
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> str:
     from datetime import timezone
+
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
@@ -42,6 +43,7 @@ class DriftReport:
         feature_drift: Per-feature drift scores.
         threshold: Detection threshold used.
     """
+
     timestamp: str
     drift_score: float
     is_drifted: bool
@@ -93,7 +95,8 @@ class DriftDetector:
             raise ValueError("reference features are empty")
         logger.info(
             "DriftDetector: reference set (%d samples, %d features).",
-            self._reference.shape[0], self._reference.shape[1] if self._reference.ndim > 1 else 1,
+            self._reference.shape[0],
+            self._reference.shape[1] if self._reference.ndim > 1 else 1,
         )
 
     def check(self, features: np.ndarray) -> DriftReport:
@@ -114,7 +117,9 @@ class DriftDetector:
         ref_dims = self._reference.shape[1] if self._reference.ndim > 1 else 1
         new_dims = features.shape[1] if features.ndim > 1 else 1
         if ref_dims != new_dims:
-            raise ValueError(f"production features have {new_dims} columns but the reference has {ref_dims}")
+            raise ValueError(
+                f"production features have {new_dims} columns but the reference has {ref_dims}"
+            )
         if self.method not in ("ks", "mmd"):
             raise ValueError(f"unknown method {self.method!r}: use 'ks' or 'mmd'")
 
@@ -135,7 +140,8 @@ class DriftDetector:
         if report.is_drifted:
             logger.warning(
                 "Data drift detected! score=%.4f > threshold=%.4f",
-                score, self.threshold,
+                score,
+                self.threshold,
             )
         else:
             logger.debug("No drift detected (score=%.4f).", score)
@@ -182,7 +188,7 @@ class DriftDetector:
     @staticmethod
     def _rbf_kernel(x: np.ndarray, y: np.ndarray, gamma: float) -> np.ndarray:
         diff = x[:, np.newaxis] - y[np.newaxis, :]
-        return np.exp(-gamma * (diff ** 2).sum(-1))
+        return np.exp(-gamma * (diff**2).sum(-1))
 
     def get_history(self) -> list[DriftReport]:
         """Return the list of past drift reports."""
@@ -216,8 +222,10 @@ class PerformanceTracker:
         alert_on_regression: float = 0.05,
     ) -> None:
         self.metrics = metrics or ["miou", "accuracy", "f1"]
-        self.storage_path = Path(storage_path) if storage_path else (
-            Path.home() / ".pygeovision" / "performance_history.json"
+        self.storage_path = (
+            Path(storage_path)
+            if storage_path
+            else (Path.home() / ".pygeovision" / "performance_history.json")
         )
         self.alert_on_regression = alert_on_regression
         self._history: list[dict[str, Any]] = self._load_history()
@@ -284,7 +292,10 @@ class PerformanceTracker:
             if baseline > 0 and (baseline - value) / baseline > self.alert_on_regression:
                 logger.warning(
                     "Performance regression detected: %s dropped from %.4f → %.4f (%.1f%%)",
-                    metric, baseline, value, 100 * (baseline - value) / baseline,
+                    metric,
+                    baseline,
+                    value,
+                    100 * (baseline - value) / baseline,
                 )
 
     def _load_history(self) -> list[dict[str, Any]]:
@@ -298,8 +309,12 @@ class PerformanceTracker:
                     self.storage_path.rename(backup)
                 except OSError:
                     backup = None
-                logger.warning("performance history %s is unreadable (%s); starting empty%s",
-                               self.storage_path, exc, f", old file kept as {backup}" if backup else "")
+                logger.warning(
+                    "performance history %s is unreadable (%s); starting empty%s",
+                    self.storage_path,
+                    exc,
+                    f", old file kept as {backup}" if backup else "",
+                )
         return []
 
     def _save_history(self) -> None:

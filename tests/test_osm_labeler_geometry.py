@@ -12,6 +12,7 @@ Real defects fixed:
      but the converter only recognised a subset, so those features were downloaded and discarded.
   6. The default vector path equalled the raster path for outputs not ending in ``.tif``.
 """
+
 import numpy as np
 import pytest
 
@@ -24,7 +25,12 @@ BBOX = (10.0, 50.0, 10.01, 50.01)
 
 
 def _way(i, tags, pts):
-    return {"type": "way", "id": i, "tags": tags, "geometry": [{"lon": x, "lat": y} for x, y in pts]}
+    return {
+        "type": "way",
+        "id": i,
+        "tags": tags,
+        "geometry": [{"lon": x, "lat": y} for x, y in pts],
+    }
 
 
 def _rect(x0, y0, x1, y1):
@@ -51,11 +57,18 @@ def test_classification_matches_the_query():
 
 
 def test_every_category_has_a_recognisable_tag():
-    sample = {"buildings": {"building": "yes"}, "roads": {"highway": "service"}, "water": {"natural": "water"},
-              "vegetation": {"natural": "scrub"}, "agricultural": {"landuse": "farmland"},
-              "commercial": {"landuse": "retail"}, "residential": {"landuse": "residential"},
-              "solar_panels": {"generator:source": "solar"}, "parking": {"amenity": "parking"},
-              "sports": {"leisure": "pitch"}}
+    sample = {
+        "buildings": {"building": "yes"},
+        "roads": {"highway": "service"},
+        "water": {"natural": "water"},
+        "vegetation": {"natural": "scrub"},
+        "agricultural": {"landuse": "farmland"},
+        "commercial": {"landuse": "retail"},
+        "residential": {"landuse": "residential"},
+        "solar_panels": {"generator:source": "solar"},
+        "parking": {"amenity": "parking"},
+        "sports": {"leisure": "pitch"},
+    }
     assert set(sample) == set(OSM_CATEGORIES)
     for cat, tags in sample.items():
         assert classify_tags(tags)[0] == cat
@@ -63,8 +76,11 @@ def test_every_category_has_a_recognisable_tag():
 
 def test_road_is_a_buffered_line_not_a_filled_blob(tmp_path):
     # U-shaped road: closing it into a polygon would fill the whole interior
-    road = _way(1, {"highway": "secondary"},
-                [(10.001, 50.001), (10.001, 50.009), (10.009, 50.009), (10.009, 50.001)])
+    road = _way(
+        1,
+        {"highway": "secondary"},
+        [(10.001, 50.001), (10.001, 50.009), (10.009, 50.009), (10.009, 50.001)],
+    )
     lab = OSMLabeler()
     gj = lab._osm_to_geojson({"elements": [road]}, ["roads"])
     assert gj["features"][0]["geometry"]["type"] == "LineString"
@@ -106,11 +122,15 @@ def test_wood_inside_a_residential_zone_stays_wood(tmp_path):
 def test_multipolygon_relation_with_island(tmp_path):
     outer = _rect(10.001, 50.001, 10.009, 50.009)
     inner = _rect(10.004, 50.004, 10.006, 50.006)
-    rel = {"type": "relation", "id": 9, "tags": {"natural": "water", "type": "multipolygon"},
-           "members": [
-               {"type": "way", "role": "outer", "geometry": [{"lon": x, "lat": y} for x, y in outer]},
-               {"type": "way", "role": "inner", "geometry": [{"lon": x, "lat": y} for x, y in inner]},
-           ]}
+    rel = {
+        "type": "relation",
+        "id": 9,
+        "tags": {"natural": "water", "type": "multipolygon"},
+        "members": [
+            {"type": "way", "role": "outer", "geometry": [{"lon": x, "lat": y} for x, y in outer]},
+            {"type": "way", "role": "inner", "geometry": [{"lon": x, "lat": y} for x, y in inner]},
+        ],
+    }
     lab = OSMLabeler()
     gj = lab._osm_to_geojson({"elements": [rel]}, ["water"])
     assert len(gj["features"]) == 1
@@ -123,7 +143,9 @@ def test_multipolygon_relation_with_island(tmp_path):
 
 
 def test_open_ring_area_is_skipped_and_counted():
-    bad = _way(1, {"building": "yes"}, [(10.0, 50.0), (10.001, 50.0), (10.001, 50.001), (10.0, 50.001)])
+    bad = _way(
+        1, {"building": "yes"}, [(10.0, 50.0), (10.001, 50.0), (10.001, 50.001), (10.0, 50.001)]
+    )
     gj = OSMLabeler()._osm_to_geojson({"elements": [bad]}, ["buildings"])
     assert gj["features"] == [] and gj["n_skipped"] == 1
 
@@ -135,8 +157,17 @@ def test_reference_raster_in_utm_gets_correct_labels(tmp_path):
     # 100 x 100 px at 10 m in UTM 32N around lon 10, lat 50
     (x0,), (y0,) = warp_transform("EPSG:4326", "EPSG:32632", [10.0], [50.01])
     ref = tmp_path / "ref.tif"
-    with rasterio.open(ref, "w", driver="GTiff", height=100, width=100, count=1, dtype="uint8",
-                       crs="EPSG:32632", transform=from_origin(x0, y0, 10, 10)) as dst:
+    with rasterio.open(
+        ref,
+        "w",
+        driver="GTiff",
+        height=100,
+        width=100,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:32632",
+        transform=from_origin(x0, y0, 10, 10),
+    ) as dst:
         dst.write(np.zeros((1, 100, 100), "uint8"))
     house = _way(1, {"building": "yes"}, _rect(10.003, 50.004, 10.004, 50.005))
     lab = OSMLabeler()
@@ -157,7 +188,7 @@ def test_label_end_to_end_with_fake_overpass(tmp_path, monkeypatch):
     house = _way(2, {"building": "yes"}, _rect(10.004, 50.004, 10.005, 50.005))
     lab = OSMLabeler()
     monkeypatch.setattr(lab, "_fetch_overpass", lambda q: {"elements": [house]})
-    out = tmp_path / "labels.png"           # not a .tif: the vector file must not overwrite it
+    out = tmp_path / "labels.png"  # not a .tif: the vector file must not overwrite it
     res = lab.label(BBOX, ["buildings"], output_path=out)
     assert res["success"] and res["n_features"] == 1
     assert res["class_values"] == {"buildings": 1}
@@ -169,8 +200,11 @@ def test_label_end_to_end_with_fake_overpass(tmp_path, monkeypatch):
 
 def test_overpass_runtime_error_is_a_failure(monkeypatch, tmp_path):
     lab = OSMLabeler()
-    monkeypatch.setattr(lab, "_fetch_overpass",
-                        lambda q: {"elements": [], "remark": "runtime error: Query timed out in 'query' at line 3"})
+    monkeypatch.setattr(
+        lab,
+        "_fetch_overpass",
+        lambda q: {"elements": [], "remark": "runtime error: Query timed out in 'query' at line 3"},
+    )
     res = lab.label(BBOX, ["buildings"], output_path=tmp_path / "x.tif")
     assert res["success"] is False and "timed out" in res["error"]
 

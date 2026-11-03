@@ -2,6 +2,7 @@
 Multi-task learning for geospatial models (G5).
 Jointly optimise segmentation + classification (+ a simple box-regression head) from one backbone.
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,9 +44,9 @@ class MultiTaskLearner:
     """
 
     TASK_HEADS = {
-        "segmentation":     "2 x ConvTranspose2d + 1x1 Conv, upsampled to the input size",
-        "detection":        "pooled features -> MLP -> classes x (x, y, w, h, conf)",
-        "classification":   "global average pool -> MLP",
+        "segmentation": "2 x ConvTranspose2d + 1x1 Conv, upsampled to the input size",
+        "detection": "pooled features -> MLP -> classes x (x, y, w, h, conf)",
+        "classification": "global average pool -> MLP",
         "change_detection": "global average pool -> MLP (one tensor in; stack the two dates as channels)",
     }
     BACKBONES = ("resnet50", "resnet101", "vgg16")
@@ -67,7 +68,9 @@ class MultiTaskLearner:
         if unknown:
             raise ValueError(f"unknown task(s) {unknown}; supported: {list(self.TASK_HEADS)}")
         given = n_classes or {}
-        self.n_classes = {t: int(given.get(t, 4 if t == "classification" else 2)) for t in self.tasks}
+        self.n_classes = {
+            t: int(given.get(t, 4 if t == "classification" else 2)) for t in self.tasks
+        }
         if any(v < 1 for v in self.n_classes.values()):
             raise ValueError(f"n_classes must be positive; got {self.n_classes}")
         self.task_weights = task_weights or {t: 1.0 / len(self.tasks) for t in self.tasks}
@@ -75,13 +78,16 @@ class MultiTaskLearner:
         self.pretrained = pretrained
         self.in_channels = int(in_channels)
         self.device = device or self._auto_device()
-        self._model = None
+        self._model: Any = None
 
     @staticmethod
     def _auto_device():
         try:
-            import torch; return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError: return "cpu"
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
 
     def build(self) -> Any:
         """Build (or rebuild, resetting all weights) the model with a shared encoder and the task heads.
@@ -96,20 +102,26 @@ class MultiTaskLearner:
             import torch.nn as nn
             import torch.nn.functional as F
             import torchvision.models as models
-        except ImportError:
-            raise ImportError("torch + torchvision required")
+        except ImportError as exc:
+            raise ImportError("torch + torchvision required") from exc
 
         backbone_map = {
-            "resnet50":  (models.resnet50,  2048),
+            "resnet50": (models.resnet50, 2048),
             "resnet101": (models.resnet101, 2048),
-            "vgg16":     (models.vgg16,     512),
+            "vgg16": (models.vgg16, 512),
         }
 
         def _adapt_first_conv(conv: nn.Conv2d, in_channels: int) -> nn.Conv2d:
             if conv.in_channels == in_channels:
                 return conv
-            new = nn.Conv2d(in_channels, conv.out_channels, conv.kernel_size, conv.stride,
-                            conv.padding, bias=conv.bias is not None)
+            new = nn.Conv2d(
+                in_channels,
+                conv.out_channels,
+                conv.kernel_size,
+                conv.stride,
+                conv.padding,
+                bias=conv.bias is not None,
+            )
             with torch.no_grad():
                 k = min(3, in_channels)
                 new.weight[:, :k] = conv.weight[:, :k]
@@ -138,23 +150,28 @@ class MultiTaskLearner:
                     if task == "segmentation":
                         self.heads[task] = nn.Sequential(
                             nn.ConvTranspose2d(feat_dim, 256, 4, stride=4),
-                            nn.ReLU(), nn.BatchNorm2d(256),
+                            nn.ReLU(),
+                            nn.BatchNorm2d(256),
                             nn.ConvTranspose2d(256, 64, 4, stride=4),
-                            nn.ReLU(), nn.BatchNorm2d(64),
+                            nn.ReLU(),
+                            nn.BatchNorm2d(64),
                             nn.Conv2d(64, nc, 1),
                         )
                     elif task in ("classification", "change_detection"):
                         self.heads[task] = nn.Sequential(
                             nn.AdaptiveAvgPool2d(1),
                             nn.Flatten(),
-                            nn.Linear(feat_dim, 256), nn.ReLU(), nn.Dropout(0.3),
+                            nn.Linear(feat_dim, 256),
+                            nn.ReLU(),
+                            nn.Dropout(0.3),
                             nn.Linear(256, nc),
                         )
                     elif task == "detection":
                         self.heads[task] = nn.Sequential(
                             nn.AdaptiveAvgPool2d(7),
                             nn.Flatten(),
-                            nn.Linear(feat_dim * 49, 1024), nn.ReLU(),
+                            nn.Linear(feat_dim * 49, 1024),
+                            nn.ReLU(),
                             nn.Linear(1024, nc * 5),  # nc × (x, y, w, h, conf)
                         )
 
@@ -162,21 +179,30 @@ class MultiTaskLearner:
                 tasks = list(tasks) if tasks else list(self.tasks)
                 unknown = [t for t in tasks if t not in self.heads]
                 if unknown:
-                    raise ValueError(f"model has no head for {unknown}; it was built with {list(self.heads)}")
+                    raise ValueError(
+                        f"model has no head for {unknown}; it was built with {list(self.heads)}"
+                    )
                 features = self.encoder(x)
                 out = {}
                 for task in tasks:
                     y = self.heads[task](features)
                     if task == "segmentation" and y.shape[-2:] != x.shape[-2:]:
                         # the encoder is 32x down, the head 16x up: restore the input size
-                        y = F.interpolate(y, size=x.shape[-2:], mode="bilinear", align_corners=False)
+                        y = F.interpolate(
+                            y, size=x.shape[-2:], mode="bilinear", align_corners=False
+                        )
                     out[task] = y
                 return out
 
-        self._model = MultiTaskModel(self.backbone, self.tasks, self.n_classes,
-                                     self.pretrained, self.in_channels).to(self.device)
-        logger.info("MultiTaskModel built: backbone=%s tasks=%s in_channels=%d",
-                    self.backbone, self.tasks, self.in_channels)
+        self._model = MultiTaskModel(
+            self.backbone, self.tasks, self.n_classes, self.pretrained, self.in_channels
+        ).to(self.device)
+        logger.info(
+            "MultiTaskModel built: backbone=%s tasks=%s in_channels=%d",
+            self.backbone,
+            self.tasks,
+            self.in_channels,
+        )
         return self._model
 
     def compute_loss(self, outputs: dict[str, Any], targets: dict[str, Any]) -> Any:
@@ -188,9 +214,9 @@ class MultiTaskLearner:
         skipped; if none remain a ``ValueError`` is raised (otherwise the loss would be a constant).
         """
         try:
-            import torch
-        except ImportError:
-            raise ImportError("torch required")
+            import torch  # noqa: F401
+        except ImportError as exc:
+            raise ImportError("torch required") from exc
 
         import torch.nn.functional as F
 
@@ -221,14 +247,17 @@ class MultiTaskLearner:
         if total_loss is None:
             raise ValueError(
                 f"no task has both an output and a target (tasks={self.tasks}, outputs={sorted(outputs)}, "
-                f"targets={sorted(targets)}); batch dictionaries need a key per task")
+                f"targets={sorted(targets)}); batch dictionaries need a key per task"
+            )
         return total_loss, task_losses
 
     def _split_batch(self, batch: Any) -> tuple[Any, dict[str, Any]]:
         if not isinstance(batch, dict) or "inputs" not in batch:
             keys = sorted(batch) if isinstance(batch, dict) else type(batch).__name__
-            raise ValueError(f"each batch must be a dict with an 'inputs' tensor and one entry per task "
-                             f"{self.tasks}; got {keys}")
+            raise ValueError(
+                f"each batch must be a dict with an 'inputs' tensor and one entry per task "
+                f"{self.tasks}; got {keys}"
+            )
         inputs = batch["inputs"].to(self.device)
         return inputs, {k: v.to(self.device) for k, v in batch.items() if k in self.tasks}
 
@@ -258,13 +287,19 @@ class MultiTaskLearner:
 
         optimizer = torch.optim.AdamW(self._model.parameters(), lr=lr, weight_decay=1e-4)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, max(epochs, 1))
-        history: dict[str, list] = {"train_loss": [], "val_loss": [],
-                                    "train_task_losses": [], "val_task_losses": []}
+        history: dict[str, list] = {
+            "train_loss": [],
+            "val_loss": [],
+            "train_task_losses": [],
+            "val_task_losses": [],
+        }
         best_val_loss, best_epoch = float("inf"), 0
 
         def _mean_losses(rows: list[dict[str, float]]) -> dict[str, float]:
             keys = {k for r in rows for k in r}
-            return {k: sum(r[k] for r in rows if k in r) / sum(1 for r in rows if k in r) for k in keys}
+            return {
+                k: sum(r[k] for r in rows if k in r) / sum(1 for r in rows if k in r) for k in keys
+            }
 
         for epoch in range(1, epochs + 1):
             self._model.train()
@@ -311,8 +346,13 @@ class MultiTaskLearner:
                     torch.save(self._model.state_dict(), save_path)
 
             if log_every and epoch % log_every == 0:
-                logger.info("Epoch %d/%d | train=%.4f | val=%s", epoch, epochs, avg_train,
-                            "n/a" if avg_val is None else f"{avg_val:.4f}")
+                logger.info(
+                    "Epoch %d/%d | train=%.4f | val=%s",
+                    epoch,
+                    epochs,
+                    avg_train,
+                    "n/a" if avg_val is None else f"{avg_val:.4f}",
+                )
 
         return {
             "success": True,
@@ -325,6 +365,7 @@ class MultiTaskLearner:
     def load_weights(self, path: str) -> MultiTaskLearner:
         """Load a state dict written by :meth:`train` into the model (building it first if needed)."""
         import torch
+
         if self._model is None:
             self.build()
         self._model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
@@ -339,6 +380,7 @@ class MultiTaskLearner:
         """
         import numpy as np
         import torch
+
         if self._model is None:
             self.build()
         x = (inputs if torch.is_tensor(inputs) else torch.as_tensor(np.asarray(inputs))).float()
@@ -349,5 +391,5 @@ class MultiTaskLearner:
             out = self._model(x.to(self.device), tasks=tasks)
         result = {}
         for task, y in out.items():
-            result[task] = (y.cpu().numpy() if task == "detection" else y.argmax(dim=1).cpu().numpy())
+            result[task] = y.cpu().numpy() if task == "detection" else y.argmax(dim=1).cpu().numpy()
         return result

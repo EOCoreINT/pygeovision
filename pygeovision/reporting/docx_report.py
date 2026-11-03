@@ -1,4 +1,5 @@
 """Word report (python-docx)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,6 +15,7 @@ _TEXT_WIDTH_CM = 17.0
 
 def _rgb(hex_color: str):
     from docx.shared import RGBColor
+
     h = hex_color.lstrip("#")
     return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
@@ -21,6 +23,7 @@ def _rgb(hex_color: str):
 def _shade(cell: Any, fill: str) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+
     tc_pr = cell._tc.get_or_add_tcPr()
     for old in tc_pr.findall(qn("w:shd")):
         tc_pr.remove(old)
@@ -35,6 +38,7 @@ def _cell_borders(cell: Any, **edges: tuple[str, int, str]) -> None:
     """edges: left/right/top/bottom -> (style, size in 1/8 pt, colour)."""
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+
     tc_pr = cell._tc.get_or_add_tcPr()
     borders = tc_pr.find(qn("w:tcBorders"))
     if borders is None:
@@ -48,9 +52,12 @@ def _cell_borders(cell: Any, **edges: tuple[str, int, str]) -> None:
         borders.append(el)
 
 
-def _cell_margins(table: Any, top: int = 50, bottom: int = 50, left: int = 90, right: int = 90) -> None:
+def _cell_margins(
+    table: Any, top: int = 50, bottom: int = 50, left: int = 90, right: int = 90
+) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+
     tbl_pr = table._tbl.tblPr
     mar = OxmlElement("w:tblCellMar")
     for k, v in (("top", top), ("left", left), ("bottom", bottom), ("right", right)):
@@ -64,6 +71,7 @@ def _cell_margins(table: Any, top: int = 50, bottom: int = 50, left: int = 90, r
 def _repeat_header(row: Any) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+
     tr_pr = row._tr.get_or_add_trPr()
     el = OxmlElement("w:tblHeader")
     el.set(qn("w:val"), "true")
@@ -72,12 +80,14 @@ def _repeat_header(row: Any) -> None:
 
 def _no_split(row: Any) -> None:
     from docx.oxml import OxmlElement
+
     row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
 
 
 def _field(run: Any, instr: str) -> None:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+
     for kind, text in (("begin", None), (None, instr), ("end", None)):
         if kind:
             el = OxmlElement("w:fldChar")
@@ -89,16 +99,28 @@ def _field(run: Any, instr: str) -> None:
         run._r.append(el)
 
 
-def _set_cell_text(cell: Any, text: str, *, bold: bool = False, size: float = 8.5, color: str = INK, align: str = "left") -> None:
+def _set_cell_text(
+    cell: Any,
+    text: str,
+    *,
+    bold: bool = False,
+    size: float = 8.5,
+    color: str = INK,
+    align: str = "left",
+) -> None:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Pt
+
     cell.text = ""
     lines = str(text).split("\n")
     for i, line in enumerate(lines):
         par = cell.paragraphs[0] if i == 0 else cell.add_paragraph()
         par.paragraph_format.space_after = Pt(0)
         par.paragraph_format.space_before = Pt(0)
-        par.alignment = {"right": WD_ALIGN_PARAGRAPH.RIGHT, "center": WD_ALIGN_PARAGRAPH.CENTER}.get(align, WD_ALIGN_PARAGRAPH.LEFT)
+        par.alignment = {
+            "right": WD_ALIGN_PARAGRAPH.RIGHT,
+            "center": WD_ALIGN_PARAGRAPH.CENTER,
+        }.get(align, WD_ALIGN_PARAGRAPH.LEFT)
         run = par.add_run(line)
         run.bold = bold
         run.font.size = Pt(size)
@@ -227,7 +249,6 @@ def write_docx(report: Report, path: Path) -> Path:
         r.italic, r.font.size = True, Pt(8)
         r.font.color.rgb = _rgb(MUTED)
 
-
     def add_table(t: Table) -> None:
         h = doc.add_paragraph()
         h.paragraph_format.keep_with_next = True
@@ -241,7 +262,9 @@ def write_docx(report: Report, path: Path) -> Path:
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         sw_cm = 0.45 if has_sw else 0.0
         total_w = sum(c.weight for c in t.cols)
-        widths = ([sw_cm] if has_sw else []) + [(_TEXT_WIDTH_CM - sw_cm) * c.weight / total_w for c in t.cols]
+        widths = ([sw_cm] if has_sw else []) + [
+            (_TEXT_WIDTH_CM - sw_cm) * c.weight / total_w for c in t.cols
+        ]
         hdr = tbl.rows[0]
         _repeat_header(hdr)
         names = ([""] if has_sw else []) + [c.name for c in t.cols]
@@ -254,7 +277,9 @@ def write_docx(report: Report, path: Path) -> Path:
             cells = tbl.add_row()
             _no_split(cells)
             vals = ([""] if has_sw else []) + [
-                (F.fmt_value(v, c.fmt) if c.fmt != "text" else (F.NA if v is None else str(v))) for c, v in zip(t.cols, row)]
+                (F.fmt_value(v, c.fmt) if c.fmt != "text" else (F.NA if v is None else str(v)))
+                for c, v in zip(t.cols, row)
+            ]
             for i, v in enumerate(vals):
                 cells.cells[i].width = Cm(widths[i])
                 _set_cell_text(cells.cells[i], v, align=aligns[i])
@@ -265,7 +290,7 @@ def write_docx(report: Report, path: Path) -> Path:
         _cell_margins(tbl)
         for i, w_ in enumerate(widths):
             tbl.columns[i].width = Cm(w_)
-        if len(t.rows) <= 18:                       # keep a short table, its title and its note on one page
+        if len(t.rows) <= 18:  # keep a short table, its title and its note on one page
             for row_ in tbl.rows:
                 for cell_ in row_.cells:
                     for par_ in cell_.paragraphs:
@@ -331,9 +356,11 @@ def write_docx(report: Report, path: Path) -> Path:
             add_block(b)
     if report.warnings:
         doc.add_heading("Notes on this run", level=1)
-        doc.add_paragraph("Parts of the deliverables that could not be produced, or were changed, and why:")
-        for w in report.warnings:
-            doc.add_paragraph(w, style="List Bullet")
+        doc.add_paragraph(
+            "Parts of the deliverables that could not be produced, or were changed, and why:"
+        )
+        for warning_text in report.warnings:
+            doc.add_paragraph(warning_text, style="List Bullet")
 
     doc.core_properties.title = report.title
     doc.core_properties.author = "PyGeoVision"

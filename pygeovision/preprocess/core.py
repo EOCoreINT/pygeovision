@@ -38,14 +38,16 @@ Quick start::
         output_path="ready_for_model.tif",
     )
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
+import contextlib
 import logging
 import os
 import pathlib
 import re
 import tempfile
-from collections.abc import Sequence
 
 import numpy as np
 
@@ -53,13 +55,11 @@ logger = logging.getLogger(__name__)
 
 # Band name patterns for auto-discovery inside a scene directory
 _SENTINEL2_BAND_RE = re.compile(
-    r"(?:^|[_\-])(?P<band>B0?[1-9]|B1[0-2A]|TCI|SCL|WVP|AOT|B8A)"
-    r"(?:_[A-Z0-9]+)?\.tif$",
+    r"(?:^|[_\-])(?P<band>B0?[1-9]|B1[0-2A]|TCI|SCL|WVP|AOT|B8A)" r"(?:_[A-Z0-9]+)?\.tif$",
     re.IGNORECASE,
 )
 _LANDSAT_BAND_RE = re.compile(
-    r"(?:^|[_\-])(?P<band>B[1-9]|B10|B11)"
-    r"(?:_[A-Z0-9]+)?\.tif$",
+    r"(?:^|[_\-])(?P<band>B[1-9]|B10|B11)" r"(?:_[A-Z0-9]+)?\.tif$",
     re.IGNORECASE,
 )
 
@@ -67,6 +67,7 @@ _LANDSAT_BAND_RE = re.compile(
 def _require_rasterio():
     try:
         import rasterio
+
         return rasterio
     except ImportError:
         raise ImportError("pip install rasterio") from None
@@ -75,6 +76,7 @@ def _require_rasterio():
 def _require_shapely():
     try:
         from shapely.geometry import box, mapping, shape
+
         return shape, box, mapping
     except ImportError:
         raise ImportError("pip install shapely") from None
@@ -94,12 +96,17 @@ def _crop_or_explain(rio_mask, src, geoms, what: str, **kwargs):
     """``rasterio.mask.mask`` that explains an empty overlap instead of failing with a window error."""
     try:
         return rio_mask(src, geoms, **kwargs)
-    except Exception as exc:                               # WindowError / "Input shapes do not overlap raster"
-        if type(exc).__name__ == "WindowError" or "do not overlap" in str(exc) or "empty" in str(exc).lower():
+    except Exception as exc:  # WindowError / "Input shapes do not overlap raster"
+        if (
+            type(exc).__name__ == "WindowError"
+            or "do not overlap" in str(exc)
+            or "empty" in str(exc).lower()
+        ):
             b = src.bounds
             where = f"x {b.left:.6g} to {b.right:.6g}, y {b.bottom:.6g} to {b.top:.6g} in {src.crs}"
             try:
                 from rasterio.warp import transform_bounds
+
                 w = transform_bounds(src.crs, "EPSG:4326", *b)
                 where += f" (longitude {w[0]:.4f} to {w[2]:.4f}, latitude {w[1]:.4f} to {w[3]:.4f})"
             except Exception:
@@ -137,6 +144,7 @@ class Preprocessor:
     def __init__(self, validator=None):
         if validator is None:
             from pygeovision.data.validator import DataValidator
+
             validator = DataValidator(mode="fix")
         self._v = validator
 
@@ -189,12 +197,12 @@ class Preprocessor:
         # Read the first band to get spatial metadata
         with rasterio.open(band_paths[0]) as src0:
             profile = src0.profile.copy()
-            width     = src0.width
-            height    = src0.height
+            width = src0.width
+            height = src0.height
             src0.dtypes[0]
 
         profile.update(count=len(band_paths), compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             profile.pop(_k, None)
 
         with rasterio.open(output_path, "w", **profile) as dst:
@@ -204,6 +212,7 @@ class Preprocessor:
                     # Resample to match first band if sizes differ
                     if data.shape != (height, width):
                         from rasterio.enums import Resampling
+
                         data = src.read(
                             1,
                             out_shape=(height, width),
@@ -219,7 +228,7 @@ class Preprocessor:
 
     def stack_from_dir(
         self,
-        scene_dir: str,
+        scene_dir: str | pathlib.Path,
         band_names: list[str],
         output_path: str,
         pattern: str = "*.tif",
@@ -268,9 +277,11 @@ class Preprocessor:
             for bn in band_names:
                 token = bn.upper()
                 # Match "_B02_", "_B02.", "B02.tif", "B02_10m.tif" …
-                if re.search(rf"(?:^|[_\-]){re.escape(token)}(?:[_\.\-]|$)", fname):
-                    if token not in name_to_path:  # first match wins
-                        name_to_path[token] = p
+                if (
+                    re.search(rf"(?:^|[_\-]){re.escape(token)}(?:[_\.\-]|$)", fname)
+                    and token not in name_to_path  # first match wins
+                ):
+                    name_to_path[token] = p
 
         ordered_paths = []
         missing = []
@@ -330,9 +341,9 @@ class Preprocessor:
             )
         """
         rasterio = _require_rasterio()
-        import rasterio.warp as warp
         from rasterio.crs import CRS
         from rasterio.mask import mask as rio_mask
+        import rasterio.warp as warp
 
         output_path = _safe_output(input_path, output_path, "_clipped")
         _shape, _box, _mapping = _require_shapely()
@@ -344,8 +355,7 @@ class Preprocessor:
             src_crs = CRS.from_user_input(bbox_crs)
             if src_crs != raster_crs:
                 minx, miny, maxx, maxy = bbox
-                xs, ys = warp.transform(src_crs, raster_crs,
-                                         [minx, maxx], [miny, maxy])
+                xs, ys = warp.transform(src_crs, raster_crs, [minx, maxx], [miny, maxy])
                 minx, maxx = min(xs), max(xs)
                 miny, maxy = min(ys), max(ys)
                 bbox_proj = (minx, miny, maxx, maxy)
@@ -354,9 +364,12 @@ class Preprocessor:
 
             geom = [_mapping(_box(*bbox_proj))]
             if not (bbox[0] < bbox[2] and bbox[1] < bbox[3]):
-                raise ValueError(f"bbox must be (min_x, min_y, max_x, max_y) with min < max; got {tuple(bbox)}")
-            data, transform = _crop_or_explain(rio_mask, src, geom, f"The bbox {tuple(bbox)}",
-                                               crop=True, all_touched=all_touched)
+                raise ValueError(
+                    f"bbox must be (min_x, min_y, max_x, max_y) with min < max; got {tuple(bbox)}"
+                )
+            data, transform = _crop_or_explain(
+                rio_mask, src, geom, f"The bbox {tuple(bbox)}", crop=True, all_touched=all_touched
+            )
             profile = src.profile.copy()
             profile.update(
                 height=data.shape[1],
@@ -366,28 +379,34 @@ class Preprocessor:
             )
 
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 
         orig_px = _raster_shape(input_path)
-        new_px  = (data.shape[1], data.shape[2])
-        pct     = 100 * new_px[0] * new_px[1] / max(orig_px[0] * orig_px[1], 1)
+        new_px = (data.shape[1], data.shape[2])
+        pct = 100 * new_px[0] * new_px[1] / max(orig_px[0] * orig_px[1], 1)
         logger.info(
             "Clipped to bbox: %dx%d → %dx%d (%.1f%% of original) → %s",
-            orig_px[1], orig_px[0], new_px[1], new_px[0], pct, output_path,
+            orig_px[1],
+            orig_px[0],
+            new_px[1],
+            new_px[0],
+            pct,
+            output_path,
         )
         return output_path
 
     def clip_to_polygon(
-    self,
+        self,
         input_path: str,
         geojson: str | dict,
         output_path: str | None = None,
         crop: bool = True,
         all_touched: bool = False,
         nodata: float | None = None,
-        geojson_crs: str = "EPSG:4326",   # <-- new param, WGS84 default (standard GeoJSON convention)
+        geojson_crs: str = "EPSG:4326",  # <-- new param, WGS84 default (standard GeoJSON convention)
     ) -> str:
         """Clip a raster to one or more GeoJSON polygons.
 
@@ -414,9 +433,10 @@ class Preprocessor:
             Path of the clipped raster.
         """
         rasterio = _require_rasterio()
+        from rasterio.crs import CRS
         from rasterio.mask import mask as rio_mask
         from rasterio.warp import transform_geom
-        from rasterio.crs import CRS
+
         _shape, _box, _mapping = _require_shapely()
 
         import json
@@ -444,18 +464,19 @@ class Preprocessor:
             # (e.g. to UTM during mosaicking) — clipping requires both to match.
             src_crs = CRS.from_user_input(geojson_crs)
             if src.crs and src_crs != src.crs:
-                geoms = [
-                    transform_geom(src_crs, src.crs, geom)
-                    for geom in geoms
-                ]
+                geoms = [transform_geom(src_crs, src.crs, geom) for geom in geoms]
                 logger.debug(
                     "clip_to_polygon: reprojected geometry %s → %s",
-                    geojson_crs, src.crs,
+                    geojson_crs,
+                    src.crs,
                 )
 
             _nodata = nodata if nodata is not None else src.nodata
             data, transform = _crop_or_explain(
-                rio_mask, src, geoms, "The polygon",
+                rio_mask,
+                src,
+                geoms,
+                "The polygon",
                 crop=crop,
                 all_touched=all_touched,
                 nodata=_nodata,
@@ -470,12 +491,12 @@ class Preprocessor:
             )
 
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 
-        logger.info("Clipped to polygon → %s (%dx%d px)",
-                    output_path, data.shape[2], data.shape[1])
+        logger.info("Clipped to polygon → %s (%dx%d px)", output_path, data.shape[2], data.shape[1])
         return output_path
 
     # def clip_to_polygon(
@@ -601,7 +622,7 @@ class Preprocessor:
         srcs = [rasterio.open(p) for p in input_paths]
         try:
             band_counts = [s.count for s in srcs]
-            dtypes      = [s.dtypes[0] for s in srcs]
+            dtypes = [s.dtypes[0] for s in srcs]
             if len(set(band_counts)) > 1:
                 raise ValueError(
                     f"mosaic(): input rasters have inconsistent band counts "
@@ -642,13 +663,20 @@ class Preprocessor:
                 s.close()
 
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(mosaic_arr)
 
-        logger.info("Mosaicked %d rasters → %s (%dx%d px, %d band(s), %s)",
-                     len(input_paths), output_path, mosaic_arr.shape[2], mosaic_arr.shape[1],
-                     mosaic_arr.shape[0], mosaic_arr.dtype)
+        logger.info(
+            "Mosaicked %d rasters → %s (%dx%d px, %d band(s), %s)",
+            len(input_paths),
+            output_path,
+            mosaic_arr.shape[2],
+            mosaic_arr.shape[1],
+            mosaic_arr.shape[0],
+            mosaic_arr.dtype,
+        )
         return output_path
 
     # ------------------------------------------------------------------
@@ -682,35 +710,33 @@ class Preprocessor:
 
         output_path = _safe_output(input_path, output_path, "_masked")
 
-        with rasterio.open(input_path) as src, \
-             rasterio.open(mask_path) as msrc:
+        with rasterio.open(input_path) as src, rasterio.open(mask_path) as msrc:
 
-            data    = src.read().astype(np.float32)
+            data = src.read().astype(np.float32)
             profile = src.profile.copy()
 
             # Read mask, resampling to match data if needed
-            cloud   = msrc.read(
+            cloud = msrc.read(
                 1,
                 out_shape=(data.shape[1], data.shape[2]),
                 resampling=Resampling.nearest,
             ).astype(bool)
 
         if invert:
-            cloud = ~cloud          # flip: 0=cloud, 1=clear → 0=clear, 1=cloud
+            cloud = ~cloud  # flip: 0=cloud, 1=clear → 0=clear, 1=cloud
 
         # Apply mask to all bands
         for b in range(data.shape[0]):
             data[b][cloud] = nodata
 
         profile.update(nodata=nodata, dtype="float32", compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 
         masked_pct = cloud.mean() * 100
-        logger.info("Cloud mask applied: %.1f%% pixels masked → %s",
-                     masked_pct, output_path)
+        logger.info("Cloud mask applied: %.1f%% pixels masked → %s", masked_pct, output_path)
         return output_path
 
     def apply_scl(
@@ -756,10 +782,9 @@ class Preprocessor:
         output_path = _safe_output(input_path, output_path, "_scl")
         keep_set = set(keep_classes)
 
-        with rasterio.open(input_path) as src, \
-             rasterio.open(scl_path) as sclsrc:
+        with rasterio.open(input_path) as src, rasterio.open(scl_path) as sclsrc:
 
-            data    = src.read().astype(np.float32)
+            data = src.read().astype(np.float32)
             profile = src.profile.copy()
 
             scl = sclsrc.read(
@@ -774,7 +799,7 @@ class Preprocessor:
             data[b][mask] = nodata
 
         profile.update(nodata=nodata, dtype="float32", compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
@@ -783,7 +808,9 @@ class Preprocessor:
         classes_removed = sorted(set(np.unique(scl).tolist()) - keep_set)
         logger.info(
             "SCL mask: %.1f%% pixels removed (classes %s) → %s",
-            masked_pct, classes_removed, output_path,
+            masked_pct,
+            classes_removed,
+            output_path,
         )
         return output_path
 
@@ -840,9 +867,9 @@ class Preprocessor:
             raise ValueError(f"method must be one of {VALID}, got '{method}'")
 
         with rasterio.open(input_path) as src:
-            data    = src.read().astype(np.float64)
+            data = src.read().astype(np.float64)
             profile = src.profile.copy()
-            nodata  = src.nodata
+            nodata = src.nodata
 
         out = np.zeros_like(data, dtype=np.float64)
 
@@ -891,7 +918,7 @@ class Preprocessor:
 
         out = out.astype(out_dtype)
         profile.update(dtype=out_dtype, compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(out)
@@ -933,12 +960,12 @@ class Preprocessor:
         from rasterio.enums import Resampling as _R
 
         _ALG = {
-            "nearest":  _R.nearest,
+            "nearest": _R.nearest,
             "bilinear": _R.bilinear,
-            "cubic":    _R.cubic,
-            "lanczos":  _R.lanczos,
-            "average":  _R.average,
-            "mode":     _R.mode,
+            "cubic": _R.cubic,
+            "lanczos": _R.lanczos,
+            "average": _R.average,
+            "mode": _R.mode,
         }
         if resampling not in _ALG:
             raise ValueError(f"resampling must be one of {list(_ALG)}")
@@ -949,10 +976,10 @@ class Preprocessor:
         with rasterio.open(input_path) as src:
             # Current pixel size in the file's CRS (assumed metres for projected)
             src_res_x = abs(src.transform.a)
-            scale     = src_res_x / resolution_m
+            scale = src_res_x / resolution_m
 
             new_h = max(1, int(round(src.height * scale)))
-            new_w = max(1, int(round(src.width  * scale)))
+            new_w = max(1, int(round(src.width * scale)))
 
             data = src.read(
                 out_shape=(src.count, new_h, new_w),
@@ -960,25 +987,31 @@ class Preprocessor:
             )
 
             new_transform = src.transform * src.transform.scale(
-                src.width  / new_w,
+                src.width / new_w,
                 src.height / new_h,
             )
             profile = src.profile.copy()
             profile.update(
-                height=new_h, width=new_w,
+                height=new_h,
+                width=new_w,
                 transform=new_transform,
                 compress="lzw",
             )
 
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(data)
 
         logger.info(
             "Resampled %.1f m → %.1f m (%dx%d → %dx%d) → %s",
-            src_res_x, resolution_m,
-            src.width, src.height, new_w, new_h,
+            src_res_x,
+            resolution_m,
+            src.width,
+            src.height,
+            new_w,
+            new_h,
             output_path,
         )
         return output_path
@@ -1079,7 +1112,7 @@ class Preprocessor:
             print(result["shape"], result["resolution_m"])
         """
         tmpdir = tempfile.mkdtemp(prefix="pgv_preprocess_")
-        tmp    = pathlib.Path(tmpdir)
+        tmp = pathlib.Path(tmpdir)
         intermediates: list[str] = []
         steps_applied: list[str] = []
 
@@ -1091,8 +1124,9 @@ class Preprocessor:
         # ── Step 1: Stack ───────────────────────────────────────────────
         if stack_bands:
             src_dir = stack_dir or (
-                input_path if pathlib.Path(input_path).is_dir() else
-                str(pathlib.Path(input_path).parent)
+                input_path
+                if pathlib.Path(input_path).is_dir()
+                else str(pathlib.Path(input_path).parent)
             )
             stacked = _tmp("stacked")
             self.stack_from_dir(
@@ -1122,16 +1156,16 @@ class Preprocessor:
         # ── Step 3: Cloud masking ───────────────────────────────────────
         if cloud_mask_path is not None:
             masked = _tmp("masked")
-            self.apply_cloud_mask(current, cloud_mask_path,
-                                    output_path=masked, nodata=nodata)
+            self.apply_cloud_mask(current, cloud_mask_path, output_path=masked, nodata=nodata)
             intermediates.append(masked)
             current = masked
             steps_applied.append("cloud_mask")
 
         if scl_path is not None:
             scl_out = _tmp("scl")
-            self.apply_scl(current, scl_path, output_path=scl_out,
-                            keep_classes=scl_keep_classes, nodata=nodata)
+            self.apply_scl(
+                current, scl_path, output_path=scl_out, keep_classes=scl_keep_classes, nodata=nodata
+            )
             intermediates.append(scl_out)
             current = scl_out
             steps_applied.append(f"scl(keep={list(scl_keep_classes)})")
@@ -1140,7 +1174,8 @@ class Preprocessor:
         if normalise:
             normed = _tmp("norm")
             self.normalise(
-                current, output_path=normed,
+                current,
+                output_path=normed,
                 method=normalise,
                 scale_factor=scale_factor,
                 percentile=percentile,
@@ -1153,8 +1188,7 @@ class Preprocessor:
         # ── Step 5: Resample ────────────────────────────────────────────
         if resample_m is not None:
             resampled = _tmp("resampled")
-            self.resample(current, resample_m,
-                           output_path=resampled, resampling=resampling)
+            self.resample(current, resample_m, output_path=resampled, resampling=resampling)
             intermediates.append(resampled)
             current = resampled
             steps_applied.append(f"resample({resample_m}m)")
@@ -1163,24 +1197,21 @@ class Preprocessor:
         pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         if current != output_path:
             import shutil
+
             shutil.copy2(current, output_path)
 
         # Clean up intermediates
         if not keep_intermediates:
             for f in intermediates:
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(f)
-                except OSError:
-                    pass
-            try:
+            with contextlib.suppress(OSError):
                 os.rmdir(tmpdir)
-            except OSError:
-                pass
 
         # Read final metadata
         rasterio = _require_rasterio()
         with rasterio.open(output_path) as dst:
-            shape_out    = (dst.count, dst.height, dst.width)
+            shape_out = (dst.count, dst.height, dst.width)
             resolution_m = abs(dst.transform.a)
 
         if not steps_applied:
@@ -1188,13 +1219,16 @@ class Preprocessor:
 
         logger.info(
             "Pipeline complete: %s | shape=%s | res=%.1fm | steps=%s",
-            output_path, shape_out, resolution_m, steps_applied,
+            output_path,
+            shape_out,
+            resolution_m,
+            steps_applied,
         )
         return {
-            "output_path":  output_path,
+            "output_path": output_path,
             "steps_applied": steps_applied,
-            "shape":         shape_out,
-            "resolution_m":  resolution_m,
+            "shape": shape_out,
+            "resolution_m": resolution_m,
         }
 
     # ------------------------------------------------------------------
@@ -1212,25 +1246,27 @@ class Preprocessor:
         """
         rasterio = _require_rasterio()
         with rasterio.open(path) as src:
-            data  = src.read()
+            data = src.read()
             valid = data[data != src.nodata] if src.nodata is not None else data.ravel()
             return {
-                "path":         path,
-                "crs":          str(src.crs),
-                "shape":        (src.count, src.height, src.width),
-                "bands":        src.count,
+                "path": path,
+                "crs": str(src.crs),
+                "shape": (src.count, src.height, src.width),
+                "bands": src.count,
                 "resolution_m": abs(src.transform.a),
-                "bbox":         list(src.bounds),
-                "dtype":        src.dtypes[0],
-                "nodata":       src.nodata,
-                "value_range":  (float(valid.min()), float(valid.max()))
-                                 if valid.size else (None, None),
+                "bbox": list(src.bounds),
+                "dtype": src.dtypes[0],
+                "nodata": src.nodata,
+                "value_range": (
+                    (float(valid.min()), float(valid.max())) if valid.size else (None, None)
+                ),
             }
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _raster_shape(path: str) -> tuple[int, int]:
     rasterio = _require_rasterio()

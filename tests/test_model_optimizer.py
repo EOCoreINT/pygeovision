@@ -1,4 +1,5 @@
 """ModelOptimizer: ONNX export + ONNX Runtime, INT8 quantisation, pruning (CPU, tiny conv net)."""
+
 import numpy as np
 import pytest
 
@@ -10,7 +11,9 @@ from pygeovision.training.hpo import ModelOptimizer  # noqa: E402
 
 def _net():
     torch.manual_seed(0)
-    return nn.Sequential(nn.Conv2d(4, 8, 3, padding=1), nn.BatchNorm2d(8), nn.ReLU(), nn.Conv2d(8, 2, 1)).eval()
+    return nn.Sequential(
+        nn.Conv2d(4, 8, 3, padding=1), nn.BatchNorm2d(8), nn.ReLU(), nn.Conv2d(8, 2, 1)
+    ).eval()
 
 
 def test_onnx_export_and_runtime_match_pytorch(tmp_path):
@@ -32,8 +35,9 @@ def test_int8_quantisation_runs_and_stays_close(tmp_path):
     x = torch.rand(2, 4, 32, 32)
     with torch.no_grad():
         ref = net(x)
-    q = ModelOptimizer(net, in_channels=4).quantize_int8([(x, None), (torch.rand(2, 4, 32, 32), None)],
-                                                          str(tmp_path / "q.pth"))
+    q = ModelOptimizer(net, in_channels=4).quantize_int8(
+        [(x, None), (torch.rand(2, 4, 32, 32), None)], str(tmp_path / "q.pth")
+    )
     with torch.no_grad():
         out = q(x)
     assert out.shape == ref.shape
@@ -50,10 +54,10 @@ def test_pruning_zeroes_weights_but_keeps_plain_state_dict_keys():
     net = _net()
     keys = set(net.state_dict())
     ModelOptimizer(net, in_channels=4).prune(0.5)
-    assert set(net.state_dict()) == keys                       # no weight_orig / weight_mask
+    assert set(net.state_dict()) == keys  # no weight_orig / weight_mask
     w = net[0].weight
     assert float((w == 0).float().mean()) == pytest.approx(0.5, abs=0.05)
-    assert float((net[1].weight == 0).float().mean()) == 0.0   # batch-norm scales are untouched
+    assert float((net[1].weight == 0).float().mean()) == 0.0  # batch-norm scales are untouched
 
 
 def test_unknown_prune_method_is_refused():

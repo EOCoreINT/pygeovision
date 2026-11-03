@@ -14,15 +14,16 @@ This module does exactly that and nothing else. It never invents a value: pixels
 Network access is injectable (``session``) and the raster source may be a local path, which is how the offline
 tests exercise the real window/warp/mosaic code on small files.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 import logging
 import math
 import os
-import time
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from pathlib import Path
+import time
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 PC_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1"
 PC_SAS = "https://planetarycomputer.microsoft.com/api/sas/v1/token"
-AWS_COPDEM30 = "https://copernicus-dem-30m.s3.amazonaws.com"   # AWS Open Data, public, no key
+AWS_COPDEM30 = "https://copernicus-dem-30m.s3.amazonaws.com"  # AWS Open Data, public, no key
 
 
 def copernicus_dem_aws_urls(bbox: Iterable[float]) -> list[str]:
@@ -43,7 +44,9 @@ def copernicus_dem_aws_urls(bbox: Iterable[float]) -> list[str]:
     """
     west, south, east, north = (float(v) for v in bbox)
     if not (west < east and south < north):
-        raise ReferenceDataError("bbox must be (west, south, east, north) with west < east and south < north")
+        raise ReferenceDataError(
+            "bbox must be (west, south, east, north) with west < east and south < north"
+        )
     eps = 1e-9
     urls: list[str] = []
     for lat in range(math.floor(south), math.ceil(north - eps)):
@@ -52,6 +55,8 @@ def copernicus_dem_aws_urls(bbox: Iterable[float]) -> list[str]:
             name = f"Copernicus_DSM_COG_10_{ns}{abs(lat):02d}_00_{ew}{abs(lon):03d}_00_DEM"
             urls.append(f"{AWS_COPDEM30}/{name}/{name}.tif")
     return urls
+
+
 #: refuse to build a grid larger than this many pixels (about 1 GB as float32); the message says how to fix it.
 MAX_GRID_PIXELS = 250_000_000
 
@@ -64,11 +69,13 @@ class ReferenceDataError(RuntimeError):
 # Grid
 # ---------------------------------------------------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class TargetGrid:
     """A north-up grid in a metric CRS."""
+
     crs: str
-    transform: Any            # affine.Affine
+    transform: Any  # affine.Affine
     width: int
     height: int
     res: float
@@ -79,8 +86,14 @@ class TargetGrid:
 
     def profile(self) -> dict[str, Any]:
         from rasterio.crs import CRS
-        return {"driver": "GTiff", "crs": CRS.from_string(self.crs), "transform": self.transform,
-                "width": self.width, "height": self.height}
+
+        return {
+            "driver": "GTiff",
+            "crs": CRS.from_string(self.crs),
+            "transform": self.transform,
+            "width": self.width,
+            "height": self.height,
+        }
 
     @property
     def bounds(self) -> tuple[float, float, float, float]:
@@ -94,14 +107,18 @@ def utm_crs_for(lon: float, lat: float) -> str:
     return f"EPSG:{(32600 if lat >= 0 else 32700) + zone}"
 
 
-def make_grid(bbox: Sequence[float], res: float, crs: str | None = None, max_pixels: int = MAX_GRID_PIXELS) -> TargetGrid:
+def make_grid(
+    bbox: Sequence[float], res: float, crs: str | None = None, max_pixels: int = MAX_GRID_PIXELS
+) -> TargetGrid:
     """Grid of ``res``-metre pixels covering ``bbox`` (lon/lat), snapped to whole multiples of ``res``."""
     from affine import Affine
     from rasterio.warp import transform_bounds
 
     west, south, east, north = (float(v) for v in bbox)
     if not (west < east and south < north):
-        raise ReferenceDataError(f"bbox {tuple(bbox)} must be (min_lon, min_lat, max_lon, max_lat) with min < max")
+        raise ReferenceDataError(
+            f"bbox {tuple(bbox)} must be (min_lon, min_lat, max_lon, max_lat) with min < max"
+        )
     if res <= 0:
         raise ReferenceDataError(f"resolution must be positive, got {res}")
     crs = crs or utm_crs_for((west + east) / 2.0, (south + north) / 2.0)
@@ -111,13 +128,21 @@ def make_grid(bbox: Sequence[float], res: float, crs: str | None = None, max_pix
     if width * height > max_pixels:
         raise ReferenceDataError(
             f"the area would be {width} x {height} = {width * height / 1e6:.0f} million pixels at {res:g} m "
-            f"(limit {max_pixels / 1e6:.0f} million). Use a smaller bounding box or a coarser resolution.")
-    return TargetGrid(crs=crs, transform=Affine(res, 0.0, left, 0.0, -res, top), width=width, height=height, res=float(res))
+            f"(limit {max_pixels / 1e6:.0f} million). Use a smaller bounding box or a coarser resolution."
+        )
+    return TargetGrid(
+        crs=crs,
+        transform=Affine(res, 0.0, left, 0.0, -res, top),
+        width=width,
+        height=height,
+        res=float(res),
+    )
 
 
 @dataclass
 class GridRaster:
     """Pixels of one product on a :class:`TargetGrid`. ``valid`` is False where no source tile had data."""
+
     data: np.ndarray
     valid: np.ndarray
     grid: TargetGrid
@@ -132,6 +157,7 @@ def _redact(href: str) -> str:
 def _scrub(text: str) -> str:
     """Remove SAS-style query strings from any text (GDAL puts the full URL into some of its messages)."""
     import re
+
     return re.sub(r"\?[^\s'\"]*\b(?:sig|sv|se|sp|sr)=[^\s'\"]*", "?<token removed>", text)
 
 
@@ -141,21 +167,37 @@ def _http_reason(href: str, message: str) -> str:
         return ""
     try:
         import requests
+
         r = requests.get(href, headers={"Range": "bytes=0-0"}, timeout=20)
     except Exception as exc:  # noqa: BLE001 - diagnostics only; the original error is still raised
         return f" (a second request to find out why also failed: {exc.__class__.__name__})"
     if r.status_code < 400:
-        return (f" (the same URL answered HTTP {r.status_code} to a plain request, so the failure is specific to the "
-                f"GDAL read: check the GDAL/libcurl build and proxy settings)")
+        return (
+            f" (the same URL answered HTTP {r.status_code} to a plain request, so the failure is specific to the "
+            f"GDAL read: check the GDAL/libcurl build and proxy settings)"
+        )
     text = r.text or ""
     code = text.split("<Code>")[1].split("</Code>")[0] if "<Code>" in text else ""
-    msg = text.split("<Message>")[1].split("</Message>")[0].splitlines()[0][:200] if "<Message>" in text else text[:200]
+    msg = (
+        text.split("<Message>")[1].split("</Message>")[0].splitlines()[0][:200]
+        if "<Message>" in text
+        else text[:200]
+    )
     return f" (server says HTTP {r.status_code} {code}: {msg})".replace(" )", ")")
 
 
-def read_to_grid(sources: Iterable[str | Path], grid: TargetGrid, *, band: int = 1, resampling: str = "nearest",
-                 dtype: str = "float32", invalid_values: Iterable[float] = (), fill: float = np.nan,
-                 env: dict[str, Any] | None = None, skip_missing: bool = False) -> GridRaster:
+def read_to_grid(
+    sources: Iterable[str | Path],
+    grid: TargetGrid,
+    *,
+    band: int = 1,
+    resampling: str = "nearest",
+    dtype: str = "float32",
+    invalid_values: Iterable[float] = (),
+    fill: float = np.nan,
+    env: dict[str, Any] | None = None,
+    skip_missing: bool = False,
+) -> GridRaster:
     """Read the window of every source that overlaps ``grid`` and mosaic them (first valid pixel wins).
 
     A pixel is *invalid* when the source's own nodata, one of ``invalid_values``, or "outside every source" applies;
@@ -178,8 +220,13 @@ def read_to_grid(sources: Iterable[str | Path], grid: TargetGrid, *, band: int =
     valid = np.zeros((grid.height, grid.width), dtype=bool)
     bad = np.asarray(list(invalid_values), dtype="float64")
     used: list[str] = []
-    opts = {"GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR", "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif,.tiff,.TIF",
-            "GDAL_HTTP_MAX_RETRY": "4", "GDAL_HTTP_RETRY_DELAY": "1", "GDAL_HTTP_TIMEOUT": "60"}
+    opts = {
+        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+        "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif,.tiff,.TIF",
+        "GDAL_HTTP_MAX_RETRY": "4",
+        "GDAL_HTTP_RETRY_DELAY": "1",
+        "GDAL_HTTP_TIMEOUT": "60",
+    }
     opts.update(env or {})
     with rasterio.Env(**opts):
         for href in srcs:
@@ -188,19 +235,32 @@ def read_to_grid(sources: Iterable[str | Path], grid: TargetGrid, *, band: int =
             try:
                 with rasterio.open(href) as ds:
                     if band > ds.count:
-                        raise ReferenceDataError(f"{href} has {ds.count} band(s); band {band} was requested")
+                        raise ReferenceDataError(
+                            f"{href} has {ds.count} band(s); band {band} was requested"
+                        )
                     # add_alpha: the alpha band is 0 outside the tile and where the tile's own nodata applies, which a
                     # plain zero-filled warp cannot tell apart from real zeros.
-                    with WarpedVRT(ds, crs=grid.crs, transform=grid.transform, width=grid.width, height=grid.height,
-                                   resampling=method, src_nodata=ds.nodata, init_dest_nodata=False,
-                                   nodata=ds.nodata if ds.nodata is not None else 0, add_alpha=True) as vrt:
+                    with WarpedVRT(
+                        ds,
+                        crs=grid.crs,
+                        transform=grid.transform,
+                        width=grid.width,
+                        height=grid.height,
+                        resampling=method,
+                        src_nodata=ds.nodata,
+                        init_dest_nodata=False,
+                        nodata=ds.nodata if ds.nodata is not None else 0,
+                        add_alpha=True,
+                    ) as vrt:
                         vals = vrt.read(band).astype("float64")
                         footprint = vrt.read(vrt.count) > 0
             except rasterio.errors.RasterioIOError as exc:
                 if skip_missing and "404" in str(exc):
                     logger.info("no tile at %s (HTTP 404); skipped", _redact(href))
                     continue
-                raise ReferenceDataError(f"could not read {_redact(href)}: {_scrub(str(exc))}{_http_reason(href, str(exc))}") from exc
+                raise ReferenceDataError(
+                    f"could not read {_redact(href)}: {_scrub(str(exc))}{_http_reason(href, str(exc))}"
+                ) from exc
             ok = footprint & np.isfinite(vals)
             if bad.size:
                 ok &= ~np.isin(vals, bad)
@@ -216,6 +276,7 @@ def read_to_grid(sources: Iterable[str | Path], grid: TargetGrid, *, band: int =
 # Microsoft Planetary Computer (STAC + SAS tokens)
 # ---------------------------------------------------------------------------------------------------------------------
 
+
 class PlanetaryComputer:
     """Minimal STAC search and asset signing for the open Planetary Computer collections.
 
@@ -223,15 +284,28 @@ class PlanetaryComputer:
     ``raise_for_status()`` (a ``requests.Session`` by default), which lets tests supply a fake.
     """
 
-    def __init__(self, session: Any = None, stac_url: str = PC_STAC, sas_url: str = PC_SAS,
-                 timeout: float = 60.0, retries: int = 3) -> None:
+    def __init__(
+        self,
+        session: Any = None,
+        stac_url: str = PC_STAC,
+        sas_url: str = PC_SAS,
+        timeout: float = 60.0,
+        retries: int = 3,
+    ) -> None:
         if session is None:
             import requests
+
             session = requests.Session()
-            key = os.environ.get("PC_SDK_SUBSCRIPTION_KEY")          # optional: lifts the anonymous rate limit
+            key = os.environ.get(
+                "PC_SDK_SUBSCRIPTION_KEY"
+            )  # optional: lifts the anonymous rate limit
             if key:
                 session.headers["Ocp-Apim-Subscription-Key"] = key
-        self.session, self.stac_url, self.sas_url = session, stac_url.rstrip("/"), sas_url.rstrip("/")
+        self.session, self.stac_url, self.sas_url = (
+            session,
+            stac_url.rstrip("/"),
+            sas_url.rstrip("/"),
+        )
         self.timeout, self.retries = timeout, retries
         self._tokens: dict[str, tuple[str, float]] = {}
         self._container_tokens: dict[tuple[str, str], tuple[str, float]] = {}
@@ -244,15 +318,25 @@ class PlanetaryComputer:
                 resp = self.session.get(url, params=params, timeout=self.timeout)
                 resp.raise_for_status()
                 return resp.json()
-            except Exception as exc:  # noqa: BLE001 - network errors of any library; re-raised below with context
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - network errors of any library; re-raised below with context
                 last = exc
                 logger.warning("GET %s failed (attempt %d/%d): %s", url, attempt, self.retries, exc)
                 if attempt < self.retries:
-                    time.sleep(min(2.0 ** attempt, 8.0))
-        raise ReferenceDataError(f"Planetary Computer request failed after {self.retries} attempts ({url}): {last}")
+                    time.sleep(min(2.0**attempt, 8.0))
+        raise ReferenceDataError(
+            f"Planetary Computer request failed after {self.retries} attempts ({url}): {last}"
+        )
 
-    def search(self, collection: str, bbox: Sequence[float], datetime: str | None = None,
-               limit: int = 100, max_items: int = 1000) -> list[dict[str, Any]]:
+    def search(
+        self,
+        collection: str,
+        bbox: Sequence[float],
+        datetime: str | None = None,
+        limit: int = 100,
+        max_items: int = 1000,
+    ) -> list[dict[str, Any]]:
         """STAC items of ``collection`` intersecting ``bbox`` (and ``datetime`` ``start/end``), all pages.
 
         The catalogue's ``/search`` endpoint is used: it applies the date window and the box reliably. The older
@@ -263,9 +347,15 @@ class PlanetaryComputer:
         if datetime:
             base["datetime"] = datetime
         try:
-            return self._pages(f"{self.stac_url}/search", {**base, "collections": collection}, max_items)
+            return self._pages(
+                f"{self.stac_url}/search", {**base, "collections": collection}, max_items
+            )
         except ReferenceDataError as exc:
-            logger.warning("Planetary Computer /search failed (%s); trying /collections/%s/items", exc, collection)
+            logger.warning(
+                "Planetary Computer /search failed (%s); trying /collections/%s/items",
+                exc,
+                collection,
+            )
         return self._pages(f"{self.stac_url}/collections/{collection}/items", base, max_items)
 
     def _pages(self, url: str, params: dict[str, Any], max_items: int) -> list[dict[str, Any]]:
@@ -275,9 +365,19 @@ class PlanetaryComputer:
         while nxt_url and len(items) < max_items:
             page = self._get(nxt_url, query)
             items.extend(page.get("features", []))
-            nxt = next((lk for lk in page.get("links", [])
-                        if lk.get("rel") == "next" and lk.get("href") and str(lk.get("method", "GET")).upper() == "GET"), None)
-            nxt_url, query = (nxt["href"] if nxt else None), None     # the next link already carries its query
+            nxt = next(
+                (
+                    lk
+                    for lk in page.get("links", [])
+                    if lk.get("rel") == "next"
+                    and lk.get("href")
+                    and str(lk.get("method", "GET")).upper() == "GET"
+                ),
+                None,
+            )
+            nxt_url, query = (
+                nxt["href"] if nxt else None
+            ), None  # the next link already carries its query
         return items[:max_items]
 
     def token(self, collection: str) -> str:
@@ -287,8 +387,10 @@ class PlanetaryComputer:
         body = self._get(f"{self.sas_url}/{collection}")
         tok = body.get("token")
         if not tok:
-            raise ReferenceDataError(f"Planetary Computer returned no access token for {collection!r}")
-        self._tokens[collection] = (tok, time.time() + 25 * 60)      # tokens last about an hour
+            raise ReferenceDataError(
+                f"Planetary Computer returned no access token for {collection!r}"
+            )
+        self._tokens[collection] = (tok, time.time() + 25 * 60)  # tokens last about an hour
         return tok
 
     def sign(self, href: str, collection: str) -> str:
@@ -312,11 +414,15 @@ class PlanetaryComputer:
             query = urlsplit(signed).query
             if "sig=" not in query:
                 raise ReferenceDataError("the sign endpoint returned no signature")
-            if "sr=c" in query:                       # a container-level token covers every asset in the container
+            if "sr=c" in query:  # a container-level token covers every asset in the container
                 self._container_tokens[container] = (query, time.time() + 25 * 60)
             return f"{href}{'&' if '?' in href else '?'}{query}"
         except ReferenceDataError as exc:
-            logger.warning("Planetary Computer /sign failed for %s (%s); using the collection token", container[0], exc)
+            logger.warning(
+                "Planetary Computer /sign failed for %s (%s); using the collection token",
+                container[0],
+                exc,
+            )
         return f"{href}{'&' if '?' in href else '?'}{self.token(collection)}"
 
     def asset_urls(self, collection: str, items: Sequence[dict[str, Any]], asset: str) -> list[str]:

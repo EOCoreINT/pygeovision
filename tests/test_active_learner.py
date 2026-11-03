@@ -12,6 +12,7 @@ Real defects fixed:
      for models with no dropout, without warning.
   6. ``budget``, ``batch_size`` and ``n_iterations`` had no effect.
 """
+
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -37,7 +38,7 @@ def _chip(v, size=8):
     return torch.full((1, size, size), float(v))
 
 
-POOL = [_chip(1.0), _chip(0.0), _chip(0.5), _chip(-1.0)]      # idx 1 is the most ambiguous, then idx 2
+POOL = [_chip(1.0), _chip(0.0), _chip(0.5), _chip(-1.0)]  # idx 1 is the most ambiguous, then idx 2
 
 
 @pytest.mark.parametrize("strategy", ["entropy", "least_confidence", "margin"])
@@ -48,8 +49,10 @@ def test_uncertainty_ranks_ambiguous_chips_first_for_segmentation(strategy):
 
 
 def test_mixed_confidence_inside_one_chip_is_averaged():
-    half = torch.cat([torch.zeros(1, 8, 4), torch.ones(1, 8, 4)], dim=2)      # half ambiguous
-    sel = ActiveLearner(strategy="entropy").select(Tiny(), [_chip(1.0), half, _chip(0.0)], n_select=3, device="cpu")
+    half = torch.cat([torch.zeros(1, 8, 4), torch.ones(1, 8, 4)], dim=2)  # half ambiguous
+    sel = ActiveLearner(strategy="entropy").select(
+        Tiny(), [_chip(1.0), half, _chip(0.0)], n_select=3, device="cpu"
+    )
     assert [s["idx"] for s in sel] == [2, 1, 0]
 
 
@@ -57,14 +60,14 @@ def test_classification_logits_and_single_logit_heads():
     class Cls(torch.nn.Module):
         def forward(self, x):
             m = x.mean(dim=(1, 2, 3)).unsqueeze(1)
-            return torch.cat([-m, m], dim=1)               # (1, 2)
+            return torch.cat([-m, m], dim=1)  # (1, 2)
 
     sel = ActiveLearner().select(Cls(), POOL, n_select=1, device="cpu")
     assert sel[0]["idx"] == 1
 
     class Sig(torch.nn.Module):
         def forward(self, x):
-            return x * 8                                     # (1, 1, H, W) one logit
+            return x * 8  # (1, 1, H, W) one logit
 
     sel = ActiveLearner().select(Sig(), POOL, n_select=1, device="cpu")
     assert sel[0]["idx"] == 1
@@ -74,17 +77,29 @@ def test_dict_items_keep_their_fields_and_get_a_score(tmp_path):
     rasterio = pytest.importorskip("rasterio")
     import numpy as np
     from rasterio.transform import from_origin
+
     paths = []
     for i, v in enumerate([0.0, 1.0]):
         p = tmp_path / f"c{i}.tif"
         arr = np.full((1, 8, 8), v, "float32")
-        arr[0, 0, 0] = 1.0 - v           # keep the min-max range non-degenerate
-        with rasterio.open(p, "w", driver="GTiff", height=8, width=8, count=1, dtype="float32",
-                           transform=from_origin(0, 8, 1, 1)) as d:
+        arr[0, 0, 0] = 1.0 - v  # keep the min-max range non-degenerate
+        with rasterio.open(
+            p,
+            "w",
+            driver="GTiff",
+            height=8,
+            width=8,
+            count=1,
+            dtype="float32",
+            transform=from_origin(0, 8, 1, 1),
+        ) as d:
             d.write(arr)
         paths.append({"path": str(p), "tile_id": f"t{i}"})
-    sel = ActiveLearner(loader=lambda path: torch.from_numpy(
-        __import__("rasterio").open(path).read().astype("float32")).unsqueeze(0)).select(Tiny(), paths, n_select=2, device="cpu")
+    sel = ActiveLearner(
+        loader=lambda path: torch.from_numpy(
+            __import__("rasterio").open(path).read().astype("float32")
+        ).unsqueeze(0)
+    ).select(Tiny(), paths, n_select=2, device="cpu")
     assert {s["tile_id"] for s in sel} == {"t0", "t1"} and all("score" in s for s in sel)
 
 
@@ -105,6 +120,7 @@ def test_model_is_moved_to_the_requested_device():
         def to(self, *a, **k):
             Spy.moved_to = a[0]
             return super().to(*a, **k)
+
     ActiveLearner().select(Spy(), POOL, n_select=1, device="cpu")
     assert str(Spy.moved_to) == "cpu"
 
@@ -114,13 +130,15 @@ def test_coreset_returns_diverse_samples_with_correct_indices():
     far_b = [_chip(-1.0)]
     pool = [near_a[0], "bad.tif", near_a[1], far_b[0], near_a[2]]
     for seed in range(5):
-        sel = ActiveLearner(strategy="coreset", seed=seed).select(Tiny(), pool, n_select=2, device="cpu")
+        sel = ActiveLearner(strategy="coreset", seed=seed).select(
+            Tiny(), pool, n_select=2, device="cpu"
+        )
         idx = sorted(s["idx"] for s in sel)
-        assert 1 not in idx                                          # the failed item is never returned
-        assert 3 in idx and any(i in (0, 2, 4) for i in idx)         # one from each cluster
+        assert 1 not in idx  # the failed item is never returned
+        assert 3 in idx and any(i in (0, 2, 4) for i in idx)  # one from each cluster
     a = ActiveLearner(strategy="coreset", seed=3).select(Tiny(), pool, n_select=3, device="cpu")
     b = ActiveLearner(strategy="coreset", seed=3).select(Tiny(), pool, n_select=3, device="cpu")
-    assert [s["idx"] for s in a] == [s["idx"] for s in b]            # deterministic for a seed
+    assert [s["idx"] for s in a] == [s["idx"] for s in b]  # deterministic for a seed
 
 
 def test_committee_needs_dropout_and_uses_disagreement():
@@ -128,9 +146,11 @@ def test_committee_needs_dropout_and_uses_disagreement():
         ActiveLearner(strategy="committee").select(Tiny(), POOL, device="cpu")
     model = Tiny(dropout=True)
     torch.manual_seed(0)
-    sel = ActiveLearner(strategy="committee", mc_passes=12).select(model, POOL, n_select=4, device="cpu")
+    sel = ActiveLearner(strategy="committee", mc_passes=12).select(
+        model, POOL, n_select=4, device="cpu"
+    )
     assert len(sel) == 4 and all(s["score"] >= -1e-6 for s in sel)
-    assert not model.training and not model.drop.training            # restored to eval
+    assert not model.training and not model.drop.training  # restored to eval
     # a chip of zeros is deterministic under input dropout (still 0) -> no disagreement at all
     zero = next(s for s in sel if s["idx"] == 1)
     assert zero["score"] == pytest.approx(0.0, abs=1e-6)
@@ -148,9 +168,10 @@ def test_budget_batch_size_and_rounds_are_enforced():
     pool = [{"path": f"{i}.tif"} for i in range(50)]
     lr = ActiveLearner(strategy="random", budget=10, batch_size=4, n_iterations=5)
     assert len(lr.select(None, pool)) == 4
-    lr.update(pool[:4]); lr.update(pool[4:8])
+    lr.update(pool[:4])
+    lr.update(pool[4:8])
     assert lr.remaining_budget == 2 and not lr.finished
-    assert len(lr.select(None, pool)) == 2                           # capped by what is left
+    assert len(lr.select(None, pool)) == 2  # capped by what is left
     lr.update(pool[8:10])
     assert lr.finished and lr.select(None, pool) == []
     assert ActiveLearner(budget=100, n_iterations=1).update([{"path": "x"}]).finished
@@ -160,7 +181,11 @@ def test_train_iteration_warns_about_ignored_config(caplog):
     lr = ActiveLearner(strategy="random", batch_size=3)
     with caplog.at_level("WARNING"):
         out = lr.train_iteration(None, {"epochs": 5}, [{"path": f"{i}.tif"} for i in range(6)])
-    assert "does not train" in caplog.text and out["n_selected"] == 3 and out["remaining_budget"] == 100
+    assert (
+        "does not train" in caplog.text
+        and out["n_selected"] == 3
+        and out["remaining_budget"] == 100
+    )
     assert lr.history == [out]
 
 

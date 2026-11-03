@@ -1,4 +1,5 @@
 """SHAP values for geospatial feature importance (G6)."""
+
 from __future__ import annotations
 
 import logging
@@ -22,8 +23,7 @@ class GeospatialSHAP:
         shap_exp.plot_band_importance(values, band_names=["B02","B03","B04","B08"])
     """
 
-    def __init__(self, model: Any, device: str | None = None,
-                 background_samples: int = 50) -> None:
+    def __init__(self, model: Any, device: str | None = None, background_samples: int = 50) -> None:
         self.model = model
         self.device = device or self._model_device(model)
         self.background_samples = background_samples
@@ -35,8 +35,9 @@ class GeospatialSHAP:
         except Exception:
             return "cpu"
 
-    def band_importance(self, image: Any, n_samples: int | None = None,
-                        class_idx: int | None = None) -> dict[str, Any]:
+    def band_importance(
+        self, image: Any, n_samples: int | None = None, class_idx: int | None = None
+    ) -> dict[str, Any]:
         """Compute spectral band importance using SHAP.
 
         Args:
@@ -73,7 +74,8 @@ class GeospatialSHAP:
         # DeepExplainer needs a background SET (not a single sample) to
         # estimate a stable baseline expectation.
         background = torch.zeros(
-            (n_bg, *image.shape[1:]), dtype=torch.float32,
+            (n_bg, *image.shape[1:]),
+            dtype=torch.float32,
         )
         explainer = shap.DeepExplainer(self.model, background.to(self.device))
         # check_additivity=False: SHAP's DeepExplainer additivity check has
@@ -88,13 +90,15 @@ class GeospatialSHAP:
             per_output = [np.asarray(v) for v in shap_values]
         else:
             arr = np.asarray(shap_values)
-            if arr.ndim == image.ndim + 1:                # (N, C, H, W, n_outputs)
+            if arr.ndim == image.ndim + 1:  # (N, C, H, W, n_outputs)
                 per_output = [arr[..., k] for k in range(arr.shape[-1])]
             else:
                 per_output = [arr]
         if class_idx is not None:
             if not 0 <= class_idx < len(per_output):
-                raise ValueError(f"class_idx {class_idx} out of range for {len(per_output)} model output(s)")
+                raise ValueError(
+                    f"class_idx {class_idx} out of range for {len(per_output)} model output(s)"
+                )
             per_output = [per_output[class_idx]]
 
         band_importance = {}
@@ -104,10 +108,12 @@ class GeospatialSHAP:
 
         return {"band_importance": band_importance, "method": "shap"}
 
-    def plot_band_importance(self, values: dict, band_names: list | None = None,
-                              save_path: str | None = None) -> None:
+    def plot_band_importance(
+        self, values: dict, band_names: list | None = None, save_path: str | None = None
+    ) -> None:
         try:
             import matplotlib.pyplot as plt
+
             bi = values.get("band_importance", {})
             labels = band_names or list(bi.keys())
             importances = list(bi.values())

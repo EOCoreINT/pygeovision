@@ -1,4 +1,5 @@
 """YAML pipeline configuration parser and validator."""
+
 from __future__ import annotations
 
 import logging
@@ -63,8 +64,8 @@ class PipelineYAMLParser:
         """Load and parse a YAML pipeline file."""
         try:
             import yaml
-        except ImportError:
-            raise ImportError("pip install pyyaml")
+        except ImportError as exc:
+            raise ImportError("pip install pyyaml") from exc
         with open(path) as f:
             config = yaml.safe_load(f)
         self.validate(config)
@@ -74,9 +75,10 @@ class PipelineYAMLParser:
         """Parse a YAML pipeline string."""
         try:
             import yaml
+
             config = yaml.safe_load(yaml_str)
-        except ImportError:
-            raise ImportError("pip install pyyaml")
+        except ImportError as exc:
+            raise ImportError("pip install pyyaml") from exc
         self.validate(config)
         return config
 
@@ -99,12 +101,18 @@ class PipelineYAMLParser:
             if step["action"] not in VALID_ACTIONS:
                 raise ValueError(
                     f"Step '{step['name']}' has action '{step['action']}'; YAML pipelines support "
-                    f"{sorted(VALID_ACTIONS)} (other behaviour needs a Python Step with a function)")
+                    f"{sorted(VALID_ACTIONS)} (other behaviour needs a Python Step with a function)"
+                )
             step_names.add(step["name"])
 
         if len(step_names) != len(steps):
             seen: set[str] = set()
-            dup = next(s["name"] for s in steps if s["name"] in seen or seen.add(s["name"]))
+            dup = None
+            for s in steps:
+                if s["name"] in seen:
+                    dup = s["name"]
+                    break
+                seen.add(s["name"])
             raise ValueError(f"Step names must be unique; '{dup}' appears twice")
 
         # Check dependency references
@@ -121,7 +129,7 @@ class PipelineYAMLParser:
             if state.get(name) == 2:
                 return
             if state.get(name) == 1:
-                cycle = " -> ".join([*trail[trail.index(name):], name])
+                cycle = " -> ".join([*trail[trail.index(name) :], name])
                 raise ValueError(f"Steps depend on each other in a circle: {cycle}")
             state[name] = 1
             for dep in graph[name]:
@@ -138,6 +146,7 @@ class PipelineYAMLParser:
         Example: ``["search.bbox=[15.0,45.1,15.1,45.2]", "infer.checkpoint=best.pth"]``.
         """
         import json
+
         by_name = {s["name"]: s for s in config.get("steps", [])}
         for item in overrides:
             key, sep, raw = item.partition("=")
@@ -145,8 +154,9 @@ class PipelineYAMLParser:
             if not sep or not dot or not param:
                 raise ValueError(f"override {item!r} must look like step.param=value")
             if step_name not in by_name:
-                raise ValueError(f"override {item!r}: no step named {step_name!r} "
-                                 f"(steps: {sorted(by_name)})")
+                raise ValueError(
+                    f"override {item!r}: no step named {step_name!r} " f"(steps: {sorted(by_name)})"
+                )
             try:
                 value = json.loads(raw)
             except ValueError:
@@ -156,13 +166,14 @@ class PipelineYAMLParser:
 
     def from_dict(self, config: dict) -> Pipeline:
         from pygeovision.pipelines.orchestrator import Pipeline
+
         return Pipeline.from_config(config)
 
     def dump(self, config: dict, path: str | Path) -> None:
         """Save a pipeline config to YAML."""
         try:
             import yaml
-        except ImportError:
-            raise ImportError("pip install pyyaml")
+        except ImportError as exc:
+            raise ImportError("pip install pyyaml") from exc
         with open(path, "w") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)

@@ -13,12 +13,12 @@ Example:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
-import shutil
-from dataclasses import dataclass, field
 from pathlib import Path
+import shutil
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ class CachedModel:
         checksum: SHA-256 hash of the checkpoint (if verified).
         metadata: Additional model info (task, classes, etc.).
     """
+
     name: str
     local_path: Path
     source_url: str = ""
@@ -118,22 +119,33 @@ class ModelHub:
         logger.info("Building model: %s", model_name)
         attempted: list[tuple[str, str]] = []  # (model_name, error) for honest reporting
         try:
-            model = self._build_with_fallback(model_name, model_kwargs, attempted,
-                                              allow_fallback=allow_fallback)
+            model = self._build_with_fallback(
+                model_name, model_kwargs, attempted, allow_fallback=allow_fallback
+            )
         except Exception as exc:
             attempts_str = "; ".join(f"{n}: {e}" for n, e in attempted)
             raise ModelLoadError(
                 f"Could not build '{model_name}' ({attempts_str or exc}). Nothing was substituted"
-                + ("" if allow_fallback else "; pass allow_fallback=True to accept a different "
-                                              "same-task architecture.")
+                + (
+                    ""
+                    if allow_fallback
+                    else "; pass allow_fallback=True to accept a different "
+                    "same-task architecture."
+                )
             ) from exc
 
-        if len(attempted) > 1 and attempted[-1][1] == "succeeded" and attempted[-1][0] != model_name:
+        if (
+            len(attempted) > 1
+            and attempted[-1][1] == "succeeded"
+            and attempted[-1][0] != model_name
+        ):
             # Only reachable with allow_fallback=True.
             logger.warning(
                 "Requested model '%s' failed to build (%s) -- fell back to "
                 "real, same-task model '%s' instead.",
-                model_name, attempted[0][1], attempted[-1][0],
+                model_name,
+                attempted[0][1],
+                attempted[-1][0],
             )
             try:
                 model._pygeovision_requested_name = model_name
@@ -172,7 +184,10 @@ class ModelHub:
         return model
 
     def _build_with_fallback(
-        self, model_name: str, model_kwargs: dict[str, Any], attempted: list[tuple[str, str]],
+        self,
+        model_name: str,
+        model_kwargs: dict[str, Any],
+        attempted: list[tuple[str, str]],
         allow_fallback: bool = True,
     ) -> Any:
         """Build model_name, falling back to real, same-task alternatives
@@ -188,7 +203,13 @@ class ModelHub:
         broad enough to catch that.
         """
         from pygeovision.ai.models.registry import registry as native_registry
-        from pygeovision.models.registry import get_model, get_model_spec, list_models as list_full_models
+        from pygeovision.models.registry import (
+            get_model,
+            get_model_spec,
+        )
+        from pygeovision.models.registry import (
+            list_models as list_full_models,
+        )
 
         # Try the primary, requested model across both real registries,
         # exactly as before -- but any failure (not just KeyError) now
@@ -228,8 +249,7 @@ class ModelHub:
             n.name for n in native_registry.list_models(task=task) if n.name != model_name
         ]
         candidates += [
-            n for n in list_full_models(task=task)
-            if n != model_name and n not in candidates
+            n for n in list_full_models(task=task) if n != model_name and n not in candidates
         ]
 
         for candidate in candidates:
@@ -296,18 +316,21 @@ class ModelHub:
         for name, info in self._manifest.items():
             path = Path(info.get("local_path", ""))
             if path.exists():
-                cached.append(CachedModel(
-                    name=name,
-                    local_path=path,
-                    source_url=info.get("source_url", ""),
-                    checksum=info.get("checksum", ""),
-                    metadata=info.get("metadata", {}),
-                ))
+                cached.append(
+                    CachedModel(
+                        name=name,
+                        local_path=path,
+                        source_url=info.get("source_url", ""),
+                        checksum=info.get("checksum", ""),
+                        metadata=info.get("metadata", {}),
+                    )
+                )
         return cached
 
     def list_available(self) -> None:
         """Print a summary of all models available in the PyGeoVision registry."""
         from pygeovision.ai.models.registry import registry
+
         print(registry.summary())
 
     def clear_cache(self, model_name: str | None = None) -> None:
@@ -360,7 +383,9 @@ class ModelHub:
         if actual != expected:
             logger.error(
                 "Checksum mismatch for '%s': expected %s, got %s",
-                model_name, expected[:8], actual[:8],
+                model_name,
+                expected[:8],
+                actual[:8],
             )
             return False
         return True
@@ -391,6 +416,7 @@ class ModelHub:
         # Assume HuggingFace Hub ID
         try:
             from huggingface_hub import hf_hub_download
+
             local = hf_hub_download(
                 repo_id=checkpoint,
                 filename="model.pth",

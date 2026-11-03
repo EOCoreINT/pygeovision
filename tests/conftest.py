@@ -10,8 +10,8 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -50,8 +50,14 @@ def small_geotiff(tmp_dir):
     data = (np.random.rand(3, 64, 64) * 3000).astype(np.float32)
 
     with rasterio.open(
-        path, "w", driver="GTiff", dtype="float32",
-        width=64, height=64, count=3, crs="EPSG:4326",
+        path,
+        "w",
+        driver="GTiff",
+        dtype="float32",
+        width=64,
+        height=64,
+        count=3,
+        crs="EPSG:4326",
         transform=transform,
     ) as dst:
         dst.write(data)
@@ -71,8 +77,14 @@ def label_geotiff(tmp_dir):
     data = np.random.randint(0, 5, (1, 64, 64), dtype=np.uint8)
 
     with rasterio.open(
-        path, "w", driver="GTiff", dtype="uint8",
-        width=64, height=64, count=1, crs="EPSG:4326",
+        path,
+        "w",
+        driver="GTiff",
+        dtype="uint8",
+        width=64,
+        height=64,
+        count=1,
+        crs="EPSG:4326",
         transform=transform,
     ) as dst:
         dst.write(data)
@@ -92,15 +104,18 @@ def tile_metadata(small_geotiff):
 
     # Import here to avoid circular imports
     from pygeovision.ai.data.dataset import TileMetadata
-    crs_str = crs.to_string() if hasattr(crs, 'to_string') else str(crs)
+
+    crs_str = crs.to_string() if hasattr(crs, "to_string") else str(crs)
     return TileMetadata(
         tile_id="test_tile_001",
         source_file=small_geotiff,
         bounds=(bounds.left, bounds.bottom, bounds.right, bounds.top),
         crs=crs_str,
         transform=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-        row_off=0, col_off=0,
-        height=64, width=64,
+        row_off=0,
+        col_off=0,
+        height=64,
+        width=64,
         bands=[1, 2, 3],
     )
 

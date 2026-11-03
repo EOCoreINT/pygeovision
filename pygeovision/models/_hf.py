@@ -15,6 +15,7 @@ What this fixes compared with a bare ``AutoModel.from_pretrained``:
 * A failed pretrained download raises :class:`~pygeovision.core.exceptions.ModelLoadError`
   instead of quietly returning random weights.
 """
+
 from __future__ import annotations
 
 import logging
@@ -66,8 +67,9 @@ def _model_class_name(spec: Any) -> tuple[str, str | None]:
     )
 
 
-def local_config(spec: Any, num_classes: int, img_size: int | None = None,
-                 in_channels: int = 3) -> Any | None:
+def local_config(
+    spec: Any, num_classes: int, img_size: int | None = None, in_channels: int = 3
+) -> Any | None:
     """Build the published architecture's config in code (no network), or ``None``.
 
     ``in_channels`` only changes the config for super-resolution, where the *output* has the
@@ -78,19 +80,27 @@ def local_config(spec: Any, num_classes: int, img_size: int | None = None,
     name, fam = spec.name, spec.family
     if fam == "vit":
         if name == "vit-l16":
-            cfg = T.ViTConfig(hidden_size=1024, num_hidden_layers=24, num_attention_heads=16,
-                              intermediate_size=4096)
+            cfg = T.ViTConfig(
+                hidden_size=1024,
+                num_hidden_layers=24,
+                num_attention_heads=16,
+                intermediate_size=4096,
+            )
         else:
             cfg = T.ViTConfig()
         if img_size:
             cfg.image_size = img_size
     elif fam == "dinov2":
         sizes = {
-            "dinov2-s": dict(hidden_size=384, num_hidden_layers=12, num_attention_heads=6),
-            "dinov2-b": dict(hidden_size=768, num_hidden_layers=12, num_attention_heads=12),
-            "dinov2-l": dict(hidden_size=1024, num_hidden_layers=24, num_attention_heads=16),
-            "dinov2-g": dict(hidden_size=1536, num_hidden_layers=40, num_attention_heads=24,
-                             use_swiglu_ffn=True),
+            "dinov2-s": {"hidden_size": 384, "num_hidden_layers": 12, "num_attention_heads": 6},
+            "dinov2-b": {"hidden_size": 768, "num_hidden_layers": 12, "num_attention_heads": 12},
+            "dinov2-l": {"hidden_size": 1024, "num_hidden_layers": 24, "num_attention_heads": 16},
+            "dinov2-g": {
+                "hidden_size": 1536,
+                "num_hidden_layers": 40,
+                "num_attention_heads": 24,
+                "use_swiglu_ffn": True,
+            },
         }
         if name not in sizes:
             return None
@@ -103,7 +113,10 @@ def local_config(spec: Any, num_classes: int, img_size: int | None = None,
         cfg = T.SegformerConfig(depths=depths, hidden_sizes=hidden, decoder_hidden_size=dec)
     elif fam == "upernet" and name == "upernet-swin-b":
         backbone = T.SwinConfig(
-            embed_dim=128, depths=[2, 2, 18, 2], num_heads=[4, 8, 16, 32], window_size=7,
+            embed_dim=128,
+            depths=[2, 2, 18, 2],
+            num_heads=[4, 8, 16, 32],
+            window_size=7,
             out_features=["stage1", "stage2", "stage3", "stage4"],
         )
         cfg = T.UperNetConfig(backbone_config=backbone, use_auxiliary_head=False)
@@ -115,8 +128,15 @@ def local_config(spec: Any, num_classes: int, img_size: int | None = None,
     elif fam == "detr" and name == "rt-detr-l":
         cfg = T.RTDetrConfig()
     elif spec.task == "super_resolution" and name == "swinir-m":
-        cfg = T.Swin2SRConfig(upscale=4, embed_dim=180, depths=[6] * 6, num_heads=[6] * 6,
-                              window_size=8, upsampler="nearest+conv", num_channels=in_channels)
+        cfg = T.Swin2SRConfig(
+            upscale=4,
+            embed_dim=180,
+            depths=[6] * 6,
+            num_heads=[6] * 6,
+            window_size=8,
+            upsampler="nearest+conv",
+            num_channels=in_channels,
+        )
     else:
         return None
     _set_labels(cfg, num_classes, spec)
@@ -192,20 +212,21 @@ def build_hf_model(
                 if img_size and spec.family in ("vit", "dinov2"):
                     logger.warning(
                         "img_size=%d differs from the pretrained image size: the position "
-                        "embedding is re-initialised and must be fine-tuned.", img_size)
+                        "embedding is re-initialised and must be fine-tuned.",
+                        img_size,
+                    )
                 model = cls.from_pretrained(spec.hf_id, config=cfg, ignore_mismatched_sizes=True)
                 loaded_pretrained = True
             except Exception as exc:  # network, auth, missing repo, version mismatch ...
                 failure = exc
-        if model is None:
-            if not allow_random_init:
-                raise ModelLoadError(
-                    f"Could not load pretrained weights for '{spec.name}' "
-                    f"({spec.hf_id}): {failure}",
-                    details="Nothing was substituted. Pass pretrained=False for a randomly "
-                            "initialised model, or allow_random_init=True to fall back to one "
-                            "automatically (it is flagged _pygeovision_is_random_init).",
-                ) from failure
+        if model is None and not allow_random_init:
+            raise ModelLoadError(
+                f"Could not load pretrained weights for '{spec.name}' "
+                f"({spec.hf_id}): {failure}",
+                details="Nothing was substituted. Pass pretrained=False for a randomly "
+                "initialised model, or allow_random_init=True to fall back to one "
+                "automatically (it is flagged _pygeovision_is_random_init).",
+            ) from failure
 
     if model is None:
         cfg = local_config(spec, num_classes, img_size, in_channels)
@@ -227,6 +248,7 @@ def build_hf_model(
         _adapt.adapt_hf_input_channels(model, in_channels, pretrained_loaded=loaded_pretrained)
 
     from pygeovision.models import _wrappers
+
     if adapter == "segmentation":
         wrapped = _wrappers.HFSegmentationAdapter(model)
     elif adapter == "classification":

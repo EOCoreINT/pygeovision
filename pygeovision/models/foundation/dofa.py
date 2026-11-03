@@ -30,6 +30,7 @@ the original paper authors' own repository
 sensor-band knowledge — DOFA's dynamic weight generation is sensitive
 to the exact wavelength values it was trained with.
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,23 +65,31 @@ DOFA_WAVELENGTHS: dict[str, list[float]] = {
 # Real DOFA architecture variants, from torchgeo.models.dofa
 DOFA_MODELS: dict[str, dict] = {
     "dofa_small_patch16_224": {
-        "params_m": 22, "embed_dim": 384, "has_real_pretrained_weights": False,
+        "params_m": 22,
+        "embed_dim": 384,
+        "has_real_pretrained_weights": False,
     },
     "dofa_base_patch16_224": {
-        "params_m": 86, "embed_dim": 768, "has_real_pretrained_weights": True,
+        "params_m": 86,
+        "embed_dim": 768,
+        "has_real_pretrained_weights": True,
     },
     "dofa_large_patch16_224": {
-        "params_m": 304, "embed_dim": 1024, "has_real_pretrained_weights": True,
+        "params_m": 304,
+        "embed_dim": 1024,
+        "has_real_pretrained_weights": True,
     },
     "dofa_huge_patch14_224": {
-        "params_m": 630, "embed_dim": 1280, "has_real_pretrained_weights": False,
+        "params_m": 630,
+        "embed_dim": 1280,
+        "has_real_pretrained_weights": False,
     },
 }
 
 
-def load_dofa_hf(model_name: str = "dofa_base_patch16_224",
-                  device: str = "cpu",
-                  allow_random_init: bool = False) -> Any:
+def load_dofa_hf(
+    model_name: str = "dofa_base_patch16_224", device: str = "cpu", allow_random_init: bool = False
+) -> Any:
     """Load a real DOFA model via torchgeo — recommended for most users.
 
     Args:
@@ -119,9 +128,7 @@ def load_dofa_hf(model_name: str = "dofa_base_patch16_224",
     try:
         from torchgeo.models import dofa as dofa_mod
     except ImportError as exc:
-        raise ImportError(
-            "DOFA requires torchgeo: pip install torchgeo"
-        ) from exc
+        raise ImportError("DOFA requires torchgeo: pip install torchgeo") from exc
 
     factory_fn = getattr(dofa_mod, model_name, None)
     if factory_fn is None:
@@ -148,14 +155,16 @@ def load_dofa_hf(model_name: str = "dofa_base_patch16_224",
             weights = list(weights_enum)[0]
 
     try:
-        import torch
+
         model = factory_fn(weights=weights)
         model = model.to(device).eval()
-        if weights is None:                          # only reachable with allow_random_init=True
+        if weights is None:  # only reachable with allow_random_init=True
             model._pygeovision_is_random_init = True
         logger.info(
             "DOFA loaded: %s (%dM params, real pretrained weights=%s)",
-            model_name, spec["params_m"], weights is not None,
+            model_name,
+            spec["params_m"],
+            weights is not None,
         )
         return model
     except Exception as exc:
@@ -175,7 +184,7 @@ def load_dofa_hf(model_name: str = "dofa_base_patch16_224",
             "pretrained weights -- output will be meaningless for any real analysis.",
             exc,
         )
-        import torch
+
         model = factory_fn(weights=None).to(device).eval()
         model._pygeovision_is_random_init = True
         return model

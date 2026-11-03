@@ -20,11 +20,12 @@ Typical usage::
                               chip_size=256, augment=True)
     train_dl = DataLoader(train_ds, batch_size=8, shuffle=True, num_workers=4)
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import pathlib
-from collections.abc import Callable
 
 import numpy as np
 
@@ -35,23 +36,26 @@ logger = logging.getLogger("pygeovision.training.data")
 def _torch():
     try:
         import torch
+
         return torch
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "PyTorch is required for training datasets. "
             "Install it with: pip install torch torchvision"
-        )
+        ) from exc
 
 
 def _rasterio():
     try:
         import rasterio
+
         return rasterio
-    except ImportError:
-        raise ImportError("rasterio is required: pip install rasterio")
+    except ImportError as exc:
+        raise ImportError("rasterio is required: pip install rasterio") from exc
 
 
 # ── GeoSegDataset ─────────────────────────────────────────────────────────────
+
 
 class GeoSegDataset:
     """Geospatial segmentation dataset backed by GeoTIFF image/label pairs.
@@ -117,13 +121,13 @@ class GeoSegDataset:
         self.image_dir = pathlib.Path(image_dir)
         self.label_dir = pathlib.Path(label_dir)
         self.chip_size = chip_size
-        self.augment   = augment
+        self.augment = augment
         self.transform = transform
         self.max_chips = max_chips_per_scene
-        self.overlap   = overlap
+        self.overlap = overlap
         self.skip_nodata = skip_nodata
 
-        self._chips: list[dict] = []   # deferred: populated on first access
+        self._chips: list[dict] = []  # deferred: populated on first access
         self._loaded = False
 
     def _load(self) -> None:
@@ -144,10 +148,10 @@ class GeoSegDataset:
 
             try:
                 with rio.open(str(img_path)) as src:
-                    img  = src.read().astype("float32")   # (C, H, W)
+                    img = src.read().astype("float32")  # (C, H, W)
                     img_grid = (src.crs, src.transform)
                 with rio.open(str(lbl_path)) as src:
-                    lbl  = src.read(1).astype("int64")    # (H, W)
+                    lbl = src.read(1).astype("int64")  # (H, W)
                     lbl_grid = (src.crs, src.transform)
             except Exception as exc:
                 logger.warning("Could not read %s: %s", img_path.name, exc)
@@ -155,12 +159,20 @@ class GeoSegDataset:
 
             # Chips are cut by pixel position, so a label on a different grid would
             # pair every image chip with the wrong piece of the label.
-            if lbl.shape != img.shape[1:] or img_grid[0] != lbl_grid[0] or \
-                    not img_grid[1].almost_equals(lbl_grid[1]):
+            if (
+                lbl.shape != img.shape[1:]
+                or img_grid[0] != lbl_grid[0]
+                or not img_grid[1].almost_equals(lbl_grid[1])
+            ):
                 logger.warning(
                     "Skipping %s: image (%s px, %s) and label (%s px, %s) are not on the same grid. "
                     "Resample the label onto the image grid first.",
-                    img_path.name, img.shape[1:], img_grid[0], lbl.shape, lbl_grid[0])
+                    img_path.name,
+                    img.shape[1:],
+                    img_grid[0],
+                    lbl.shape,
+                    lbl_grid[0],
+                )
                 continue
 
             C, H, W = img.shape
@@ -168,18 +180,20 @@ class GeoSegDataset:
 
             for y in range(0, H - self.chip_size + 1, stride):
                 for x in range(0, W - self.chip_size + 1, stride):
-                    img_chip = img[:, y:y + self.chip_size, x:x + self.chip_size]
-                    lbl_chip = lbl[   y:y + self.chip_size, x:x + self.chip_size]
+                    img_chip = img[:, y : y + self.chip_size, x : x + self.chip_size]
+                    lbl_chip = lbl[y : y + self.chip_size, x : x + self.chip_size]
 
                     if self.skip_nodata:
                         zero_frac = (img_chip == 0).all(axis=0).mean()
                         if zero_frac > 0.50:
                             continue
 
-                    self._chips.append({
-                        "img": img_chip,
-                        "lbl": lbl_chip,
-                    })
+                    self._chips.append(
+                        {
+                            "img": img_chip,
+                            "lbl": lbl_chip,
+                        }
+                    )
                     scene_chips += 1
 
                     if self.max_chips and scene_chips >= self.max_chips:
@@ -190,12 +204,9 @@ class GeoSegDataset:
             logger.info("Loaded %d chips from %s", scene_chips, img_path.name)
 
         self._loaded = True
-        logger.info("GeoSegDataset: %d total chips from %s",
-                    len(self._chips), self.image_dir)
+        logger.info("GeoSegDataset: %d total chips from %s", len(self._chips), self.image_dir)
 
-    def _augment(
-        self, img: np.ndarray, lbl: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def _augment(self, img: np.ndarray, lbl: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Random flip + rotation augmentation."""
         if np.random.rand() > 0.5:
             img = img[:, ::-1, :].copy()
@@ -208,8 +219,7 @@ class GeoSegDataset:
             img = np.rot90(img, k, axes=(1, 2)).copy()
             lbl = np.rot90(lbl, k, axes=(0, 1)).copy()
         # Random Gaussian noise (±0.5% amplitude)
-        img = np.clip(img + np.random.normal(0, 0.005, img.shape).astype("float32"),
-                      0.0, 1.0)
+        img = np.clip(img + np.random.normal(0, 0.005, img.shape).astype("float32"), 0.0, 1.0)
         return img, lbl
 
     def __len__(self) -> int:
@@ -222,8 +232,8 @@ class GeoSegDataset:
             self._load()
 
         chip = self._chips[idx]
-        img  = chip["img"].copy()
-        lbl  = chip["lbl"].copy()
+        img = chip["img"].copy()
+        lbl = chip["lbl"].copy()
 
         if self.augment:
             img, lbl = self._augment(img, lbl)
@@ -240,6 +250,7 @@ class GeoSegDataset:
 
 
 # ── Convenience factory ───────────────────────────────────────────────────────
+
 
 def make_geo_loaders(
     image_dir: str | pathlib.Path,
@@ -263,33 +274,42 @@ def make_geo_loaders(
     from torch.utils.data import DataLoader, random_split
 
     full_ds = GeoSegDataset(
-        image_dir, label_dir,
-        chip_size=chip_size, augment=True,
+        image_dir,
+        label_dir,
+        chip_size=chip_size,
+        augment=True,
         max_chips_per_scene=max_chips_per_scene,
     )
 
-    n      = len(full_ds)
-    n_tr   = int(n * split)
-    n_va   = n - n_tr
+    n = len(full_ds)
+    n_tr = int(n * split)
+    n_va = n - n_tr
 
     tr_ds, va_ds = random_split(
-        full_ds, [n_tr, n_va],
+        full_ds,
+        [n_tr, n_va],
         generator=torch.Generator().manual_seed(42),
     )
     # Disable augmentation for val split
     va_ds.dataset = GeoSegDataset(
-        image_dir, label_dir,
-        chip_size=chip_size, augment=False,
+        image_dir,
+        label_dir,
+        chip_size=chip_size,
+        augment=False,
         max_chips_per_scene=max_chips_per_scene,
     )
 
-    tr_loader = DataLoader(tr_ds, batch_size=batch_size, shuffle=True,
-                           num_workers=num_workers, pin_memory=False)
-    va_loader = DataLoader(va_ds, batch_size=batch_size, shuffle=False,
-                           num_workers=num_workers, pin_memory=False)
+    tr_loader = DataLoader(
+        tr_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=False
+    )
+    va_loader = DataLoader(
+        va_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=False
+    )
 
     logger.info(
         "GeoSeg loaders: %d train chips / %d val chips  batch_size=%d",
-        n_tr, n_va, batch_size,
+        n_tr,
+        n_va,
+        batch_size,
     )
     return tr_loader, va_loader

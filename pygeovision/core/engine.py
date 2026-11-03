@@ -29,6 +29,7 @@ class PyGeoVisionEngine:
         api_key: str | None = None,
     ) -> None:
         from pygeovision.data.fetch import SatelliteFetcher
+
         self.config = config or PyGeoVisionConfig()
         self._fetcher = SatelliteFetcher(config_path=None)
         self._api_key = api_key

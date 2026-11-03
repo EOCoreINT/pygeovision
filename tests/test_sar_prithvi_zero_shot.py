@@ -1,4 +1,5 @@
 """The zero-shot SAR adapter is a VH threshold, and its result must say so."""
+
 import numpy as np
 
 from pygeovision.models.adapters.sar_prithvi import SARPrithviAdapter

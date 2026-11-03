@@ -12,6 +12,7 @@ pygeofetch's index API is file-path-only (no in-memory array mode at
 all), so array inputs correctly stay on pygeovision's own formula — that
 is a genuine capability gap, not leftover duplication.
 """
+
 import pytest
 
 rasterio = pytest.importorskip("rasterio", reason="rasterio not installed")
@@ -25,8 +26,17 @@ def _make_stack(path, seed=0, size=50):
     transform = from_bounds(0, 0, size * 10, size * 10, size, size)
     rng = np.random.default_rng(seed)
     data = rng.integers(1, 5000, (4, size, size)).astype("uint16")  # blue,green,red,nir
-    with rasterio.open(path, "w", driver="GTiff", height=size, width=size, count=4,
-                        dtype="uint16", crs="EPSG:32630", transform=transform) as dst:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=4,
+        dtype="uint16",
+        crs="EPSG:32630",
+        transform=transform,
+    ) as dst:
         dst.write(data)
     return data
 
@@ -34,6 +44,7 @@ def _make_stack(path, seed=0, size=50):
 class TestNDVIDelegation:
     def test_file_input_matches_expected_formula_exactly(self, tmp_path):
         from pygeovision.data.indices import SpectralIndices
+
         scene = tmp_path / "scene.tif"
         data = _make_stack(scene, seed=0)
 
@@ -53,8 +64,9 @@ class TestNDVIDelegation:
         """Proves genuine delegation, not just a coincidentally-correct
         result — the earlier test alone can't distinguish 'delegated' from
         'silently fell back but got the right answer anyway'."""
-        from pygeovision.data.indices import SpectralIndices
         from pygeofetch.processing.indices import SpectralIndices as RealPgfIndices
+
+        from pygeovision.data.indices import SpectralIndices
 
         scene = tmp_path / "scene.tif"
         _make_stack(scene, seed=0)
@@ -65,12 +77,15 @@ class TestNDVIDelegation:
         def _tracking_ndvi(self, **kwargs):
             calls.append(kwargs)
             return original_ndvi(self, **kwargs)
+
         monkeypatch.setattr(RealPgfIndices, "ndvi", _tracking_ndvi)
 
         idx = SpectralIndices()
         idx.ndvi(str(scene), red_band=3, nir_band=4)
 
-        assert len(calls) == 1, "pygeofetch's real ndvi() was not called — delegation isn't happening"
+        assert (
+            len(calls) == 1
+        ), "pygeofetch's real ndvi() was not called — delegation isn't happening"
         assert "red" in calls[0] and "nir" in calls[0]
 
     def test_falls_back_to_native_when_pygeofetch_call_fails(self, tmp_path, monkeypatch):
@@ -100,6 +115,7 @@ class TestNDVIDelegation:
 class TestNDWIDelegation:
     def test_file_input_matches_expected_formula_exactly(self, tmp_path):
         from pygeovision.data.indices import SpectralIndices
+
         scene = tmp_path / "scene.tif"
         data = _make_stack(scene, seed=2)
 
@@ -129,27 +145,33 @@ class TestArrayInputStillWorksAndUsesNativePath:
         def _fake_pgf():
             called["delegated"] = True
             return None
+
         monkeypatch.setattr(indices_mod, "_pygeofetch_indices", _fake_pgf)
 
         idx = SpectralIndices()
         arr = np.random.default_rng(0).random((10, 10)).astype(np.float32) * 5000
         idx.ndvi(arr, red_band=1, nir_band=2)
 
-        assert called["delegated"] is False, "array input should never attempt pygeofetch delegation"
+        assert (
+            called["delegated"] is False
+        ), "array input should never attempt pygeofetch delegation"
 
 
-@pytest.mark.xfail(reason=(
-    "Real pre-existing bug found while testing the delegation bridge, not "
-    "introduced by it: _load_band() on a bare ndarray ignores band_idx "
-    "entirely, so ndvi(single_2d_array, red_band=1, nir_band=2) computes "
-    "(arr - arr) / (arr + arr) = 0 everywhere — the two 'bands' are "
-    "actually the same array. The documented '2-element list/array "
-    "[red, nir]' input format also isn't implemented at all (_load_band "
-    "has no list branch). Needs a real fix as a follow-up, tracked here "
-    "so it isn't silently lost."
-))
+@pytest.mark.xfail(
+    reason=(
+        "Real pre-existing bug found while testing the delegation bridge, not "
+        "introduced by it: _load_band() on a bare ndarray ignores band_idx "
+        "entirely, so ndvi(single_2d_array, red_band=1, nir_band=2) computes "
+        "(arr - arr) / (arr + arr) = 0 everywhere — the two 'bands' are "
+        "actually the same array. The documented '2-element list/array "
+        "[red, nir]' input format also isn't implemented at all (_load_band "
+        "has no list branch). Needs a real fix as a follow-up, tracked here "
+        "so it isn't silently lost."
+    )
+)
 def test_single_array_input_is_not_actually_meaningful():
     from pygeovision.data.indices import SpectralIndices
+
     idx = SpectralIndices()
     rng = np.random.default_rng(0)
     red = rng.random((10, 10)).astype(np.float32) * 5000

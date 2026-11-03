@@ -25,13 +25,14 @@ Usage::
 
     results = client.search(bbox=aoi.bbox, date_range=(...))
 """
+
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import json
 import logging
 import math
 import pathlib
-from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ def _require_shapely():
     try:
         from shapely.geometry import mapping, shape
         from shapely.ops import transform as shp_transform
+
         return shape, mapping, shp_transform
     except ImportError:
         raise ImportError("pip install shapely") from None
@@ -62,10 +64,11 @@ def utm_epsg_for(lon: float, lat: float) -> int:
 @dataclass
 class AdminBoundary:
     """A resolved administrative boundary."""
+
     query: str
     display_name: str
     geojson: dict[str, Any]
-    bbox: tuple[float, float, float, float]           # (lon_min, lat_min, lon_max, lat_max), WGS84
+    bbox: tuple[float, float, float, float]  # (lon_min, lat_min, lon_max, lat_max), WGS84
     area_km2: float
     utm_epsg: int
     osm_type: str | None = None
@@ -143,8 +146,7 @@ def fetch_admin_boundary(
     fc = resp.json()
 
     features = fc.get("features", [])
-    polygons = [f for f in features
-                if f["geometry"]["type"] in ("Polygon", "MultiPolygon")]
+    polygons = [f for f in features if f["geometry"]["type"] in ("Polygon", "MultiPolygon")]
     if not polygons:
         got = [f["geometry"]["type"] for f in features] or ["<no results>"]
         raise RuntimeError(
@@ -174,6 +176,7 @@ def fetch_admin_boundary(
     utm_epsg = utm_epsg_for(centroid.x, centroid.y)
 
     import pyproj
+
     project = pyproj.Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True).transform
     geom_utm = shp_transform(project, geom_wgs84)
     area_km2 = geom_utm.area / 1_000_000

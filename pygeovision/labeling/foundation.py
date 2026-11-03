@@ -15,6 +15,7 @@ resize / centre-crop, so patch ``(i, j)`` of a window covers exactly pixels ``[i
 of that window. (The previous version let the processor resize the whole scene to 256 px and centre-crop
 224 px, so the label grid covered only the middle of the image and was then stretched over all of it.)
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,7 +25,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 NODATA_LABEL = 255
-MAX_CELLS = 1_500_000        # ~4.5 GB of float32 for a 768-d backbone; refuse rather than thrash
+MAX_CELLS = 1_500_000  # ~4.5 GB of float32 for a 768-d backbone; refuse rather than thrash
 
 HF_IDS = {
     "dinov2-small": "facebook/dinov2-small",
@@ -54,8 +55,12 @@ class FoundationModelLabeler:
     True
     """
 
-    def __init__(self, model: str = "dinov2-base", device: str | None = None,
-                 rgb_bands: tuple[int, int, int] | None = None) -> None:
+    def __init__(
+        self,
+        model: str = "dinov2-base",
+        device: str | None = None,
+        rgb_bands: tuple[int, int, int] | None = None,
+    ) -> None:
         self.model_name = model
         self.device = device
         if rgb_bands is not None and len(rgb_bands) != 3:
@@ -76,8 +81,10 @@ class FoundationModelLabeler:
             model = AutoModel.from_pretrained(hf_id).to(dev).eval()
             patch = getattr(model.config, "patch_size", None)
             if not isinstance(patch, int):
-                raise RuntimeError(f"{hf_id} does not expose an integer config.patch_size; "
-                                   "it is not a ViT-style backbone this labeller can tile")
+                raise RuntimeError(
+                    f"{hf_id} does not expose an integer config.patch_size; "
+                    "it is not a ViT-style backbone this labeller can tile"
+                )
             self._loaded = (model, tuple(processor.image_mean), tuple(processor.image_std), patch)
         return self._loaded
 
@@ -137,9 +144,11 @@ class FoundationModelLabeler:
         try:
             model, mean, std, patch = self._load()
         except Exception as exc:  # noqa: BLE001
-            return {"success": False,
-                    "error": f"could not load '{self.model_name}': {type(exc).__name__}: {exc}. "
-                             "Nothing was substituted."}
+            return {
+                "success": False,
+                "error": f"could not load '{self.model_name}': {type(exc).__name__}: {exc}. "
+                "Nothing was substituted.",
+            }
         if patch_size is not None and patch_size != patch:
             raise ValueError(f"patch_size={patch_size} but {self.model_name} uses {patch}")
 
@@ -152,8 +161,10 @@ class FoundationModelLabeler:
             height, width = src.height, src.width
             bands = list(self.rgb_bands or ((1, 2, 3) if src.count >= 3 else (1, 1, 1)))
             if max(bands) > src.count or min(bands) < 1:
-                return {"success": False,
-                        "error": f"rgb_bands {tuple(bands)} not available in a {src.count}-band raster"}
+                return {
+                    "success": False,
+                    "error": f"rgb_bands {tuple(bands)} not available in a {src.count}-band raster",
+                }
             data = src.read(bands).astype(np.float32)
             valid = src.read_masks(bands[0]) > 0
             for b in bands[1:]:
@@ -172,9 +183,11 @@ class FoundationModelLabeler:
 
         rows, cols = -(-height // patch), -(-width // patch)
         if rows * cols > MAX_CELLS:
-            return {"success": False,
-                    "error": f"{rows * cols} patches exceeds the {MAX_CELLS} limit; "
-                             "downsample the raster or process it in blocks"}
+            return {
+                "success": False,
+                "error": f"{rows * cols} patches exceeds the {MAX_CELLS} limit; "
+                "downsample the raster or process it in blocks",
+            }
 
         # ---- embed on a registered grid
         n_r, n_c = -(-height // tile), -(-width // tile)
@@ -183,26 +196,30 @@ class FoundationModelLabeler:
         feats: np.ndarray | None = None
         try:
             for i in range(0, len(windows), max(1, batch_size)):
-                chunk = windows[i:i + batch_size]
+                chunk = windows[i : i + batch_size]
                 batch = []
                 for r, c in chunk:
                     y0, x0 = r * tile, c * tile
-                    t = rgb[:, y0:y0 + tile, x0:x0 + tile]
+                    t = rgb[:, y0 : y0 + tile, x0 : x0 + tile]
                     ph, pw = tile - t.shape[1], tile - t.shape[2]
-                    if ph or pw:   # replicate the edge; zero padding would be clustered as a class
+                    if ph or pw:  # replicate the edge; zero padding would be clustered as a class
                         t = np.pad(t, ((0, 0), (0, ph), (0, pw)), mode="edge")
                     batch.append((t - mean_a) / std_a)
                 x = torch.from_numpy(np.stack(batch)).to(dev)
                 with torch.no_grad():
                     tokens = model(pixel_values=x).last_hidden_state
                 if tokens.shape[1] < per * per:
-                    raise RuntimeError(f"backbone returned {tokens.shape[1]} tokens for a {per}x{per} grid")
-                tokens = tokens[:, -per * per:]            # patch tokens are last (CLS/register tokens first)
+                    raise RuntimeError(
+                        f"backbone returned {tokens.shape[1]} tokens for a {per}x{per} grid"
+                    )
+                tokens = tokens[
+                    :, -per * per :
+                ]  # patch tokens are last (CLS/register tokens first)
                 tokens = tokens.reshape(len(chunk), per, per, -1).float().cpu().numpy()
                 if feats is None:
                     feats = np.zeros((n_r * per, n_c * per, tokens.shape[-1]), np.float32)
                 for (r, c), tk in zip(chunk, tokens):
-                    feats[r * per:(r + 1) * per, c * per:(c + 1) * per] = tk
+                    feats[r * per : (r + 1) * per, c * per : (c + 1) * per] = tk
         except Exception as exc:  # noqa: BLE001
             return {"success": False, "error": f"embedding failed: {type(exc).__name__}: {exc}"}
         assert feats is not None
@@ -219,6 +236,7 @@ class FoundationModelLabeler:
         x_valid = flat[keep]
         if clustering == "kmeans":
             from sklearn.cluster import MiniBatchKMeans
+
             k = int(min(n_classes, len(x_valid)))
             ids = MiniBatchKMeans(n_clusters=k, random_state=42, n_init=3).fit_predict(x_valid)
             n_found = k
@@ -229,9 +247,12 @@ class FoundationModelLabeler:
                 return {"success": False, "error": "pip install hdbscan"}
             ids = hdbscan.HDBSCAN(min_cluster_size=5).fit_predict(x_valid)
             n_found = len(set(ids.tolist()) - {-1})
-            ids = np.where(ids < 0, NODATA_LABEL, ids)     # noise is "unlabelled", not a class
+            ids = np.where(ids < 0, NODATA_LABEL, ids)  # noise is "unlabelled", not a class
         if n_found >= NODATA_LABEL:
-            return {"success": False, "error": f"{n_found} clusters do not fit a uint8 label raster"}
+            return {
+                "success": False,
+                "error": f"{n_found} clusters do not fit a uint8 label raster",
+            }
         labels[keep] = ids.astype(np.uint8)
 
         grid = labels.reshape(rows, cols)
@@ -241,14 +262,27 @@ class FoundationModelLabeler:
         # ---- write
         output_path.parent.mkdir(parents=True, exist_ok=True)
         out_profile = {k: profile[k] for k in ("crs", "transform") if k in profile}
-        out_profile.update(driver="GTiff", height=height, width=width, count=1, dtype="uint8",
-                           nodata=NODATA_LABEL, compress="lzw")
+        out_profile.update(
+            driver="GTiff",
+            height=height,
+            width=width,
+            count=1,
+            dtype="uint8",
+            nodata=NODATA_LABEL,
+            compress="lzw",
+        )
         from pygeovision.data._profile import writable_profile
+
         out_profile = writable_profile(out_profile)
         with rasterio.open(str(output_path), "w", **out_profile) as dst:
             dst.write(full[np.newaxis])
-            dst.update_tags(source=f"FoundationModelLabeler_{self.model_name}", n_classes=str(n_found),
-                            clustering=clustering, cell_px=str(patch), rgb_bands=str(tuple(bands)))
+            dst.update_tags(
+                source=f"FoundationModelLabeler_{self.model_name}",
+                n_classes=str(n_found),
+                clustering=clustering,
+                cell_px=str(patch),
+                rgb_bands=str(tuple(bands)),
+            )
 
         return {
             "success": True,

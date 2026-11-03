@@ -45,11 +45,13 @@ This module provides:
   * ``ScatteringPromptTuner`` — implementation of the SPT approach.
   * ``check_terratorch_available()`` — graceful detection of TerraTorch.
 """
+
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -63,16 +65,19 @@ logger = logging.getLogger("pygeovision.adapters.sar_prithvi")
 
 # ── TerraTorch availability check ─────────────────────────────────────────────
 
+
 def check_terratorch_available() -> bool:
     """Return True if TerraTorch is installed and importable."""
     try:
         import terratorch  # noqa: F401
+
         return True
     except ImportError:
         return False
 
 
 # ── Sen1Floods11 dataset config ───────────────────────────────────────────────
+
 
 @dataclass
 class Sen1Floods11Config:
@@ -99,8 +104,8 @@ class Sen1Floods11Config:
     data_root: str = "./data/sen1floods11"
     split_dir: str = "./data/sen1floods11/splits"
     train_split: str = "flood_train_data.csv"
-    val_split:   str = "flood_valid_data.csv"
-    test_split:  str = "flood_test_data.csv"
+    val_split: str = "flood_valid_data.csv"
+    test_split: str = "flood_test_data.csv"
 
     # Input configuration
     sar_bands: list[str] = field(default_factory=lambda: ["VV", "VH"])
@@ -109,12 +114,12 @@ class Sen1Floods11Config:
 
     # Normalisation parameters for Sen1Floods11 SAR data (empirical)
     sar_mean: list[float] = field(default_factory=lambda: [0.6851, 0.4851])
-    sar_std:  list[float] = field(default_factory=lambda: [0.1903, 0.1568])
+    sar_std: list[float] = field(default_factory=lambda: [0.1903, 0.1568])
 
     # Training
     batch_size: int = 4
     num_workers: int = 4
-    n_classes: int = 2    # flood / non-flood
+    n_classes: int = 2  # flood / non-flood
 
     def to_terratorch_yaml(self, output_path: str) -> str:
         """Generate a TerraTorch-compatible YAML config for this dataset.
@@ -153,6 +158,7 @@ class Sen1Floods11Config:
 
 # ── Scattering Prompt Tuning ─────────────────────────────────────────────────
 
+
 class ScatteringPromptTuner:
     """Implement Scattering Prompt Tuning (SPT) for Prithvi + SAR.
 
@@ -170,10 +176,10 @@ class ScatteringPromptTuner:
     """
 
     SCATTERING_MECHANISMS = {
-        "surface":       [0.8, 0.2, 0.1],  # high VV, low VH, low ratio
+        "surface": [0.8, 0.2, 0.1],  # high VV, low VH, low ratio
         "double_bounce": [0.9, 0.3, 0.8],  # high VV, moderate VH, high ratio
-        "volume":        [0.4, 0.7, 0.3],  # moderate VV, high VH, low ratio
-        "diffuse":       [0.3, 0.3, 0.5],  # low backscatter overall
+        "volume": [0.4, 0.7, 0.3],  # moderate VV, high VH, low ratio
+        "diffuse": [0.3, 0.3, 0.5],  # low backscatter overall
     }
 
     def __init__(
@@ -194,7 +200,7 @@ class ScatteringPromptTuner:
         """
         self.n_prompts = n_prompts
         self.prompt_dim = prompt_dim
-        self._prompts = None  # Set during training
+        self._prompts: Any = None  # Set during training
 
     def initialise_prompts(self, method: str = "scattering") -> np.ndarray:
         """Initialise prompt embeddings.
@@ -224,7 +230,9 @@ class ScatteringPromptTuner:
                     tiled = np.concatenate([tiled, vec[:remainder]])
                 prompts[i] = tiled * 0.02  # scale to typical initialisation magnitude
         elif method == "random":
-            prompts = np.random.normal(0, 0.02, (self.n_prompts, self.prompt_dim)).astype(np.float32)
+            prompts = np.random.normal(0, 0.02, (self.n_prompts, self.prompt_dim)).astype(
+                np.float32
+            )
         elif method == "zeros":
             prompts = np.zeros((self.n_prompts, self.prompt_dim), dtype=np.float32)
         else:
@@ -233,7 +241,9 @@ class ScatteringPromptTuner:
         self._prompts = prompts
         logger.info(
             "SPT prompts initialised: n=%d  dim=%d  method=%s  norm=%.4f",
-            self.n_prompts, self.prompt_dim, method,
+            self.n_prompts,
+            self.prompt_dim,
+            method,
             float(np.linalg.norm(prompts)),
         )
         return prompts
@@ -261,7 +271,7 @@ class ScatteringPromptTuner:
             "init_args": {
                 "backbone": backbone,
                 "backbone_pretrained": True,
-                "backbone_freeze": True,   # freeze backbone, train only prompts + decoder
+                "backbone_freeze": True,  # freeze backbone, train only prompts + decoder
                 "num_frames": 1,
                 "extra_kwargs": {
                     "num_prompts": self.n_prompts,
@@ -274,6 +284,7 @@ class ScatteringPromptTuner:
 
 
 # ── Main adapter ──────────────────────────────────────────────────────────────
+
 
 class SARPrithviAdapter:
     """Unified interface for running Prithvi inference on SAR data.
@@ -312,7 +323,7 @@ class SARPrithviAdapter:
         self.backbone = backbone
         self.weights_path = weights_path
         self.device = device
-        self._model = None
+        self._model: Any = None
 
         if mode != "zero_shot" and not check_terratorch_available():
             raise ImportError(
@@ -344,9 +355,13 @@ class SARPrithviAdapter:
                          all (it thresholds the mapped VH channel), else ``"prithvi_<mode>"``.
         """
         result: dict = {
-            "model": self.backbone, "mode": self.mode, "task": self.task,
-            "prediction": None, "confidence": None,
-            "channels": [], "warnings": [],
+            "model": self.backbone,
+            "mode": self.mode,
+            "task": self.task,
+            "prediction": None,
+            "confidence": None,
+            "channels": [],
+            "warnings": [],
             # zero_shot never runs Prithvi: it thresholds the mapped VH channel. Say so in the result.
             "method": "vh_threshold" if self.mode == "zero_shot" else "prithvi_" + self.mode,
         }
@@ -381,7 +396,9 @@ class SARPrithviAdapter:
         result["prediction"] = prediction
         logger.info(
             "SARPrithviAdapter inference: mode=%s  task=%s  shape=%s  prediction_shape=%s",
-            self.mode, self.task, six_ch.shape,
+            self.mode,
+            self.task,
+            six_ch.shape,
             prediction.shape if prediction is not None else "None",
         )
         return result
@@ -406,8 +423,7 @@ class SARPrithviAdapter:
         water_mask = (vh_channel < flood_threshold).astype(np.uint8)
 
         logger.info(
-            "Zero-shot SAR flood detection: VH threshold=%.2f  "
-            "flooded pixels=%d / %d (%.1f%%)",
+            "Zero-shot SAR flood detection: VH threshold=%.2f  " "flooded pixels=%d / %d (%.1f%%)",
             flood_threshold,
             int(water_mask.sum()),
             water_mask.size,
@@ -422,7 +438,7 @@ class SARPrithviAdapter:
         Call ``self.fine_tune()`` first or supply ``weights_path``.
         """
         try:
-            import terratorch.models as ttm
+            import terratorch.models as ttm  # noqa: F401
             import torch
         except ImportError:
             logger.error("TerraTorch not available. Use mode='zero_shot' or install TerraTorch.")
@@ -450,8 +466,8 @@ class SARPrithviAdapter:
     def _spt_predict(self, six_ch: np.ndarray) -> np.ndarray | None:
         """Run inference with Scattering Prompt Tuning prompts injected."""
         try:
-            import terratorch.models as ttm
-            import torch
+            import terratorch.models as ttm  # noqa: F401
+            import torch  # noqa: F401
         except ImportError:
             logger.error("TerraTorch not available for SPT mode.")
             return None
@@ -503,6 +519,7 @@ class SARPrithviAdapter:
             )
             if self.weights_path:
                 import torch
+
                 state = torch.load(self.weights_path, map_location=self.device)
                 self._model.load_state_dict(state.get("state_dict", state), strict=False)
             self._model = self._model.to(self.device).eval()
@@ -543,9 +560,9 @@ class SARPrithviAdapter:
             raise ImportError("TerraTorch required: pip install terratorch")
 
         try:
-            import terratorch.models as ttm
-            from lightning import Trainer
-            from terratorch.datamodules import Sen1Floods11NonGeographicDataModule
+            from lightning import Trainer  # noqa: F401
+            from terratorch.datamodules import Sen1Floods11NonGeographicDataModule  # noqa: F401
+            import terratorch.models as ttm  # noqa: F401
 
             data_cfg = Sen1Floods11Config(data_root=data_root)
             yaml_path = data_cfg.to_terratorch_yaml(f"{output_dir}/sen1floods11_config.yaml")
@@ -556,7 +573,10 @@ class SARPrithviAdapter:
                 "     --model.backbone %s \\\n"
                 "     --trainer.max_epochs %d \\\n"
                 "     --trainer.default_root_dir %s",
-                yaml_path, self.backbone, max_epochs, output_dir,
+                yaml_path,
+                self.backbone,
+                max_epochs,
+                output_dir,
             )
             return yaml_path
         except ImportError as exc:

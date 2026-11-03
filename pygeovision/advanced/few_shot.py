@@ -2,6 +2,7 @@
 Few-shot learning for geospatial models (D3).
 Classify new land cover classes with only 1-10 labelled examples.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,10 +43,10 @@ class FewShotLearner:
     # (a model id or a local directory). The backbone must return ``last_hidden_state`` with a
     # class token first, as DINOv2 and ViT models do.
     _HF_MODEL_IDS: dict[str, str] = {
-        "dinov2-small":  "facebook/dinov2-small",
-        "dinov2-base":   "facebook/dinov2-base",
-        "dinov2-large":  "facebook/dinov2-large",
-        "dinov2-giant":  "facebook/dinov2-giant",
+        "dinov2-small": "facebook/dinov2-small",
+        "dinov2-base": "facebook/dinov2-base",
+        "dinov2-large": "facebook/dinov2-large",
+        "dinov2-giant": "facebook/dinov2-giant",
     }
 
     def __init__(
@@ -60,7 +61,9 @@ class FewShotLearner:
         value_range: tuple[float, float] | None = None,
     ) -> None:
         if method not in self.METHODS:
-            raise ValueError(f"method must be one of {list(self.METHODS)}; {method!r} is not implemented")
+            raise ValueError(
+                f"method must be one of {list(self.METHODS)}; {method!r} is not implemented"
+            )
         if metric not in self.METRICS:
             raise ValueError(f"metric must be one of {list(self.METRICS)}; got {metric!r}")
         if stretch not in self.STRETCHES:
@@ -77,14 +80,18 @@ class FewShotLearner:
         # fit_support), so a query as far from its class as the classes are from each other scores ~0.5.
         self._user_temperature = float(temperature) if temperature else None
         self.temperature = self._user_temperature or (1.0 if metric == "euclidean" else 0.05)
-        if value_range is not None and not (len(value_range) == 2 and value_range[0] < value_range[1]):
-            raise ValueError(f"value_range must be (low, high) with low < high; got {value_range!r}")
+        if value_range is not None and not (
+            len(value_range) == 2 and value_range[0] < value_range[1]
+        ):
+            raise ValueError(
+                f"value_range must be (low, high) with low < high; got {value_range!r}"
+            )
         self.bands = tuple(int(b) for b in bands)
         self.stretch = stretch
         self.value_range = tuple(float(v) for v in value_range) if value_range else None
         self.device = device or self._auto_device()
-        self._feature_extractor = None
-        self._processor = None
+        self._feature_extractor: Any = None
+        self._processor: Any = None
         self._prototypes: dict[str, Any] = {}
         self._class_names: list[str] = []
 
@@ -101,19 +108,26 @@ class FewShotLearner:
     @staticmethod
     def _auto_device():
         try:
-            import torch; return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError: return "cpu"
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
 
     def _load_backbone(self) -> None:
         if self._feature_extractor is not None:
             return
         try:
             from transformers import AutoImageProcessor, AutoModel
-        except ImportError:
-            raise ImportError("transformers + torch required: pip install transformers torch")
+        except ImportError as exc:
+            raise ImportError(
+                "transformers + torch required: pip install transformers torch"
+            ) from exc
         try:
             self._processor = AutoImageProcessor.from_pretrained(self.model_id)
-            self._feature_extractor = AutoModel.from_pretrained(self.model_id).to(self.device).eval()
+            self._feature_extractor = (
+                AutoModel.from_pretrained(self.model_id).to(self.device).eval()
+            )
         except OSError as exc:
             raise RuntimeError(
                 f"could not load backbone {self.model_id!r}: {exc}. It is downloaded from Hugging Face on "
@@ -147,18 +161,23 @@ class FewShotLearner:
         brightness differences between images are kept.
         """
         import numpy as np
+
         data = np.array(data, dtype=np.float64, copy=True)
         ok = np.isfinite(data)
         if nodata is not None:
             ok &= data != nodata
         out = np.zeros_like(data)
-        if self.value_range is not None:                  # the same scale for every image and chip
+        if self.value_range is not None:  # the same scale for every image and chip
             lo, hi = self.value_range
             out = np.where(ok, np.clip((np.where(ok, data, lo) - lo) / (hi - lo) * 255, 0, 255), 0)
             while out.shape[0] < 3:
                 out = np.concatenate([out, out[-1:]], axis=0)
             return out[:3].transpose(1, 2, 0).astype(np.uint8)
-        groups = [list(range(data.shape[0]))] if self.stretch == "joint" else [[b] for b in range(data.shape[0])]
+        groups = (
+            [list(range(data.shape[0]))]
+            if self.stretch == "joint"
+            else [[b] for b in range(data.shape[0])]
+        )
         for g in groups:
             valid = ok[g]
             if not valid.any():
@@ -166,20 +185,20 @@ class FewShotLearner:
             p2, p98 = np.percentile(data[g][valid], (2, 98))
             filled = np.where(ok[g], data[g], p2)
             out[g] = np.clip((filled - p2) / (p98 - p2 + 1e-8) * 255, 0, 255)
-        while out.shape[0] < 3:                           # one or two bands: repeat the last
+        while out.shape[0] < 3:  # one or two bands: repeat the last
             out = np.concatenate([out, out[-1:]], axis=0)
         return out[:3].transpose(1, 2, 0).astype(np.uint8)
 
     def _embed(self, rgb_images: list[Any], batch_size: int = 16) -> Any:
         """Class-token feature vectors ``(n, d)`` for a list of ``(H, W, 3)`` uint8 arrays."""
         import numpy as np
-        import torch
         from PIL import Image
+        import torch
 
         self._load_backbone()
         feats = []
         for i in range(0, len(rgb_images), batch_size):
-            pil = [Image.fromarray(a) for a in rgb_images[i:i + batch_size]]
+            pil = [Image.fromarray(a) for a in rgb_images[i : i + batch_size]]
             inputs = self._processor(images=pil, return_tensors="pt").to(self.device)
             with torch.no_grad():
                 out = self._feature_extractor(**inputs)
@@ -224,17 +243,23 @@ class FewShotLearner:
             feats, errors = self._extract_features(list(paths))
             usable = [f for f in feats if f is not None]
             if not usable:
-                raise ValueError(f"class {class_name!r}: none of its {len(paths)} images could be read "
-                                 f"(first error: {next(e for e in errors if e)})")
+                raise ValueError(
+                    f"class {class_name!r}: none of its {len(paths)} images could be read "
+                    f"(first error: {next(e for e in errors if e)})"
+                )
             if len(usable) < len(paths):
-                logger.warning("class %r: using %d of %d images", class_name, len(usable), len(paths))
+                logger.warning(
+                    "class %r: using %d of %d images", class_name, len(usable), len(paths)
+                )
             prototypes[class_name] = np.mean(usable, axis=0)
             logger.info("Prototype built: %s (%d examples)", class_name, len(usable))
         self._prototypes = prototypes
         self._class_names = sorted(prototypes)
         if self._user_temperature is None and self.metric == "euclidean":
             protos = [prototypes[n] for n in self._class_names]
-            gaps = [float(np.linalg.norm(a - b)) for i, a in enumerate(protos) for b in protos[i + 1:]]
+            gaps = [
+                float(np.linalg.norm(a - b)) for i, a in enumerate(protos) for b in protos[i + 1 :]
+            ]
             median_gap = float(np.median(gaps))
             self.temperature = median_gap / 4.0 if median_gap > 1e-9 else 1.0
         return self
@@ -242,11 +267,19 @@ class FewShotLearner:
     def _scores(self, feat: Any) -> tuple[dict[str, float], dict[str, float]]:
         """``(distances, probabilities)`` of one feature vector against every prototype."""
         import numpy as np
+
         names = self._class_names
         if self.metric == "cosine":
             f = feat / (np.linalg.norm(feat) + 1e-12)
-            dist = np.array([1.0 - float(f @ (self._prototypes[n] / (np.linalg.norm(self._prototypes[n]) + 1e-12)))
-                             for n in names])
+            dist = np.array(
+                [
+                    1.0
+                    - float(
+                        f @ (self._prototypes[n] / (np.linalg.norm(self._prototypes[n]) + 1e-12))
+                    )
+                    for n in names
+                ]
+            )
         else:
             dist = np.array([float(np.linalg.norm(feat - self._prototypes[n])) for n in names])
         logits = -dist / self.temperature
@@ -273,7 +306,9 @@ class FewShotLearner:
         results = []
         for feat, err in zip(feats, errors):
             if feat is None:
-                results.append({"class": None, "confidence": 0.0, "probabilities": {}, "error": err})
+                results.append(
+                    {"class": None, "confidence": 0.0, "probabilities": {}, "error": err}
+                )
                 continue
             distances, probs = self._scores(feat)
             best = min(distances, key=distances.get)
@@ -354,7 +389,9 @@ class FewShotLearner:
                 for r0 in _starts(H):
                     for c0 in _starts(W):
                         r1, c1 = min(r0 + chip_size, H), min(c0 + chip_size, W)
-                        data = src.read(wanted, window=Window(c0, r0, c1 - c0, r1 - r0)).astype(np.float64)
+                        data = src.read(wanted, window=Window(c0, r0, c1 - c0, r1 - r0)).astype(
+                            np.float64
+                        )
                         valid = np.isfinite(data)
                         if nodata is not None:
                             valid &= data != nodata
@@ -372,17 +409,24 @@ class FewShotLearner:
             label[covered] = np.argmax(accum[:, covered], axis=0).astype(np.uint8)
 
             import pathlib
+
             pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             out_profile = profile.copy()
             out_profile.update(count=1, dtype="uint8", compress="lzw", nodata=255)
-            for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+            for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
                 out_profile.pop(_k, None)
             class_map = {str(i): name for i, name in enumerate(names)}
             with rasterio.open(output_path, "w", **out_profile) as dst:
                 dst.write(label[np.newaxis])
                 dst.update_tags(method="FewShotLearner", class_map=json.dumps(class_map))
 
-            return {"success": True, "output_path": output_path, "n_classes": len(names),
-                    "class_map": class_map, "n_chips": n_chips, "n_skipped_chips": n_skipped}
+            return {
+                "success": True,
+                "output_path": output_path,
+                "n_classes": len(names),
+                "class_map": class_map,
+                "n_chips": n_chips,
+                "n_skipped_chips": n_skipped,
+            }
         except Exception as exc:
             return {"success": False, "error": f"{type(exc).__name__}: {exc}"}

@@ -8,6 +8,7 @@
 (switch off with ``report=False`` / ``--no-report`` or ``PYGEOVISION_REPORT=0``).
 Install the libraries with ``pip install "pygeovision[report]"``.
 """
+
 from __future__ import annotations
 
 from pygeovision.reporting.build import (
@@ -22,6 +23,14 @@ from pygeovision.reporting.specs import SPECS, ReportSpec, spec_for
 from pygeovision.reporting.vectors import VECTOR_FORMATS
 
 __all__ = [
-    "generate_deliverables", "regenerate", "Deliverables", "ReportingUnavailable", "REPORT_FORMATS",
-    "VECTOR_FORMATS", "DEFAULT_VECTOR_FORMATS", "SPECS", "ReportSpec", "spec_for",
+    "generate_deliverables",
+    "regenerate",
+    "Deliverables",
+    "ReportingUnavailable",
+    "REPORT_FORMATS",
+    "VECTOR_FORMATS",
+    "DEFAULT_VECTOR_FORMATS",
+    "SPECS",
+    "ReportSpec",
+    "spec_for",
 ]

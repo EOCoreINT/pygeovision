@@ -77,7 +77,9 @@ def build_unet(
     )
     logger.info(
         "Built UNet(encoder=%s, in_channels=%d, num_classes=%d)",
-        encoder, in_channels, num_classes,
+        encoder,
+        in_channels,
+        num_classes,
     )
     return model
 
@@ -134,7 +136,9 @@ def build_deeplabv3plus(
     )
     logger.info(
         "Built DeepLabV3+(encoder=%s, in_channels=%d, num_classes=%d)",
-        encoder, in_channels, num_classes,
+        encoder,
+        in_channels,
+        num_classes,
     )
     return model
 
@@ -174,16 +178,23 @@ def build_segformer(
             f"model_size must be one of ['b0', 'b1', 'b2', 'b3', 'b4', 'b5'], got {model_size!r}"
         )
     hf_id = {"b5": "nvidia/segformer-b5-finetuned-ade-640-640"}.get(
-        model_size, f"nvidia/segformer-{model_size}-finetuned-ade-512-512")
-    spec = SimpleNamespace(name=f"segformer-{model_size}", family="segformer",
-                           task="segmentation", hf_id=hf_id)
+        model_size, f"nvidia/segformer-{model_size}-finetuned-ade-512-512"
+    )
+    spec = SimpleNamespace(
+        name=f"segformer-{model_size}", family="segformer", task="segmentation", hf_id=hf_id
+    )
     allow_random_init = kwargs.pop("allow_random_init", False)
     if kwargs:
         raise TypeError(f"build_segformer got unexpected keyword arguments: {sorted(kwargs)}")
-    model = build_hf_model(spec, num_classes, in_channels, pretrained,
-                           allow_random_init=allow_random_init)
-    logger.info("Built SegFormer-%s(in_channels=%d, num_classes=%d)",
-                model_size.upper(), in_channels, num_classes)
+    model = build_hf_model(
+        spec, num_classes, in_channels, pretrained, allow_random_init=allow_random_init
+    )
+    logger.info(
+        "Built SegFormer-%s(in_channels=%d, num_classes=%d)",
+        model_size.upper(),
+        in_channels,
+        num_classes,
+    )
     return model
 
 

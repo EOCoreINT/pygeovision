@@ -1,12 +1,13 @@
 """ONNX Runtime wrapper, Jetson converter and cloud deployers: behaviour that can be checked offline."""
+
 from __future__ import annotations
 
 import importlib.util
 import logging
+from pathlib import Path
 import sys
 import tarfile
 import types
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -17,8 +18,8 @@ pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
 rasterio = pytest.importorskip("rasterio")
 
-import torch.nn as nn  # noqa: E402
 from rasterio.transform import from_origin  # noqa: E402
+import torch.nn as nn  # noqa: E402
 
 from pygeovision.cloud.deploy import (  # noqa: E402
     SAGEMAKER_INFERENCE_PY,
@@ -42,8 +43,17 @@ class Net(nn.Module):
 def scene(tmp_path_factory):
     p = tmp_path_factory.mktemp("sc") / "scene.tif"
     arr = (np.random.default_rng(0).random((4, 150, 150)) * 255).astype("float32")
-    with rasterio.open(p, "w", driver="GTiff", height=150, width=150, count=4, dtype="float32",
-                       crs="EPSG:32633", transform=from_origin(500000, 5300000, 10, 10)) as d:
+    with rasterio.open(
+        p,
+        "w",
+        driver="GTiff",
+        height=150,
+        width=150,
+        count=4,
+        dtype="float32",
+        crs="EPSG:32633",
+        transform=from_origin(500000, 5300000, 10, 10),
+    ) as d:
         d.write(arr)
     return p
 
@@ -53,9 +63,12 @@ def models(tmp_path_factory):
     d = tmp_path_factory.mktemp("onnx")
     torch.manual_seed(0)
     net = Net().eval()
-    fixed = ONNXRuntimeInference.from_pytorch(net, d / "fixed.onnx", input_shape=(1, 4, 64, 64), simplify=False)
-    dyn = ONNXRuntimeInference.from_pytorch(net, d / "dyn.onnx", input_shape=(1, 4, 64, 64), simplify=False,
-                                            dynamic_spatial=True)
+    fixed = ONNXRuntimeInference.from_pytorch(
+        net, d / "fixed.onnx", input_shape=(1, 4, 64, 64), simplify=False
+    )
+    dyn = ONNXRuntimeInference.from_pytorch(
+        net, d / "dyn.onnx", input_shape=(1, 4, 64, 64), simplify=False, dynamic_spatial=True
+    )
     return net, fixed, dyn, d
 
 
@@ -90,7 +103,7 @@ class TestONNXRuntime:
         _, _, dyn, _ = models
         dyn.infer_geotiff(scene, tmp_path / "p.tif", chip_size=64, overlap=16)
         with rasterio.open(tmp_path / "p.tif") as p:
-            assert p.read(1).max() <= 5            # six classes, not the old default of two
+            assert p.read(1).max() <= 5  # six classes, not the old default of two
 
     def test_wrong_num_classes_is_a_clear_error_not_a_numpy_crash(self, models, scene, tmp_path):
         _, _, dyn, _ = models
@@ -100,15 +113,25 @@ class TestONNXRuntime:
     def test_wrong_band_count_is_reported(self, models, tmp_path):
         _, _, dyn, _ = models
         p = tmp_path / "three.tif"
-        with rasterio.open(p, "w", driver="GTiff", height=80, width=80, count=3, dtype="float32",
-                           crs="EPSG:32633", transform=from_origin(0, 0, 10, 10)) as d:
+        with rasterio.open(
+            p,
+            "w",
+            driver="GTiff",
+            height=80,
+            width=80,
+            count=3,
+            dtype="float32",
+            crs="EPSG:32633",
+            transform=from_origin(0, 0, 10, 10),
+        ) as d:
             d.write(np.random.rand(3, 80, 80).astype("float32"))
         r = dyn.infer_geotiff(p, tmp_path / "o.tif", chip_size=64, overlap=16)
         assert r["success"] is False and "3" in r["error"]
 
     def test_non_square_fixed_input_is_refused_clearly(self, tmp_path, scene):
-        eng = ONNXRuntimeInference.from_pytorch(Net().eval(), tmp_path / "ns.onnx",
-                                                input_shape=(1, 4, 64, 96), simplify=False)
+        eng = ONNXRuntimeInference.from_pytorch(
+            Net().eval(), tmp_path / "ns.onnx", input_shape=(1, 4, 64, 96), simplify=False
+        )
         r = eng.infer_geotiff(scene, tmp_path / "o.tif")
         assert not r["success"] and "non-square" in r["error"]
 
@@ -138,40 +161,61 @@ class TestTiledPreflightUsesChipSize:
                     raise RuntimeError("Got invalid dimensions for input")
                 return torch.zeros(x.shape[0], 2, 64, 64)
 
-        r = TiledInference(Only64(), chip_size=64, overlap=0, num_classes=2).infer(scene, tmp_path / "a.tif")
-        assert r["success"], r                                  # a probe at 32x32 used to reject this
-        r = TiledInference(Only64(), chip_size=48, overlap=0, num_classes=2).infer(scene, tmp_path / "b.tif")
+        r = TiledInference(Only64(), chip_size=64, overlap=0, num_classes=2).infer(
+            scene, tmp_path / "a.tif"
+        )
+        assert r["success"], r  # a probe at 32x32 used to reject this
+        r = TiledInference(Only64(), chip_size=48, overlap=0, num_classes=2).infer(
+            scene, tmp_path / "b.tif"
+        )
         assert not r["success"] and "chip_size=48" in r["error"]
 
 
 class TestJetson:
     def test_without_tensorrt_you_get_onnx_and_a_command(self, tmp_path):
         with patch.dict(sys.modules, {"tensorrt": None}):
-            r = JetsonDeployer().convert(Net().eval(), tmp_path / "m.onnx", tmp_path / "m.trt",
-                                         precision="fp16", input_shape=(1, 4, 64, 64))
+            r = JetsonDeployer().convert(
+                Net().eval(),
+                tmp_path / "m.onnx",
+                tmp_path / "m.trt",
+                precision="fp16",
+                input_shape=(1, 4, 64, 64),
+            )
         assert r["success"] is False and r["stage"] == "tensorrt_not_installed"
-        assert "--fp16" in r["jetson_command"] and "--memPoolSize=workspace:4096M" in r["jetson_command"]
+        assert (
+            "--fp16" in r["jetson_command"]
+            and "--memPoolSize=workspace:4096M" in r["jetson_command"]
+        )
         assert "--workspace=" not in r["jetson_command"] and "noFP16" not in r["jetson_command"]
         assert (tmp_path / "m.onnx").exists()
 
     def test_fp32_command_has_no_precision_flag(self, tmp_path):
         with patch.dict(sys.modules, {"tensorrt": None}):
-            r = JetsonDeployer().convert(Net().eval(), tmp_path / "m.onnx", tmp_path / "m.trt",
-                                         precision="fp32", input_shape=(1, 4, 64, 64))
+            r = JetsonDeployer().convert(
+                Net().eval(),
+                tmp_path / "m.onnx",
+                tmp_path / "m.trt",
+                precision="fp32",
+                input_shape=(1, 4, 64, 64),
+            )
         assert "--fp16" not in r["jetson_command"] and "--int8" not in r["jetson_command"]
 
     def test_exported_onnx_has_static_shapes(self, tmp_path):
         import onnx
+
         with patch.dict(sys.modules, {"tensorrt": None}):
-            JetsonDeployer().convert(Net().eval(), tmp_path / "m.onnx", tmp_path / "m.trt",
-                                     input_shape=(1, 4, 64, 64))
+            JetsonDeployer().convert(
+                Net().eval(), tmp_path / "m.onnx", tmp_path / "m.trt", input_shape=(1, 4, 64, 64)
+            )
         g = onnx.load(str(tmp_path / "m.onnx"))
         dims = [d.dim_value for d in g.graph.input[0].type.tensor_type.shape.dim]
-        assert dims == [1, 4, 64, 64]             # TensorRT needs a profile for anything dynamic
+        assert dims == [1, 4, 64, 64]  # TensorRT needs a profile for anything dynamic
 
     def test_unknown_precision_raises(self, tmp_path):
         with pytest.raises(ValueError, match="precision"):
-            JetsonDeployer().convert(Net(), tmp_path / "a.onnx", tmp_path / "a.trt", precision="fp8")
+            JetsonDeployer().convert(
+                Net(), tmp_path / "a.onnx", tmp_path / "a.trt", precision="fp8"
+            )
 
     def test_benchmark_without_tensorrt_is_an_error_dict(self):
         with patch.dict(sys.modules, {"tensorrt": None}):
@@ -219,13 +263,20 @@ class TestSageMakerArchive:
         session = h.model_fn(str(tmp_path / "x"))
         x = torch.rand(4, 40, 40)
         data = h.input_fn(__import__("json").dumps({"inputs": x.tolist()}))
-        assert data[0].shape == (1, 4, 40, 40) and data[1] is False   # a single chip gets a batch axis
+        assert (
+            data[0].shape == (1, 4, 40, 40) and data[1] is False
+        )  # a single chip gets a batch axis
         body, ctype = h.output_fn(h.predict_fn(data, session))
         pred = np.asarray(__import__("json").loads(body)["predictions"])
         np.testing.assert_allclose(pred, net(x[None]).detach().numpy(), atol=1e-5)
         assert ctype == "application/json"
         # "argmax": class ids instead of logits, much smaller on the wire
-        small, _ = h.output_fn(h.predict_fn(h.input_fn(__import__("json").dumps({"inputs": x.tolist(), "argmax": True})), session))
+        small, _ = h.output_fn(
+            h.predict_fn(
+                h.input_fn(__import__("json").dumps({"inputs": x.tolist(), "argmax": True})),
+                session,
+            )
+        )
         classes = np.asarray(__import__("json").loads(small)["predictions"])
         assert classes.shape == (1, 40, 40) and (classes == pred.argmax(1)).all()
         assert len(small) * 5 < len(body)
@@ -259,14 +310,19 @@ class TestAWSDeploy:
         mods, _ = self._sdk()
         with patch.dict(sys.modules, mods):
             r = AWSDeployer().deploy(tmp_path / "m.onnx", "ep")
-        assert r["success"] is False and "AWS_S3_BUCKET" in r["error"] and "AWS_SAGEMAKER_ROLE_ARN" in r["error"]
+        assert (
+            r["success"] is False
+            and "AWS_S3_BUCKET" in r["error"]
+            and "AWS_SAGEMAKER_ROLE_ARN" in r["error"]
+        )
 
     def test_onnx_is_packed_before_upload(self, models, tmp_path):
         _, _, _, d = models
         mods, boto3 = self._sdk()
         with patch.dict(sys.modules, mods):
             r = AWSDeployer(bucket="b", role_arn="arn:aws:iam::1:role/r").deploy(
-                d / "dyn.onnx", "ep", auto_scale=False)
+                d / "dyn.onnx", "ep", auto_scale=False
+            )
         assert r["success"] is True, r
         _, bucket, key = boto3.client.return_value.upload_file.call_args[0]
         assert bucket == "b" and key.endswith(".tar.gz")
@@ -297,9 +353,12 @@ class TestAWSDeploy:
 class TestAWSPredict:
     def test_array_is_sent_with_the_argmax_flag(self):
         import json as _json
+
         boto3 = MagicMock()
         runtime = boto3.client.return_value
-        runtime.invoke_endpoint.return_value = {"Body": MagicMock(read=lambda: b'{"predictions": [[0]]}')}
+        runtime.invoke_endpoint.return_value = {
+            "Body": MagicMock(read=lambda: b'{"predictions": [[0]]}')
+        }
         with patch.dict(sys.modules, {"boto3": boto3}):
             out = AWSDeployer().predict("ep", np.zeros((1, 2, 2)), argmax=True)
         assert out == {"predictions": [[0]]}
@@ -310,10 +369,15 @@ class TestAWSPredict:
 class TestGCPDeploy:
     def test_each_endpoint_gets_its_own_artifact_folder(self, tmp_path):
         from pygeovision.cloud.deploy import GCPDeployer
+
         (tmp_path / "m.onnx").write_bytes(b"x")
         google = MagicMock()
-        mods = {"google": google, "google.cloud": google.cloud,
-                "google.cloud.aiplatform": google.cloud.aiplatform, "google.cloud.storage": google.cloud.storage}
+        mods = {
+            "google": google,
+            "google.cloud": google.cloud,
+            "google.cloud.aiplatform": google.cloud.aiplatform,
+            "google.cloud.storage": google.cloud.storage,
+        }
         with patch.dict(sys.modules, mods):
             r = GCPDeployer(project_id="p").deploy(tmp_path / "m.onnx", "ep-a", gcs_bucket="b")
         assert r["success"] is True, r
@@ -323,10 +387,22 @@ class TestGCPDeploy:
 class TestIamPolicy:
     def test_policy_covers_the_calls_deploy_makes(self):
         import json as _json
-        pol = _json.loads(AWSDeployer(bucket="b", role_arn="arn:aws:iam::1:role/r").generate_iam_policy())
-        actions = {a for st in pol["Statement"] for a in ([st["Action"]] if isinstance(st["Action"], str) else st["Action"])}
-        for needed in ("sagemaker:DescribeEndpoint", "sagemaker:CreateEndpointConfig", "iam:PassRole",
-                       "application-autoscaling:PutScalingPolicy", "s3:PutObject"):
+
+        pol = _json.loads(
+            AWSDeployer(bucket="b", role_arn="arn:aws:iam::1:role/r").generate_iam_policy()
+        )
+        actions = {
+            a
+            for st in pol["Statement"]
+            for a in ([st["Action"]] if isinstance(st["Action"], str) else st["Action"])
+        }
+        for needed in (
+            "sagemaker:DescribeEndpoint",
+            "sagemaker:CreateEndpointConfig",
+            "iam:PassRole",
+            "application-autoscaling:PutScalingPolicy",
+            "s3:PutObject",
+        ):
             assert needed in actions
 
 
@@ -341,23 +417,34 @@ class TestAzurePredict:
 
         ml = MagicMock()
         ml.online_endpoints.invoke.side_effect = invoke
-        mods = {"azure": MagicMock(), "azure.ai": MagicMock(), "azure.ai.ml": MagicMock(MLClient=MagicMock(return_value=ml)),
-                "azure.identity": MagicMock()}
+        mods = {
+            "azure": MagicMock(),
+            "azure.ai": MagicMock(),
+            "azure.ai.ml": MagicMock(MLClient=MagicMock(return_value=ml)),
+            "azure.identity": MagicMock(),
+        }
         with patch.dict(sys.modules, mods):
-            out = AzureDeployer(subscription_id="s", resource_group="g", workspace_name="w").predict(
-                "ep", np.zeros((1, 2)))
+            out = AzureDeployer(
+                subscription_id="s", resource_group="g", workspace_name="w"
+            ).predict("ep", np.zeros((1, 2)))
         assert out == "ok" and seen["body"] == '{"inputs": [[0.0, 0.0]]}'
-        assert not Path(seen["path"]).exists()          # the temporary file is cleaned up
+        assert not Path(seen["path"]).exists()  # the temporary file is cleaned up
 
 
 class TestModelOptimizerExport:
     def test_spatial_size_is_fixed_unless_asked(self, tmp_path):
         from pygeovision.training.hpo import ModelOptimizer
+
         net = Net(3).eval()
         mo = ModelOptimizer(net, num_classes=3, in_channels=4)
-        fixed = ONNXRuntimeInference(mo.export_onnx(str(tmp_path / "f.onnx"), input_size=32, simplify=False))
-        dyn = ONNXRuntimeInference(mo.export_onnx(str(tmp_path / "d.onnx"), input_size=32, simplify=False,
-                                                  dynamic_spatial=True))
+        fixed = ONNXRuntimeInference(
+            mo.export_onnx(str(tmp_path / "f.onnx"), input_size=32, simplify=False)
+        )
+        dyn = ONNXRuntimeInference(
+            mo.export_onnx(
+                str(tmp_path / "d.onnx"), input_size=32, simplify=False, dynamic_spatial=True
+            )
+        )
         x = np.random.rand(1, 4, 48, 48).astype("float32")
         with pytest.raises(Exception, match="dimensions"):
             fixed.infer(x)

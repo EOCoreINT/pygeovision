@@ -5,6 +5,7 @@ by looking at an existing class raster (OSM, WorldCover, a hand-labelled area) l
 every segment takes the class that most of its pixels already have there, and segments where no class
 holds enough of the pixels are marked unlabelled (255) instead of being forced into a class.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,10 +58,20 @@ def assign_classes(
         if ref_src.shape == (h, w) and ref_src.transform == tf and ref_src.crs == crs:
             ref = ref_src.read(1)
         else:
-            ref = np.full((h, w), 255, dtype=np.uint8 if ref_src.dtypes[0] == "uint8" else ref_src.dtypes[0])
-            reproject(rasterio.band(ref_src, 1), ref, src_transform=ref_src.transform, src_crs=ref_src.crs,
-                      src_nodata=ref_src.nodata, dst_transform=tf, dst_crs=crs, dst_nodata=255,
-                      resampling=Resampling.nearest)
+            ref = np.full(
+                (h, w), 255, dtype=np.uint8 if ref_src.dtypes[0] == "uint8" else ref_src.dtypes[0]
+            )
+            reproject(
+                rasterio.band(ref_src, 1),
+                ref,
+                src_transform=ref_src.transform,
+                src_crs=ref_src.crs,
+                src_nodata=ref_src.nodata,
+                dst_transform=tf,
+                dst_crs=crs,
+                dst_nodata=255,
+                resampling=Resampling.nearest,
+            )
             ref_nd = 255 if ref_nd is None else ref_nd
     ref = ref.astype(np.int64)
     voting = np.ones(ref.shape, bool) if ref_nd is None else ref != int(ref_nd)
@@ -70,7 +81,9 @@ def assign_classes(
         skip |= seg == seg_nodata
     ids, inv = np.unique(seg[~skip], return_inverse=True)
     out = np.full((h, w), outside_value, dtype=np.uint8)
-    out[(seg == unlabelled_value) & skip] = unlabelled_value if unlabelled_value in ignore_segment_ids else outside_value
+    out[(seg == unlabelled_value) & skip] = (
+        unlabelled_value if unlabelled_value in ignore_segment_ids else outside_value
+    )
 
     mapping: dict[int, int] = {}
     if ids.size:

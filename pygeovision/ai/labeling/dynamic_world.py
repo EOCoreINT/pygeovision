@@ -20,8 +20,8 @@ Example:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -46,9 +46,7 @@ DW_CLASSES: dict[int, str] = {
 }
 
 # Dynamic World STAC endpoint via Google Earth Engine / Microsoft Planetary Computer
-_DW_STAC_URL = (
-    "https://planetarycomputer.microsoft.com/api/stac/v1"
-)
+_DW_STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 _DW_COLLECTION = "dynamic-world-s2"
 
 
@@ -143,17 +141,17 @@ class DynamicWorldLabeler(BaseLabeler):
 
     @property
     def name(self) -> str:
-        return 'dynamic_world'
+        return "dynamic_world"
 
     @property
     def supported_tasks(self) -> list:
-        return ['land_cover', 'segmentation']
+        return ["land_cover", "segmentation"]
 
     # ------------------------------------------------------------------
     # BaseLabeler interface
     # ------------------------------------------------------------------
 
-    def label_tile(
+    def label_tile(  # type: ignore[override]
         self,
         tile_path: Path,
         tile_metadata: Any,
@@ -189,9 +187,7 @@ class DynamicWorldLabeler(BaseLabeler):
 
             # Project bounds to WGS-84 for STAC query
             wgs84 = pyproj.CRS("EPSG:4326")
-            project = pyproj.Transformer.from_crs(
-                crs, wgs84, always_xy=True
-            ).transform
+            project = pyproj.Transformer.from_crs(crs, wgs84, always_xy=True).transform
             tile_box = box(bounds.left, bounds.bottom, bounds.right, bounds.top)
             tile_box_wgs84 = shp_transform(project, tile_box)
             bbox_wgs84 = tile_box_wgs84.bounds
@@ -202,11 +198,15 @@ class DynamicWorldLabeler(BaseLabeler):
             if not dw_paths:
                 # Writing an all-zero mask here would label the whole tile "water" (class 0) and look like
                 # a success. Report the failure instead and write nothing.
-                msg = (f"No Dynamic World scenes found for bbox {bbox_wgs84} between {self.config.start_date} and "
-                       f"{self.config.end_date}. Dynamic World is served through Google Earth Engine "
-                       "(pip install earthengine-api and authenticate); no label was written.")
+                msg = (
+                    f"No Dynamic World scenes found for bbox {bbox_wgs84} between {self.config.start_date} and "
+                    f"{self.config.end_date}. Dynamic World is served through Google Earth Engine "
+                    "(pip install earthengine-api and authenticate); no label was written."
+                )
                 logger.warning(msg)
-                return LabelingResult(tile_id=str(tile_path), label_path=None, source="dynamic_world", error=msg)
+                return LabelingResult(
+                    tile_id=str(tile_path), label_path=None, source="dynamic_world", error=msg
+                )
 
             # Create composite and reproject to tile CRS/extent
             mask = self._create_composite(
@@ -236,8 +236,11 @@ class DynamicWorldLabeler(BaseLabeler):
 
             logger.info(
                 "DynamicWorld labeling complete: start=%s end=%s method=%s num_scenes=%d bbox_wgs84=%s",
-                self.config.start_date, self.config.end_date, self.config.composite_method,
-                len(dw_paths), bbox_wgs84,
+                self.config.start_date,
+                self.config.end_date,
+                self.config.composite_method,
+                len(dw_paths),
+                bbox_wgs84,
             )
             return LabelingResult(
                 tile_id=str(tile_path),
@@ -247,9 +250,7 @@ class DynamicWorldLabeler(BaseLabeler):
             )
 
         except Exception as exc:
-            logger.error(
-                "DynamicWorldLabeler failed for %s: %s", tile_path, exc
-            )
+            logger.error("DynamicWorldLabeler failed for %s: %s", tile_path, exc)
             return LabelingResult(
                 tile_id=str(tile_path),
                 label_path=output_path,
@@ -316,9 +317,7 @@ class DynamicWorldLabeler(BaseLabeler):
                 max_items=50,
             )
             items = list(search.items())
-            logger.info(
-                "Found %d Dynamic World scenes on Planetary Computer", len(items)
-            )
+            logger.info("Found %d Dynamic World scenes on Planetary Computer", len(items))
             paths: list[Path] = []
             for item in items:
                 path = self._download_stac_item(item)
@@ -329,9 +328,7 @@ class DynamicWorldLabeler(BaseLabeler):
             logger.warning("Planetary Computer fetch failed: %s", exc)
             return []
 
-    def _fetch_via_gee(
-        self, bbox_wgs84: tuple[float, float, float, float]
-    ) -> list[Path]:
+    def _fetch_via_gee(self, bbox_wgs84: tuple[float, float, float, float]) -> list[Path]:
         """Fetch a Dynamic World composite via Google Earth Engine Python API.
 
         Requires `earthengine-api` package and authenticated GEE account.
@@ -345,9 +342,7 @@ class DynamicWorldLabeler(BaseLabeler):
         try:
             import ee
         except ImportError:
-            logger.debug(
-                "earthengine-api not installed; skipping GEE Dynamic World fetch."
-            )
+            logger.debug("earthengine-api not installed; skipping GEE Dynamic World fetch.")
             return []
 
         try:
@@ -377,13 +372,13 @@ class DynamicWorldLabeler(BaseLabeler):
                 }
             )
             import requests
+
             resp = requests.get(url, timeout=self.config.request_timeout)
             resp.raise_for_status()
 
             local_path = (
-                self.config.cache_dir
-                / f"dw_gee_{self.config.start_date}_{self.config.end_date}"
-                  f"_{minx:.4f}_{miny:.4f}.tif"
+                self.config.cache_dir / f"dw_gee_{self.config.start_date}_{self.config.end_date}"
+                f"_{minx:.4f}_{miny:.4f}.tif"
             )
             local_path.write_bytes(resp.content)
             return [local_path]
@@ -455,7 +450,9 @@ class DynamicWorldLabeler(BaseLabeler):
         layers: list[np.ndarray] = []
         for path in scene_paths:
             try:
-                layer = np.full((dst_height, dst_width), nodata, dtype=np.uint8)   # uncovered pixels are no-data, not "water"
+                layer = np.full(
+                    (dst_height, dst_width), nodata, dtype=np.uint8
+                )  # uncovered pixels are no-data, not "water"
                 with rasterio.open(path) as src:
                     reproject(
                         source=rasterio.band(src, 1),
@@ -472,11 +469,13 @@ class DynamicWorldLabeler(BaseLabeler):
                 logger.warning("Failed to reproject DW scene %s: %s", path, exc)
 
         if not layers:
-            raise LabelingError("none of the Dynamic World scenes could be reprojected onto the tile")
+            raise LabelingError(
+                "none of the Dynamic World scenes could be reprojected onto the tile"
+            )
 
         stack = np.stack(layers, axis=0)  # (N, H, W)
         # Per-pixel most frequent class among the scenes that cover the pixel (ties -> lower class number).
-        counts = np.stack([(stack == c).sum(axis=0) for c in DW_CLASSES])          # (9, H, W)
+        counts = np.stack([(stack == c).sum(axis=0) for c in DW_CLASSES])  # (9, H, W)
         result = counts.argmax(axis=0).astype(np.uint8)
         result[counts.sum(axis=0) == 0] = nodata
         return result

@@ -33,6 +33,7 @@ Usage::
     # Generate full HTML report
     v.generate_report("sentinel2.tif", "validation_report.html")
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -49,13 +50,15 @@ logger = logging.getLogger(__name__)
 # Result container
 # ---------------------------------------------------------------------------
 
+
 @dataclasses.dataclass
 class ValidationIssue:
     """A single issue detected during validation."""
-    severity: str           # "error" | "warning" | "info"
-    check:    str           # which check detected it
-    message:  str
-    fix:      str | None = None   # applied fix, if any
+
+    severity: str  # "error" | "warning" | "info"
+    check: str  # which check detected it
+    message: str
+    fix: str | None = None  # applied fix, if any
 
     def __str__(self) -> str:
         icon = {"error": "✗", "warning": "⚠", "info": "ℹ"}.get(self.severity, "?")
@@ -66,16 +69,20 @@ class ValidationIssue:
 @dataclasses.dataclass
 class ValidationReport:
     """Complete validation report for a dataset."""
-    source:        str
-    passed:        bool
-    issues:        list[ValidationIssue]  = dataclasses.field(default_factory=list)
-    stats:         dict[str, Any]         = dataclasses.field(default_factory=dict)
-    auto_fixed:    bool = False
+
+    source: str
+    passed: bool
+    issues: list[ValidationIssue] = dataclasses.field(default_factory=list)
+    stats: dict[str, Any] = dataclasses.field(default_factory=dict)
+    auto_fixed: bool = False
 
     @property
-    def errors(self)   -> list[ValidationIssue]: return [i for i in self.issues if i.severity == "error"]
+    def errors(self) -> list[ValidationIssue]:
+        return [i for i in self.issues if i.severity == "error"]
+
     @property
-    def warnings(self) -> list[ValidationIssue]: return [i for i in self.issues if i.severity == "warning"]
+    def warnings(self) -> list[ValidationIssue]:
+        return [i for i in self.issues if i.severity == "warning"]
 
     def summary(self) -> str:
         lines = [
@@ -104,6 +111,7 @@ class ValidationError(ValueError):
 # Core validator
 # ---------------------------------------------------------------------------
 
+
 class DataValidator:
     """Mandatory data validation before any model runs.
 
@@ -122,9 +130,9 @@ class DataValidator:
     ):
         if mode not in ("strict", "fix", "warn"):
             raise ValueError("mode must be 'strict', 'fix', or 'warn'")
-        self.mode           = mode
+        self.mode = mode
         self.max_nodata_pct = max_nodata_pct
-        self.outlier_sigma  = outlier_sigma
+        self.outlier_sigma = outlier_sigma
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -166,8 +174,8 @@ class DataValidator:
         """
         source = str(data) if isinstance(data, str) else f"array{getattr(data, 'shape', '')}"
         issues: list[ValidationIssue] = []
-        stats:  dict[str, Any] = {}
-        arr:    np.ndarray | None = None
+        stats: dict[str, Any] = {}
+        arr: np.ndarray | None = None
         profile: dict = {}
 
         # --- Load if path ---
@@ -186,13 +194,13 @@ class DataValidator:
         stats.update({"bands": C, "height": H, "width": W, "dtype": str(arr.dtype)})
 
         # --- Checks ---
-        issues += self.check_nulls(arr,     auto_fix=auto_fix)
-        issues += self.check_dtype(arr,     expected_dtype, auto_fix=auto_fix)
-        issues += self.check_shape(arr,     expected_shape)
-        issues += self.check_bands(arr,     required_bands)
-        issues += self.check_bounds(arr,    value_range,    auto_fix=auto_fix)
-        issues += self.check_nodata(arr,    profile.get("nodata"))
-        issues += self.check_outliers(arr,  auto_fix=auto_fix)
+        issues += self.check_nulls(arr, auto_fix=auto_fix)
+        issues += self.check_dtype(arr, expected_dtype, auto_fix=auto_fix)
+        issues += self.check_shape(arr, expected_shape)
+        issues += self.check_bands(arr, required_bands)
+        issues += self.check_bounds(arr, value_range, auto_fix=auto_fix)
+        issues += self.check_nodata(arr, profile.get("nodata"))
+        issues += self.check_outliers(arr, auto_fix=auto_fix)
 
         if profile and target_crs:
             issues += self.check_crs(profile.get("crs"), target_crs)
@@ -201,30 +209,34 @@ class DataValidator:
         valid_mask = np.isfinite(arr)
         if valid_mask.any():
             valid = arr[valid_mask]
-            stats.update({
-                "value_min":     float(valid.min()),
-                "value_max":     float(valid.max()),
-                "value_mean":    float(valid.mean()),
-                "value_std":     float(valid.std()),
-                "nan_pct":       float((~valid_mask).mean() * 100),
-                "zero_pct":      float((arr == 0).mean() * 100),
-            })
+            stats.update(
+                {
+                    "value_min": float(valid.min()),
+                    "value_max": float(valid.max()),
+                    "value_mean": float(valid.mean()),
+                    "value_std": float(valid.std()),
+                    "nan_pct": float((~valid_mask).mean() * 100),
+                    "zero_pct": float((arr == 0).mean() * 100),
+                }
+            )
 
-        errors   = [i for i in issues if i.severity == "error"]
-        passed   = len(errors) == 0
-        fixed    = any(i.fix for i in issues)
+        errors = [i for i in issues if i.severity == "error"]
+        passed = len(errors) == 0
+        fixed = any(i.fix for i in issues)
 
         report = ValidationReport(
-            source=source, passed=passed,
-            issues=issues, stats=stats, auto_fixed=fixed,
+            source=source,
+            passed=passed,
+            issues=issues,
+            stats=stats,
+            auto_fixed=fixed,
         )
 
         if not passed:
             if self.mode == "strict":
                 report.raise_if_failed()
             elif self.mode == "fix":
-                logger.warning("Auto-fixed %d validation error(s) for '%s'",
-                               len(errors), source)
+                logger.warning("Auto-fixed %d validation error(s) for '%s'", len(errors), source)
             else:
                 for e in errors:
                     logger.warning("Validation %s: %s", e.severity, e.message)
@@ -250,24 +262,28 @@ class DataValidator:
             if auto_fix:
                 arr[np.isnan(arr)] = 0.0
                 fix = f"replaced {nan_count} NaN values with 0"
-            issues.append(ValidationIssue(
-                "error" if not auto_fix else "warning",
-                "check_nulls",
-                f"{nan_count} NaN value(s) found",
-                fix,
-            ))
+            issues.append(
+                ValidationIssue(
+                    "error" if not auto_fix else "warning",
+                    "check_nulls",
+                    f"{nan_count} NaN value(s) found",
+                    fix,
+                )
+            )
 
         if inf_count > 0:
             fix = None
             if auto_fix:
                 arr[np.isinf(arr)] = 0.0
                 fix = f"replaced {inf_count} Inf value(s) with 0"
-            issues.append(ValidationIssue(
-                "error" if not auto_fix else "warning",
-                "check_nulls",
-                f"{inf_count} Inf value(s) found",
-                fix,
-            ))
+            issues.append(
+                ValidationIssue(
+                    "error" if not auto_fix else "warning",
+                    "check_nulls",
+                    f"{inf_count} Inf value(s) found",
+                    fix,
+                )
+            )
 
         return issues
 
@@ -278,7 +294,7 @@ class DataValidator:
         auto_fix: bool = True,
     ) -> list[ValidationIssue]:
         """Verify array dtype; cast to expected_dtype when auto_fix=True."""
-        issues = []
+        issues: list[Any] = []
         if expected_dtype is None:
             return issues
 
@@ -288,10 +304,14 @@ class DataValidator:
             if auto_fix:
                 arr = arr.astype(expected_dtype)
                 fix = f"cast {actual} → {expected_dtype}"
-            issues.append(ValidationIssue(
-                "warning", "check_dtype",
-                f"dtype is {actual}, expected {expected_dtype}", fix,
-            ))
+            issues.append(
+                ValidationIssue(
+                    "warning",
+                    "check_dtype",
+                    f"dtype is {actual}, expected {expected_dtype}",
+                    fix,
+                )
+            )
         return issues
 
     def check_crs(
@@ -302,22 +322,28 @@ class DataValidator:
         """Check that the raster CRS matches target_crs."""
         issues = []
         if actual_crs is None:
-            issues.append(ValidationIssue(
-                "error", "check_crs",
-                "Raster has no CRS (undefined projection).",
-                "Assign the correct CRS before proceeding.",
-            ))
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "check_crs",
+                    "Raster has no CRS (undefined projection).",
+                    "Assign the correct CRS before proceeding.",
+                )
+            )
             return issues
 
         # Normalise to EPSG string for comparison
         actual_str = str(actual_crs)
         target_str = str(target_crs)
         if target_str not in actual_str and actual_str not in target_str:
-            issues.append(ValidationIssue(
-                "warning", "check_crs",
-                f"CRS mismatch: raster={actual_str}, expected={target_str}",
-                "Use clip_to_bbox(bbox_crs=...) or reproject() before inference.",
-            ))
+            issues.append(
+                ValidationIssue(
+                    "warning",
+                    "check_crs",
+                    f"CRS mismatch: raster={actual_str}, expected={target_str}",
+                    "Use clip_to_bbox(bbox_crs=...) or reproject() before inference.",
+                )
+            )
         return issues
 
     def check_bounds(
@@ -327,7 +353,7 @@ class DataValidator:
         auto_fix: bool = True,
     ) -> list[ValidationIssue]:
         """Check that all values are within [min, max]; clip if auto_fix."""
-        issues = []
+        issues: list[Any] = []
         if value_range is None:
             return issues
 
@@ -339,11 +365,14 @@ class DataValidator:
             if auto_fix:
                 np.clip(arr, lo, hi, out=arr)
                 fix = f"clipped {out_of_range} pixel(s) to [{lo}, {hi}]"
-            issues.append(ValidationIssue(
-                "warning" if auto_fix else "error",
-                "check_bounds",
-                f"{out_of_range} pixel(s) outside [{lo}, {hi}]", fix,
-            ))
+            issues.append(
+                ValidationIssue(
+                    "warning" if auto_fix else "error",
+                    "check_bounds",
+                    f"{out_of_range} pixel(s) outside [{lo}, {hi}]",
+                    fix,
+                )
+            )
         return issues
 
     def check_shape(
@@ -352,16 +381,19 @@ class DataValidator:
         expected_shape: tuple[int, ...] | None = None,
     ) -> list[ValidationIssue]:
         """Check that arr.shape matches expected_shape."""
-        issues = []
+        issues: list[Any] = []
         if expected_shape is None:
             return issues
 
         if arr.shape != expected_shape:
-            issues.append(ValidationIssue(
-                "error", "check_shape",
-                f"Shape mismatch: actual={arr.shape}, expected={expected_shape}",
-                "Use resample() or stack_bands() to match shapes.",
-            ))
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "check_shape",
+                    f"Shape mismatch: actual={arr.shape}, expected={expected_shape}",
+                    "Use resample() or stack_bands() to match shapes.",
+                )
+            )
         return issues
 
     def check_bands(
@@ -370,17 +402,20 @@ class DataValidator:
         required_bands: int | None = None,
     ) -> list[ValidationIssue]:
         """Check that the array has at least required_bands channels."""
-        issues = []
+        issues: list[Any] = []
         if required_bands is None:
             return issues
 
         C = arr.shape[0] if arr.ndim >= 3 else 1
         if required_bands > C:
-            issues.append(ValidationIssue(
-                "error", "check_bands",
-                f"Too few bands: have {C}, need ≥ {required_bands}",
-                f"Stack additional bands or use a model expecting {C} channels.",
-            ))
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "check_bands",
+                    f"Too few bands: have {C}, need ≥ {required_bands}",
+                    f"Stack additional bands or use a model expecting {C} channels.",
+                )
+            )
         return issues
 
     def check_nodata(
@@ -395,11 +430,14 @@ class DataValidator:
 
         nodata_pct = float((arr == nodata_val).mean() * 100)
         if nodata_pct > self.max_nodata_pct:
-            issues.append(ValidationIssue(
-                "warning", "check_nodata",
-                f"{nodata_pct:.1f}% of pixels are no-data (threshold {self.max_nodata_pct}%)",
-                "Consider acquiring a less-cloud-affected scene.",
-            ))
+            issues.append(
+                ValidationIssue(
+                    "warning",
+                    "check_nodata",
+                    f"{nodata_pct:.1f}% of pixels are no-data (threshold {self.max_nodata_pct}%)",
+                    "Consider acquiring a less-cloud-affected scene.",
+                )
+            )
         return issues
 
     def check_outliers(
@@ -412,7 +450,7 @@ class DataValidator:
         sigma = self.outlier_sigma
 
         for b in range(arr.shape[0]):
-            band  = arr[b]
+            band = arr[b]
             valid = band[np.isfinite(band)]
             if valid.size < 2:
                 continue
@@ -427,10 +465,14 @@ class DataValidator:
                     hi = mu + sigma * std
                     arr[b] = np.clip(band, lo, hi)
                     fix = f"clipped to [{lo:.2f}, {hi:.2f}]"
-                issues.append(ValidationIssue(
-                    "warning", "check_outliers",
-                    f"Band {b}: {n_outliers} outlier(s) beyond {sigma}σ", fix,
-                ))
+                issues.append(
+                    ValidationIssue(
+                        "warning",
+                        "check_outliers",
+                        f"Band {b}: {n_outliers} outlier(s) beyond {sigma}σ",
+                        fix,
+                    )
+                )
         return issues
 
     # ------------------------------------------------------------------
@@ -439,33 +481,33 @@ class DataValidator:
 
     _MODEL_REQUIREMENTS: dict[str, dict] = {
         "segmentation": {
-            "min_bands":   1,
-            "dtype":       "float32",
+            "min_bands": 1,
+            "dtype": "float32",
             "value_range": (0.0, 1.0),
         },
         "detection": {
-            "min_bands":   3,
-            "dtype":       "float32",
+            "min_bands": 3,
+            "dtype": "float32",
             "value_range": (0.0, 1.0),
         },
         "change_detection": {
-            "min_bands":   4,
-            "dtype":       "float32",
+            "min_bands": 4,
+            "dtype": "float32",
             "value_range": (0.0, 1.0),
         },
         "classification": {
-            "min_bands":   1,
-            "dtype":       "float32",
+            "min_bands": 1,
+            "dtype": "float32",
             "value_range": (0.0, 1.0),
         },
         "foundation": {
-            "min_bands":   3,
-            "dtype":       "float32",
-            "value_range": (-3.0, 3.0),   # z-score normalised
+            "min_bands": 3,
+            "dtype": "float32",
+            "value_range": (-3.0, 3.0),  # z-score normalised
         },
         "regression": {
-            "min_bands":   1,
-            "dtype":       "float32",
+            "min_bands": 1,
+            "dtype": "float32",
             "value_range": None,
         },
     }
@@ -526,7 +568,9 @@ class DataValidator:
             logger.warning(
                 "validate_for_inference: %d bands present, model_type='%s' needs ≥ %d. "
                 "Repeating bands cyclically.",
-                arr.shape[0], model_type, min_bands,
+                arr.shape[0],
+                model_type,
+                min_bands,
             )
             repeats = math.ceil(min_bands / arr.shape[0])
             arr = np.concatenate([arr] * repeats, axis=0)[:min_bands]
@@ -540,14 +584,18 @@ class DataValidator:
             if arr_max > hi or arr_min < lo:
                 # Per-band min-max to target range
                 for b in range(arr.shape[0]):
-                    band  = arr[b]
+                    band = arr[b]
                     bmin, bmax = float(band.min()), float(band.max())
                     denom = bmax - bmin if bmax - bmin > 1e-10 else 1.0
                     arr[b] = (band - bmin) / denom * (hi - lo) + lo
 
         logger.debug(
             "validate_for_inference: %s | shape=%s | dtype=%s | range=[%.3f, %.3f]",
-            model_type, arr.shape, arr.dtype, float(arr.min()), float(arr.max()),
+            model_type,
+            arr.shape,
+            arr.dtype,
+            float(arr.min()),
+            float(arr.max()),
         )
         return arr
 
@@ -577,24 +625,28 @@ class DataValidator:
         # Load images
         if isinstance(images, (str, Path)):
             from pathlib import Path as _P
+
             paths = sorted(_P(str(images)).rglob("*.tif"))
-            arrs  = [self._load_raster(str(p))[0] for p in paths[:5]]  # sample
+            arrs = [self._load_raster(str(p))[0] for p in paths[:5]]  # sample
             source = str(images)
         elif isinstance(images, np.ndarray):
-            arrs   = [images]
+            arrs = [images]
             source = "array"
         else:
-            arrs   = images
+            arrs = images
             source = "list"
 
         # Check all images have same shape
         shapes = [a.shape for a in arrs]
         if len(set(shapes)) > 1:
-            issues.append(ValidationIssue(
-                "error", "check_shape",
-                f"Inconsistent image shapes: {set(shapes)}",
-                "Ensure all chips are the same size.",
-            ))
+            issues.append(
+                ValidationIssue(
+                    "error",
+                    "check_shape",
+                    f"Inconsistent image shapes: {set(shapes)}",
+                    "Ensure all chips are the same size.",
+                )
+            )
 
         # Check labels if provided
         result_labels = None
@@ -612,10 +664,13 @@ class DataValidator:
                 la = la.astype(np.int32)
                 unique_cls = np.unique(la)
                 if num_classes and unique_cls.max() >= num_classes:
-                    issues.append(ValidationIssue(
-                        "error", "check_bands",
-                        f"Label has class {unique_cls.max()} but num_classes={num_classes}",
-                    ))
+                    issues.append(
+                        ValidationIssue(
+                            "error",
+                            "check_bands",
+                            f"Label has class {unique_cls.max()} but num_classes={num_classes}",
+                        )
+                    )
             result_labels = label_arrs
 
         errors = [i for i in issues if i.severity == "error"]
@@ -628,8 +683,12 @@ class DataValidator:
         if self.mode == "strict":
             report.raise_if_failed()
 
-        return {"images": arrs, "labels": result_labels,
-                "report": report, "valid_samples": len(arrs)}
+        return {
+            "images": arrs,
+            "labels": result_labels,
+            "report": report,
+            "valid_samples": len(arrs),
+        }
 
     # ------------------------------------------------------------------
     # Report generation
@@ -653,17 +712,18 @@ class DataValidator:
         """
         report = self.validate(data)
         from pathlib import Path as _P
+
         _P(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         if fmt == "json":
             import json
+
             payload = {
-                "source":   report.source,
-                "passed":   report.passed,
-                "stats":    report.stats,
-                "issues":   [
-                    {"severity": i.severity, "check": i.check,
-                     "message": i.message, "fix": i.fix}
+                "source": report.source,
+                "passed": report.passed,
+                "stats": report.stats,
+                "issues": [
+                    {"severity": i.severity, "check": i.check, "message": i.message, "fix": i.fix}
                     for i in report.issues
                 ],
             }
@@ -673,7 +733,9 @@ class DataValidator:
             # Minimal but functional HTML report
             rows = ""
             for iss in report.issues:
-                colour = {"error": "#fee2e2", "warning": "#fef9c3", "info": "#e0f2fe"}.get(iss.severity, "#fff")
+                colour = {"error": "#fee2e2", "warning": "#fef9c3", "info": "#e0f2fe"}.get(
+                    iss.severity, "#fff"
+                )
                 rows += (
                     f"<tr style='background:{colour}'>"
                     f"<td>{iss.severity.upper()}</td>"
@@ -681,7 +743,9 @@ class DataValidator:
                     f"<td>{iss.message}</td>"
                     f"<td>{iss.fix or ''}</td></tr>\n"
                 )
-            stat_rows = "".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in report.stats.items())
+            stat_rows = "".join(
+                f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in report.stats.items()
+            )
             status_color = "#16a34a" if report.passed else "#dc2626"
             html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>PyGeoVision Validation Report</title>
@@ -719,7 +783,7 @@ th{{background:#f1f5f9;}}h1{{font-size:1.4rem;}}
             raise ImportError("pip install rasterio") from None
 
         with rasterio.open(path) as src:
-            data    = src.read().astype(np.float32)
+            data = src.read().astype(np.float32)
             profile = dict(src.profile)
             profile["crs"] = src.crs
         return data, profile

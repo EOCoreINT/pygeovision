@@ -14,9 +14,9 @@ Example:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -163,11 +163,12 @@ class Vectorizer:
             from rasterio.features import shapes
             from shapely.geometry import mapping, shape
         except ImportError as exc:
-            raise ImportError("array_to_geojson requires rasterio + shapely. "
-                              "pip install rasterio shapely") from exc
+            raise ImportError(
+                "array_to_geojson requires rasterio + shapely. " "pip install rasterio shapely"
+            ) from exc
 
         _filter = set(class_filter or self.config.class_filter or [])
-        _names = class_names or {}
+        _names: Any = class_names or {}
         features = []
 
         classes_to_process = [c for c in np.unique(mask) if c != 0]
@@ -177,9 +178,13 @@ class Vectorizer:
         for cls_id in classes_to_process:
             binary = (mask == cls_id).astype(np.uint8)
             class_name = (
-                _names[cls_id] if isinstance(_names, dict) and cls_id in _names
-                else _names[cls_id] if isinstance(_names, list) and cls_id < len(_names)
-                else f"class_{cls_id}"
+                _names[cls_id]
+                if isinstance(_names, dict) and cls_id in _names
+                else (
+                    _names[cls_id]
+                    if isinstance(_names, list) and cls_id < len(_names)
+                    else f"class_{cls_id}"
+                )
             )
 
             for geom_dict, val in shapes(binary, mask=binary, transform=transform):
@@ -188,9 +193,11 @@ class Vectorizer:
                 poly = shape(geom_dict)
 
                 # Min area filter
-                if self.config.min_area_m2 > 0:
-                    if self._approx_area_m2(poly, crs) < self.config.min_area_m2:
-                        continue
+                if (
+                    self.config.min_area_m2 > 0
+                    and self._approx_area_m2(poly, crs) < self.config.min_area_m2
+                ):
+                    continue
 
                 # Simplify geometry
                 if self.config.simplify_tolerance > 0:
@@ -209,15 +216,17 @@ class Vectorizer:
                     if out_geom is None:
                         continue
 
-                features.append({
-                    "type": "Feature",
-                    "geometry": mapping(out_geom),
-                    "properties": {
-                        "class_id": int(cls_id),
-                        "class_name": class_name,
-                        "area_m2": round(self._approx_area_m2(poly, crs), 2),
-                    },
-                })
+                features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": mapping(out_geom),
+                        "properties": {
+                            "class_id": int(cls_id),
+                            "class_name": class_name,
+                            "area_m2": round(self._approx_area_m2(poly, crs), 2),
+                        },
+                    }
+                )
 
         output_crs = self.config.output_crs or crs
         geojson: dict[str, Any] = {
@@ -234,7 +243,8 @@ class Vectorizer:
 
         logger.info(
             "Vectorized %d polygons across %d classes.",
-            len(features), len(classes_to_process),
+            len(features),
+            len(classes_to_process),
         )
         return geojson
 
@@ -261,9 +271,11 @@ class Vectorizer:
         """
         try:
             import geopandas as gpd
-            from shapely.geometry import shape
+            from shapely.geometry import shape  # noqa: F401
         except ImportError as exc:
-            raise ImportError("raster_to_shapefile requires geopandas. pip install geopandas") from exc
+            raise ImportError(
+                "raster_to_shapefile requires geopandas. pip install geopandas"
+            ) from exc
 
         geojson = self.raster_to_geojson(mask_path, class_names, class_filter)
         if not geojson["features"]:
@@ -332,7 +344,7 @@ class Vectorizer:
             mask = np.full(out_shape, background, dtype=np.uint8)
 
         profile.update(dtype="uint8", count=1, compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             profile.pop(_k, None)
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -46,6 +46,7 @@ stated plainly rather than silently:
 This is NOT a registry stub — every module below is a real, working
 nn.Module with verified forward-pass shapes (see the test suite).
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,6 +61,7 @@ def _require_torch():
         import torch
         import torch.nn as nn
         import torch.nn.functional as F
+
         return torch, nn, F
     except ImportError:
         raise ImportError("torch required for KPConv: pip install torch") from None
@@ -70,8 +72,8 @@ def square_distance(src, dst):
     B, N, _ = src.shape
     _, M, _ = dst.shape
     dist = -2 * torch.matmul(src, dst.permute(0, 2, 1))
-    dist += torch.sum(src ** 2, -1).view(B, N, 1)
-    dist += torch.sum(dst ** 2, -1).view(B, 1, M)
+    dist += torch.sum(src**2, -1).view(B, N, 1)
+    dist += torch.sum(dst**2, -1).view(B, 1, M)
     return dist.clamp(min=0)
 
 
@@ -83,7 +85,9 @@ def index_points(points, idx):
     view_shape[1:] = [1] * (len(view_shape) - 1)
     repeat_shape = list(idx.shape)
     repeat_shape[0] = 1
-    batch_indices = torch.arange(B, dtype=torch.long, device=device).view(view_shape).repeat(repeat_shape)
+    batch_indices = (
+        torch.arange(B, dtype=torch.long, device=device).view(view_shape).repeat(repeat_shape)
+    )
     return points[batch_indices, idx, :]
 
 
@@ -95,7 +99,7 @@ def query_ball_point(radius, nsample, xyz, new_xyz):
     nsample = min(nsample, N)  # can't return more neighbors than points exist
     group_idx = torch.arange(N, dtype=torch.long, device=device).view(1, 1, N).repeat([B, S, 1])
     sqrdists = square_distance(new_xyz, xyz)
-    group_idx[sqrdists > radius ** 2] = N
+    group_idx[sqrdists > radius**2] = N
     group_idx = group_idx.sort(dim=-1)[0][:, :, :nsample]
     group_first = group_idx[:, :, 0].view(B, S, 1).repeat([1, 1, group_idx.shape[-1]])
     mask = group_idx == N
@@ -150,7 +154,7 @@ def generate_kernel_points(radius: float, num_kpoints: int = 15):
 def _build_kpconv_layer():
     torch, nn, F = _require_torch()
 
-    class KPConvLayer(nn.Module):
+    class KPConvLayer(nn.Module):  # type: ignore[name-defined]
         """Core kernel point convolution. Computes, for each query point,
         a weighted aggregation of its radius-neighborhood features using
         K spatially-anchored kernel points with a linear correlation
@@ -179,19 +183,19 @@ def _build_kpconv_layer():
             """
             B, S, _ = query_xyz.shape
             idx, valid_mask = query_ball_point(self.radius, self.nsample, support_xyz, query_xyz)
-            neighbor_xyz = index_points(support_xyz, idx)                     # (B, S, ns, 3)
-            relative_xyz = neighbor_xyz - query_xyz.unsqueeze(2)               # (B, S, ns, 3)
+            neighbor_xyz = index_points(support_xyz, idx)  # (B, S, ns, 3)
+            relative_xyz = neighbor_xyz - query_xyz.unsqueeze(2)  # (B, S, ns, 3)
 
-            feat_t = support_features.permute(0, 2, 1)                        # (B, N, C_in)
-            neighbor_feat = index_points(feat_t, idx)                          # (B, S, ns, C_in)
+            feat_t = support_features.permute(0, 2, 1)  # (B, N, C_in)
+            neighbor_feat = index_points(feat_t, idx)  # (B, S, ns, C_in)
             # Zero out shadow/padded neighbors so they contribute nothing
             neighbor_feat = neighbor_feat * valid_mask.unsqueeze(-1).float()
 
             # Distance from each neighbor to each kernel point:
             # relative_xyz: (B, S, ns, 3) ; kernel_points: (K, 3)
             diff = relative_xyz.unsqueeze(3) - self.kernel_points.view(1, 1, 1, self.num_kpoints, 3)
-            dist = torch.norm(diff, dim=-1)                                    # (B, S, ns, K)
-            influence = torch.clamp(1.0 - dist / self.sigma, min=0.0)          # linear correlation
+            dist = torch.norm(diff, dim=-1)  # (B, S, ns, K)
+            influence = torch.clamp(1.0 - dist / self.sigma, min=0.0)  # linear correlation
             influence = influence * valid_mask.unsqueeze(-1).float()
 
             # Aggregate neighbor features per kernel point:
@@ -210,7 +214,7 @@ def _build_kpconv_block():
     torch, nn, F = _require_torch()
     KPConvLayer = _build_kpconv_layer()
 
-    class KPConvBlock(nn.Module):
+    class KPConvBlock(nn.Module):  # type: ignore[name-defined]
         """KPConv + BatchNorm + ReLU, ResNet-bottleneck-style: 1x1 reduce
         -> KPConv -> 1x1 expand, with a skip connection, matching the
         paper's convolutional block design (Figure 8)."""
@@ -219,16 +223,20 @@ def _build_kpconv_block():
             super().__init__()
             mid = out_channels // 4
             self.reduce = nn.Sequential(
-                nn.Conv1d(in_channels, mid, 1), nn.BatchNorm1d(mid), nn.LeakyReLU(0.1),
+                nn.Conv1d(in_channels, mid, 1),
+                nn.BatchNorm1d(mid),
+                nn.LeakyReLU(0.1),
             )
             self.kpconv = KPConvLayer(mid, mid, radius, num_kpoints)
             self.bn_kp = nn.BatchNorm1d(mid)
             self.expand = nn.Sequential(
-                nn.Conv1d(mid, out_channels, 1), nn.BatchNorm1d(out_channels),
+                nn.Conv1d(mid, out_channels, 1),
+                nn.BatchNorm1d(out_channels),
             )
             self.shortcut = (
                 nn.Sequential(nn.Conv1d(in_channels, out_channels, 1), nn.BatchNorm1d(out_channels))
-                if in_channels != out_channels else nn.Identity()
+                if in_channels != out_channels
+                else nn.Identity()
             )
             self.act = nn.LeakyReLU(0.1)
 
@@ -265,39 +273,57 @@ class KPConvSegModel:
         logits = model(xyz)  # xyz: (B, 3+extra, N) -> (B, num_classes, N)
     """
 
-    def __new__(cls, num_classes: int = 5, extra_feature_channels: int = 0,
-                base_radius: float = 0.1, num_kpoints: int = 15, decimation: int = 4,
-                num_layers: int = 3):
+    def __new__(
+        cls,
+        num_classes: int = 5,
+        extra_feature_channels: int = 0,
+        base_radius: float = 0.1,
+        num_kpoints: int = 15,
+        decimation: int = 4,
+        num_layers: int = 3,
+    ):
         torch, nn, F = _require_torch()
         KPConvBlock = _build_kpconv_block()
 
-        class KPConvSeg(nn.Module):
+        class KPConvSeg(nn.Module):  # type: ignore[name-defined]
             def __init__(self):
                 super().__init__()
                 in_ch = 3 + extra_feature_channels
                 self.fc_start = nn.Sequential(
-                    nn.Conv1d(in_ch, 16, 1), nn.BatchNorm1d(16), nn.LeakyReLU(0.1),
+                    nn.Conv1d(in_ch, 16, 1),
+                    nn.BatchNorm1d(16),
+                    nn.LeakyReLU(0.1),
                 )
 
                 enc_channels = [16, 64, 128, 256][: num_layers + 1]
-                self.encoder = nn.ModuleList([
-                    KPConvBlock(enc_channels[i], enc_channels[i + 1],
-                                base_radius * (2 ** i), num_kpoints)
-                    for i in range(num_layers)
-                ])
+                self.encoder = nn.ModuleList(
+                    [
+                        KPConvBlock(
+                            enc_channels[i], enc_channels[i + 1], base_radius * (2**i), num_kpoints
+                        )
+                        for i in range(num_layers)
+                    ]
+                )
                 self.decimation = decimation
 
                 dec_channels = enc_channels[::-1]
-                self.decoder = nn.ModuleList([
-                    nn.Sequential(
-                        nn.Conv1d(dec_channels[i] + dec_channels[i + 1], dec_channels[i + 1], 1),
-                        nn.BatchNorm1d(dec_channels[i + 1]), nn.LeakyReLU(0.1),
-                    )
-                    for i in range(num_layers)
-                ])
+                self.decoder = nn.ModuleList(
+                    [
+                        nn.Sequential(
+                            nn.Conv1d(
+                                dec_channels[i] + dec_channels[i + 1], dec_channels[i + 1], 1
+                            ),
+                            nn.BatchNorm1d(dec_channels[i + 1]),
+                            nn.LeakyReLU(0.1),
+                        )
+                        for i in range(num_layers)
+                    ]
+                )
 
                 self.fc_end = nn.Sequential(
-                    nn.Conv1d(dec_channels[-1], 32, 1), nn.BatchNorm1d(32), nn.LeakyReLU(0.1),
+                    nn.Conv1d(dec_channels[-1], 32, 1),
+                    nn.BatchNorm1d(32),
+                    nn.LeakyReLU(0.1),
                     nn.Dropout(0.5),
                     nn.Conv1d(32, num_classes, 1),
                 )
@@ -305,7 +331,7 @@ class KPConvSegModel:
             def forward(self, xyz_full):
                 B, _, N = xyz_full.shape
                 xyz = xyz_full[:, :3, :].permute(0, 2, 1)  # (B, N, 3)
-                features = self.fc_start(xyz_full)          # (B, 16, N)
+                features = self.fc_start(xyz_full)  # (B, 16, N)
 
                 xyz_stack = [xyz]
                 feat_stack = [features]

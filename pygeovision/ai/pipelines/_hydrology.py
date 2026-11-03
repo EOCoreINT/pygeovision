@@ -12,6 +12,7 @@ Plain NumPy / Python (no extra dependencies). The algorithms are the standard on
 Cost is a few Python operations per cell (about a minute for 5 million cells); ``check_size`` refuses grids that
 would not fit in memory and says how to shrink them.
 """
+
 from __future__ import annotations
 
 import heapq
@@ -21,14 +22,25 @@ import numpy as np
 
 SQRT2 = math.sqrt(2.0)
 #: (d_row, d_col, distance in cells)
-NEIGHBOURS = ((-1, -1, SQRT2), (-1, 0, 1.0), (-1, 1, SQRT2), (0, -1, 1.0), (0, 1, 1.0), (1, -1, SQRT2), (1, 0, 1.0), (1, 1, SQRT2))
+NEIGHBOURS = (
+    (-1, -1, SQRT2),
+    (-1, 0, 1.0),
+    (-1, 1, SQRT2),
+    (0, -1, 1.0),
+    (0, 1, 1.0),
+    (1, -1, SQRT2),
+    (1, 0, 1.0),
+    (1, 1, SQRT2),
+)
 
 
 def check_size(shape: tuple[int, int], max_cells: int) -> None:
     n = shape[0] * shape[1]
     if n > max_cells:
-        raise ValueError(f"the area has {n / 1e6:.1f} million cells; the limit for the flow analysis is {max_cells / 1e6:.1f} "
-                         f"million. Use a smaller bounding box or a coarser resolution_m.")
+        raise ValueError(
+            f"the area has {n / 1e6:.1f} million cells; the limit for the flow analysis is {max_cells / 1e6:.1f} "
+            f"million. Use a smaller bounding box or a coarser resolution_m."
+        )
 
 
 def priority_flood_epsilon(dem: np.ndarray) -> np.ndarray:
@@ -90,11 +102,11 @@ def d8_targets(filled: np.ndarray, cell_size: float, chunk_rows: int = 512) -> n
     padded = np.pad(filled, 1, constant_values=np.nan)
     for r0 in range(0, h, chunk_rows):
         r1 = min(h, r0 + chunk_rows)
-        z = padded[1 + r0:1 + r1, 1:-1]
+        z = padded[1 + r0 : 1 + r1, 1:-1]
         best = np.zeros(z.shape)
         arg = np.full(z.shape, -1, dtype=np.int64)
         for dr, dc, dist in NEIGHBOURS:
-            zn = padded[1 + r0 + dr:1 + r1 + dr, 1 + dc:1 + dc + w]
+            zn = padded[1 + r0 + dr : 1 + r1 + dr, 1 + dc : 1 + dc + w]
             with np.errstate(invalid="ignore"):
                 drop = (z - zn) / (dist * cell_size)
                 better = np.isfinite(zn) & (zn < z) & (drop > best)
@@ -102,7 +114,7 @@ def d8_targets(filled: np.ndarray, cell_size: float, chunk_rows: int = 512) -> n
             rows = np.arange(r0, r1)[:, None] + dr
             cols = np.arange(w)[None, :] + dc
             arg = np.where(better, rows * w + cols, arg)
-        target[r0 * w:r1 * w] = arg.ravel()
+        target[r0 * w : r1 * w] = arg.ravel()
     target[np.isnan(filled).ravel()] = -1
     return target
 
@@ -156,7 +168,7 @@ def height_above_drainage(filled: np.ndarray, target: np.ndarray, stream: np.nda
     low_to_high = np.argsort(flat, kind="stable").tolist()
     tgt = target.tolist()
     is_stream = stream.tolist()
-    base = [-1] * (h * w)                     # index of the stream cell each cell drains to
+    base = [-1] * (h * w)  # index of the stream cell each cell drains to
     for i in low_to_high:
         if is_stream[i]:
             base[i] = i

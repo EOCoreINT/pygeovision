@@ -1,4 +1,5 @@
 """TiledInference.infer must treat NaN / nodata pixels as 'no data' instead of predicting them."""
+
 import numpy as np
 import pytest
 
@@ -18,8 +19,18 @@ class _Threshold(torch.nn.Module):
 
 
 def _write(path, arr, nodata=None):
-    with rasterio.open(path, "w", driver="GTiff", height=arr.shape[1], width=arr.shape[2], count=arr.shape[0],
-                       dtype="float32", crs="EPSG:32630", transform=from_origin(0, 640, 10, 10), nodata=nodata) as d:
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=arr.shape[1],
+        width=arr.shape[2],
+        count=arr.shape[0],
+        dtype="float32",
+        crs="EPSG:32630",
+        transform=from_origin(0, 640, 10, 10),
+        nodata=nodata,
+    ) as d:
         d.write(arr)
 
 
@@ -49,7 +60,7 @@ def test_stretch_ignores_nan_and_nodata_pixels(tmp_path):
     with rasterio.open(tmp_path / "out.tif") as r:
         lab = r.read(1)
     assert (lab[:4] == 255).all()
-    assert set(np.unique(lab[4:])) == {0, 1}          # the stretch worked: both classes appear
+    assert set(np.unique(lab[4:])) == {0, 1}  # the stretch worked: both classes appear
 
 
 def test_declared_nodata_value_is_honoured(tmp_path):
@@ -66,7 +77,9 @@ def test_explicit_nodata_value_argument(tmp_path):
     arr = np.full((2, 64, 64), 0.8, "float32")
     arr[:, :, :16] = -9999.0
     _write(tmp_path / "in.tif", arr)
-    _engine().infer(tmp_path / "in.tif", tmp_path / "out.tif", normalise=False, nodata_value=-9999.0)
+    _engine().infer(
+        tmp_path / "in.tif", tmp_path / "out.tif", normalise=False, nodata_value=-9999.0
+    )
     with rasterio.open(tmp_path / "out.tif") as r:
         lab = r.read(1)
     assert (lab[:, :16] == 255).all() and (lab[:, 16:] == 1).all()

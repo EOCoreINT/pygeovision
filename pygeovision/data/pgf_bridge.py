@@ -69,11 +69,12 @@ Usage::
             model_type="segmentation",
         )
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 import logging
 import pathlib
-from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -86,10 +87,12 @@ logger = logging.getLogger(__name__)
 # PyGeoFetch availability
 # ---------------------------------------------------------------------------
 
+
 def _pgf_available() -> bool:
     """True when PyGeoFetch v1.0+ Python API is importable."""
     try:
         from pygeofetch import PyGeoFetch  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -106,6 +109,7 @@ def _pgf2_available(client=None) -> bool:
         c = client
         if c is None:
             from pygeofetch import PyGeoFetch
+
             c = PyGeoFetch()
         return hasattr(c, "preprocess") and hasattr(c.preprocess, "atmos")
     except Exception:
@@ -116,6 +120,7 @@ def _get_pgf_client():
     """Return a PyGeoFetch Python API client, or None."""
     try:
         from pygeofetch import PyGeoFetch
+
         return PyGeoFetch()
     except ImportError:
         return None
@@ -125,17 +130,18 @@ def _get_pgf_client():
 # Type translation helpers
 # ---------------------------------------------------------------------------
 
+
 def _pgf_satellite_data_to_pgv(sd, provider_hint: str = "") -> SearchResult:
     """Convert PyGeoFetch ``SatelliteData`` to PyGeoVision ``SearchResult``."""
     from pygeovision.data.fetch import SearchResult
 
     cloud = getattr(sd, "cloud_cover", None)
-    sat   = getattr(sd, "satellite", None) or ""
-    coll  = getattr(sd, "collection", None) or ""
-    bbox  = getattr(sd, "bbox", None)
+    sat = getattr(sd, "satellite", None) or ""
+    coll = getattr(sd, "collection", None) or ""
+    bbox = getattr(sd, "bbox", None)
     props = getattr(sd, "properties", {}) or {}
     score = float(getattr(sd, "score", 0.0) or 0.0)
-    prov  = getattr(sd, "provider", provider_hint)
+    prov = getattr(sd, "provider", provider_hint)
 
     dt = getattr(sd, "datetime", None)
     if dt is None:
@@ -150,8 +156,8 @@ def _pgf_satellite_data_to_pgv(sd, provider_hint: str = "") -> SearchResult:
         if hasattr(v, "href"):
             # Native SatelliteAsset — preserve key + href + roles
             assets[k] = {
-                "key":   getattr(v, "key", k),
-                "href":  str(v.href),
+                "key": getattr(v, "key", k),
+                "href": str(v.href),
                 "roles": list(getattr(v, "roles", []) or []),
                 "title": getattr(v, "title", None),
                 "media_type": getattr(v, "media_type", None),
@@ -163,16 +169,16 @@ def _pgf_satellite_data_to_pgv(sd, provider_hint: str = "") -> SearchResult:
             assets[k] = {"key": k, "href": str(v), "roles": []}
 
     result = SearchResult(
-        id           = str(getattr(sd, "id", "")),
-        provider     = str(prov),
-        satellite    = str(sat),
-        collection   = str(coll),
-        datetime     = datetime_str,
-        cloud_cover  = float(cloud) if cloud is not None else 0.0,
-        bbox         = tuple(bbox) if bbox else None,
-        score        = score,
-        assets       = assets,
-        properties   = props,
+        id=str(getattr(sd, "id", "")),
+        provider=str(prov),
+        satellite=str(sat),
+        collection=str(coll),
+        datetime=datetime_str,
+        cloud_cover=float(cloud) if cloud is not None else 0.0,
+        bbox=tuple(bbox) if bbox else None,
+        score=score,
+        assets=assets,
+        properties=props,
     )
     result.satellite_data = sd
     return result
@@ -184,34 +190,34 @@ def _pgf_download_result_to_pgv(dr) -> DownloadResult:
 
     try:
         from pygeofetch.models.download_task import DownloadStatus
-        status  = getattr(dr, "status", None)
+
+        status = getattr(dr, "status", None)
         success = (status == DownloadStatus.COMPLETED) if status else False
     except ImportError:
         success = getattr(dr, "success", False)
 
     # Resolve output path — PyGeoFetch uses output_path and output_paths
-    output_path  = getattr(dr, "output_path",  None)
+    output_path = getattr(dr, "output_path", None)
     output_paths = list(getattr(dr, "output_paths", None) or [])
     if output_path is None and output_paths:
         output_path = output_paths[0]
 
-    error_    = getattr(dr, "error", None)
+    error_ = getattr(dr, "error", None)
     float(getattr(dr, "bytes_downloaded", 0) or 0) / 1024 / 1024
-    duration  = float(getattr(dr, "duration_seconds", 0.0) or 0.0)
+    duration = float(getattr(dr, "duration_seconds", 0.0) or 0.0)
 
     # PGV DownloadResult fields: scene_id, provider, path, success,
     # bytes_downloaded, duration_seconds, checksum_verified, error
     return DownloadResult(
-        scene_id          = str(getattr(dr, "data_id", "")),
-        provider          = str(getattr(dr, "provider", "")),
-        path              = pathlib.Path(output_path) if output_path else None,
-        success           = success,
-        bytes_downloaded  = int(getattr(dr, "bytes_downloaded", 0) or 0),
-        duration_seconds  = duration,
-        checksum_verified = bool(getattr(dr, "checksum_verified", False) or False),
-        error             = str(error_) if error_ else "",
+        scene_id=str(getattr(dr, "data_id", "")),
+        provider=str(getattr(dr, "provider", "")),
+        path=pathlib.Path(output_path) if output_path else None,
+        success=success,
+        bytes_downloaded=int(getattr(dr, "bytes_downloaded", 0) or 0),
+        duration_seconds=duration,
+        checksum_verified=bool(getattr(dr, "checksum_verified", False) or False),
+        error=str(error_) if error_ else "",
     )
-
 
 
 class AIReadyRaster(str):
@@ -242,7 +248,7 @@ class AIReadyRaster(str):
                 "so downstream steps have a file to read."
             )
         obj = super().__new__(cls, output_path)
-        obj._extra = extra
+        obj._extra = extra  # type: ignore[attr-defined]
         return obj
 
     def __getattr__(self, name):
@@ -252,8 +258,7 @@ class AIReadyRaster(str):
             return self._extra[name]
         except KeyError:
             raise AttributeError(
-                f"{name!r} not found on AIReadyRaster (available: "
-                f"{list(self._extra.keys())})"
+                f"{name!r} not found on AIReadyRaster (available: " f"{list(self._extra.keys())})"
             ) from None
 
     def __getitem__(self, key):
@@ -272,9 +277,12 @@ class AIReadyRaster(str):
 
     def __repr__(self):
         return f"AIReadyRaster({str(self)!r}, shape={self._extra.get('shape')})"
+
+
 # ---------------------------------------------------------------------------
 # PyGeoFetchBridge
 # ---------------------------------------------------------------------------
+
 
 class PyGeoFetchBridge:
     """Definitive integration bridge between PyGeoVision and PyGeoFetch.
@@ -299,12 +307,12 @@ class PyGeoFetchBridge:
         pgv_indices=None,
         pgv_postprocessor=None,
     ):
-        self._pgf     = _get_pgf_client()
-        self._pgf_v2  = _pgf2_available(self._pgf)
-        self._v       = validator
-        self._pre     = pgv_preprocessor
-        self._idx     = pgv_indices
-        self._post    = pgv_postprocessor
+        self._pgf = _get_pgf_client()
+        self._pgf_v2 = _pgf2_available(self._pgf)
+        self._v = validator
+        self._pre = pgv_preprocessor
+        self._idx = pgv_indices
+        self._post = pgv_postprocessor
 
         if self._pgf:
             logger.debug("PyGeoFetch v1.0 Python API active — using native search/download")
@@ -386,33 +394,34 @@ class PyGeoFetchBridge:
         start_d = end_d = None
         if date_range:
             from datetime import date as _date
+
             try:
                 start_d = _date.fromisoformat(str(date_range[0])[:10])
-                end_d   = _date.fromisoformat(str(date_range[1])[:10])
+                end_d = _date.fromisoformat(str(date_range[1])[:10])
             except (ValueError, TypeError):
                 pass
 
         sort_field = sort_by if sort_by in ("cloud_cover", "datetime", "score") else "datetime"
 
         query = SearchQuery(
-            bbox               = pgf_bbox,
-            start_date         = start_d,
-            end_date           = end_d,
-            cloud_cover_min    = cloud_cover_min,
-            cloud_cover_max    = cloud_cover_max,
-            max_results        = max_results,
-            sort_by            = sort_field,
-            sort_ascending     = sort_ascending,
-            collections        = collections or [],
-            satellites         = satellites or [],
-            sensors            = [],
-            processing_levels  = [],
-            providers          = providers or [],
-            provider_filters   = {},
-            ids                = [],
-            cql2_filter        = cql2_filter,
-            on_provider_failure= on_provider_failure,
-            timeout_seconds    = timeout_seconds,
+            bbox=pgf_bbox,
+            start_date=start_d,
+            end_date=end_d,
+            cloud_cover_min=cloud_cover_min,
+            cloud_cover_max=cloud_cover_max,
+            max_results=max_results,
+            sort_by=sort_field,
+            sort_ascending=sort_ascending,
+            collections=collections or [],
+            satellites=satellites or [],
+            sensors=[],
+            processing_levels=[],
+            providers=providers or [],
+            provider_filters={},
+            ids=[],
+            cql2_filter=cql2_filter,
+            on_provider_failure=on_provider_failure,
+            timeout_seconds=timeout_seconds,
         )
 
         try:
@@ -487,7 +496,7 @@ class PyGeoFetchBridge:
 
         # Build post-process actions
         pp_actions = []
-        for step in (post_process or []):
+        for step in post_process or []:
             if ":" in step:
                 action, param = step.split(":", 1)
                 pp_actions.append(PostProcessAction(action=action, params={"value": param}))
@@ -495,15 +504,15 @@ class PyGeoFetchBridge:
                 pp_actions.append(PostProcessAction(action=step, params={}))
 
         opts = DownloadOptions(
-            parallel           = parallel,
-            verify_checksum    = verify_checksum,
-            resume             = resume,
-            retry_attempts     = retry_attempts,
-            bandwidth_limit_mbps = bandwidth_limit_mb or 0,
-            on_failure         = on_failure,
-            overwrite          = overwrite,
-            notify_webhook     = notify_webhook,
-            post_process       = pp_actions,
+            parallel=parallel,
+            verify_checksum=verify_checksum,
+            resume=resume,
+            retry_attempts=retry_attempts,
+            bandwidth_limit_mbps=bandwidth_limit_mb or 0,
+            on_failure=on_failure,
+            overwrite=overwrite,
+            notify_webhook=notify_webhook,
+            post_process=pp_actions,
         )
 
         # Filter assets by band if requested
@@ -518,7 +527,8 @@ class PyGeoFetchBridge:
                 if hasattr(sd, "assets") and sd.assets:
                     sd_copy = sd.model_copy(deep=True)
                     sd_copy.assets = {
-                        k: v for k, v in sd.assets.items()
+                        k: v
+                        for k, v in sd.assets.items()
                         if k in bands or any(b.lower() in k.lower() for b in bands)
                     }
                     sat_data_list.append(sd_copy)
@@ -594,7 +604,7 @@ class PyGeoFetchBridge:
         output_path: str | None = None,
         # v2.0 native preprocessing (used when available)
         use_pgf_preprocess: bool = True,
-    ) -> dict[str, Any]:
+    ) -> AIReadyRaster:
         """Complete preprocessing pipeline: download output → AI-ready array.
 
         This is the **mandatory gate** between raw satellite data and AI
@@ -662,7 +672,7 @@ class PyGeoFetchBridge:
             )
         if not pathlib.Path(input_path).exists():
             raise FileNotFoundError(f"prepare_for_ai(): input path does not exist: {input_path}")
-    
+
         steps_applied = []
 
         # ── PyGeoFetch v2.0 native preprocessing (future-proof path) ────
@@ -670,52 +680,65 @@ class PyGeoFetchBridge:
         # polygon clip or mask would return a *different* raster than the one asked for) the call is routed to
         # PyGeoVision's own Preprocessor, which implements all of them.
         _native_only = [
-            name for name, used in (
+            name
+            for name, used in (
                 ("clip_geojson", bool(clip_geojson)),
                 ("stack_bands/stack_dir", bool(stack_bands or stack_dir)),
                 ("cloud_mask_path", bool(cloud_mask_path)),
                 ("scl_keep_classes", tuple(scl_keep_classes) != (4, 5, 6)),
                 ("a scene directory as input_path", pathlib.Path(input_path).is_dir()),
-            ) if used
+            )
+            if used
         ]
         if use_pgf_preprocess and self._pgf_v2 and _native_only:
-            logger.info("prepare_for_ai: using PyGeoVision's own preprocessor because the pygeofetch route "
-                        "does not support %s", ", ".join(_native_only))
+            logger.info(
+                "prepare_for_ai: using PyGeoVision's own preprocessor because the pygeofetch route "
+                "does not support %s",
+                ", ".join(_native_only),
+            )
         if use_pgf_preprocess and self._pgf_v2 and not _native_only:
             return self._prepare_via_pgf_v2(
-                input_path, stack_bands=stack_bands, bbox=bbox,
-                bbox_crs=bbox_crs,                     # ← was missing
-                clip_geojson=clip_geojson, cloud_mask_path=cloud_mask_path,
-                scl_path=scl_path, normalise=normalise,
-                scale_factor=scale_factor, resample_m=resample_m,
-                model_type=model_type, output_path=output_path,
+                input_path,
+                stack_bands=stack_bands,
+                bbox=bbox,
+                bbox_crs=bbox_crs,  # ← was missing
+                clip_geojson=clip_geojson,
+                cloud_mask_path=cloud_mask_path,
+                scl_path=scl_path,
+                normalise=normalise,
+                scale_factor=scale_factor,
+                resample_m=resample_m,
+                model_type=model_type,
+                output_path=output_path,
             )
 
         # ── PyGeoVision own Preprocessor (current path) ─────────────────
         if self._pre is None:
             from pygeovision.preprocess import Preprocessor
+
             self._pre = Preprocessor(validator=self._v)
 
         # Determine final output path
         if output_path is None:
-            p = pathlib.Path(input_path if not pathlib.Path(input_path).is_dir()
-                              else f"{input_path}/scene")
+            p = pathlib.Path(
+                input_path if not pathlib.Path(input_path).is_dir() else f"{input_path}/scene"
+            )
             output_path = str(p.parent / f"{p.stem}_ai_ready.tif")
 
         result = self._pre.pipeline(
-            input_path   = input_path,
-            output_path  = output_path,
-            stack_bands  = stack_bands,
-            stack_dir    = stack_dir,
-            bbox         = bbox,
-            bbox_crs     = bbox_crs,
-            clip_geojson = clip_geojson,
-            cloud_mask_path  = cloud_mask_path,
-            scl_path         = scl_path,
-            scl_keep_classes = scl_keep_classes,
-            normalise        = normalise,
-            scale_factor     = scale_factor,
-            resample_m       = resample_m,
+            input_path=input_path,
+            output_path=output_path,
+            stack_bands=stack_bands,
+            stack_dir=stack_dir,
+            bbox=bbox,
+            bbox_crs=bbox_crs,
+            clip_geojson=clip_geojson,
+            cloud_mask_path=cloud_mask_path,
+            scl_path=scl_path,
+            scl_keep_classes=scl_keep_classes,
+            normalise=normalise,
+            scale_factor=scale_factor,
+            resample_m=resample_m,
         )
         steps_applied = result.get("steps_applied", [])
 
@@ -723,7 +746,7 @@ class PyGeoFetchBridge:
         arr = None
         report = None
         if self._v and pathlib.Path(output_path).exists():
-            arr    = self._v.validate_for_inference(output_path, model_type=model_type)
+            arr = self._v.validate_for_inference(output_path, model_type=model_type)
             report = self._v.validate(output_path)
             steps_applied.append(f"validate({model_type})")
 
@@ -750,26 +773,26 @@ class PyGeoFetchBridge:
         #     "steps":        steps_applied,
         # }
 
-    def _prepare_via_pgf_v2(self, input_path, **kw) -> dict[str, Any]:
+    def _prepare_via_pgf_v2(self, input_path, **kw) -> AIReadyRaster:
         """Use PyGeoFetch v2.0 native preprocessing when available."""
-        
+
         if not input_path or not pathlib.Path(input_path).exists():
             raise ValueError(f"_prepare_via_pgf_v2: invalid input_path={input_path!r}")
-        
-        pgf_pre  = self._pgf.preprocess
-        steps    = []
-        current  = input_path
+
+        pgf_pre = self._pgf.preprocess
+        steps = []
+        current = input_path
 
         if kw.get("bbox"):
-            bbox      = kw["bbox"]
-            bbox_crs  = kw.get("bbox_crs", "EPSG:4326")
+            bbox = kw["bbox"]
+            bbox_crs = kw.get("bbox_crs", "EPSG:4326")
 
             # ── Reproject bbox to match the raster's native CRS ──────────────
             # The scene may have been reprojected (e.g. to UTM) during download.
             # Feeding WGS84 degrees to a UTM scene → WindowError / no overlap.
             bbox_native = _reproject_bbox(bbox, bbox_crs, current)
 
-            r       = pgf_pre.clip(current, bbox=bbox_native)
+            r = pgf_pre.clip(current, bbox=bbox_native)
             current = str(r.output_path)
             steps.append(f"pgf.clip({bbox})")
 
@@ -799,19 +822,21 @@ class PyGeoFetchBridge:
         op = kw.get("output_path") or current
         if op != current:
             import shutil
+
             shutil.copy2(current, op)
 
-        arr    = None
+        arr = None
         report = None
         if self._v:
             model_type = kw.get("model_type", "segmentation")
-            arr    = self._v.validate_for_inference(op, model_type=model_type)
+            arr = self._v.validate_for_inference(op, model_type=model_type)
             report = self._v.validate(op)
             steps.append(f"validate({model_type})")
 
         resolution_m = None
         try:
             import rasterio
+
             with rasterio.open(op) as _src:
                 resolution_m = abs(_src.transform.a)
         except Exception:
@@ -833,7 +858,10 @@ class PyGeoFetchBridge:
         # }
 
     def _normalise_raster(
-        self, input_path: str, method: str, scale_factor: float = 10000.0,
+        self,
+        input_path: str,
+        method: str,
+        scale_factor: float = 10000.0,
     ) -> str:
         """Normalise a raster's pixel values to a model-ready range.
 
@@ -853,8 +881,8 @@ class PyGeoFetchBridge:
             'percentile': rescale each band using its 2nd/98th percentile
                 as the [0, 1] bounds (robust to outliers).
         """
-        import rasterio
         import numpy as np
+        import rasterio
 
         inp = pathlib.Path(input_path)
         out_path = inp.parent / f"{inp.stem}_norm_{method}.tif"
@@ -896,6 +924,7 @@ class PyGeoFetchBridge:
         profile.update(dtype="float32", nodata=None)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         from pygeovision.data._profile import writable_profile
+
         profile = writable_profile(profile)
         with rasterio.open(out_path, "w", **profile) as dst:
             dst.write(normed)
@@ -915,6 +944,7 @@ class PyGeoFetchBridge:
         """
         if not self._pgf_v2:
             from pygeovision.core.exceptions import PreprocessingError
+
             raise PreprocessingError(
                 f"{operation} needs the pygeofetch processing engine (pygeofetch >= 2.0), which is not "
                 f"installed. PyGeoVision has no built-in {operation}; install or upgrade pygeofetch."
@@ -940,8 +970,7 @@ class PyGeoFetchBridge:
         return str(r.output_path)
 
     def preprocess_cloud_mask(
-        self, input_path: str, method: str = "scl",
-        scl_band: str | None = None, **kw
+        self, input_path: str, method: str = "scl", scl_band: str | None = None, **kw
     ) -> str:
         """Cloud masking.
 
@@ -949,8 +978,7 @@ class PyGeoFetchBridge:
         Falls back to PGV ``apply_scl()`` or ``apply_cloud_mask()``.
         """
         if self._pgf_v2:
-            r = self._pgf.preprocess.cloud_mask(
-                input_path, method=method, scl_band=scl_band, **kw)
+            r = self._pgf.preprocess.cloud_mask(input_path, method=method, scl_band=scl_band, **kw)
             return str(r.output_path)
         if self._pre:
             if method == "scl" and scl_band:
@@ -960,12 +988,13 @@ class PyGeoFetchBridge:
         return input_path
 
     def preprocess_clip(
-        self, input_path: str,
+        self,
+        input_path: str,
         bbox: tuple | None = None,
         geometry: str | None = None,
         output_path: str | None = None,
         bbox_crs: str = "EPSG:4326",
-        **kw
+        **kw,
     ) -> str:
         """Clip to bounding box or polygon.
 
@@ -985,12 +1014,11 @@ class PyGeoFetchBridge:
             return str(r.output_path)
         if self._pre:
             if geometry:
-                return self._pre.clip_to_polygon(input_path, geometry,
-                                                   output_path=output_path)
+                return self._pre.clip_to_polygon(input_path, geometry, output_path=output_path)
             if bbox:
-                return self._pre.clip_to_bbox(input_path, bbox,
-                                               output_path=output_path,
-                                               bbox_crs=bbox_crs)
+                return self._pre.clip_to_bbox(
+                    input_path, bbox, output_path=output_path, bbox_crs=bbox_crs
+                )
         return input_path
 
     def preprocess_reproject(self, input_path: str, crs: str = "EPSG:4326", **kw) -> str:
@@ -1003,61 +1031,68 @@ class PyGeoFetchBridge:
             import rasterio
             from rasterio.crs import CRS
             from rasterio.warp import Resampling, calculate_default_transform, reproject
+
             out = _auto_suffix(input_path, f"_{crs.replace(':','')}")
             pathlib.Path(out).parent.mkdir(parents=True, exist_ok=True)
             with rasterio.open(input_path) as src:
                 dst_crs = CRS.from_string(crs)
                 transform, width, height = calculate_default_transform(
-                    src.crs, dst_crs, src.width, src.height, *src.bounds)
+                    src.crs, dst_crs, src.width, src.height, *src.bounds
+                )
                 profile = src.profile.copy()
-                profile.update(crs=dst_crs, transform=transform,
-                               width=width, height=height, compress="lzw")
+                profile.update(
+                    crs=dst_crs, transform=transform, width=width, height=height, compress="lzw"
+                )
                 from pygeovision.data._profile import writable_profile
+
                 profile = writable_profile(profile)
                 with rasterio.open(out, "w", **profile) as dst:
                     for i in range(1, src.count + 1):
-                        reproject(source=rasterio.band(src, i),
-                                  destination=rasterio.band(dst, i),
-                                  src_transform=src.transform,
-                                  src_crs=src.crs,
-                                  dst_transform=transform,
-                                  dst_crs=dst_crs,
-                                  resampling=Resampling.bilinear)
+                        reproject(
+                            source=rasterio.band(src, i),
+                            destination=rasterio.band(dst, i),
+                            src_transform=src.transform,
+                            src_crs=src.crs,
+                            dst_transform=transform,
+                            dst_crs=dst_crs,
+                            resampling=Resampling.bilinear,
+                        )
             return out
         except Exception as e:
             from pygeovision.core.exceptions import PreprocessingError
+
             raise PreprocessingError(f"reprojection of {input_path} to {crs} failed: {e}") from e
 
     def preprocess_resample(
-        self, input_path: str, resolution: float,
-        method: str = "bilinear", **kw
+        self, input_path: str, resolution: float, method: str = "bilinear", **kw
     ) -> str:
         """Resample to target resolution in metres."""
         if self._pgf_v2:
             r = self._pgf.preprocess.resample(
-                input_path, resolution=int(resolution), method=method, **kw)
+                input_path, resolution=int(resolution), method=method, **kw
+            )
             return str(r.output_path)
         if self._pre:
             return self._pre.resample(input_path, resolution, resampling=method)
         return input_path
 
-    def preprocess_pansharpen(
-        self, pan: str, ms: str,
-        method: str = "brovey", **kw
-    ) -> str:
+    def preprocess_pansharpen(self, pan: str, ms: str, method: str = "brovey", **kw) -> str:
         """Pan-sharpening (brovey or IHS)."""
         self._need_pgf2("pan-sharpening")
         r = self._pgf.preprocess.pansharpen(pan=pan, ms=ms, method=method, **kw)
         return str(r.output_path)
 
     def preprocess_tile(
-        self, input_path: str, tile_size: int = 512,
-        overlap: int = 64, output_dir: str | None = None, **kw
+        self,
+        input_path: str,
+        tile_size: int = 512,
+        overlap: int = 64,
+        output_dir: str | None = None,
+        **kw,
     ) -> list[str]:
         """Cut a scene into chips for training."""
         self._need_pgf2("tiling into chips")
-        r = self._pgf.preprocess.tile(
-            input_path, tile_size=tile_size, overlap=overlap, **kw)
+        r = self._pgf.preprocess.tile(input_path, tile_size=tile_size, overlap=overlap, **kw)
         return [str(p) for p in (r.output_paths or [str(r.output_path)])]
 
     def preprocess_mosaic(self, inputs: list[str], method: str = "first", **kw) -> str:
@@ -1068,26 +1103,33 @@ class PyGeoFetchBridge:
         try:
             import rasterio
             from rasterio.merge import merge as rio_merge
+
             datasets = [rasterio.open(p) for p in inputs]
             mosaic, transform = rio_merge(datasets)
-            for ds in datasets: ds.close()
+            for ds in datasets:
+                ds.close()
             out = _auto_suffix(inputs[0], "_mosaic")
             with rasterio.open(inputs[0]) as ref:
                 profile = ref.profile.copy()
-                profile.update(height=mosaic.shape[1], width=mosaic.shape[2],
-                               transform=transform, compress="lzw")
+                profile.update(
+                    height=mosaic.shape[1],
+                    width=mosaic.shape[2],
+                    transform=transform,
+                    compress="lzw",
+                )
             from pygeovision.data._profile import writable_profile
+
             profile = writable_profile(profile)
             with rasterio.open(out, "w", **profile) as dst:
                 dst.write(mosaic)
             return out
         except Exception as e:
             from pygeovision.core.exceptions import PreprocessingError
+
             raise PreprocessingError(f"mosaic of {len(inputs)} raster(s) failed: {e}") from e
 
     def preprocess_composite(
-        self, inputs: list[str], method: str = "median",
-        output_path: str | None = None, **kw
+        self, inputs: list[str], method: str = "median", output_path: str | None = None, **kw
     ) -> str:
         """Temporal composite (median / mean / max / best-pixel)."""
         if self._pgf_v2:
@@ -1096,11 +1138,12 @@ class PyGeoFetchBridge:
         try:
             import numpy as np
             import rasterio
+
             arrays = []
             for p in inputs:
                 with rasterio.open(p) as src:
                     arrays.append(src.read().astype(np.float32))
-            stack = np.stack(arrays, axis=0)           # (T, C, H, W)
+            stack = np.stack(arrays, axis=0)  # (T, C, H, W)
             if method == "median":
                 comp = np.median(stack, axis=0)
             elif method == "mean":
@@ -1113,7 +1156,7 @@ class PyGeoFetchBridge:
             with rasterio.open(inputs[0]) as ref:
                 profile = ref.profile.copy()
                 profile.update(dtype="float32", compress="lzw")
-                for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+                for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
                     profile.pop(_k, None)
             pathlib.Path(out).parent.mkdir(parents=True, exist_ok=True)
             with rasterio.open(out, "w", **profile) as dst:
@@ -1121,21 +1164,20 @@ class PyGeoFetchBridge:
             return out
         except Exception as e:
             from pygeovision.core.exceptions import PreprocessingError
-            raise PreprocessingError(f"{method} composite of {len(inputs)} raster(s) failed: {e}") from e
+
+            raise PreprocessingError(
+                f"{method} composite of {len(inputs)} raster(s) failed: {e}"
+            ) from e
 
     def preprocess_topo_correct(
-        self, input_path: str, dem: str,
-        method: str = "c_correction", **kw
+        self, input_path: str, dem: str, method: str = "c_correction", **kw
     ) -> str:
         """Topographic correction using a DEM."""
         self._need_pgf2("topographic correction")
-        r = self._pgf.preprocess.topo_correct(
-            input_path, dem=dem, method=method, **kw)
+        r = self._pgf.preprocess.topo_correct(input_path, dem=dem, method=method, **kw)
         return str(r.output_path)
 
-    def preprocess_cloud_fill(
-        self, cloudy: str, time_series: list[str], **kw
-    ) -> str:
+    def preprocess_cloud_fill(self, cloudy: str, time_series: list[str], **kw) -> str:
         """Fill cloud gaps using a temporal series."""
         self._need_pgf2("cloud filling")
         r = self._pgf.preprocess.cloud_fill(cloudy, time_series=time_series, **kw)
@@ -1245,15 +1287,16 @@ class PyGeoFetchBridge:
         """
         if self._pgf_v2 and hasattr(self._pgf, "batch_process"):
             pgf_chain = [(op, kw) for op, kw in chain]
-            return self._pgf.batch_process(inputs, pgf_chain,
-                                            output_dir=output_dir, parallel=parallel)
+            return self._pgf.batch_process(
+                inputs, pgf_chain, output_dir=output_dir, parallel=parallel
+            )
 
         # Sequential fallback
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
         results = []
         for inp in inputs:
             current = inp
-            error   = None
+            error = None
             try:
                 for op_name, op_kw in chain:
                     if op_name == "clip":
@@ -1262,7 +1305,8 @@ class PyGeoFetchBridge:
                         current = self.preprocess_reproject(current, **op_kw)
                     elif op_name == "resample":
                         current = self.preprocess_resample(
-                            current, resolution=op_kw.get("resolution_m", 10.0))
+                            current, resolution=op_kw.get("resolution_m", 10.0)
+                        )
                     elif op_name == "normalise" and self._pre:
                         current = self._pre.normalise(current, **op_kw)
                     elif op_name == "cloud_mask":
@@ -1279,12 +1323,14 @@ class PyGeoFetchBridge:
                 error = str(e)
                 logger.error("batch_process error on %s at %s: %s", inp, op_name, e)
 
-            results.append({
-                "input":   inp,
-                "output":  current,
-                "success": error is None,
-                "error":   error,
-            })
+            results.append(
+                {
+                    "input": inp,
+                    "output": current,
+                    "success": error is None,
+                    "error": error,
+                }
+            )
         return results
 
     # ------------------------------------------------------------------
@@ -1293,8 +1339,8 @@ class PyGeoFetchBridge:
 
     def status(self) -> dict[str, Any]:
         """Return bridge and PyGeoFetch status information."""
-        info = {
-            "pgf_available":    self._pgf is not None,
+        info: dict[str, Any] = {
+            "pgf_available": self._pgf is not None,
             "pgf_v2_available": self._pgf_v2,
         }
         if self._pgf:
@@ -1310,11 +1356,12 @@ class PyGeoFetchBridge:
 # Simple chain stub (PyGeoFetch v1.0 fallback)
 # ---------------------------------------------------------------------------
 
+
 class _SimpleChain:
     """Minimal chainable pipeline stub when PyGeoFetch v2.0 is not available."""
 
     def __init__(self, name: str, bridge: PyGeoFetchBridge):
-        self._name   = name
+        self._name = name
         self._bridge = bridge
         self._steps: list[tuple[str, dict]] = []
 
@@ -1322,6 +1369,7 @@ class _SimpleChain:
         def _capture(**kw):
             self._steps.append((item, kw))
             return self
+
         return _capture
 
     def run(self, input: str, output_dir: str = "./processed/", **kw) -> dict:
@@ -1333,6 +1381,7 @@ class _SimpleChain:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _auto_suffix(path: str, suffix: str) -> str:
     p = pathlib.Path(path)
@@ -1367,8 +1416,8 @@ def _reproject_bbox(
     """
     try:
         import rasterio
-        import rasterio.warp as rwarp
         from rasterio.crs import CRS
+        import rasterio.warp as rwarp
 
         with rasterio.open(raster_path) as src:
             raster_crs = src.crs
@@ -1380,13 +1429,14 @@ def _reproject_bbox(
             return bbox
 
         minx, miny, maxx, maxy = bbox
-        xs, ys = rwarp.transform(src_crs, raster_crs,
-                                  [minx, maxx], [miny, maxy])
+        xs, ys = rwarp.transform(src_crs, raster_crs, [minx, maxx], [miny, maxy])
         reprojected = (min(xs), min(ys), max(xs), max(ys))
         logger.debug(
             "_reproject_bbox: %s [%s] → %s [%s]",
-            bbox, bbox_crs,
-            tuple(round(v, 1) for v in reprojected), raster_crs,
+            bbox,
+            bbox_crs,
+            tuple(round(v, 1) for v in reprojected),
+            raster_crs,
         )
         return reprojected
 

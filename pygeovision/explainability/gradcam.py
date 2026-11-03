@@ -2,6 +2,7 @@
 GradCAM and GradCAM++ for geospatial model explainability (G6).
 Produces class activation maps showing which regions influenced the prediction.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,19 +12,25 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _save_overlay(image_path: str, saliency: Any, output_path: str, *, alpha: float = 0.6,
-                  colormap: str = "jet", title: str = "Saliency") -> None:
+def _save_overlay(
+    image_path: str,
+    saliency: Any,
+    output_path: str,
+    *,
+    alpha: float = 0.6,
+    colormap: str = "jet",
+    title: str = "Saliency",
+) -> None:
     """Three-panel figure (input, map, overlay) shared by GradCAM and attention maps.
 
     Reads the first three bands of ``image_path`` (one band is shown as grey)
     and stretches them for display; the map is resized to the image size.
     """
     import matplotlib
-    import numpy as np
-    import rasterio
-    from PIL import Image as PILImage
-
     import matplotlib.pyplot as plt
+    import numpy as np
+    from PIL import Image as PILImage
+    import rasterio
 
     with rasterio.open(image_path) as src:
         n = min(src.count, 3)
@@ -39,15 +46,23 @@ def _save_overlay(image_path: str, saliency: Any, output_path: str, *, alpha: fl
     sal = np.asarray(saliency, dtype=np.float32)
     if sal.ndim != 2:
         raise ValueError(f"saliency must be 2-D, got shape {sal.shape}")
-    sal_up = np.array(PILImage.fromarray(sal).resize((rgb.shape[1], rgb.shape[0]), PILImage.BILINEAR))
+    sal_up = np.array(
+        PILImage.fromarray(sal).resize((rgb.shape[1], rgb.shape[0]), PILImage.BILINEAR)
+    )
 
     cmap = matplotlib.colormaps[colormap]
     blended = (1 - alpha) * rgb + alpha * cmap(sal_up)[:, :, :3]
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    axes[0].imshow(rgb); axes[0].set_title("Input"); axes[0].axis("off")
-    axes[1].imshow(sal_up, cmap=colormap); axes[1].set_title(title); axes[1].axis("off")
-    axes[2].imshow(blended); axes[2].set_title("Overlay"); axes[2].axis("off")
+    axes[0].imshow(rgb)
+    axes[0].set_title("Input")
+    axes[0].axis("off")
+    axes[1].imshow(sal_up, cmap=colormap)
+    axes[1].set_title(title)
+    axes[1].axis("off")
+    axes[2].imshow(blended)
+    axes[2].set_title("Overlay")
+    axes[2].axis("off")
     plt.tight_layout()
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
@@ -73,8 +88,9 @@ class GradCAM:
         cam.visualise(image_path, saliency, "./results/gradcam_buildings.png")
     """
 
-    def __init__(self, model: Any, target_layer: str | None = None,
-                 device: str | None = None) -> None:
+    def __init__(
+        self, model: Any, target_layer: str | None = None, device: str | None = None
+    ) -> None:
         self.model = model
         self.target_layer_name = target_layer
         self.device = device or self._auto_device()
@@ -85,14 +101,21 @@ class GradCAM:
     @staticmethod
     def _auto_device():
         try:
-            import torch; return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError: return "cpu"
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
 
     def _find_target_layer(self) -> Any:
         """The layer named ``target_layer``, else the last convolution."""
         import torch.nn as nn
-        convs = [(n, m) for n, m in self.model.named_modules()
-                 if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d))]
+
+        convs = [
+            (n, m)
+            for n, m in self.model.named_modules()
+            if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d))
+        ]
         if not convs:
             raise ValueError("No Conv2d layers found. Specify target_layer manually.")
         if self.target_layer_name is None:
@@ -130,6 +153,7 @@ class GradCAM:
     def _prepare(self, image: Any):
         import numpy as np
         import torch
+
         if isinstance(image, np.ndarray):
             image = torch.tensor(image, dtype=torch.float32)
         if image.ndim == 3:
@@ -144,11 +168,11 @@ class GradCAM:
         try:
             self.model.zero_grad()
             logits = self.model(image)
-            if logits.ndim == 4:                       # segmentation: (B, classes, H, W)
+            if logits.ndim == 4:  # segmentation: (B, classes, H, W)
                 if class_idx is None:
                     class_idx = int(logits[0].mean(dim=(-2, -1)).argmax().item())
                 score = logits[:, class_idx].sum()
-            else:                                      # classification: (B, classes)
+            else:  # classification: (B, classes)
                 if class_idx is None:
                     class_idx = int(logits[0].argmax().item())
                 score = logits[0, class_idx]
@@ -182,8 +206,8 @@ class GradCAM:
         try:
             import numpy as np
             import torch
-        except ImportError:
-            raise ImportError("torch required")
+        except ImportError as exc:
+            raise ImportError("torch required") from exc
 
         image = self._prepare(image)
         grads, acts = self._backprop(image, class_idx)
@@ -195,6 +219,7 @@ class GradCAM:
         cam = torch.relu(self._weights_and_cam(grads, acts)).cpu().numpy()
 
         from PIL import Image as PILImage
+
         cam_pil = PILImage.fromarray(cam.astype(np.float32))
         cam_up = cam_pil.resize((image.shape[-1], image.shape[-2]), PILImage.BILINEAR)
         cam_np = np.array(cam_up)
@@ -229,8 +254,10 @@ class GradCAM:
 
         stride = chip_size - overlap
         if stride <= 0:
-            return {"success": False,
-                    "error": f"chip_size ({chip_size}) must be greater than overlap ({overlap})"}
+            return {
+                "success": False,
+                "error": f"chip_size ({chip_size}) must be greater than overlap ({overlap})",
+            }
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(image_path) as src:
@@ -239,12 +266,12 @@ class GradCAM:
             image = src.read().astype(np.float32)
 
         saliency_map = np.zeros((H, W), dtype=np.float32)
-        count_map    = np.zeros((H, W), dtype=np.float32)
+        count_map = np.zeros((H, W), dtype=np.float32)
 
         n_chips = 0
         for row in range(0, H, stride):
             for col in range(0, W, stride):
-                r2, c2 = min(row+chip_size, H), min(col+chip_size, W)
+                r2, c2 = min(row + chip_size, H), min(col + chip_size, W)
                 chip = image[:, row:r2, col:c2]
                 # Normalise
                 chip_norm = chip.copy()
@@ -252,22 +279,26 @@ class GradCAM:
                     mn, mx = chip_norm[b].min(), chip_norm[b].max()
                     chip_norm[b] = (chip_norm[b] - mn) / (mx - mn + 1e-8)
                 cam = self.explain(chip_norm, class_idx=class_idx)
-                actual_h, actual_w = r2-row, c2-col
+                actual_h, actual_w = r2 - row, c2 - col
                 saliency_map[row:r2, col:c2] += cam[:actual_h, :actual_w]
-                count_map[row:r2, col:c2]    += 1.0
+                count_map[row:r2, col:c2] += 1.0
                 n_chips += 1
 
         saliency_map /= np.maximum(count_map, 1e-10)
 
         profile.update(count=1, dtype="float32", compress="lzw")
-        for _k in ("blockxsize", "blockysize", "tiled"):   # illegal without TILED=YES
+        for _k in ("blockxsize", "blockysize", "tiled"):  # illegal without TILED=YES
             profile.pop(_k, None)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(saliency_map[np.newaxis])
             dst.update_tags(method=type(self).__name__, class_idx=str(class_idx))
 
-        return {"success": True, "output_path": output_path, "image_size": (H, W),
-                "n_chips": n_chips}
+        return {
+            "success": True,
+            "output_path": output_path,
+            "image_size": (H, W),
+            "n_chips": n_chips,
+        }
 
     def visualise(
         self,
@@ -285,8 +316,14 @@ class GradCAM:
         instead of failing when matplotlib is missing.
         """
         try:
-            _save_overlay(image_path, saliency, output_path, alpha=alpha,
-                          colormap=colormap, title=f"{type(self).__name__} saliency")
+            _save_overlay(
+                image_path,
+                saliency,
+                output_path,
+                alpha=alpha,
+                colormap=colormap,
+                title=f"{type(self).__name__} saliency",
+            )
             logger.info("%s visualisation saved → %s", type(self).__name__, output_path)
         except ImportError as exc:
             logger.warning("matplotlib required for visualisation: %s", exc)
@@ -311,13 +348,15 @@ class GradCAMPlusPlus(GradCAM):
         # GradCAM++ alpha coefficients (standard first-order-gradient
         # practical formulation — see class docstring):
         #   alpha = grad^2 / (2*grad^2 + sum(activations) * grad^3)
-        grads_2 = grads ** 2
-        grads_3 = grads ** 3
+        grads_2 = grads**2
+        grads_3 = grads**3
         sum_activations = acts.sum(dim=(-2, -1), keepdim=True)
         eps = 1e-8
         alpha_denom = grads_2 * 2.0 + sum_activations * grads_3
         alpha_denom = torch.where(
-            alpha_denom != 0.0, alpha_denom, torch.full_like(alpha_denom, eps),
+            alpha_denom != 0.0,
+            alpha_denom,
+            torch.full_like(alpha_denom, eps),
         )
         alphas = grads_2 / alpha_denom
 

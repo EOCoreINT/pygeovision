@@ -1,4 +1,5 @@
 """Date-window helpers shared by the pipelines and the CLI."""
+
 from __future__ import annotations
 
 import calendar
@@ -16,7 +17,9 @@ def date_window(value: str) -> tuple[str, str]:
     if "/" in value:
         start, _, end = (part.strip() for part in value.partition("/"))
         if len(start) != 10 or len(end) != 10 or start > end:
-            raise ValueError(f"date range {value!r} must be 'YYYY-MM-DD/YYYY-MM-DD' with start <= end")
+            raise ValueError(
+                f"date range {value!r} must be 'YYYY-MM-DD/YYYY-MM-DD' with start <= end"
+            )
         return start, end
     if len(value) == 7:
         year, month = int(value[:4]), int(value[5:7])

@@ -1,4 +1,5 @@
 """Change detection model architectures."""
+
 from __future__ import annotations
 
 import logging
@@ -7,14 +8,23 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def build_siamese_unet(in_channels: int = 3, num_classes: int = 2, encoder: str = "resnet34", pretrained: bool = True, **kwargs: Any) -> Any:
+def build_siamese_unet(
+    in_channels: int = 3,
+    num_classes: int = 2,
+    encoder: str = "resnet34",
+    pretrained: bool = True,
+    **kwargs: Any,
+) -> Any:
     """Build a Siamese U-Net for bi-temporal change detection."""
     import torch
     import torch.nn as nn
+
     try:
         import segmentation_models_pytorch as smp
     except ImportError as exc:
-        raise ImportError("Siamese-UNet requires segmentation-models-pytorch. Install: pip install segmentation-models-pytorch") from exc
+        raise ImportError(
+            "Siamese-UNet requires segmentation-models-pytorch. Install: pip install segmentation-models-pytorch"
+        ) from exc
 
     class SiameseUNet(nn.Module):
         def __init__(self):
@@ -26,8 +36,18 @@ def build_siamese_unet(in_channels: int = 3, num_classes: int = 2, encoder: str 
             # that forward() never referenced at all: pure dead weight,
             # plus a real, unnecessary pretrained-weight download every
             # time this model was constructed.)
-            self.encoder_t1 = smp.encoders.get_encoder(encoder, in_channels=in_channels, depth=5, weights="imagenet" if pretrained else None)
-            self.encoder_t2 = smp.encoders.get_encoder(encoder, in_channels=in_channels, depth=5, weights="imagenet" if pretrained else None)
+            self.encoder_t1 = smp.encoders.get_encoder(
+                encoder,
+                in_channels=in_channels,
+                depth=5,
+                weights="imagenet" if pretrained else None,
+            )
+            self.encoder_t2 = smp.encoders.get_encoder(
+                encoder,
+                in_channels=in_channels,
+                depth=5,
+                weights="imagenet" if pretrained else None,
+            )
             enc_ch = self.encoder_t1.out_channels
             double_ch = tuple(c * 2 for c in enc_ch)
             self.decoder = smp.decoders.unet.decoder.UnetDecoder(
@@ -39,11 +59,18 @@ def build_siamese_unet(in_channels: int = 3, num_classes: int = 2, encoder: str 
             feats1 = self.encoder_t1(t1)
             feats2 = self.encoder_t2(t2)
             diff_feats = [torch.cat([f1, f2], dim=1) for f1, f2 in zip(feats1, feats2)]
-            dec = self.decoder(diff_feats)  # UnetDecoder.forward(features: List[Tensor]) -- one list arg, not unpacked
+            dec = self.decoder(
+                diff_feats
+            )  # UnetDecoder.forward(features: List[Tensor]) -- one list arg, not unpacked
             return self.head(dec)
 
     model = SiameseUNet()
-    logger.info("Built SiameseUNet(in_channels=%d, num_classes=%d, encoder=%s)", in_channels, num_classes, encoder)
+    logger.info(
+        "Built SiameseUNet(in_channels=%d, num_classes=%d, encoder=%s)",
+        in_channels,
+        num_classes,
+        encoder,
+    )
     return model
 
 
@@ -69,13 +96,17 @@ def build_changeformer(in_channels: int = 3, num_classes: int = 2, **kwargs: Any
                 out1 = self.encoder_t1(pixel_values=t1).logits
                 out2 = self.encoder_t2(pixel_values=t2).logits
                 import torch.nn.functional as F
+
                 out1 = F.interpolate(out1, size=t1.shape[-2:], mode="bilinear", align_corners=False)
                 out2 = F.interpolate(out2, size=t2.shape[-2:], mode="bilinear", align_corners=False)
                 import torch
+
                 return self.fusion(torch.cat([out1, out2], dim=1))
 
         model = ChangeFormer()
         logger.info("Built ChangeFormer(in_channels=%d, num_classes=%d)", in_channels, num_classes)
         return model
     except ImportError as exc:
-        raise ImportError("ChangeFormer requires transformers. Install: pip install transformers") from exc
+        raise ImportError(
+            "ChangeFormer requires transformers. Install: pip install transformers"
+        ) from exc

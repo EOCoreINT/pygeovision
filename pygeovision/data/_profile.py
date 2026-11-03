@@ -1,4 +1,5 @@
 """Small helpers for copying a rasterio profile into a new GeoTIFF."""
+
 from __future__ import annotations
 
 from typing import Any

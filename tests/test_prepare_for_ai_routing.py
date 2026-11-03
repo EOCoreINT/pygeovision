@@ -1,4 +1,5 @@
 """prepare_for_ai must not route a call to the pygeofetch engine when that engine would drop an argument."""
+
 from unittest import mock
 
 import numpy as np
@@ -13,8 +14,17 @@ from pygeovision.data.pgf_bridge import PyGeoFetchBridge  # noqa: E402
 @pytest.fixture()
 def tif(tmp_path):
     p = tmp_path / "scene.tif"
-    with rasterio.open(p, "w", driver="GTiff", width=8, height=8, count=2, dtype="uint16",
-                       crs="EPSG:4326", transform=from_origin(0, 1, 0.01, 0.01)) as dst:
+    with rasterio.open(
+        p,
+        "w",
+        driver="GTiff",
+        width=8,
+        height=8,
+        count=2,
+        dtype="uint16",
+        crs="EPSG:4326",
+        transform=from_origin(0, 1, 0.01, 0.01),
+    ) as dst:
         dst.write(np.full((2, 8, 8), 1000, "uint16"))
     return str(p)
 
@@ -25,12 +35,15 @@ def _bridge():
     return b
 
 
-@pytest.mark.parametrize("kw", [
-    {"clip_geojson": "aoi.geojson"},
-    {"cloud_mask_path": "mask.tif"},
-    {"scl_keep_classes": (4, 5)},
-    {"stack_bands": ["B02", "B03"]},
-])
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"clip_geojson": "aoi.geojson"},
+        {"cloud_mask_path": "mask.tif"},
+        {"scl_keep_classes": (4, 5)},
+        {"stack_bands": ["B02", "B03"]},
+    ],
+)
 def test_unsupported_arguments_use_native_route(tif, tmp_path, kw):
     b = _bridge()
     b._pre = mock.Mock()

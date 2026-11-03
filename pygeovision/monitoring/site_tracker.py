@@ -27,10 +27,11 @@ Pipeline:
     4. classify_site_activity() — expanding / stable / recovering,
        from the filtered rate estimate.
 """
+
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
-from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 def _require_scipy_ndimage():
     try:
         from scipy import ndimage
+
         return ndimage
     except ImportError:
         raise ImportError("scipy required: pip install scipy") from None
@@ -50,12 +52,14 @@ def _require_scipy_ndimage():
 # Step 1 — Site extraction
 # ===========================================================================
 
+
 @dataclass
 class Site:
     """A single connected-component disturbance site at one epoch."""
+
     label: int
     epoch_index: int
-    pixel_mask: np.ndarray          # boolean, shape of the full raster
+    pixel_mask: np.ndarray  # boolean, shape of the full raster
     centroid_rc: tuple[float, float]  # (row, col) in pixel space
     area_m2: float
     n_pixels: int
@@ -96,16 +100,23 @@ def extract_sites(
         if area_m2 < min_area_m2:
             continue
         centroid = ndimage.center_of_mass(comp_mask)
-        sites.append(Site(
-            label=lbl, epoch_index=epoch_index, pixel_mask=comp_mask,
-            centroid_rc=centroid, area_m2=area_m2, n_pixels=n_pixels,
-        ))
+        sites.append(
+            Site(
+                label=lbl,
+                epoch_index=epoch_index,
+                pixel_mask=comp_mask,
+                centroid_rc=centroid,
+                area_m2=area_m2,
+                n_pixels=n_pixels,
+            )
+        )
     return sites
 
 
 # ===========================================================================
 # Step 2 — Cross-epoch identity matching
 # ===========================================================================
+
 
 def _iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
     intersection = np.logical_and(mask_a, mask_b).sum()
@@ -167,6 +178,7 @@ def match_sites_across_epochs(
 # ===========================================================================
 # Step 3 — Kalman filter (constant-velocity model)
 # ===========================================================================
+
 
 @dataclass
 class KalmanTrackResult:
@@ -264,9 +276,9 @@ class KalmanAreaTracker:
             z = areas_m2[i]
             if z is not None:
                 # Update (real Kalman gain / measurement update)
-                y = np.array([[z]]) - self.H @ x            # innovation
-                S = self.H @ P @ self.H.T + self.R           # innovation covariance
-                K = P @ self.H.T @ np.linalg.inv(S)           # Kalman gain
+                y = np.array([[z]]) - self.H @ x  # innovation
+                S = self.H @ P @ self.H.T + self.R  # innovation covariance
+                K = P @ self.H.T @ np.linalg.inv(S)  # Kalman gain
                 x = x + K @ y
                 P = (np.eye(2) - K @ self.H) @ P
             # else: prediction-only step for a missing observation —
@@ -288,6 +300,7 @@ class KalmanAreaTracker:
 # ===========================================================================
 # Step 4 — Activity classification
 # ===========================================================================
+
 
 def classify_site_activity(
     rate_m2_per_epoch: float,
@@ -341,8 +354,7 @@ def track_and_classify_sites(
                    "classification": "expanding"|"stable"|"recovering"}}
     """
     sites_per_epoch = [
-        extract_sites(mask, i, pixel_area_m2, min_area_m2)
-        for i, mask in enumerate(binary_masks)
+        extract_sites(mask, i, pixel_area_m2, min_area_m2) for i, mask in enumerate(binary_masks)
     ]
     tracks = match_sites_across_epochs(sites_per_epoch, iou_threshold)
 
@@ -358,8 +370,10 @@ def track_and_classify_sites(
             # report the raw detection honestly rather than fabricate a
             # trend from a single point.
             results[site_id] = {
-                "epochs": actual_epochs, "areas_m2": areas,
-                "filtered_areas_m2": areas, "rate_m2_per_epoch": [0.0],
+                "epochs": actual_epochs,
+                "areas_m2": areas,
+                "filtered_areas_m2": areas,
+                "rate_m2_per_epoch": [0.0],
                 "final_rate_m2_per_epoch": 0.0,
                 "classification": "insufficient_data",
             }
@@ -369,10 +383,13 @@ def track_and_classify_sites(
         final_rate = track_result.rate_m2_per_epoch[-1]
         final_uncertainty = track_result.rate_uncertainty[-1]
         classification = classify_site_activity(
-            final_rate, final_uncertainty, stable_threshold_m2_per_epoch,
+            final_rate,
+            final_uncertainty,
+            stable_threshold_m2_per_epoch,
         )
         results[site_id] = {
-            "epochs": actual_epochs, "areas_m2": areas,
+            "epochs": actual_epochs,
+            "areas_m2": areas,
             "filtered_areas_m2": track_result.filtered_area_m2,
             "rate_m2_per_epoch": track_result.rate_m2_per_epoch,
             "final_rate_m2_per_epoch": final_rate,

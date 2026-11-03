@@ -1,15 +1,17 @@
 """Alert management for drift detection and performance monitoring."""
+
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from datetime import datetime
+import logging
 
 logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> str:
     from datetime import timezone
+
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
@@ -37,8 +39,11 @@ class AlertManager:
             if handler:
                 handler(entry)
             else:
-                logger.warning("[Alert] channel %r has no handler (register_handler); alert not delivered there: %s",
-                               channel, message)
+                logger.warning(
+                    "[Alert] channel %r has no handler (register_handler); alert not delivered there: %s",
+                    channel,
+                    message,
+                )
 
     def _log_alert(self, entry: dict) -> None:
         level = {"info": logger.info, "warning": logger.warning, "critical": logger.critical}

@@ -51,6 +51,7 @@ serialization primitives, is verified (see the test suite): Hilbert
 encoding is checked for genuine bijectivity and path-continuity in both
 2D and 3D against the mathematical definition, not just "doesn't crash".
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,12 +65,14 @@ def _require_torch():
         import torch
         import torch.nn as nn
         import torch.nn.functional as F
+
         return torch, nn, F
     except ImportError:
         raise ImportError("torch required for Point Transformer V3: pip install torch") from None
 
 
 # ── Serialization: space-filling curve encoding ──────────────────────────────
+
 
 def morton_encode(coords) -> Any:
     """Z-order (Morton) encoding — interleave the bits of each integer
@@ -155,12 +158,13 @@ def serialize(xyz, grid_size: float, order: str = "z", bits: int = 16):
 def _build_ptv3_modules():
     torch, nn, F = _require_torch()
 
-    class XCPE(nn.Module):
+    class XCPE(nn.Module):  # type: ignore[name-defined]
         """Extended Conditional Positional Encoding — a lightweight
         convolution along the CURRENT serialized order plus a skip
         connection, injecting local positional context before attention.
         See module docstring for how this differs from the paper's true
         sparse 3D convolution."""
+
         def __init__(self, channels):
             super().__init__()
             self.conv = nn.Conv1d(channels, channels, kernel_size=3, padding=1, groups=channels)
@@ -170,10 +174,11 @@ def _build_ptv3_modules():
             """x_serialized: (B, C, N), already in serialized order."""
             return x_serialized + self.norm(self.conv(x_serialized))
 
-    class PatchAttention(nn.Module):
+    class PatchAttention(nn.Module):  # type: ignore[name-defined]
         """Multi-head self-attention within fixed-size non-overlapping
         patches of the serialized sequence — the paper's core mechanism
         for avoiding per-layer neighbor search entirely."""
+
         def __init__(self, dim, num_heads=4, patch_size=256):
             super().__init__()
             self.num_heads = num_heads
@@ -206,11 +211,12 @@ def _build_ptv3_modules():
                 out = out[:, :N, :]
             return out
 
-    class PTv3Block(nn.Module):
+    class PTv3Block(nn.Module):  # type: ignore[name-defined]
         """Pre-norm transformer block: xCPE -> attention (residual) ->
         MLP (residual). Uses a cyclically-assigned serialization order
         (passed in per forward call) — different layers see different
         point groupings even though the underlying point cloud is fixed."""
+
         def __init__(self, dim, num_heads=4, patch_size=256, mlp_ratio=4):
             super().__init__()
             self.xcpe = XCPE(dim)
@@ -218,7 +224,9 @@ def _build_ptv3_modules():
             self.attn = PatchAttention(dim, num_heads, patch_size)
             self.norm2 = nn.LayerNorm(dim)
             self.mlp = nn.Sequential(
-                nn.Linear(dim, dim * mlp_ratio), nn.GELU(), nn.Linear(dim * mlp_ratio, dim),
+                nn.Linear(dim, dim * mlp_ratio),
+                nn.GELU(),
+                nn.Linear(dim * mlp_ratio, dim),
             )
 
         def forward(self, x, sort_idx):
@@ -263,9 +271,12 @@ def grid_pool(xyz, features, grid_size):
 
         pooled_xyz = torch.zeros(num_groups, 3, device=device).index_add_(0, inverse, xyz[b])
         pooled_feat = torch.zeros(num_groups, C, device=device).index_add_(0, inverse, features[b])
-        counts = torch.zeros(num_groups, device=device).index_add_(
-            0, inverse, torch.ones(N, device=device)
-        ).clamp(min=1).unsqueeze(-1)
+        counts = (
+            torch.zeros(num_groups, device=device)
+            .index_add_(0, inverse, torch.ones(N, device=device))
+            .clamp(min=1)
+            .unsqueeze(-1)
+        )
         pooled_xyz_list.append(pooled_xyz / counts)
         pooled_feat_list.append(pooled_feat / counts)
         group_idx_list.append(inverse)
@@ -292,49 +303,68 @@ class PTv3SegModel:
         logits = model(xyz)  # xyz: (B, 3+extra, N) -> (B, num_classes, N)
     """
 
-    def __new__(cls, num_classes: int = 5, extra_feature_channels: int = 0,
-                base_grid_size: float = 0.05, patch_size: int = 256,
-                num_layers: int = 3, depth_per_layer: int = 2):
+    def __new__(
+        cls,
+        num_classes: int = 5,
+        extra_feature_channels: int = 0,
+        base_grid_size: float = 0.05,
+        patch_size: int = 256,
+        num_layers: int = 3,
+        depth_per_layer: int = 2,
+    ):
         torch, nn, F = _require_torch()
         XCPE, PatchAttention, PTv3Block = _build_ptv3_modules()
 
-        class PTv3Seg(nn.Module):
+        class PTv3Seg(nn.Module):  # type: ignore[name-defined]
             def __init__(self):
                 super().__init__()
                 in_ch = 3 + extra_feature_channels
                 enc_channels = [32, 64, 128, 256][: num_layers + 1]
 
                 self.fc_start = nn.Sequential(
-                    nn.Linear(in_ch, enc_channels[0]), nn.LayerNorm(enc_channels[0]), nn.GELU(),
+                    nn.Linear(in_ch, enc_channels[0]),
+                    nn.LayerNorm(enc_channels[0]),
+                    nn.GELU(),
                 )
 
-                self.encoder_blocks = nn.ModuleList([
-                    nn.ModuleList([
-                        PTv3Block(enc_channels[i], patch_size=patch_size)
-                        for _ in range(depth_per_layer)
-                    ])
-                    for i in range(num_layers)
-                ])
-                self.encoder_proj = nn.ModuleList([
-                    nn.Linear(enc_channels[i], enc_channels[i + 1])
-                    for i in range(num_layers)
-                ])
+                self.encoder_blocks = nn.ModuleList(
+                    [
+                        nn.ModuleList(
+                            [
+                                PTv3Block(enc_channels[i], patch_size=patch_size)
+                                for _ in range(depth_per_layer)
+                            ]
+                        )
+                        for i in range(num_layers)
+                    ]
+                )
+                self.encoder_proj = nn.ModuleList(
+                    [nn.Linear(enc_channels[i], enc_channels[i + 1]) for i in range(num_layers)]
+                )
 
                 dec_channels = enc_channels[::-1]
-                self.decoder_proj = nn.ModuleList([
-                    nn.Linear(dec_channels[i] + dec_channels[i + 1], dec_channels[i + 1])
-                    for i in range(num_layers)
-                ])
-                self.decoder_blocks = nn.ModuleList([
-                    nn.ModuleList([
-                        PTv3Block(dec_channels[i + 1], patch_size=patch_size)
-                        for _ in range(depth_per_layer)
-                    ])
-                    for i in range(num_layers)
-                ])
+                self.decoder_proj = nn.ModuleList(
+                    [
+                        nn.Linear(dec_channels[i] + dec_channels[i + 1], dec_channels[i + 1])
+                        for i in range(num_layers)
+                    ]
+                )
+                self.decoder_blocks = nn.ModuleList(
+                    [
+                        nn.ModuleList(
+                            [
+                                PTv3Block(dec_channels[i + 1], patch_size=patch_size)
+                                for _ in range(depth_per_layer)
+                            ]
+                        )
+                        for i in range(num_layers)
+                    ]
+                )
 
                 self.fc_end = nn.Sequential(
-                    nn.Linear(dec_channels[-1], 32), nn.GELU(), nn.Dropout(0.5),
+                    nn.Linear(dec_channels[-1], 32),
+                    nn.GELU(),
+                    nn.Dropout(0.5),
                     nn.Linear(32, num_classes),
                 )
                 self.base_grid_size = base_grid_size
@@ -345,16 +375,16 @@ class PTv3SegModel:
                     order_name = _SERIALIZATION_ORDERS[
                         (layer_idx * len(blocks) + depth_idx) % len(_SERIALIZATION_ORDERS)
                     ]
-                    grid = self.base_grid_size * (2 ** layer_idx)
+                    grid = self.base_grid_size * (2**layer_idx)
                     sort_idx = serialize(xyz, grid_size=grid, order=order_name)
                     x = block(x, sort_idx)
                 return x
 
             def forward(self, xyz_full):
                 # xyz_full: (B, 3+extra, N)
-                xyz = xyz_full[:, :3, :].permute(0, 2, 1)      # (B, N, 3)
-                feat_in = xyz_full.permute(0, 2, 1)              # (B, N, 3+extra)
-                x = self.fc_start(feat_in)                        # (B, N, C0)
+                xyz = xyz_full[:, :3, :].permute(0, 2, 1)  # (B, N, 3)
+                feat_in = xyz_full.permute(0, 2, 1)  # (B, N, 3+extra)
+                x = self.fc_start(feat_in)  # (B, N, C0)
 
                 xyz_stack, x_stack, group_idx_stack = [xyz], [x], []
                 cur_xyz, cur_x = xyz, x
@@ -371,10 +401,13 @@ class PTv3SegModel:
 
                 for i in range(self.num_layers):
                     layer = self.num_layers - 1 - i
-                    group_idx = group_idx_stack[layer]           # (B, N_finer)
+                    group_idx = group_idx_stack[layer]  # (B, N_finer)
                     upsampled = torch.gather(
-                        cur_x, 1,
-                        group_idx.unsqueeze(-1).clamp(max=cur_x.shape[1] - 1).expand(-1, -1, cur_x.shape[-1]),
+                        cur_x,
+                        1,
+                        group_idx.unsqueeze(-1)
+                        .clamp(max=cur_x.shape[1] - 1)
+                        .expand(-1, -1, cur_x.shape[-1]),
                     )
                     skip = x_stack[layer]
                     fused = self.decoder_proj[i](torch.cat([upsampled, skip], dim=-1))

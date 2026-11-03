@@ -1,4 +1,5 @@
 """PSPNet (pyramid pooling) for geospatial segmentation (segmentation-models-pytorch backed)."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -15,8 +16,9 @@ def build_pspnet(
     try:
         import segmentation_models_pytorch as smp
     except ImportError as exc:
-        raise ImportError("PSPNet needs segmentation-models-pytorch: "
-                          "pip install segmentation-models-pytorch") from exc
+        raise ImportError(
+            "PSPNet needs segmentation-models-pytorch: " "pip install segmentation-models-pytorch"
+        ) from exc
     return smp.PSPNet(
         encoder_name=backbone,
         encoder_weights="imagenet" if pretrained else None,

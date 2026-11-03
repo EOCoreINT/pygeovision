@@ -17,12 +17,13 @@ What the raster contains (see ``docs/labeling/osm.md``):
   over vegetation over zoning-type land use such as residential (see ``DRAW_ORDER``). The class numbers are unchanged (buildings = 1 ... sports = 10).
 * If ``reference_raster`` is given, the labels are written on exactly its grid, in its CRS.
 """
+
 from __future__ import annotations
 
 import logging
 import math
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 #: Largest label raster this module will allocate (pixels). A 1 deg x 1 deg box at 1 m would be ~12 billion.
 MAX_LABEL_PIXELS = 400_000_000
 
-OSM_CATEGORIES = {
+OSM_CATEGORIES: dict[str, Any] = {
     "buildings": {
         "query": 'way["building"]{bbox};relation["building"]{bbox};',
         "value": 1,
@@ -84,12 +85,30 @@ OSM_CATEGORIES = {
 }
 
 #: Burn order, first = underneath. More specific features are drawn later and win overlaps.
-DRAW_ORDER = ["residential", "commercial", "agricultural", "vegetation", "sports",
-              "parking", "solar_panels", "water", "roads", "buildings"]
+DRAW_ORDER = [
+    "residential",
+    "commercial",
+    "agricultural",
+    "vegetation",
+    "sports",
+    "parking",
+    "solar_panels",
+    "water",
+    "roads",
+    "buildings",
+]
 
 #: Full road width in metres by ``highway`` value (``*_link`` uses the parent class).
-ROAD_WIDTH_M = {"motorway": 14.0, "trunk": 12.0, "primary": 10.0, "secondary": 8.0, "tertiary": 7.0,
-                "unclassified": 6.0, "residential": 6.0, "service": 4.0}
+ROAD_WIDTH_M = {
+    "motorway": 14.0,
+    "trunk": 12.0,
+    "primary": 10.0,
+    "secondary": 8.0,
+    "tertiary": 7.0,
+    "unclassified": 6.0,
+    "residential": 6.0,
+    "service": 4.0,
+}
 #: Full width in metres by ``waterway`` value.
 WATERWAY_WIDTH_M = {"river": 15.0, "canal": 10.0, "stream": 4.0, "ditch": 3.0, "drain": 3.0}
 
@@ -150,7 +169,8 @@ def _relation_polygon(elem: dict):
         from shapely.ops import polygonize, unary_union
     except ImportError:  # pragma: no cover
         return None
-    outers, inners = [], []
+    outers: list[Any] = []
+    inners: list[Any] = []
     for m in elem.get("members", []):
         geom = m.get("geometry")
         if m.get("type") != "way" or not geom or len(geom) < 2:
@@ -240,18 +260,27 @@ class OSMLabeler:
                     import requests
 
                     from pygeovision._version import __version__
-                    resp = requests.post(endpoint, data={"data": query}, timeout=self.timeout,
-                                         headers={"User-Agent": f"PyGeoVision/{__version__} (+https://github.com/pygeovision)",
-                                                  "Accept": "*/*"})
+
+                    resp = requests.post(
+                        endpoint,
+                        data={"data": query},
+                        timeout=self.timeout,
+                        headers={
+                            "User-Agent": f"PyGeoVision/{__version__} (+https://github.com/pygeovision)",
+                            "Accept": "*/*",
+                        },
+                    )
                     if resp.status_code == 200:
                         return resp.json()
                     self._last_error = f"HTTP {resp.status_code} from {endpoint}"
-                    logger.warning("Overpass %s HTTP %d (attempt %d)", endpoint, resp.status_code, attempt)
+                    logger.warning(
+                        "Overpass %s HTTP %d (attempt %d)", endpoint, resp.status_code, attempt
+                    )
                 except Exception as exc:
                     self._last_error = f"{type(exc).__name__}: {exc} ({endpoint})"
                     logger.warning("Overpass request failed (%s): %s", endpoint, exc)
             if attempt < self.retry_attempts:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
         return None
 
     # ── GeoJSON conversion ────────────────────────────────────────────────────
@@ -277,8 +306,13 @@ class OSMLabeler:
                 continue
             category, geom_kind = kind
             value = OSM_CATEGORIES[category]["value"]
-            props = {**tags, "category": category, "label_value": value, "osm_id": elem.get("id"),
-                     "osm_type": etype}
+            props = {
+                **tags,
+                "category": category,
+                "label_value": value,
+                "osm_id": elem.get("id"),
+                "osm_type": etype,
+            }
 
             geom = None
             if etype == "way" and elem.get("geometry"):
@@ -355,7 +389,11 @@ class OSMLabeler:
         from shapely.geometry import mapping, shape
 
         to_target = crs is not None and crs != rasterio.crs.CRS.from_epsg(4326)
-        values = value_map if value_map is not None else {c: OSM_CATEGORIES[c]["value"] for c in DRAW_ORDER}
+        values = (
+            value_map
+            if value_map is not None
+            else {c: OSM_CATEGORIES[c]["value"] for c in DRAW_ORDER}
+        )
 
         by_cat: dict[str, list] = {c: [] for c in DRAW_ORDER}
         lines: dict[str, list] = {c: [] for c in DRAW_ORDER}
@@ -386,8 +424,14 @@ class OSMLabeler:
             for geoms, touched in ((by_cat[cat], all_touched), (lines[cat], True)):
                 if not geoms:
                     continue
-                m = rasterize([(g, 1) for g in geoms], out_shape=(height, width), transform=transform,
-                              fill=0, dtype=np.uint8, all_touched=touched)
+                m = rasterize(
+                    [(g, 1) for g in geoms],
+                    out_shape=(height, width),
+                    transform=transform,
+                    fill=0,
+                    dtype=np.uint8,
+                    all_touched=touched,
+                )
                 label[m == 1] = values[cat]
         return label, n_burned
 
@@ -419,10 +463,15 @@ class OSMLabeler:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(
-            str(output_path), "w",
-            driver="GTiff", height=height, width=width,
-            count=1, dtype="uint8",
-            crs=crs, transform=transform,
+            str(output_path),
+            "w",
+            driver="GTiff",
+            height=height,
+            width=width,
+            count=1,
+            dtype="uint8",
+            crs=crs,
+            transform=transform,
             compress="lzw",
         ) as dst:
             dst.write(label[np.newaxis])
@@ -475,12 +524,17 @@ class OSMLabeler:
         data = self._fetch_overpass(query)
         if data is None:
             logger.error("Overpass query failed; check connectivity and retry.")
-            return {"success": False,
-                    "error": "Overpass request failed" + (f" ({self._last_error})" if self._last_error else "")}
+            return {
+                "success": False,
+                "error": "Overpass request failed"
+                + (f" ({self._last_error})" if self._last_error else ""),
+            }
         remark = str(data.get("remark", ""))
         if "runtime error" in remark.lower():
-            return {"success": False,
-                    "error": f"Overpass could not complete the query: {remark}. Use a smaller bbox or fewer categories."}
+            return {
+                "success": False,
+                "error": f"Overpass could not complete the query: {remark}. Use a smaller bbox or fewer categories.",
+            }
 
         geojson = self._osm_to_geojson(data, categories)
         n_features = len(geojson["features"])
@@ -490,12 +544,19 @@ class OSMLabeler:
         v_path: Path | None = None
         if save_vector:
             import json
-            v_path = Path(vector_path) if vector_path else output_path.with_name(output_path.stem + "_vectors.geojson")
+
+            v_path = (
+                Path(vector_path)
+                if vector_path
+                else output_path.with_name(output_path.stem + "_vectors.geojson")
+            )
             v_path.parent.mkdir(parents=True, exist_ok=True)
             with open(v_path, "w") as f:
                 json.dump({k: v for k, v in geojson.items() if k != "n_skipped"}, f)
 
-        self._rasterise(geojson, bbox, output_path, resolution_m, reference_raster, all_touched=all_touched)
+        self._rasterise(
+            geojson, bbox, output_path, resolution_m, reference_raster, all_touched=all_touched
+        )
         logger.info("OSMLabeler: label raster -> %s", output_path)
 
         cat_counts: dict[str, int] = {}
@@ -506,7 +567,10 @@ class OSMLabeler:
         if n_features == 0:
             logger.warning(
                 "OSMLabeler: 0 features found for bbox=%s categories=%s -- the output raster exists "
-                "but contains no labels.", bbox, categories)
+                "but contains no labels.",
+                bbox,
+                categories,
+            )
         return {
             "success": n_features > 0,
             "n_features": n_features,
@@ -515,9 +579,13 @@ class OSMLabeler:
             "class_values": {c: OSM_CATEGORIES[c]["value"] for c in categories},
             "output_path": str(output_path),
             "vector_path": str(v_path) if v_path else None,
-            "error": None if n_features > 0 else (
-                f"0 OSM features found for bbox={bbox} categories={categories} "
-                f"-- the output raster is empty (all background)."
+            "error": (
+                None
+                if n_features > 0
+                else (
+                    f"0 OSM features found for bbox={bbox} categories={categories} "
+                    f"-- the output raster is empty (all background)."
+                )
             ),
         }
 
