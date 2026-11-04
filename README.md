@@ -12,6 +12,8 @@
 [![Pipelines](https://img.shields.io/badge/Pipelines-41-22c55e?style=flat-square)](#%EF%B8%8F-end-to-end-pipelines)
 [![Models](https://img.shields.io/badge/Registered_architectures-77-a855f7?style=flat-square)](#-models-and-training)
 [![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
+
+
 [Features](#-features) · [Install](#-installation) · [Quick start](#-quick-start) · [Case studies](#-case-studies) · [CLI](#%EF%B8%8F-command-line) · [Pipelines](#%EF%B8%8F-end-to-end-pipelines) · [OBIA](#-object-based-image-analysis-obia) · [Status](#-project-status) · [Citation](#-citation) · [Docs](#-documentation)
 
 </div>
