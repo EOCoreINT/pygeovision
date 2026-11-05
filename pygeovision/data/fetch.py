@@ -422,6 +422,13 @@ class DownloadResult:
     # source) — previously read and then discarded down to out_paths[0],
     # silently losing every other real, successfully-downloaded file.
     asset_paths: dict[str, Path] = field(default_factory=dict)
+    # Per requested band ("B03", "SCL", ...): "downloaded" or "missing".
+    # Empty when the caller did not ask for specific bands.
+    asset_status: dict[str, str] = field(default_factory=dict)
+    # True when at least one requested band could not be delivered: the
+    # files that did download stay on disk and usable, but the scene is
+    # not what the caller asked for, so success is False.
+    partial: bool = False
     success: bool = True
     bytes_downloaded: int = 0
     duration_seconds: float = 0.0
@@ -1122,6 +1129,18 @@ class SatelliteFetcher:
         # that real provider asset keys may require.
         from pygeofetch.models.satellite_data import resolve_band_keys
 
+        # Original asset keys per item, captured before the band filter below
+        # rewrites item.assets / sd.assets - the accounting that marks a scene
+        # partial needs the unfiltered view.
+        available_by_item: dict[str, list[str]] = {}
+        if bands:
+            for item in items:
+                sd = item.satellite_data
+                if sd is not None and getattr(sd, "assets", None):
+                    available_by_item[item.id] = list(sd.assets.keys())
+                elif item.assets:
+                    available_by_item[item.id] = list(item.assets.keys())
+
         if bands:
             for item in items:
                 if item.assets:
@@ -1250,7 +1269,7 @@ class SatelliteFetcher:
             )
             for item in stac_items:
                 dr = self._download_stac_item_direct(
-                    item, output_dir, post_process, bandwidth_limit_mb
+                    item, output_dir, post_process, bandwidth_limit_mb, bands=bands
                 )
                 direct_results.append(dr)
 
@@ -1278,6 +1297,7 @@ class SatelliteFetcher:
 
         # If ALL items are pystac-fallback, skip PyGeoFetch engine entirely
         if not satellite_data_list:
+            self._apply_band_accounting(direct_results, bands, available_by_item)
             return direct_results + [
                 DownloadResult(
                     scene_id=item.id,
@@ -1598,12 +1618,68 @@ class SatelliteFetcher:
                         _time.sleep(bw_delay)
         return bytes_written, None
 
+    @staticmethod
+    def _band_matches(band: str, available: list[str]) -> bool:
+        """Whether this item carries an asset for ``band``.
+
+        resolve_band_keys() falls back to every key when nothing matches, so a
+        sentinel key that cannot match any band name detects that fallback:
+        the sentinel coming back means the band resolved to nothing.
+        """
+        if not available:
+            return False
+        from pygeofetch.models.satellite_data import resolve_band_keys
+
+        sentinel = "__pygeovision_sentinel__"
+        matched = resolve_band_keys([band], [*available, sentinel])
+        return sentinel not in matched
+
+    def _apply_band_accounting(
+        self,
+        results: list[DownloadResult],
+        bands: list[str] | None,
+        available_by_item: dict[str, list[str]],
+    ) -> None:
+        """Record per-band status on direct-download results and fail a scene
+        that cannot deliver a band the caller explicitly asked for.
+
+        resolve_band_keys() silently drops requested bands an item does not
+        carry, so a two-of-three scene used to come back success=True and a
+        caller could only find out by inspecting the output folder (#3). The
+        files that did download stay on disk; ``partial`` marks the scene and
+        ``error`` names the missing bands.
+        """
+        if not bands:
+            return
+        for r in results:
+            available = available_by_item.get(r.scene_id, [])
+            status: dict[str, str] = {}
+            missing: list[str] = []
+            for band in bands:
+                if self._band_matches(band, available):
+                    status[band] = "downloaded"
+                else:
+                    status[band] = "missing"
+                    missing.append(band)
+            r.asset_status = status
+            if not missing:
+                continue
+            r.partial = True
+            note = (
+                "requested band(s) this scene does not carry: "
+                f"{', '.join(missing)} (asset keys: {available or 'none'})"
+            )
+            r.error = f"{r.error} | {note}" if r.error else note
+            if r.success:
+                r.success = False
+
     def _download_stac_item_direct(
         self,
         item: SearchResult,
         output_dir: Path,
         post_process: list[str] | None,
         bandwidth_limit_mb: float | None,
+        bands: list[str] | None = None,
     ) -> DownloadResult:
         """
         Download a STAC search result directly using requests, bypassing PyGeoFetch.
@@ -1731,7 +1807,8 @@ class SatelliteFetcher:
                         scene_id=item_id,
                         provider=provider,
                         success=False,
-                        error=err,
+                        error=f"{asset_key}: {err}",
+                        asset_paths={k: Path(p) for p, k in band_files},
                     )
 
                 total_bytes += bytes_written
@@ -1739,6 +1816,7 @@ class SatelliteFetcher:
 
             duration = _time.time() - t0
             size_mb = total_bytes / 1024 / 1024
+            asset_paths = {key: Path(p) for p, key in band_files}
             logger.info(
                 "  ✓ %-50s  %6.0f MB  %5.1fs  (%d asset%s)",
                 item_id[:50],
@@ -1758,14 +1836,29 @@ class SatelliteFetcher:
                 from pygeovision.preprocess.core import Preprocessor
 
                 out_file = out_dir / f"{safe_id}.tif"
-                Preprocessor().stack_bands(
-                    [p for p, _ in band_files],
-                    output_path=str(out_file),
-                    band_names=[k for _, k in band_files],
-                )
-                for p, _ in band_files:
-                    with contextlib.suppress(OSError):
-                        Path(p).unlink()
+                try:
+                    Preprocessor().stack_bands(
+                        [p for p, _ in band_files],
+                        output_path=str(out_file),
+                        band_names=[k for _, k in band_files],
+                    )
+                except ImportError:
+                    # Plain install (no [geo] extra): keep the band files as
+                    # individual rasters instead of failing the whole scene -
+                    # the same degradation _apply_post_process applies when
+                    # rasterio is missing for a post-process step.
+                    logger.warning(
+                        "  rasterio not installed - %d band file(s) for %s kept as "
+                        "individual files instead of stacked into one GeoTIFF "
+                        "(pip install 'pygeovision[geo]')",
+                        len(band_files),
+                        item_id[:55],
+                    )
+                    out_file = Path(band_files[0][0])
+                else:
+                    for p, _ in band_files:
+                        with contextlib.suppress(OSError):
+                            Path(p).unlink()
 
             # Run post-processing (reproject, cog, etc.)
             final_path = out_file
@@ -1790,6 +1883,7 @@ class SatelliteFetcher:
                 provider=provider,
                 success=True,
                 path=final_path,
+                asset_paths=asset_paths,
                 bytes_downloaded=total_bytes,
                 duration_seconds=duration,
             )
