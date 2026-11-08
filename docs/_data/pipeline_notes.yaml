@@ -996,6 +996,93 @@ landslide_detection:
       fix: Pass `--class-names`.
   see_also: [drainage_analysis, terrain_analysis, change_detection, disaster_assessment]
 
+ml4floods_flood_mapping:
+  why: |
+    The ml4floods network `WF2_unetv2_bgriswirs` is a U-Net trained by its authors on WorldFloods v2, a global set of
+    Sentinel-2 images with flood masks (Portales-Julia et al., 2023). It reads six bands and predicts, for every pixel,
+    the probability of water and of cloud, so it learned from flood imagery what an index threshold cannot encode. This
+    pipeline runs it on the clear Sentinel-2 observations of a dry reference window and a flood window and reports where
+    water appeared. **PyGeoVision does not ship the weights** (they are CC BY-NC 4.0, for non-commercial use, and
+    PyGeoVision is MIT): the first run downloads them once from Hugging Face (the licence notice is logged), and the report
+    cites the authors. PyGeoVision claims nothing about the network's accuracy.
+  use_when:
+    - You want a learned flood-water map from Sentinel-2 to compare with the index-based [`flood_mapping`](flood_mapping.md) or the radar-based [`sar_flood_mapping`](sar_flood_mapping.md), and your use is non-commercial.
+    - Water in your area is hard to separate with MNDWI alone (turbid water, shallow flooding) and you can check the result against a second source.
+    - You want the water probability itself (`prob_water_after.tif`), not only a yes/no map.
+  not_for:
+    - "Commercial use. The weights are CC BY-NC 4.0."
+    - "Cloud-covered events. Optical imagery cannot see through cloud; use [`sar_flood_mapping`](sar_flood_mapping.md) or [`multisensor_flood_mapping`](multisensor_flood_mapping.md)."
+    - "A validated accuracy figure. None is claimed here, and the network was trained on Level-1C imagery while this pipeline feeds it Level-2A (the effect is not measured)."
+    - "Urban flooding between buildings and flooding under vegetation, which optical imagery under-maps."
+  inputs: |
+    Nothing to prepare: without `--checkpoint` the weights of `WF2_unetv2_bgriswirs` (31 MB, CC BY-NC 4.0, non-commercial
+    use) are downloaded once from Hugging Face into `~/.cache/pygeovision/ml4floods` and reused (needs the
+    `huggingface_hub` package and access to huggingface.co). To use a copy you already have, pass its folder (holding
+    `model.pt`) as `--checkpoint`. Sentinel-2 L2A comes from the Microsoft Planetary Computer, no account needed. The
+    weights are fetched before any imagery, so a failed download stops the run early.
+  cli: |
+    pygeovision channel ml4floods_flood_mapping \
+        --bbox -0.35 5.45 0.05 5.75 \
+        --date-before 2026-06-01/2026-06-20 \
+        --date-after 2026-06-27/2026-07-06 \
+        --output ./accra_ml4floods
+  params:
+    date_before: "Dry reference window: a day, a month or a range (`2026-06-01/2026-06-20`). Must end before the flood window."
+    date_after: "Flood window, same forms. Give a range of one to two weeks so it holds clear scenes."
+    checkpoint: "Optional. Folder with `model.pt` (and `config.json`) of `WF2_unetv2_bgriswirs`, or the `model.pt` file. Left out (or `auto`), the weights are downloaded once and cached. A checkpoint of another network is refused."
+    th_water: "Probability above which a pixel is water (default 0.5). The ml4floods tutorials use 0.6 to 0.7 to reduce false water."
+    th_cloud: "Probability above which a pixel is cloud (default 0.5)."
+    th_brightness: "Cloud counts only where it is this bright (default 3500, as in the authors' code); thinner cloud and haze are kept as clear."
+    max_cloud: "Scene-level cloud limit in per cent (default 95). Cloud is masked per pixel."
+    max_scenes: "Most scenes used per window (default 3), clearest first. Each scene is read at 10 m and run through the network, which takes minutes on a CPU; raise it only when the first scenes are too cloudy."
+    use_scl: "Also drop pixels the Scene Classification Layer flags as no data, shadow, cloud or cirrus (default on; the network can mistake cloud shadow for water)."
+    min_patch_ha: "Remove flooded patches smaller than this area (default 0.1 ha)."
+    device: "`auto` (default; GPU if there is one), `cpu`, `cuda`."
+    tile_size: "Inference window in pixels (default 512). Lower it if memory runs out."
+    max_pixels: "Largest grid accepted (default 25 million, about 50 km by 50 km at 10 m). Split larger areas."
+  dates: |
+    Give each window as a **range** so it holds Sentinel-2 acquisitions (every 5 days with two satellites). The reference
+    should be dry and, if possible, from the same season; a cloudy reference leaves class 3 (water with no clear reference view).
+  stats:
+    flooded_area_ha: "Class 1: water in the flood window where a clear reference view showed land. **The headline figure.**"
+    flooded_unresolved_ha: "Class 3: water in the flood window with no clear reference view. New flood or old water; a data gap."
+    flooded_upper_ha: "`flooded_area_ha` plus the unresolved class. The upper bound."
+    flooded_fraction: Class 1 as a share of the land that was observed.
+    permanent_water_area_ha: Class 2, water in both windows.
+    land_area_ha: Observed area that is not water in both windows.
+    valid_fraction: Share of the box with a clear observation in the flood window.
+    reference_observed_fraction: Share of the box with a clear observation in the reference window.
+    th_water: Water probability threshold used.
+    model_weights_sha256: Checksum of the `model.pt` that produced the result, for reproducibility.
+    input_product: What was fed to the network and how it differs from its training data.
+    scenes_flood: Scenes used in the flood window.
+    scenes_reference: Scenes used in the reference window.
+    data_notes: Plain-language note on missing data, if any.
+  interpret: |
+    Report `flooded_area_ha` with the range up to `flooded_upper_ha`, the dates of the scenes, and `valid_fraction`. Treat the
+    map as the network's opinion on clear days, not as validated flood extent: compare it with a radar-based map for the same
+    dates and with local reports before using it.
+  troubleshooting:
+    - symptom: "could not fetch the weights from Hugging Face"
+      fix: The first run needs access to huggingface.co and the `huggingface_hub` package. Without it, download `model.pt` from `isp-uv-es/ml4floods` (`models/WF2_unetv2_bgriswirs`) and pass its folder as `--checkpoint`.
+    - symptom: "no model.pt at ..."
+      fix: The `--checkpoint` path has no weights; the message lists the folder's contents. Relative paths are taken from the directory you run in. Leave `--checkpoint` out to use the automatic download.
+    - symptom: '"is not the supported WF2_unetv2_bgriswirs network"'
+      fix: The checkpoint is another ml4floods model (other bands or outputs). Only `WF2_unetv2_bgriswirs` is supported.
+    - symptom: Lots of water on dark ground or in shadow
+      fix: Raise `th_water` (0.6 to 0.7), keep `use_scl` on, and check the surfaces; burn scars, basalt and terrain shadow can look like water.
+    - symptom: Large unresolved class
+      fix: The reference window had no clear view there. Choose a clearer reference window or accept the data gap.
+    - symptom: 'Log lines "reading ... failed; try 2 of 4" or "scene skipped, could not be read"'
+      fix: A Sentinel-2 file arrived truncated (network hiccup). Each band is retried four times, then that scene is left out and named in `data_notes`; if no scene can be read the run stops. Run it again, or use a smaller `--bbox`.
+    - symptom: 'Log lines "read 40% (... pieces of 1024 x 1024 px)"'
+      fix: Each band is read in 1024-pixel pieces. A piece that arrives truncated is retried on its own, so a bad connection costs seconds, not the whole band. On a slow link (about 1 MB/s) a 40 km box is still several minutes per scene, because each scene is about 7 bands x 20 MB or more, so use a smaller `--bbox`.
+    - symptom: It is slow
+      fix: Progress is logged per scene. Reading 7 files at 10 m and running the network on a CPU takes minutes per scene over a 40 km box. Start with a smaller bbox, `--param max_scenes=1`, or a GPU (`--param device=cuda`).
+    - symptom: Out of memory
+      fix: Lower `tile_size` (for example 256) or run on a smaller box.
+  see_also: [flood_mapping, sar_flood_mapping, multisensor_flood_mapping, surface_water_dynamics]
+
 multisensor_flood_mapping:
   why: |
     Each sensor is wrong in its own way. Radar sees through cloud but misses floodwater between buildings and under

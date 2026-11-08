@@ -96,6 +96,11 @@ class Pipeline:
                     action = getattr(step, "action", "")
                     if action == "search":
                         ctx["search_results"] = result
+                        sbox = (getattr(step, "params", None) or {}).get("bbox")
+                        if (
+                            sbox is not None and len(sbox) == 4
+                        ):  # the download step streams this box
+                            ctx["bbox"] = tuple(float(v) for v in sbox)
                     elif action == "download":
                         ctx["downloads"] = result
                     elif action == "infer":

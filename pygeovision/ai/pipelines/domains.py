@@ -1000,6 +1000,8 @@ class _DemPipeline(BasePipeline):
                 }
             )
             raise RuntimeError(f"DEM product {dem_type!r} ({code}) was not offered; got {offered}.")
+        # A plain download, not a stream: the OpenTopography API already cuts the DEM to this bbox on the server (the
+        # file is AOI-sized, not a whole-scene COG), and its URL is an API call that must not be probed range by range.
         downloads = self.pgv.download(chosen[:1], str(out / "dem"))
         if not (downloads and downloads[0].success and downloads[0].path):
             raise RuntimeError("DEM download failed.")

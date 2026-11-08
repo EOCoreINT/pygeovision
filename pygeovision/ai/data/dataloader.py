@@ -122,7 +122,10 @@ class GeoDataLoader:
         seed : int
             Random seed for reproducible splits.
         **kwargs
-            Additional labeling-specific parameters.
+            Additional labeling-specific parameters. Two are about getting the imagery and are not passed on:
+            ``stream_bbox=(west, south, east, north)`` streams only that area of each scene instead of downloading
+            it whole, and ``stream=False`` turns that off (``True`` is the default once ``stream_bbox`` is given).
+            A scene that cannot be streamed is downloaded in full.
 
         Returns
         -------
@@ -153,7 +156,9 @@ class GeoDataLoader:
         )
 
         # Step 1: Resolve imagery paths
-        imagery_paths = self._resolve_imagery(data_source, dataset_dir)
+        stream_bbox = kwargs.pop("stream_bbox", None)
+        stream = kwargs.pop("stream", None)
+        imagery_paths = self._resolve_imagery(data_source, dataset_dir, stream_bbox, stream)
         if not imagery_paths:
             raise DatasetError(
                 "No imagery found in data_source. "
@@ -257,6 +262,8 @@ class GeoDataLoader:
         self,
         data_source: Any,
         work_dir: Path,
+        stream_bbox: Any = None,
+        stream: bool | None = None,
     ) -> list[Path]:
         """
         Resolve ``data_source`` into a list of imagery file paths.
@@ -271,7 +278,7 @@ class GeoDataLoader:
             # Check if these look like PyGeoFetch results (have a 'provider' or 'id' attr)
             first = data_source[0]
             if hasattr(first, "id") or hasattr(first, "provider"):
-                return self._download_via_pygeofetch(data_source, work_dir)
+                return self._download_via_pygeofetch(data_source, work_dir, stream_bbox, stream)
             # Otherwise assume list of paths
             return [Path(p) for p in data_source if Path(p).exists()]
 
@@ -295,6 +302,8 @@ class GeoDataLoader:
         self,
         results: list[Any],
         work_dir: Path,
+        stream_bbox: Any = None,
+        stream: bool | None = None,
     ) -> list[Path]:
         """
         Download PyGeoFetch results using the internal PyGeoFetch data pipeline.
@@ -308,11 +317,20 @@ class GeoDataLoader:
 
         logger.info("Downloading %d scenes via PyGeoFetch → %s", len(results), download_dir)
 
+        # the scenes are tiled whole unless the caller names an area to stream (a scene that cannot be streamed is
+        # downloaded in full by the same call)
+        extra: dict[str, Any] = {}
+        if stream_bbox is not None or stream is not None:
+            extra = {
+                "stream_bbox": tuple(float(v) for v in stream_bbox) if stream_bbox is not None else None,
+                "stream": stream,
+            }
         download_results = self._pygeofetch.download(
             results,
             output_dir=download_dir,
             parallel=4,
             resume=True,
+            **extra,
         )
 
         paths: list[Path] = []

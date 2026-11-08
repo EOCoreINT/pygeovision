@@ -20,7 +20,7 @@ creating the client is fast and works on a machine without a GPU.
 
 ## Run an analysis
 
-`client.pipeline()` runs any of the [41 pipelines](../pipelines/catalog/index.md) by name. It takes the same inputs as the
+`client.pipeline()` runs any of the [42 pipelines](../pipelines/catalog/index.md) by name. It takes the same inputs as the
 `pygeovision channel` command: a box, the dates, an output folder, and any pipeline-specific argument as a keyword.
 
 ```python

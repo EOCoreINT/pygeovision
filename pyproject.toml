@@ -38,7 +38,7 @@ dependencies    = [
     # PostProcessor, SARProcessor, the full pygeofetch.insar.* suite,
     # DataLoader/BandStacker) — pinned to the version actually verified
     # to have them, not an earlier one assumed to also have them.
-    "pygeofetch>=2.4.0",
+    "pygeofetch>=2.7.0.6",
     # STAC fallback for the rare case pygeofetch's import genuinely fails
     # at runtime despite being a required dependency (e.g. broken venv) —
     # not a normal operating path.

@@ -452,8 +452,14 @@ class PyGeoFetchBridge:
         on_failure: str = "skip",
         overwrite: bool = False,
         notify_webhook: str | None = None,
+        stream_bbox: tuple[float, float, float, float] | None = None,
+        stream: bool | None = None,
     ) -> list[DownloadResult]:
         """Download satellite imagery via PyGeoFetch's Python API.
+
+        With ``stream_bbox=(west, south, east, north)`` only that area is streamed from Cloud-Optimized-GeoTIFF
+        providers; a scene that cannot be streamed is downloaded in full instead. ``stream=False`` always downloads
+        whole scenes, ``stream=True`` streams, ``None`` streams unless ``PYGEOVISION_STREAM=0``.
 
         Translates PyGeoVision's download interface to
         ``pygeofetch.DownloadOptions``, then translates
@@ -474,6 +480,9 @@ class PyGeoFetchBridge:
             on_failure: ``"skip"`` | ``"abort"`` | ``"retry"``.
             overwrite: Overwrite existing files.
             notify_webhook: Slack / webhook URL for completion notification.
+            stream_bbox: Area of interest to stream instead of downloading whole scenes.
+            stream: ``True`` stream, ``False`` download whole scenes, ``None`` automatic (stream when an area is
+                known). A failed stream always falls back to the normal download.
 
         Returns:
             List of :class:`DownloadResult`.
@@ -544,16 +553,24 @@ class PyGeoFetchBridge:
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
         try:
-            pgf_results = self._pgf.download(
+            from pygeovision.data._stream import fetch_scenes
+
+            pgf_results = fetch_scenes(
+                self._pgf,
                 sat_data_list,
-                destination=pathlib.Path(output_dir),
-                options=opts,
+                output_dir,
+                opts,
+                stream_bbox=stream_bbox,
+                stream=stream,
+                parallel=parallel,
+                overwrite=overwrite,
+                post_process=post_process,
             )
         except Exception as e:
             logger.error("PyGeoFetch download failed: %s", e)
             return []
 
-        results = [_pgf_download_result_to_pgv(dr) for dr in (pgf_results or [])]
+        results = [_pgf_download_result_to_pgv(f.result) for f in (pgf_results or [])]
         success_n = sum(1 for r in results if r.success)
         logger.info("PyGeoFetch download: %d/%d succeeded", success_n, len(results))
         return results

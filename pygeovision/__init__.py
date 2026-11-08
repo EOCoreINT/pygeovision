@@ -555,8 +555,17 @@ class PyGeoVision:
         overwrite: bool = False,
         notify_webhook: str | None = None,
         bands: list[str] | None = None,  # filter assets by band names
+        stream_bbox: tuple[float, float, float, float] | None = None,
+        stream: bool | None = None,
     ) -> list[DownloadResult]:
         """Download satellite scenes via pygeofetch.
+
+        With ``stream_bbox=(west, south, east, north)`` scenes of Cloud-Optimized-GeoTIFF providers (Planetary
+        Computer, Element 84) are streamed: only the pixels inside the box are read, not the whole bands.
+        ``stream`` picks the way: ``None`` (default) streams whenever ``stream_bbox`` is given (unless
+        ``PYGEOVISION_STREAM=0``), ``True`` streams, ``False`` always downloads whole scenes. Streaming never fails
+        a run: a scene that cannot be streamed (archive-only provider, no COG in the stack, a read error) is
+        downloaded in full instead. ``result.acquisition`` says which way each scene came.
 
         Delegates to ``pygeofetch download run`` for resilient, parallel
         downloading with full post-processing support.
@@ -623,6 +632,42 @@ class PyGeoVision:
             overwrite=overwrite,
             notify_webhook=notify_webhook,
             bands=bands,
+            stream_bbox=stream_bbox,
+            stream=stream,
+        )
+
+    def stream(
+        self,
+        items: list[SearchResult] | SearchResult,
+        bbox: tuple[float, float, float, float],
+        output_dir: str | Path = "./data",
+        bands: list[str] | None = None,
+        parallel: int = 4,
+        post_process: list[str] | None = None,
+        overwrite: bool = False,
+        **download_options: Any,
+    ) -> list[DownloadResult]:
+        """Stream only the area of interest of each scene instead of downloading it whole.
+
+        Shorthand for ``download(items, stream=True, stream_bbox=bbox, ...)``. Cloud-Optimized-GeoTIFF providers
+        (Planetary Computer, Element 84) are read window by window, so only the pixels inside
+        ``bbox=(west, south, east, north)`` cross the network. A scene that cannot be streamed (archive-only
+        provider, no COG in the stack, a read error) is downloaded in full instead, so the call never returns less
+        than :meth:`download` would; ``download_options`` (``verify_checksum``, ``resume``, ``retry_attempts``,
+        ``on_failure``, ...) are the :meth:`download` options used for those full downloads. Each result's
+        ``acquisition`` is ``"stream"`` or ``"download"``.
+        """
+        download_options.setdefault("verify_checksum", False)
+        return self.download(
+            items,
+            output_dir=output_dir,
+            parallel=parallel,
+            post_process=post_process,
+            overwrite=overwrite,
+            bands=bands,
+            stream=True,
+            stream_bbox=tuple(float(v) for v in bbox),
+            **download_options,
         )
 
     # ------------------------------------------------------------------
@@ -649,6 +694,9 @@ class PyGeoVision:
             pipeline_name: A name from ``list_all_pipelines()``.
             bbox: (min_lon, min_lat, max_lon, max_lat).
             output_dir: Output directory for results.
+            stream: How the imagery is acquired. ``None`` (default) streams only the area of interest from
+                Cloud-Optimized-GeoTIFF providers; ``True`` does the same explicitly; ``False`` downloads whole scenes.
+                A scene that cannot be streamed is always downloaded in full instead of failing the run.
             **kwargs: Pipeline-specific arguments. Bi-temporal pipelines
                 take ``date_before`` / ``date_after``; single-date ones
                 take ``date``; ``needs_weights`` pipelines take
@@ -672,6 +720,7 @@ class PyGeoVision:
         """
         from pygeovision.ai.pipelines import get_pipeline
 
+        stream = kwargs.pop("stream", None)  # True: stream the imagery, False: download whole scenes, None: automatic
         want_report = kwargs.pop("report", None)
         report_formats = kwargs.pop("report_formats", None)
         vector_formats = kwargs.pop("vector_formats", None)
@@ -685,6 +734,7 @@ class PyGeoVision:
                 "off",
             )
         p = get_pipeline(pipeline_name, pgv_client=self)
+        p._stream_pref = stream
         self._warn_unknown_pipeline_arguments(p, kwargs)
         result = p.run(bbox=bbox, output_dir=output_dir, **kwargs)
         if want_report and result.success:

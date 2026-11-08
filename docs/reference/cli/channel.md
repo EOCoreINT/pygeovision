@@ -2,7 +2,7 @@
 
 # `pygeovision channel`
 
-Run any of the **41 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
+Run any of the **42 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
 a map, tables and a report. This is the main entry point for end users; every pipeline has its own page in the
 [pipeline catalogue](../../pipelines/catalog/index.md).
 
@@ -19,7 +19,7 @@ re-running with [`report`](report.md).
 
 ## Things to know
 
-* The seven pipelines marked "needs your weights" refuse to run without `--checkpoint`; they never invent a result.
+* The seven pipelines marked "needs your weights" refuse to run without `--checkpoint`; they never invent a result. `ml4floods_flood_mapping` runs a published network and downloads its weights (CC BY-NC 4.0, non-commercial) from Hugging Face on first use; `--checkpoint` is optional there.
 * An unknown or removed name exits with code 2 and explains why ([removed pipelines](../../pipelines/removed.md)).
 * Pipelines that download imagery need a network and, for some providers, [credentials](../../data/authentication.md).
 * Extra arguments are passed as `--param KEY=VALUE`.
@@ -63,7 +63,8 @@ Run an end-to-end geospatial pipeline by name.
 | `--vector-formats` | text | `gpkg,geojson` |  | Vector formats: any of gpkg, geojson, shp, kml; 'none' for no vector files. |
 | `--class-names` | text |  |  | Comma-separated names for the classes 0,1,2... of a network you trained (labels the map, tables and vector attributes). |
 | `--report-title` | text |  |  | Replace the report title. |
-| `--cloud-mask`, `--no-cloud-mask` | flag | `--no-cloud-mask` |  | Turn the cloud mask on or off for pipelines that accept it. Not sent unless you pass the flag, so pipelines that have no such argument are not warned about. |
+| `--stream`, `--no-stream` | flag | automatic |  | --stream: read only the area of interest from cloud-optimized providers. --no-stream: download whole scenes. Default: stream. A scene that cannot be streamed is downloaded in full instead of failing. |
+| `--cloud-mask`, `--no-cloud-mask` | flag | automatic |  | Turn the cloud mask on or off for pipelines that accept it. Not sent unless you pass the flag, so pipelines that have no such argument are not warned about. |
 
 :::{dropdown} Full help text
 
@@ -121,6 +122,10 @@ Options:
   --class-names TEXT              Comma-separated names for the classes 0,1,2... of a network
                                   you trained (labels the map, tables and vector attributes).
   --report-title TEXT             Replace the report title.
+  --stream / --no-stream          --stream: read only the area of interest from cloud-optimized
+                                  providers. --no-stream: download whole scenes. Default:
+                                  stream. A scene that cannot be streamed is downloaded in full
+                                  instead of failing.
   --cloud-mask / --no-cloud-mask  Turn the cloud mask on or off for pipelines that accept it.
                                   Not sent unless you pass the flag, so pipelines that have no
                                   such argument are not warned about.

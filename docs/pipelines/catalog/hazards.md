@@ -10,6 +10,7 @@ What did the event affect? Flood extent from radar and optical imagery, burn sev
 | [`disaster_assessment`](disaster_assessment.md) | needs weights | Pre/post-event damage classes with your trained siamese model (checkpoint required) |
 | [`flood_mapping`](flood_mapping.md) | ready | Flooded area = MNDWI water on the flood date minus permanent water from a dry reference |
 | [`landslide_detection`](landslide_detection.md) | needs weights | Landslide scars from a before/after pair with your trained change model (checkpoint required) |
+| [`ml4floods_flood_mapping`](ml4floods_flood_mapping.md) | ready | Flooded area from the pretrained ml4floods U-Net (WF2_unetv2_bgriswirs) on Sentinel-2; downloads the weights once (CC BY-NC 4.0, non-commercial) |
 | [`multisensor_flood_mapping`](multisensor_flood_mapping.md) | ready | Flooded area from Sentinel-1 radar + Sentinel-2 optical + terrain (HAND): per-pixel agreement between sensors, cloud-independent where radar sees |
 | [`sar_flood_mapping`](sar_flood_mapping.md) | ready | Flooded area from Sentinel-1 radar (cloud-independent): open water on the flood date that was not water before |
 | [`volcano_monitoring`](volcano_monitoring.md) | ready | Landsat thermal anomalies (scene mean + 20 C by default); candidates, not confirmed activity |
@@ -25,6 +26,7 @@ active_fire
 disaster_assessment
 flood_mapping
 landslide_detection
+ml4floods_flood_mapping
 multisensor_flood_mapping
 sar_flood_mapping
 volcano_monitoring

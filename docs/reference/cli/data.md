@@ -251,7 +251,8 @@ Download satellite scenes via pygeofetch.
 | Option | Type | Default | Required | Meaning |
 |---|---|---|---|---|
 | `--from-search` | path |  |  | GeoJSON results file from 'data search'. |
-| `--bbox` | number |  |  | Download all results in this bbox (requires --date). |
+| `--bbox` | number |  |  | Download all results in this bbox (requires --date). With --from-search it is the window to stream. |
+| `--stream`, `--no-stream` | flag | automatic |  | --stream: with --bbox, read only the pixels inside it from cloud-optimized providers. --no-stream: download whole scenes. Default: stream when --bbox is given. A scene that cannot be streamed is downloaded in full instead of failing. |
 | `--date` | text |  |  |  |
 | `--providers` | text |  |  |  |
 | `--output`, `-o` | text | `./downloads` |  |  |
@@ -295,7 +296,12 @@ Usage: pygeovision data download [OPTIONS]
 Options:
   --from-search PATH              GeoJSON results file from 'data search'.
   --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT
-                                  Download all results in this bbox (requires --date).
+                                  Download all results in this bbox (requires --date). With
+                                  --from-search it is the window to stream.
+  --stream / --no-stream          --stream: with --bbox, read only the pixels inside it from
+                                  cloud-optimized providers. --no-stream: download whole scenes.
+                                  Default: stream when --bbox is given. A scene that cannot be
+                                  streamed is downloaded in full instead of failing.
   --date TEXT
   --providers TEXT
   -o, --output TEXT               [default: ./downloads]

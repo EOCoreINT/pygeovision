@@ -101,6 +101,11 @@ mine_rehabilitation:
   - "**Class thresholds.** `recovered_rri` (default 0.8), `bare_rri` (0.4) and `trend_threshold` (0.03 per year) are working thresholds, not regulatory criteria. Change them and record your values."
   - "**How much data per pixel.** `min_observations` (at least 3), `recent_dates` and `min_valid_fraction` control which dates and pixels count."
 
+ml4floods_flood_mapping:
+  - "**Water threshold.** `th_water` (default 0.5) is the probability above which a pixel is water; 0.6 to 0.7 gives fewer false waters. `th_cloud` and `th_brightness` set what counts as bright cloud."
+  - "**Cloud and shadow.** `use_scl=False` relies on the network's own cloud output only; leave it on unless you have a reason, because the network can mistake cloud shadow for water."
+  - "**Memory.** `tile_size` (default 512) is the inference window; `max_pixels` limits the grid. Use `device=\"cpu\"` or `\"cuda\"` to choose the hardware."
+
 multisensor_flood_mapping:
   - "**Radar thresholds.** `water_db=\"auto\"` calibrates on optical water; give a number or `otsu` to override. `change_db` (default 3) is how much darker than the reference a flooded pixel must be."
   - "**Terrain filter.** `max_hand_m` (default 15) removes flooding on high ground; `None` or 0 turns it off, as does `use_terrain=False`."

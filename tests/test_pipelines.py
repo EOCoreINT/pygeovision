@@ -4,8 +4,8 @@ PyGeoVision shipped 49 named pipelines; 24 had no working implementation
 (placeholder indices, untrained networks, invented constants) and were removed
 before launch. Three of them (landcover_change, road_extraction,
 landslide_detection) came back once a real implementation existed, and ten new
-ones were added (and more since), so 41 are available: 34 run out of the box ("ready") and 7 run
-a network you trained yourself ("needs_weights").
+ones were added (and more since), so 42 are available: 35 run out of the box ("ready"; one of them downloads the pretrained ml4floods
+network on first use) and 7 run a network you trained yourself ("needs_weights").
 """
 
 from __future__ import annotations
@@ -43,14 +43,15 @@ ADDED = {
     "sar_flood_mapping",
     "multisensor_flood_mapping",
     "mine_rehabilitation",
+    "ml4floods_flood_mapping",
 }
 
 
 class TestCatalogue:
     def test_counts(self):
         kinds = P.pipeline_kinds()
-        assert len(kinds) == 41
-        assert sum(k == "ready" for k in kinds.values()) == 34
+        assert len(kinds) == 42
+        assert sum(k == "ready" for k in kinds.values()) == 35
         assert {n for n, k in kinds.items() if k == "needs_weights"} == NEEDS_WEIGHTS
 
     def test_sorted_and_unique(self):
@@ -176,8 +177,8 @@ class TestChannelCli:
     def test_list(self, run):
         out = run("list")
         assert out.exit_code == 0
-        assert "41 PyGeoVision pipelines" in out.output
-        assert "34 ready" in out.output and "7 need your trained weights" in out.output
+        assert "42 PyGeoVision pipelines" in out.output
+        assert "35 ready" in out.output and "7 need your trained weights" in out.output
         for name in ("flood_mapping", "building_footprints", "drainage_analysis"):
             assert name in out.output
 

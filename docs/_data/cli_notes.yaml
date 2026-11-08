@@ -49,7 +49,7 @@ benchmark:
 
 channel:
   intro: |
-    Run any of the **41 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
+    Run any of the **42 pipelines** by name: find the imagery, prepare it, compute the answer, and write rasters, vectors,
     a map, tables and a report. This is the main entry point for end users; every pipeline has its own page in the
     [pipeline catalogue](../../pipelines/catalog/index.md).
   when: |
@@ -60,7 +60,7 @@ channel:
     `run_summary.json`. [Reading results](../../pipelines/results.md) explains each file. Rebuild reports later without
     re-running with [`report`](report.md).
   watch: |
-    * The seven pipelines marked "needs your weights" refuse to run without `--checkpoint`; they never invent a result.
+    * The seven pipelines marked "needs your weights" refuse to run without `--checkpoint`; they never invent a result. `ml4floods_flood_mapping` runs a published network and downloads its weights (CC BY-NC 4.0, non-commercial) from Hugging Face on first use; `--checkpoint` is optional there.
     * An unknown or removed name exits with code 2 and explains why ([removed pipelines](../../pipelines/removed.md)).
     * Pipelines that download imagery need a network and, for some providers, [credentials](../../data/authentication.md).
     * Extra arguments are passed as `--param KEY=VALUE`.

@@ -1,7 +1,7 @@
 # Pipelines overview
 
 A **pipeline** takes a place and a time, finds the right imagery or reference data, prepares it correctly, computes an
-answer, and delivers it as rasters, vectors, a map, tables and a report. PyGeoVision ships **41 pipelines**. Each answers
+answer, and delivers it as rasters, vectors, a map, tables and a report. PyGeoVision ships **42 pipelines**. Each answers
 one question, for example *"which areas flooded?"*, *"how much forest was lost?"* or *"how steep is this terrain?"*.
 
 ```{list-table}
@@ -27,11 +27,12 @@ The difference matters, so it is stated on every page.
 
 | Kind | Count | What you need | Why |
 |---|---|---|---|
-| **ready** | 34 | A bounding box and dates. | Each is a documented index, a terrain product, a radar or optical method, a published reference map or a published vector dataset. The answer comes from real data and a stated method. |
+| **ready** | 35 | A bounding box and dates. | Each is a documented index, a terrain product, a radar or optical method, a published reference map or a published vector dataset. The answer comes from real data and a stated method. |
 | **needs weights** | 7 | A checkpoint **you trained**. | The answer comes from a neural network, and PyGeoVision ships no trained weights for these tasks: a network that has not been trained produces confident-looking random output. These pipelines refuse to run without `--checkpoint`, and they check this **before** downloading anything. |
 
-The seven that need weights are `crop_monitoring`, `deforestation`, `disaster_assessment`, `landslide_detection`,
-`road_extraction`, `solar_detection` and `urban_growth`. For most of them a *ready* sibling exists that needs no training
+The seven that need weights run a network you train: `crop_monitoring`, `deforestation`, `disaster_assessment`, `landslide_detection`,
+`road_extraction`, `solar_detection` and `urban_growth`. One *ready* pipeline also runs a neural network: `ml4floods_flood_mapping`, the pretrained
+ml4floods U-Net. It downloads its weights once from Hugging Face on first use (CC BY-NC 4.0, non-commercial; not part of PyGeoVision). For most of them a *ready* sibling exists that needs no training
 (`forest_change` for `deforestation`, `urban_expansion` for `urban_growth`, `road_network` for `road_extraction`, and the three flood pipelines
 for `disaster_assessment`). Each page says which.
 
@@ -103,7 +104,7 @@ Every pipeline accepts these, in addition to its own arguments (listed on its pa
 | `--date-before`, `--date-after` | `date_before=`, `date_after=` | The two dates of a comparison. `date_before` is the **reference** (before the fire, a dry season, the baseline); `date_after` is the event or the later state. |
 | `--dates a,b,c` | `dates=["a","b","c"]` | The dates of a time series. |
 | `--param KEY=VALUE` | `KEY=VALUE` | Any pipeline-specific argument. Values are read as JSON when possible (`0.2`, `true`, `[5,10,15]`); `5,10,15` is a list of numbers; anything else is text. Repeat for several. A misspelt name is **reported** with a suggestion instead of being ignored. |
-| `--checkpoint FILE` | `checkpoint="…"` | Your trained weights. Required by the seven *needs weights* pipelines. |
+| `--checkpoint FILE` | `checkpoint="…"` | Your trained weights. Required by the seven *needs weights* pipelines; optional for `ml4floods_flood_mapping` (a folder with its `model.pt`). |
 | `--model NAME` | `model="…"` | Architecture of your checkpoint, where the pipeline runs a network. |
 | `--source NAME` | `source="…"` | Data source (`land_cover`: `worldcover` or `dynamic_world`). |
 | `--provider NAME` | `providers=[…]` | Restrict the data providers searched (repeatable). |
@@ -130,7 +131,7 @@ statistic `valid_fraction` tells you how much of your box could be assessed. **R
 
 ## Using your own trained model
 
-Seven pipelines run a network you trained; `change_detection`, `water_bodies` and `land_cover` can too (`method="model"` or a model name
+Seven pipelines run a network you trained (and `ml4floods_flood_mapping` the pretrained ml4floods weights, downloaded on first use); `change_detection`, `water_bodies` and `land_cover` can too (`method="model"` or a model name
 as `source`).
 
 ```bash

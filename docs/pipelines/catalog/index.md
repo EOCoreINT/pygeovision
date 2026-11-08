@@ -2,15 +2,15 @@
 
 # Pipeline catalogue
 
-All 41 pipelines, grouped by the kind of question they answer. Pick a topic, then a pipeline: each pipeline has its own page that says why you would run it, how to run it, what comes out, how to read it, what to change and what to do when it fails.
+All 42 pipelines, grouped by the kind of question they answer. Pick a topic, then a pipeline: each pipeline has its own page that says why you would run it, how to run it, what comes out, how to read it, what to change and what to do when it fails.
 
-34 of the 41 run out of the box. The other 7 run a network that you trained and need `--checkpoint`. Not sure which to use? [Choosing a pipeline](../choosing.md) goes from a question to a pipeline.
+35 of the 42 run out of the box. The other 7 run a network that you trained and need `--checkpoint`. Not sure which to use? [Choosing a pipeline](../choosing.md) goes from a question to a pipeline.
 
 | Topic | Pipelines | What it answers |
 |---|---:|---|
 | [Agriculture and vegetation](agriculture.md) | 4 | Is the vegetation healthy, and is it different from normal? NDVI change between two dates, anomalies against earlier years, vegetation indices over a season, and crop-type mapping with your own trained model. |
 | [Water and wetlands](water.md) | 6 | Where is the water, how much is there, and is it changing? Surface-water masks, water extent over time, long-term water history, water quality, wetlands and evapotranspiration. |
-| [Floods, fire and hazards](hazards.md) | 8 | What did the event affect? Flood extent from radar and optical imagery, burn severity, active fire, volcanic heat and landslide scars. |
+| [Floods, fire and hazards](hazards.md) | 9 | What did the event affect? Flood extent from radar and optical imagery, burn severity, active fire, volcanic heat and landslide scars. |
 | [Land cover, forests and change](land-cover.md) | 5 | What covers the ground and what changed? Land-cover maps, forest loss, urban expansion and generic change between two dates. |
 | [Cities and infrastructure](cities.md) | 6 | What has been built? Building footprints, road networks, solar installations and urban growth. |
 | [Energy and mining](energy-mining.md) | 4 | Where are energy and extraction sites, and how are they changing? |

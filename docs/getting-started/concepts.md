@@ -19,7 +19,7 @@ Each layer uses only the one below it.
 - The **data layer** ([Data guide](../data/index.md)) finds scenes, downloads the bands you need, applies the
   radiometric scale factors, masks cloud and writes analysis-ready GeoTIFFs.
 - The **AI layer** is optional. It needs PyTorch (`pip install "pygeovision[train]"`). Nothing in the data layer or
-  in the 34 *ready* pipelines imports it.
+  in 34 of the 35 *ready* pipelines imports it (`ml4floods_flood_mapping` runs a network).
 - The **task layer** ties both together into *named, finished products*: a pipeline downloads what it needs,
   computes a defined quantity and writes rasters, vectors, a map and a report.
 
@@ -30,7 +30,7 @@ A **pipeline** answers one question for one area and one time. It has a name (`f
 
 | Status | Count | Meaning |
 |---|---|---|
-| **ready** | 34 | Runs out of the box. The result is computed from real imagery, a DEM, radar, or a published reference map. No model to train |
+| **ready** | 35 | Runs out of the box. The result is computed from real imagery, a DEM, radar, or a published reference map. No model to train |
 | **needs weights** | 7 | Runs *your* trained network. You must pass `--checkpoint` / `checkpoint=`. PyGeoVision refuses to invent an untrained answer |
 
 Two rules apply to every pipeline, and they are the reason the catalogue is smaller than it once was:

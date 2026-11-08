@@ -357,6 +357,15 @@ _SR_ST_BAND_RE = re.compile(r"^(SR|ST)$")
 _BAND_NUMBER_RE = re.compile(r"^B\d{1,2}A?$")
 
 
+# The choice between pygeofetch's stream and download lives in one module (re-exported here for existing imports).
+from pygeovision.data._stream import (  # noqa: E402
+    fetch_scenes,
+    streaming_enabled,
+    want_stream,
+)
+from pygeovision.data._stream import reproject_file_inplace as _reproject_file_inplace  # noqa: E402,F401
+
+
 def _derive_asset_key(filename_stem: str) -> str:
     """Derive a real, stable asset/band identifier from a downloaded
     file's name, handling both Sentinel-2's "..._<KEY>_<res>m" and
@@ -428,6 +437,10 @@ class DownloadResult:
     checksum_verified: bool = False
     error: str = ""
     post_process_steps: list[str] = field(default_factory=list)
+    #: ``"stream"`` (only the area of interest was read) or ``"download"`` (whole assets); ``""`` when unknown.
+    acquisition: str = ""
+    #: Why a scene that was meant to be streamed was downloaded in full instead (empty when it was not).
+    stream_error: str = ""
 
     @property
     def size_mb(self) -> float:
@@ -1099,8 +1112,24 @@ class SatelliteFetcher:
         max_items: int | None = None,
         priority: str = "normal",
         bands: list[str] | None = None,  # <-- new
+        stream_bbox: tuple[float, float, float, float] | None = None,
+        stream: bool | None = None,
     ) -> list[DownloadResult]:
-        """Download satellite scenes with progress display."""
+        """Download satellite scenes with progress display.
+
+        ``stream`` chooses how the scenes are acquired when an area ``stream_bbox=(west, south, east, north)`` is
+        known:
+
+        * ``None`` (default): stream, unless ``PYGEOVISION_STREAM=0``;
+        * ``True``: stream (an explicit choice overrides ``PYGEOVISION_STREAM=0``);
+        * ``False``: always download whole scenes.
+
+        Streaming reads only the pixels inside the box from Cloud-Optimized-GeoTIFF providers (Planetary Computer,
+        Element 84), instead of whole bands of 100-300 MB. It is a preference, not a promise: a scene that cannot be
+        streamed (archive-only provider, no COG in the stack, a band that fails to read) is downloaded in full with the
+        normal download, never raised as an error. Each result's ``acquisition`` says which way the scene came
+        (``"stream"`` or ``"download"``) and ``stream_error`` why a download replaced a stream.
+        """
         import sys
 
         if isinstance(items, SearchResult):
@@ -1278,25 +1307,32 @@ class SatelliteFetcher:
 
         # If ALL items are pystac-fallback, skip PyGeoFetch engine entirely
         if not satellite_data_list:
-            return direct_results + [
-                DownloadResult(
-                    scene_id=item.id,
-                    provider=item.provider,
-                    success=False,
-                    error="No satellite_data and no assets — cannot download",
-                )
-                for item in items
-                if item not in pgf_items and item not in stac_items
-            ]
+            return (
+                direct_results
+                + [
+                    DownloadResult(
+                        scene_id=item.id,
+                        provider=item.provider,
+                        success=False,
+                        error="No satellite_data and no assets — cannot download",
+                    )
+                    for item in items
+                    if item not in pgf_items and item not in stac_items
+                ]
+            )
 
         # Print download info for native PyGeoFetch items
         total = len(satellite_data_list)
         providers_used = ", ".join({i.provider for i in pgf_items})
-        print(f"\n  📡 Downloading {total} scene(s) via PyGeoFetch from {providers_used}")
+        use_stream = want_stream(stream, stream_bbox)
+        verb = "Streaming the area of interest of" if use_stream else "Downloading"
+        print(f"\n  📡 {verb} {total} scene(s) via PyGeoFetch from {providers_used}")
         print(f"  📁 Output: {output_dir}")
         if post_process:
             print(f"  🔧 Post-process: {' → '.join(post_process)}")
         print(f"  ⚡ Parallel downloads: {parallel}")
+        if use_stream:
+            print("  ↪ A scene that cannot be streamed is downloaded in full instead")
         print()
 
         # Execute download with progress tracking
@@ -1322,15 +1358,24 @@ class SatelliteFetcher:
 
         start_time = time.time()
         try:
-            results = self._engine.download(
+            # Streams the AOI window of every scene it can and downloads in full (with ``options``) every scene it
+            # cannot. The assets of each scene were already narrowed to ``bands`` above.
+            fetched = fetch_scenes(
+                self._engine,
                 satellite_data_list,
-                destination=output_dir,
-                options=options,
+                output_dir,
+                options,
+                stream_bbox=stream_bbox,
+                stream=stream,
+                parallel=parallel,
+                overwrite=overwrite,
+                post_process=post_process,
             )
         finally:
             _stop.set()
             t.join(timeout=1)
         duration = time.time() - start_time
+        results = [f.result for f in fetched]
 
         # Tally bytes from engine results
         with lock:
@@ -1375,6 +1420,7 @@ class SatelliteFetcher:
             pgf_result = results[idx]
             success = bool(getattr(pgf_result, "success", False))
             pgf_error = getattr(pgf_result, "error", "") or ""
+            acquisition = fetched[idx].acquisition if idx < len(fetched) else ""
 
             # ── Auth-failure retry via direct OData download ───────────
             # PyGeoFetch's Copernicus engine returns "Authentication failed"
@@ -1514,8 +1560,10 @@ class SatelliteFetcher:
                     duration_seconds=getattr(pgf_result, "duration_seconds", None)
                     or (duration / max(n_results, 1)),
                     checksum_verified=bool(getattr(pgf_result, "checksum_verified", False)),
-                    error=getattr(pgf_result, "error", "") or "",
+                    error=pgf_error if not success else "",
                     post_process_steps=post_process or [],
+                    acquisition=acquisition,
+                    stream_error=fetched[idx].stream_error if idx < len(fetched) else "",
                 )
             )
 

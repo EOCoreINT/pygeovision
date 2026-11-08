@@ -8,7 +8,7 @@ presentation. For what changed in each release, see the [changelog](changelog.md
 
 | | |
 |---|---|
-| Pipelines | 41: 34 run out of the box, 7 need a checkpoint you trained. 21 stay [removed](../pipelines/removed.md) |
+| Pipelines | 42: 35 run out of the box (one downloads the pretrained ml4floods flood model on first use), 7 need a checkpoint you trained. 21 stay [removed](../pipelines/removed.md) |
 | Providers | 22 (through pygeofetch) |
 | CLI | 25 groups, 92 commands, each documented with a captured `--help` |
 | Models | 79 buildable architectures, 14 names for your checkpoints, 96 catalogue entries ([why three](../models/registry.md)) |
@@ -18,7 +18,7 @@ presentation. For what changed in each release, see the [changelog](changelog.md
 
 ### Things that do not exist yet
 
-- **No trained task models.** By design; see [what PyGeoVision will and will not do](../index.md). Seven pipelines need your checkpoint.
+- **No trained task models are shipped.** By design; see [what PyGeoVision will and will not do](../index.md). Seven pipelines need your checkpoint; `ml4floods_flood_mapping` runs the third-party ml4floods weights, downloaded on first use (CC BY-NC 4.0).
 - **No automatic dataset download.** The 460-entry [catalogue](../datasets/index.md) is metadata. `DatasetLoader.download` explains where to get a dataset; it never downloads one.
 - **`lisat-7b`** is listed but cannot be built: its model card's usage example does not match its documented architecture, so it stays unimplemented rather than guessed.
 - **SkySense** (weights hosted outside the Hugging Face standard) and **RS-YOLO** (a category of papers, several with unavailable weights) are not in the registry.

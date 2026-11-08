@@ -164,6 +164,50 @@ scene fails later with a "band count" or "cannot read" error, re-download it wit
 Pipelines do this automatically once before giving up.
 ```
 
+### Streaming: only your area, not the whole scene
+
+A Sentinel-2 band is 100 to 300 MB per scene, even when your area is a few kilometres wide. For providers that serve
+Cloud-Optimized GeoTIFFs (`planetary_computer`, `element84`) PyGeoVision can read **only the pixels inside your
+box**, over HTTP range requests, and write small AOI-sized files:
+
+```python
+downloads = client.stream(chosen, (-0.30, 5.50, -0.20, 5.60), output_dir="./data",
+                          bands=["B03", "B08", "SCL"])
+```
+
+**You choose how the imagery is acquired** with `stream`:
+
+| `stream=` | What happens (when the area is known) |
+|---|---|
+| `None` (default) | Stream the area; download whole scenes only for what cannot be streamed. `PYGEOVISION_STREAM=0` turns this default off. |
+| `True` | Same, asked for explicitly (also overrides `PYGEOVISION_STREAM=0`). |
+| `False` | Always download whole scenes. |
+
+```python
+client.download(chosen, output_dir="./data", stream_bbox=bbox)                # streams (default)
+client.download(chosen, output_dir="./data", stream_bbox=bbox, stream=False)  # whole scenes
+client.pipeline("water_bodies", bbox, date="2024-06", stream=False)            # pipelines too
+```
+
+On the command line it is `--stream/--no-stream` (`pygeovision data download`, `pygeovision channel <pipeline>`); in a
+YAML pipeline it is `stream: true|false` on the `download` step. Every pipeline that fetches imagery passes its own
+bounding box. The streamed files are in the same layout as a full download and go through the same `reproject:` step.
+
+**A stream never fails the run, even with `stream=True`.** The scene is downloaded in full, with the normal download and
+your download options (`retry_attempts`, `verify_checksum`, `on_failure`, ...), when:
+
+- the provider only serves archives (Copernicus CDSE `.SAFE.zip`, USGS `.tar`), so there is no COG in the stack;
+- a band cannot be read, or only some bands of the scene could be streamed (a half-streamed scene is never kept: its
+  small files are removed before the full download);
+- the streamed file cannot be reprojected, or the stream layer fails altogether.
+
+Each result says how its scene arrived: `result.acquisition` is `"stream"` or `"download"`, and `result.stream_error`
+holds the reason a scene was downloaded although streaming was wanted. A few things are fetched by plain download on
+purpose: the DEM (a server-clipped API request, not a COG) and loaders that have no area of interest.
+
+The pipelines that read Planetary Computer rasters straight onto a grid (the SAR, multi-sensor, ml4floods, terrain and
+reference-product pipelines) already read only the window they need and never download scenes.
+
 ### From the command line
 
 ```bash
@@ -174,7 +218,13 @@ pygeovision data download --from-search scenes.geojson -o ./data --parallel 4 \
 
 or search and download in one step: `pygeovision data download --bbox … --date 2024-06 --providers planetary_computer`.
 Options: `--parallel`, `--verify-checksum`, `--resume`, `--retry`, `--bandwidth-limit`, `--on-failure skip|abort|retry`,
-`--max-items`.
+`--max-items`, `--stream/--no-stream`.
+
+With `--bbox` the command **streams** by default and reads only the pixels inside the box from Planetary Computer and
+Element 84 scenes, instead of whole bands. Scenes that cannot be streamed are downloaded in full, with your `--retry`,
+`--on-failure` and checksum options; `--no-stream` always downloads whole scenes. With `--from-search`, add `--bbox` to
+name the window to stream. In a YAML pipeline the `download` step streams the `bbox` of the `search` step; set
+`stream: false` on the step to download whole scenes.
 
 ## What to do when…
 

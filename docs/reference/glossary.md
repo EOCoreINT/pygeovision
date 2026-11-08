@@ -15,7 +15,7 @@ bbox
 : See AOI. Always `min_lon min_lat max_lon max_lat`; longitude first.
 
 Checkpoint
-: A `.pth` file with trained network weights. PyGeoVision ships none for task models. The seven "needs weights" pipelines, `infer predict` and `ai segment|detect|classify|change` require one you trained ([training](../training/index.md)).
+: A `.pth` file with trained network weights. PyGeoVision ships none for task models. The eight "needs weights" pipelines (seven take one you trained; `ml4floods_flood_mapping` takes the published ml4floods weights, which you download), `infer predict` and `ai segment|detect|classify|change` require one you trained ([training](../training/index.md)).
 
 Chip / tile
 : A small window cut from a large raster to feed a network (for example 256 × 256 pixels), or the pieces of a large scene processed one at a time in [tiled inference](../inference/index.md).

@@ -105,6 +105,8 @@ class BasePipeline(ABC):
     def __init__(self, pgv_client: Any) -> None:
         self.pgv = pgv_client  # PyGeoVision instance
         self._coverage_log: list[dict[str, Any]] = []
+        #: The user's choice for acquiring imagery: True stream, False download whole scenes, None automatic.
+        self._stream_pref: bool | None = None
 
     @property
     def NAME(self) -> str:  # noqa: N802 - kept for backward compatibility
@@ -331,12 +333,17 @@ class BasePipeline(ABC):
         expanded_bands = list(dict.fromkeys(expanded_bands))  # dedupe, preserve order
 
         logger.info(
-            "_download_scene_files: downloading %s (%s, %d asset code(s) requested) -> %s",
+            "_download_scene_files: fetching %s (%s, %d asset code(s) requested) -> %s",
             getattr(result, "id", "?"),
             getattr(result, "provider", "?"),
             len(expanded_bands),
             output_dir / subdir_name,
         )
+        # One call for every way of acquiring a scene: with the area known and ``stream`` not False, COG providers
+        # (Planetary Computer, Element 84) are read window by window, so only the pixels of the AOI cross the network;
+        # a scene that cannot be streamed is downloaded in full by the same call. The retry after an incomplete scene
+        # (``fresh``) downloads the whole scene without resume, as before: if the first try left an incomplete file, the
+        # second must not depend on the stream again.
         downloads = self.pgv.download(
             [result],
             output_dir=output_dir / subdir_name,
@@ -344,6 +351,8 @@ class BasePipeline(ABC):
             post_process=pp,
             verify_checksum=False,
             bands=expanded_bands,
+            stream=False if fresh else getattr(self, "_stream_pref", None),
+            stream_bbox=getattr(self, "_stream_bbox", None),
             **({"resume": False, "overwrite": True} if fresh else {}),
         )
         if not (downloads and downloads[0].success):
@@ -855,6 +864,7 @@ class BasePipeline(ABC):
         If ``require_full_coverage`` is True and the available scenes cannot cover
         the AOI, returns None instead of a smaller-than-requested result.
         """
+        self._stream_bbox = tuple(float(v) for v in bbox)  # read by _download_scene_files
         try:
             from pygeovision.data._dates import date_window
 
@@ -2513,6 +2523,7 @@ _CORE_PIPELINES: dict[str, type] = {
 def pipeline_catalogue() -> dict[str, type[BasePipeline]]:
     """Every pipeline (core + domain), keyed by name."""
     from pygeovision.ai.pipelines import domains
+    from pygeovision.ai.pipelines.ml4floods_flood import ML4FLOODS_PIPELINES
     from pygeovision.ai.pipelines.multisensor_flood import MULTISENSOR_PIPELINES
     from pygeovision.ai.pipelines.reference_products import REFERENCE_PIPELINES
     from pygeovision.ai.pipelines.sar_flood import SAR_PIPELINES
@@ -2529,6 +2540,7 @@ def pipeline_catalogue() -> dict[str, type[BasePipeline]]:
         **TIMESERIES_PIPELINES,
         **SAR_PIPELINES,
         **MULTISENSOR_PIPELINES,
+        **ML4FLOODS_PIPELINES,
     }
 
 

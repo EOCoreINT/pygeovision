@@ -1636,6 +1636,106 @@
   },
   "title": "Mine Closure and Rehabilitation (greenness against an undisturbed reference)"
  },
+ "ml4floods_flood_mapping": {
+  "aoi_area_km2": 19.3166,
+  "command": "pygeovision channel ml4floods_flood_mapping --bbox -0.15 51.47 -0.10 51.52 -o ./out/ml4floods_flood_mapping --date-before 2024-05-01/2024-05-31 --date-after 2024-06-10/2024-06-20",
+  "console": "Running pipeline 'ml4floods_flood_mapping'...\n  bbox=(-0.15, 51.47, -0.1, 51.52) | output=./out/ml4floods_flood_mapping\n\n\u2713 pipeline complete\n  Output: ./out/ml4floods_flood_mapping/flood_extent.tif\n  Stats:\n    flooded_area_ha: 0.0000\n    flooded_unresolved_ha: 0.0000\n    flooded_upper_ha: 0.0000\n    permanent_water_area_ha: 2106.9900\n    land_area_ha: 0.0000\n    flooded_fraction: 0.0000\n    valid_fraction: 1.0000\n    reference_observed_fraction: 1.0000\n    removed_small_patch_ha: 0.0000\n    model: WF2_unetv2_bgriswirs\n    model_weights_sha256: d86a130300e07f54e7cfa834d9dc3fb1f881bef70b39832c35fac238f0f67024\n    model_device: cpu\n    th_water: 0.5000\n    th_cloud: 0.5000\n    th_brightness: 3500.0000\n    used_scene_classification: True\n    input_product: Sentinel-2 L2A surface reflectance (the network was trained on Level-1C)\n    scenes_reference: 1\n    scenes_flood: 1\n    flood_dates: ['2024-06-10']\n    reference_dates: ['2024-05-01']\n    min_patch_ha: 0.1000\n    data_notes: \n    resolution_m: 10.0000\n    model_citation: Portales-Julia, E., Mateo-Garcia, G., Purcell, C. & Gomez-Chova, L. (2023). Global flood extent segmentation in optical satellite images. Scientific Reports 13, 20316. doi:10.1038/s41598-023-47595-7.\n    model_license: CC BY-NC 4.0 (weights, non-commercial use only)\n    product_note: Pretrained network WF2_unetv2_bgriswirs (ml4floods; Portales-Julia, E., Mateo-Garcia, G., Purcell, C. & Gomez-Chova, L. (2023). Global flood extent segmentation in optical satellite images. Scientific Reports 13, 20316. doi:10.1038/s41598-023-47595-7.). The ml4floods model weights and the WorldFloods data are released under the Creative Commons Attribution-NonCommercial 4.0 licence (CC BY-NC 4.0): you may use them for non-commercial purposes if you credit the authors. PyGeoVision itself is MIT-licensed and does not include them. The network was trained and is documented on Sentinel-2 Level-1C top-of-atmosphere reflectance (x 10000). Level-2A surface reflectance, which most open archives serve, is not the training product: the two differ most in the blue band and under haze, and the effect on this model has not been measured. Sentinel-2 L2A reflectance from the Microsoft Planetary Computer is used as its input; cloud, cloud shadow and cirrus are masked with the network's own cloud output and the product's Scene Classification Layer, so they are unknown, never dry.\n\n  Deliverables: ./out/ml4floods_flood_mapping/deliverables\n    PDF report    ml4floods_flood_mapping_report.pdf\n    Excel report  ml4floods_flood_mapping_report.xlsx\n    Word report   ml4floods_flood_mapping_report.docx\n    Map           maps/ml4floods_flood_mapping_map.png\n    Map           maps/ml4floods_flood_mapping_map_p_water.png\n    Vectors gpkg  ml4floods_flood_mapping.gpkg\n    Vectors geojson ml4floods_flood_mapping_aoi.geojson\n    ! vector layer 'flood_extent' has no features (no pixels of the selected classes).",
+  "files": [
+   "deliverables/maps/ml4floods_flood_mapping_chart.png",
+   "deliverables/maps/ml4floods_flood_mapping_histogram.png",
+   "deliverables/maps/ml4floods_flood_mapping_map.png",
+   "deliverables/maps/ml4floods_flood_mapping_map_p_water.png",
+   "deliverables/ml4floods_flood_mapping_report.docx",
+   "deliverables/ml4floods_flood_mapping_report.pdf",
+   "deliverables/ml4floods_flood_mapping_report.xlsx",
+   "deliverables/vectors/geojson/ml4floods_flood_mapping_aoi.geojson",
+   "deliverables/vectors/ml4floods_flood_mapping.gpkg",
+   "flood_extent.tif",
+   "prob_water_after.tif",
+   "run_summary.json"
+  ],
+  "layers": [
+   {
+    "classes": [
+     {
+      "area_ha": 2106.99,
+      "name": "Water in reference window",
+      "pixels": 210699,
+      "share": 1.0,
+      "value": 2
+     }
+    ],
+    "file": "flood_extent.tif",
+    "key": "flood",
+    "kind": "classes",
+    "title": "Flood extent from the pretrained network"
+   },
+   {
+    "file": "prob_water_after.tif",
+    "key": "p_water",
+    "kind": "continuous",
+    "summary": {
+     "max": 0.52468,
+     "mean": 0.52228,
+     "median": 0.5226,
+     "min": 0.51961,
+     "valid_fraction": 1.0
+    },
+    "title": "Mean water probability over the clear flood-window observations"
+   }
+  ],
+  "period": "2024-05-01 to 2024-06-10",
+  "stats": {
+   "data_notes": "",
+   "flood_dates": [
+    "2024-06-10"
+   ],
+   "flooded_area_ha": 0.0,
+   "flooded_fraction": 0.0,
+   "flooded_unresolved_ha": 0.0,
+   "flooded_upper_ha": 0.0,
+   "input_product": "Sentinel-2 L2A surface reflectance (the network was trained on Level-1C)",
+   "land_area_ha": 0.0,
+   "min_patch_ha": 0.1,
+   "model": "WF2_unetv2_bgriswirs",
+   "model_citation": "Portales-Julia, E., Mateo-Garcia, G., Purcell, C. & Gomez-Chova, L. (2023). Global flood extent segmentation in optical satellite images. Scientific Reports 13, 20316. doi:10.1038/s41598-023-47595-7.",
+   "model_device": "cpu",
+   "model_license": "CC BY-NC 4.0 (weights, non-commercial use only)",
+   "model_weights_sha256": "d86a130300e07f54e7cfa834d9dc3fb1f881bef70b39832c35fac238f0f67024",
+   "permanent_water_area_ha": 2106.99,
+   "product_note": "Pretrained network WF2_unetv2_bgriswirs (ml4floods; Portales-Julia, E., Mateo-Garcia, G., Purcell, C. & Gomez-Chova, L. (2023). Global flood extent segmentation in optical satellite images. Scientific Reports 13, 20316. doi:10.1038/s41598-023-47595-7.). The ml4floods model weights and the WorldFloods data are released under the Creative Commons Attribution-NonCommercial 4.0 licence (CC BY-NC 4.0): you may use them for non-commercial purposes if you credit the authors. PyGeoVision itself is MIT-licensed and does not include them. The network was trained and is documented on Sentinel-2 Level-1C top-of-atmosphere reflectance (x 10000). Level-2A surface reflectance, which most open archives serve, is not the training product: the two differ most in the blue band and under haze, and the effect on this model has not been measured. Sentinel-2 L2A reflectance from the Microsoft Planetary Computer is used as its input; cloud, cloud shadow and cirrus are masked with the network's own cloud output and the product's Scene Classification Layer, so they are unknown, never dry.",
+   "reference_dates": [
+    "2024-05-01"
+   ],
+   "reference_observed_fraction": 1.0,
+   "removed_small_patch_ha": 0.0,
+   "resolution_m": 10.0,
+   "scenes": {
+    "flood": [
+     {
+      "clear_fraction": 1.0,
+      "date": "2024-06-10",
+      "id": "S2_2024-06-10"
+     }
+    ],
+    "reference": [
+     {
+      "clear_fraction": 1.0,
+      "date": "2024-05-01",
+      "id": "S2_2024-05-01"
+     }
+    ]
+   },
+   "scenes_flood": 1,
+   "scenes_reference": 1,
+   "th_brightness": 3500.0,
+   "th_cloud": 0.5,
+   "th_water": 0.5,
+   "used_scene_classification": true,
+   "valid_fraction": 1.0
+  },
+  "title": "Flood Extent Mapping (pretrained ml4floods network, Sentinel-2)"
+ },
  "multisensor_flood_mapping": {
   "aoi_area_km2": 19.3166,
   "command": "pygeovision channel multisensor_flood_mapping --bbox -0.15 51.47 -0.10 51.52 -o ./out/multisensor_flood_mapping --date-before 2024-05-01/2024-05-31 --date-after 2024-06-10/2024-06-20",

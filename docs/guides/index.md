@@ -40,7 +40,7 @@ There are three ways to work, and most people start at the first:
 
 ## Related sections
 
-- [Pipelines](../pipelines/index.md): what each of the 41 pipelines does, and how to choose.
+- [Pipelines](../pipelines/index.md): what each of the 42 pipelines does, and how to choose.
 - [Data](../data/index.md): finding, preparing and checking imagery.
 - [Examples by domain](../examples/index.md): agriculture, forestry, cities, water, disasters, mining and climate.
 - [Case studies](../case-studies/index.md): eight real reports read closely.

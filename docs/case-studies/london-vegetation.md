@@ -8,7 +8,7 @@ you can use, with the land-cover run from the [first London page](london-landcov
 
 ```{admonition} What this page is based on
 :class: note
-- **Numbers:** copied from the PDF report PyGeoVision wrote for this run (`crop_health_report.pdf`, PyGeoVision 2.2.0, generated
+- **Numbers:** copied from the PDF report PyGeoVision wrote for this run (`crop_health_report.pdf`, PyGeoVision 2.2.1, generated
   2026-10-15 18:53 UTC). The shares, the pixel areas and the mean change are re-derived in `tests/test_case_studies.py`.
 - **Not re-run:** the two Sentinel-2 scenes were not downloaded again.
 - **No ground truth.** Nothing in the report says why any pixel changed. Where this page offers a reason, it says "a hypothesis".

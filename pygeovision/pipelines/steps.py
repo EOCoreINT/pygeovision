@@ -87,7 +87,15 @@ class DownloadStep(Step):
             raise StepError("download needs a client in the run context (PyGeoVision())")
         if not scenes:
             raise StepError("download has no scenes: it must depend on a successful search step")
-        results = list(client.download(scenes, **self.params))
+        params = dict(self.params)
+        # ``stream: true`` / ``stream: false`` in the YAML; absent = stream the search box when one is known
+        stream = params.pop("stream", None)
+        box = params.pop("bbox", None) or context.get("bbox")
+        if "output" in params and "output_dir" not in params:
+            params["output_dir"] = params.pop("output")
+        stream_bbox = tuple(box) if box is not None and len(box) == 4 else None
+        # only the pixels inside the search box are read; a scene that cannot be streamed is downloaded in full
+        results = list(client.download(scenes, stream=stream, stream_bbox=stream_bbox, **params))
         ok = [r for r in results if getattr(r, "success", True) and getattr(r, "path", None)]
         if not ok:
             errors = "; ".join(

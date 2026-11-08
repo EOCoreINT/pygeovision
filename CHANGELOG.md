@@ -3,9 +3,64 @@
 All notable changes to PyGeoVision are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed — one place chooses between streaming and downloading, with a fallback
+
+pygeofetch is unchanged. PyGeoVision wraps its `stream` and `download` in one function, `pygeovision.data._stream.fetch_scenes`,
+which every way of acquiring imagery for an area now uses.
+
+- **You choose.** `stream=None` (default) streams the area of interest whenever it is known, `stream=True` asks for it,
+  `stream=False` downloads whole scenes. Available as `client.download(..., stream=, stream_bbox=)`,
+  `client.pipeline(name, bbox, stream=...)`, `pygeovision data download --stream/--no-stream`,
+  `pygeovision channel <pipeline> --stream/--no-stream`, `stream: true|false` on the YAML `download` step, and on
+  the acquirer, the bridge, `EOPipeline.download` and `GeoDataLoader.prepare(stream_bbox=...)`. `PYGEOVISION_STREAM=0`
+  changes only the automatic default; an explicit `stream=True` still streams.
+- **A stream never fails the run.** A scene that cannot be streamed - archive-only provider (Copernicus `.zip`, USGS `.tar`),
+  no COG in the stack, a band that cannot be read, a streamed file that cannot be reprojected, an error in the stream
+  layer, or an installed pygeofetch without `stream` - is downloaded in full with the normal `download` and your download
+  options. A half-streamed scene has its small AOI files removed first, so no scene is a mix of AOI and whole files.
+  The reason is logged and kept on `result.stream_error`; `result.acquisition` is `"stream"` or `"download"`.
+- The retry after an incomplete scene still downloads the whole scene without resume.
+- The old copy of this logic (`SatelliteFetcher._stream_items`, `STREAMABLE_PROVIDERS`) is gone; `client.stream(items, bbox)`
+  is now `download(..., stream=True, stream_bbox=bbox)` and forwards download options for the fallback.
+- `ml4floods_flood_mapping`: the result names the real Sentinel-2 scene ids and dates of each image (not the file name),
+  any error while fetching the weights ends as a clear failed result, and `ensure_weights` / `DEFAULT_CACHE` are public.
+- The command-line reference shows `automatic` as the default of `--x/--no-x` flags that may be left out.
+
+### Changed — pipelines stream the area of interest instead of downloading whole scenes
+
+- `client.download(..., stream_bbox=bbox)` reads only the pixels inside `bbox` from Cloud-Optimized-GeoTIFF providers
+  (Planetary Computer, Element 84) through pygeofetch's `stream`, instead of whole 100-300 MB bands. Every pipeline that
+  fetches imagery (`_search_and_download`, `_search_and_download_pair`) now streams by default; archive-only providers, a
+  failed stream, or `PYGEOVISION_STREAM=0` use the full download as before, scene by scene. Streamed files get the same
+  `reproject:` step as downloaded ones.
+- New `client.stream(items, bbox, ...)`. Pipelines, `pygeovision data download --bbox` (`--no-stream` to opt out) and the
+  YAML `download` step (`stream: false` to opt out) use it instead of `client.download`.
+- `ml4floods_flood_mapping` uses this same imagery path as the other flood pipelines (`_search_and_download_pair`) and only
+  prepares the data for the network: six bands as reflectance, cloud and shadow from the scene classification layer left unknown.
+
+### Added — pretrained flood model: ml4floods `WF2_unetv2_bgriswirs`
+
+- **`ml4floods_flood_mapping`** (42 pipelines; kind `ready`: it fetches its own weights). Runs the released U-Net of Portales-Julia et al.
+  (2023, *Scientific Reports* 13, 20316) on Sentinel-2 L2A from the Planetary Computer for a dry reference window and a
+  flood window; reports flood water, water in both windows and water with no clear reference view, never counting cloud
+  or shadow as dry. Writes `flood_extent.tif`, `prob_water_after.tif`, the usual map, vectors and reports, and records the
+  checksum of the weights it used.
+- **`pygeovision.ai.models.ml4floods`**: the network (written here, layer names match the released checkpoint, strict
+  load), `load_model`, `predict_probabilities`, `classify`, `predict_scene`, `predict_geotiff` (for Level-1C GeoTIFFs,
+  the product the network was trained on) and `download_weights`.
+- **The weights are not included, but they are downloaded for you.** They are CC BY-NC 4.0 (non-commercial) and
+  pygeovision is MIT. Without `checkpoint=` the pipeline downloads them once from Hugging Face (pinned revision) into
+  `~/.cache/pygeovision/ml4floods` (`ensure_weights`), logs the licence notice and reuses them; `checkpoint=<folder>` uses
+  your own copy. `download_weights(accept_noncommercial=True)` is the explicit call and refuses without that confirmation.
+  The loader reports the absolute path and folder contents when `model.pt` is missing, and recognises a Git LFS pointer.
+- **Not claimed:** accuracy. The network was trained on Level-1C top-of-atmosphere imagery and this pipeline feeds it
+  Level-2A reflectance; the effect is not measured, and the report says so.
+
 ---
 
-## [2.2.0] — 2026-07-03
+## [2.2.1] — 2026-07-03
 
 ### Added — GeoAgent: Autonomous Geospatial AI Agent
 
@@ -60,7 +115,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [2.2.0] — 2026-06-27
+## [2.2.1] — 2026-06-27
 
 ### ⚠️ Breaking Changes
 - **PyGeoVision is now fully standalone.** GeoAI is no longer a required dependency — it is an optional plugin (`pip install "pygeovision[geoai]"`). All v1.x `client.geoai.*` calls continue to work but require explicit installation of `geoai-py`.
@@ -270,5 +325,5 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-[2.2.0]: https://github.com/pygeovision/pygeovision/compare/v1.0.0...v2.2.0
+[2.2.1]: https://github.com/pygeovision/pygeovision/compare/v1.0.0...v2.2.1
 [1.0.0]: https://github.com/pygeovision/pygeovision/releases/tag/v1.0.0

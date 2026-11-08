@@ -319,7 +319,14 @@ def data_search(
     type=float,
     default=None,
     metavar="MIN_LON MIN_LAT MAX_LON MAX_LAT",
-    help="Download all results in this bbox (requires --date).",
+    help="Download all results in this bbox (requires --date). With --from-search it is the window to stream.",
+)
+@click.option(
+    "--stream/--no-stream",
+    default=None,
+    help="--stream: with --bbox, read only the pixels inside it from cloud-optimized providers. --no-stream: "
+    "download whole scenes. Default: stream when --bbox is given. A scene that cannot be streamed is "
+    "downloaded in full instead of failing.",
 )
 @click.option("--date", "date_str", default=None)
 @click.option("--providers", default=None)
@@ -339,6 +346,7 @@ def data_search(
 def data_download(
     search_file,
     bbox,
+    stream,
     date_str,
     providers,
     output,
@@ -405,7 +413,15 @@ def data_download(
 
     pp = [p.strip() for p in post_process.split(",")] if post_process else None
 
-    click.echo(f"Downloading {len(items)} scenes → {output}...")
+    if stream and not bbox:
+        click.echo("--stream needs --bbox (the area to read); downloading whole scenes.", err=True)
+    if bbox and stream is not False:
+        click.echo(
+            f"Streaming {len(items)} scenes (only the pixels inside the bbox; a scene that cannot be streamed "
+            f"is downloaded in full) → {output}..."
+        )
+    else:
+        click.echo(f"Downloading {len(items)} scenes → {output}...")
     results = client.download(
         items,
         output_dir=output,
@@ -416,6 +432,8 @@ def data_download(
         post_process=pp,
         bandwidth_limit_mb=float(bandwidth_limit) if bandwidth_limit else None,
         on_failure=on_failure,
+        stream=stream,
+        stream_bbox=tuple(bbox) if bbox else None,
     )
 
     ok = sum(1 for r in results if r.success)
@@ -427,6 +445,8 @@ def data_download(
         click.echo(f"✗ {fail} failed", err=True)
     for r in results:
         click.echo(f"  {r}")
+        if getattr(r, "stream_error", ""):
+            click.echo(f"    (downloaded in full: streaming failed - {r.stream_error[:160]})")
     if fail:
         sys.exit(1)
 
@@ -1223,6 +1243,13 @@ def _number_list(text: str) -> list[float | int] | None:
 )
 @click.option("--report-title", default=None, help="Replace the report title.")
 @click.option(
+    "--stream/--no-stream",
+    "stream",
+    default=None,
+    help="--stream: read only the area of interest from cloud-optimized providers. --no-stream: download whole "
+    "scenes. Default: stream. A scene that cannot be streamed is downloaded in full instead of failing.",
+)
+@click.option(
     "--cloud-mask/--no-cloud-mask",
     "cloud_mask",
     default=None,
@@ -1247,6 +1274,7 @@ def pipeline_cmd(
     vector_formats,
     class_names,
     report_title,
+    stream,
     cloud_mask,
 ):
     """Run an end-to-end geospatial pipeline by name.
@@ -1320,6 +1348,8 @@ def pipeline_cmd(
 
     if cloud_mask is not None:
         kwargs["cloud_mask"] = cloud_mask
+    if stream is not None:
+        kwargs["stream"] = stream
 
     for raw in params:
         key, value = _parse_param(raw)

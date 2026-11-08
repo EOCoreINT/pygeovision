@@ -9,10 +9,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22258220.svg)](https://doi.org/10.5281/zenodo.22258220)
 [![Providers](https://img.shields.io/badge/pygeofetch-22_providers-f59e0b?style=flat-square)](https://appiahkubis14.github.io/pygeofetch-docs/)
-[![Pipelines](https://img.shields.io/badge/Pipelines-41-22c55e?style=flat-square)](#%EF%B8%8F-end-to-end-pipelines)
+[![Pipelines](https://img.shields.io/badge/Pipelines-42-22c55e?style=flat-square)](#%EF%B8%8F-end-to-end-pipelines)
 [![Models](https://img.shields.io/badge/Registered_architectures-77-a855f7?style=flat-square)](#-models-and-training)
-[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://pygeovision.readthedocs.io/en/latest/)
-
+[![Docs](https://img.shields.io/badge/Docs-online-3b82f6?style=flat-square)](https://appiahkubis14.github.io/pygeovision-docs/)
 
 [Features](#-features) · [Install](#-installation) · [Quick start](#-quick-start) · [Case studies](#-case-studies) · [CLI](#%EF%B8%8F-command-line) · [Pipelines](#%EF%B8%8F-end-to-end-pipelines) · [OBIA](#-object-based-image-analysis-obia) · [Status](#-project-status) · [Citation](#-citation) · [Docs](#-documentation)
 
@@ -36,7 +35,7 @@ package, so there are fewer joins in the chain for things to quietly break.
   once in the system keyring.
 - **Models that run inside the package**: segmentation, detection, change detection, classification and
   foundation-model embeddings, with no separate AI-platform account.
-- **41 pipelines** from a bounding box to a finished output: 34 run out of the box, 7 run a model you trained.
+- **42 pipelines** from a bounding box to a finished output: 35 run out of the box (one of them, `ml4floods_flood_mapping`, downloads a pretrained flood model on first use; non-commercial), 7 run a network you trained yourself.
 - **A training stack** with fine-tuning, geospatial losses and tiled inference for full scenes.
 - **Object-based image analysis**: segmentation, object features, rule/fuzzy/supervised classification
   and object-level accuracy.
@@ -215,22 +214,26 @@ pygeovision doctor    # diagnose a broken setup
 `zoo`, `label`, `explain`, `monitor`, `edge`, `cloud`, `vlm`, `timeseries`, `validate`, `preprocess`,
 `indices`, `postprocess`, `benchmark`, `datasets`, `infer` and `obia`.
 
-[`CLI_TESTING_GUIDE.md`](CLI_TESTING_GUIDE.md) has a runnable example for every command, including all 41
+[`CLI_TESTING_GUIDE.md`](CLI_TESTING_GUIDE.md) has a runnable example for every command, including all 42
 pipelines, and says which ones need network access, credentials or your own trained weights.
 `python tools/verify_cli_guide.py` runs the offline examples on synthetic data.
 
 ## 🛰️ End-to-end pipelines
 
-The catalogue holds **41 pipelines**, all runnable from Python (`client.pipeline(name, ...)`) and from the CLI
+The catalogue holds **42 pipelines**, all runnable from Python (`client.pipeline(name, ...)`) and from the CLI
 (`pygeovision channel <name>`). `pygeovision channel list` shows each one and its kind:
 
-- **34 run out of the box.** Each is a documented index, terrain product, published reference map or published
+- **35 run out of the box.** Each is a documented index, terrain product, published reference map or published
   vector dataset, computed on valid pixels only (cloud- and shadow-masked pixels are nodata, never a class).
 - **7 need a model you trained** (`solar_detection`, `crop_monitoring`, `road_extraction`,
   `disaster_assessment`, `deforestation`, `urban_growth`, `landslide_detection`). pygeovision ships no weights
   for them; without `checkpoint=` they refuse to run, before downloading any imagery.
   (`building_footprints` also takes a checkpoint, but by default it returns Microsoft, Google or OpenStreetMap
   footprints and needs none.)
+- `ml4floods_flood_mapping` is one of the 35: it runs the pretrained U-Net `WF2_unetv2_bgriswirs` of the ml4floods project on
+  Sentinel-2 and **downloads its weights from Hugging Face on first use** (31 MB, cached in `~/.cache/pygeovision/ml4floods`;
+  `--checkpoint <folder>` uses a copy you already have). The weights are CC BY-NC 4.0 (non-commercial use, credit the authors)
+  and are not part of pygeovision (MIT); the licence notice is logged on download. No accuracy is claimed here.
 
 Every run also leaves a **presentation-ready deliverables folder** (needs `pip install "pygeovision[report]"`):
 
@@ -257,6 +260,7 @@ and `result.deliverables`.
 | `flood_mapping` · `coastal_monitoring` · `wetland_mapping` | Flood extent vs permanent water, shoreline change, wetland water/vegetation classes |
 | `sar_flood_mapping` | Flood extent from Sentinel-1 radar (works through cloud): open water that is new compared with a dry reference |
 | `multisensor_flood_mapping` | Flood extent from Sentinel-1 radar + Sentinel-2 optical + terrain (HAND), with per-pixel sensor agreement (confirmed / radar only / optical only / disputed) |
+| `ml4floods_flood_mapping` | Flood extent from Sentinel-2 with the pretrained ml4floods `WF2_unetv2_bgriswirs` U-Net (weights downloaded on first use, CC BY-NC 4.0), cloud-aware, before/after a flood |
 | `wildfire_severity` | dNBR burn severity (USGS classes) |
 | `snow_cover` · `glacier_monitoring` | NDSI snow map, glacier-area change |
 | `urban_heat_island` · `land_surface_temperature` · `volcano_monitoring` | Landsat surface temperature and thresholded hot spots |
@@ -357,12 +361,12 @@ pytest tests/
 ```
 
 With the full stack installed, the offline suite (`tests/test_live.py` excluded) runs about 1,300 tests, all of which
-pass without network access, GPU or pretrained weights. To exercise every CLI command and all 41 pipelines by hand,
+pass without network access, GPU or pretrained weights. To exercise every CLI command and all 42 pipelines by hand,
 follow [CLI_TESTING_GUIDE.md](CLI_TESTING_GUIDE.md).
 
 ## 📋 Documentation
 
-Full documentation is at **https://pygeovision.readthedocs.io/en/latest/**. To build it locally:
+Full documentation is at **https://appiahkubis14.github.io/pygeovision-docs/**. To build it locally:
 
 ```bash
 pip install -r docs/requirements.txt

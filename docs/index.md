@@ -11,18 +11,18 @@ pygeovision doctor
 ```
 
 :::{container} pgv-hero
-![PyGeoVision data flow, from 22 data providers through search and preparation to 41 pipelines or models and OBIA, then checks and deliverables](_static/img/workflow.svg)
+![PyGeoVision data flow, from 22 data providers through search and preparation to 42 pipelines or models and OBIA, then checks and deliverables](_static/img/workflow.svg)
 :::
 
 ::::{grid} 2 2 4 4
 :gutter: 2
 :class-container: pgv-stats
 
-:::{grid-item-card} 41
+:::{grid-item-card} 42
 :class-card: pgv-stat
 :class-title: pgv-stat-n
 
-pipelines: 34 run out of the box, 7 run your trained network
+pipelines: 35 run out of the box, 7 run your trained network (and `ml4floods_flood_mapping` downloads its pretrained model on first use)
 :::
 
 :::{grid-item-card} 22
@@ -91,7 +91,7 @@ Choose your area and dates, script it, run many areas, use the results in a GIS.
 :link: pipelines/choosing
 :link-type: doc
 
-Go from "I want to map X" to the one of 41 pipelines that does it.
+Go from "I want to map X" to the one of 42 pipelines that does it.
 :::
 
 :::{grid-item-card} Data
@@ -146,7 +146,7 @@ The sidebar has nine groups. Open one to see its pages.
 | **Get started** | Install PyGeoVision, run a first pipeline, learn the core ideas, and fix problems. |
 | **Guides** | Follow a task from start to finish, and see complete workflows by domain. |
 | **Data** | Find and download imagery; prepare, mask, index and validate it. |
-| **Pipelines** | Choose among the 41 pipelines, read each on its own page, and chain them in YAML. |
+| **Pipelines** | Choose among the 42 pipelines, read each on its own page, and chain them in YAML. |
 | **Models** | Use segmentation, classification, detection, change detection, foundation, vision-language, LiDAR, super-resolution and time-series models, or object-based analysis. |
 | **Train and deploy** | Label data, train, predict, track experiments, explain, monitor and deploy a model. |
 | **Case studies** | Read eight real reports closely: what each number means and what the run can and cannot support. |

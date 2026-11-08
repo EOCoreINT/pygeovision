@@ -42,7 +42,7 @@ def test_readme_names_only_real_pipelines():
         readme.index("## 🛰️ End-to-end pipelines") : readme.index("## 🧠 Models and training")
     ]
     table_names = set(
-        re.findall(r"`([a-z_]+)`", "\n".join(l for l in section.splitlines() if l.startswith("|")))
+        re.findall(r"`([a-z0-9_]+)`", "\n".join(l for l in section.splitlines() if l.startswith("|")))
     )
     live = set(list_pipelines())
     assert not table_names & set(REMOVED_PIPELINES)

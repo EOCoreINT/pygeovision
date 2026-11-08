@@ -109,6 +109,7 @@ class TestNoWeightsNoRun:
             "urban_growth",
             "road_extraction",
             "landslide_detection",
+            "ml4floods_flood_mapping",
         }
 
     def test_crop_monitoring_needs_class_count(self, tmp_path, monkeypatch):

@@ -32,7 +32,7 @@ pygeovision doctor
 |---|---|---|
 | `pygeovision` | The package imports and the client can be created | Reinstall; if the message names a module, an install was partly copied (see `tools/verify_install.py` in the repository) |
 | `pygeofetch` | The data layer is installed and answers | `pip install --upgrade pygeofetch` |
-| `torch` | PyTorch is installed; shows CUDA and the GPU when there is one | Only needed for networks: `pip install "pygeovision[ai]"`. Absent PyTorch does not stop the 34 ready pipelines |
+| `torch` | PyTorch is installed; shows CUDA and the GPU when there is one | Only needed for networks: `pip install "pygeovision[ai]"`. Absent PyTorch does not stop 34 of the 35 ready pipelines |
 | `rasterio`, `geopandas` | The geo stack | `pip install "pygeovision[geo]"` |
 | `credentials` | How many providers have stored credentials | A count of `0` is normal: three providers need no account ([authentication](../data/authentication.md)) |
 | `cache` | The search cache is readable | Delete the cache folder named in [configuration](configuration.md) |

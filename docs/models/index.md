@@ -27,7 +27,7 @@ Ghana" only after it has been *trained* on labelled examples of that task. The p
 - refuses to run an untrained network and call the output a result. Commands that need your model stop with a message
   that tells you what to supply.
 
-This is why seven of the [41 pipelines](../pipelines/index.md) need `--checkpoint`, and why the other 34 use
+This is why seven of the [42 pipelines](../pipelines/index.md) need your own `--checkpoint` (`ml4floods_flood_mapping` is not among them: it downloads the published ml4floods weights on first use), and why most of the other 35 use
 published methods (indices, thresholds, reference maps) that need no training at all. If you only want a flood map or a
 burn-severity map, you do not need this section.
 

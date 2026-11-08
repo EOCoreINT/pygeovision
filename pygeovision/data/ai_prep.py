@@ -442,6 +442,7 @@ class EOPipeline:
 
         self._acq = SatelliteAcquirer()
         self._provider = provider
+        self._bbox: tuple[float, float, float, float] | None = None
         self._scenes: list = []
         self._downloads: list = []
         self._current_path: str | None = None
@@ -462,7 +463,8 @@ class EOPipeline:
         polarisation=None,
         providers=None,
     ) -> EOPipeline:
-        """Search for scenes. Chainable."""
+        """Search for scenes. Chainable. The ``bbox`` is the area the later :meth:`download` streams."""
+        self._bbox = tuple(float(v) for v in bbox) if bbox is not None else None
         self._scenes = self._acq.search(
             bbox=bbox,
             date_range=date_range,
@@ -526,14 +528,21 @@ class EOPipeline:
         output_dir="./eo_data/",
         bands=None,
         post_process=None,
+        stream=None,
     ) -> EOPipeline:
-        """Download scenes. Chainable."""
+        """Download scenes. Chainable.
+
+        The area of the earlier :meth:`search` is streamed from Cloud-Optimized-GeoTIFF providers. ``stream=False``
+        downloads whole scenes; a scene that cannot be streamed is downloaded in full instead.
+        """
         target = scenes or self._scenes
         self._downloads = self._acq.download(
             target,
             output_dir=output_dir,
             bands=bands,
             post_process=post_process,
+            stream_bbox=getattr(self, "_bbox", None),
+            stream=stream,
         )
         successful = [d for d in self._downloads if d.success and d.path]
         if successful:

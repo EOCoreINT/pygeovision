@@ -13,9 +13,9 @@ it chooses scenes, applies the radiometric corrections, runs the analysis and wr
 either alone. PyGeoVision's [Data guide](../data/index.md) shows where the boundary lies.
 
 **Do I need a GPU, or even PyTorch?**
-No for the 34 *ready* pipelines — indices, terrain, hydrology, radar thresholds and published reference maps run on a
-CPU and import no deep-learning library. Yes (practically) for training, and for the seven pipelines that run your
-trained network.
+No for 34 of the *ready* pipelines — indices, terrain, hydrology, radar thresholds and published reference maps run on a
+CPU and import no deep-learning library. Yes (practically) for training, and for the eight pipelines that run a network (seven yours, and `ml4floods_flood_mapping`, whose pretrained
+weights download on first use).
 
 **Does it ship trained models?**
 It ships **architectures** and fetches pretrained weights where a real public checkpoint exists (see the

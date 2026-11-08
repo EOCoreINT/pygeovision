@@ -105,7 +105,7 @@ class TestPipelineRouter:
         assert "building_footprints" in pipelines
         assert "land_cover" in pipelines
         assert "change_detection" in pipelines
-        assert len(pipelines) == 41
+        assert len(pipelines) == 42
 
     def test_get_unknown_pipeline(self):
         from unittest.mock import MagicMock

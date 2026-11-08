@@ -89,6 +89,8 @@ mistakes happen. Each pipeline name links to its page, which says in more detail
 as a simple cross-check. If the results differ, the difference is informative: read the class table of the multi-sensor run (confirmed, radar
 only, optical only, disputed).
 
+**A pretrained network instead of a threshold.** `ml4floods_flood_mapping` runs the published ml4floods `WF2_unetv2_bgriswirs` U-Net (Sentinel-2, six bands, trained on WorldFloods) on the dry and the flood window. It is optical, so cloud blocks it the same way, and it downloads its weights on first use (about 31 MB), which are CC BY-NC 4.0 and are not shipped with PyGeoVision (non-commercial use only). Use it as a second, learned opinion next to `flood_mapping`; this repository does not report its accuracy.
+
 No satellite map shows the *peak* of an event unless a pass happened at the peak. Read the acquisition dates in the statistics
 (`flood_dates`) before comparing with news reports or gauges.
 

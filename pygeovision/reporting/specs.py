@@ -163,6 +163,8 @@ R_LST = "USGS. Landsat Collection 2 Level-2 Science Product Guide (LSDS-1619)."
 R_TWELE = "Twele, A., Cao, W., Plank, S. & Martinis, S. (2016). Sentinel-1-based flood mapping: a fully automated processing chain. International Journal of Remote Sensing 37(13), 2990-3004."
 R_S1RTC = "Catalyst / ESA. Sentinel-1 Radiometrically Terrain Corrected (RTC) backscatter, Microsoft Planetary Computer (sentinel-1-rtc); contains modified Copernicus Sentinel data."
 R_S2 = "ESA. Sentinel-2 Level-2A surface reflectance (Copernicus programme)."
+R_ML4FLOODS = "Portales-Julia, E., Mateo-Garcia, G., Purcell, C. & Gomez-Chova, L. (2023). Global flood extent segmentation in optical satellite images. Scientific Reports 13, 20316. doi:10.1038/s41598-023-47595-7. Model weights ml4floods WF2_unetv2_bgriswirs, CC BY-NC 4.0 (non-commercial use): https://huggingface.co/isp-uv-es/ml4floods."
+R_ML4FLOODS_2021 = "Mateo-Garcia, G. et al. (2021). Towards global flood mapping onboard low cost satellites with machine learning. Scientific Reports 11, 7249."
 
 _USER_CLASSES_NOTE = (
     "Class meanings come from the labels your network was trained on; this report cannot know them. "
@@ -266,6 +268,39 @@ def _h_multisensor(c):
             f"{c.f('ha', s.get('excluded_by_hand_ha'))} of apparent flooding was removed because it lies more than "
             f"{c.f('num1', s.get('max_hand_m'))} m above the nearest drainage."
         )
+    if s.get("data_notes"):
+        lines.append(f"Data gaps: {s.get('data_notes')}.")
+    return lines
+
+
+def _h_ml4floods(c):
+    s = c.s
+    flooded, land = s.get("flooded_area_ha") or 0.0, s.get("land_area_ha") or 0.0
+    if land and flooded / land < 0.0005:
+        first = (
+            f"The network found no significant new water between {c.m.get('date_before')} and {c.m.get('date_after')}: "
+            f"{c.f('ha', flooded)} of {c.f('ha', land)} of land. Floodwater under vegetation or between buildings, "
+            f"and anything under cloud, cannot be ruled out."
+        )
+    else:
+        first = (
+            f"{c.f('ha', flooded)} ({c.f('frac', s.get('flooded_fraction'))} of the land) is newly water in the flood window "
+            f"({c.m.get('date_after')}) and was clear land in the reference window ({c.m.get('date_before')})."
+        )
+    lines = [
+        first,
+        f"{c.f('ha', s.get('permanent_water_area_ha'))} was water in both windows and is excluded from the flooded area "
+        f"and from the percentages."
+        + (
+            f" A further {c.f('ha', s.get('flooded_unresolved_ha'))} is water in the flood window with no clear reference view: "
+            f"new flood or old water, it cannot be told."
+            if (s.get("flooded_unresolved_ha") or 0) > 0
+            else ""
+        ),
+        f"Pretrained network {s.get('model')} on {s.get('scenes_flood')} flood-window and {s.get('scenes_reference')} "
+        f"reference scene(s); it saw {c.f('frac', s.get('valid_fraction'))} of the area clear in the flood window. "
+        f"Water above probability {c.f('num2', s.get('th_water'))}. The input is {s.get('input_product')}.",
+    ]
     if s.get("data_notes"):
         lines.append(f"Data gaps: {s.get('data_notes')}.")
     return lines
@@ -1060,6 +1095,69 @@ _SPEC_LIST: list[ReportSpec] = [
             "The water thresholds (radar dB, MNDWI 0) are conventional values, not calibrated to this scene, and there is no ground truth here, so accuracy is not assessed.",
         ),
         references=(R_TWELE, R_MNDWI, R_HAND, R_COPDEM, R_S1RTC, R_S2),
+    ),
+    ReportSpec(
+        "ml4floods_flood_mapping",
+        "Flood Extent Mapping (pretrained ml4floods network, Sentinel-2)",
+        "Where did water appear between a dry reference window and the flood window, according to a pretrained flood-segmentation network?",
+        (
+            "Model: the ml4floods U-Net WF2_unetv2_bgriswirs, trained by its authors on WorldFloods v2 (Sentinel-2 images with flood masks). It reads six bands (B2, B3, B4, B8, B11, B12) and predicts two independent probabilities per pixel: cloud and water. PyGeoVision does not retrain or alter it and does not ship its weights (CC BY-NC 4.0, non-commercial use).",
+            "Input: Sentinel-2 L2A surface reflectance (x 10000) from the Microsoft Planetary Computer at 10 m, the 20 m bands resampled by nearest neighbour. The network was trained on Level-1C top-of-atmosphere imagery; this difference has not been measured.",
+            "Each scene is classified on its own. A pixel is observed when a scene shows it clear: not predicted bright cloud, and not flagged by the Scene Classification Layer as no data, defective, cloud shadow, cloud or cirrus. It is water when more than half of its clear observations in the window are water (probability above the stated threshold). Pixels with no clear observation are unknown, never dry.",
+            "Classes: flood water (water in the flood window, clear land in the reference window); water in both windows (shown separately and excluded from the flooded area); water in the flood window with no clear reference view (new flood or old water, cannot be told); not flooded. Small patches are removed.",
+        ),
+        (
+            Layer(
+                "flood",
+                "flood_extent.tif",
+                "Flood extent from the pretrained network",
+                "classes",
+                classes=_cd(
+                    (0, "Not flooded", NO_CHANGE),
+                    (1, "Flood water", "#b2182b"),
+                    (2, "Water in reference window", _WATER_BLUE),
+                    (3, "Water, no clear reference view", "#fdb863"),
+                ),
+                muted=(0, 2),
+                vector=VectorSpec("flood_extent", keep=(1, 3)),
+                primary=True,
+            ),
+            Layer(
+                "p_water",
+                "prob_water_after.tif",
+                "Mean water probability over the clear flood-window observations",
+                "continuous",
+                cmap="Blues",
+                vmin=0,
+                vmax=1,
+                label="P(water)",
+                optional=True,
+            ),
+        ),
+        (
+            Metric("flooded_area_ha", "Flood water", "ha"),
+            Metric("flooded_fraction", "Flooded share of land", "frac"),
+            Metric("flooded_unresolved_ha", "Water, no clear reference view", "ha"),
+            Metric("permanent_water_area_ha", "Water in both windows", "ha"),
+            Metric("valid_fraction", "Clear share of AOI (flood window)", "frac"),
+            Metric("reference_observed_fraction", "Clear share of AOI (reference window)", "frac"),
+            Metric("scenes_flood", "Flood-window scenes", "int"),
+            Metric("scenes_reference", "Reference scenes", "int"),
+            Metric("th_water", "Water probability threshold", "num2"),
+        ),
+        _h_ml4floods,
+        reading=(
+            "'Flood water' is water the network found where a clear reference view showed land. Check it against a second source (radar, local reports) before acting on it.",
+            "The unresolved class is a data gap, not a result: it is large when the reference window was cloudy.",
+        ),
+        limitations=(
+            "The accuracy of the network is that of its authors' test set, not of this area; no ground truth was available here, so accuracy is not assessed. See the reference.",
+            "The network was trained on Sentinel-2 Level-1C imagery and is run here on Level-2A reflectance; the effect is not measured.",
+            "Cloud shadow, dark surfaces (burn scars, basalt, tarmac, terrain shadow) and wet soil can look like water, and floodwater under vegetation or between buildings is often missed by optical imagery.",
+            "Optical imagery cannot see through cloud, and the cloudiest dates are often the flood dates: the result describes the clear days only, and water that receded before the acquisitions is not seen.",
+            "The probability threshold is a default, not a calibration to this scene. The model weights may only be used for non-commercial purposes (CC BY-NC 4.0).",
+        ),
+        references=(R_ML4FLOODS, R_ML4FLOODS_2021, R_S2),
     ),
     ReportSpec(
         "coastal_monitoring",

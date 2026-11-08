@@ -428,9 +428,15 @@ class SatelliteAcquirer:
         retry_attempts: int = 3,
         overwrite: bool = False,
         on_failure: str = "skip",
+        stream_bbox: tuple[float, float, float, float] | None = None,
+        stream: bool | None = None,
     ) -> list[DownloadResult]:
         """
         Download satellite scenes via pygeofetch.
+
+        With ``stream_bbox=(west, south, east, north)`` only that area is streamed from Cloud-Optimized-GeoTIFF
+        providers; a scene that cannot be streamed is downloaded in full instead. ``stream=False`` always downloads
+        whole scenes, ``stream=True`` streams, ``None`` streams unless ``PYGEOVISION_STREAM=0``.
 
         pygeofetch handles:
           - Parallel concurrent workers
@@ -458,6 +464,9 @@ class SatelliteAcquirer:
             retry_attempts:   Max retry attempts (default 3).
             overwrite:        Overwrite existing files.
             on_failure:       ``"skip"`` | ``"abort"`` | ``"retry"``.
+            stream_bbox:      Area of interest to stream instead of downloading whole scenes.
+            stream:           ``True`` stream, ``False`` download whole scenes, ``None`` automatic (stream when an area
+                              is known). A failed stream always falls back to the normal download.
 
         Returns:
             List of :class:`DownloadResult`.
@@ -523,16 +532,24 @@ class SatelliteAcquirer:
         pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
 
         try:
-            pgf_results = self._pgf.download(
+            from pygeovision.data._stream import fetch_scenes
+
+            pgf_results = fetch_scenes(
+                self._pgf,
                 sat_data_list,
-                destination=pathlib.Path(output_dir),
-                options=opts,
+                output_dir,
+                opts,
+                stream_bbox=stream_bbox,
+                stream=stream,
+                parallel=parallel,
+                overwrite=overwrite,
+                post_process=post_process,
             )
         except Exception as e:
-            logger.error("pygeofetch.download() failed: %s", e)
+            logger.error("pygeofetch download failed: %s", e)
             return []
 
-        results = [_pgf_to_download_result(dr) for dr in (pgf_results or [])]
+        results = [_pgf_to_download_result(f.result) for f in (pgf_results or [])]
         n_ok = sum(1 for r in results if r.success)
         logger.info("Download: %d/%d succeeded", n_ok, len(results))
         return results
@@ -939,7 +956,7 @@ class SatelliteAcquirer:
         try:
             from pygeofetch.processor import TimeSeriesAnalyzer
 
-            downloads = self.download(scenes, output_dir=output_dir, bands=bands)
+            downloads = self.download(scenes, output_dir=output_dir, bands=bands, stream_bbox=bbox)
             paths = [str(d.path) for d in downloads if d.success and d.path]
 
             tsa = TimeSeriesAnalyzer(paths)
