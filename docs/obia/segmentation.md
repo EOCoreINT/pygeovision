@@ -1,4 +1,4 @@
-# Segmentation
+# Segmentation: making image objects
 
 **Functions:** `obia.segment`, `obia.segment_levels`, `obia.from_labels` · **CLI:** `pygeovision obia segment`
 
@@ -34,7 +34,7 @@ $ pygeovision obia segment scene.tif --scale 20 --output-labels labels.tif --out
 | Argument | Meaning |
 |---|---|
 | `image` | A file path, a `RasterData` (from `load_raster`), or an array `(bands, rows, cols)` / `(rows, cols)` |
-| `method` | One of `multires`, `slic`, `felzenszwalb`, `quickshift`, `watershed`, `chessboard`. Anything else raises `ValueError` listing them |
+| `method` | One of `multires`, `slic`, `felzenszwalb`, `quickshift`, `watershed`, `chessboard`, `quadtree`, `multi_threshold`, `contrast_split`, `spectral_difference`. Anything else raises `ValueError` listing them |
 | `band_names`, `transform`, `crs` | Only needed when `image` is a bare array and you want georeferenced output |
 | `rescale` | `True` (default) stretches each band to 0–255 with 2–98 percentile clipping first. Keep it: it makes `scale` mean the same thing on different images |
 | `**params` | Algorithm parameters (below). CLI: `--param key=value`, repeatable; numbers are parsed |
@@ -54,7 +54,7 @@ Returns a `SegmentationResult`:
 Every id is **one connected piece**. If an algorithm returns one id for two separate patches they are split, and ids are
 renumbered `1…n`.
 
-## The six methods
+## The ten methods
 
 | Method | Idea | Main parameters (defaults) | Use when |
 |---|---|---|---|
@@ -64,10 +64,15 @@ renumbered `1…n`.
 | `quickshift` | Mode seeking in colour + position | `kernel_size=3`, `max_dist=6`, `ratio=0.5`, `sigma=0` | Textured scenes where you want blobs |
 | `watershed` | Flood the gradient image from a grid of seeds | `spacing=10`, `compactness=0` | Objects separated by clear edges |
 | `chessboard` | Square tiles | `size=16` | A **baseline**. Use it to see how much a real method improves |
+| `quadtree` | Split a block into four until every band inside it has a standard deviation `<= scale` | `scale=10`, `min_size=1`, `max_size=None` | Scenes with large flat areas and small detailed ones; the result is a set of square blocks, so it is cheap and predictable but never follows a diagonal edge |
+| `multi_threshold` | Cut one layer into classes (multi-Otsu, or your thresholds) and make every connected patch of a class an object | `layer="brightness"`, `n_classes=3` or `thresholds=[...]` | One layer separates what you want: water on NDWI, vegetation on NDVI, a dark shadow class |
+| `contrast_split` | Repeatedly split objects into a dark and a bright part at the threshold with the largest edge contrast | `layer="brightness"`, `levels=2`, `min_contrast=0`, `steps=32`, `min_size=1` | Isolating bright or dark things (buildings, water, shadows) from a varied background |
+| `spectral_difference` | Merge neighbours whose mean spectra differ by at most `max_difference` | `max_difference=10`, `metric="max"`, `strategy="best_first"` | A cleanup step after any other method, or when "same colour" is the only criterion you want |
 
-Note that `scale` does **not** mean the same for `multires` and `felzenszwalb`. In `multires` it is a stopping
+Note that `scale` does **not** mean the same for `multires`, `felzenszwalb` and `quadtree`. In `multires` it is a stopping
 threshold on a heterogeneity cost (a merge happens while its cost is below `scale²`). In `felzenszwalb` it prefers larger
-components. Do not copy a value from one to the other.
+components. In `quadtree` it is a standard deviation in band units (0–255 after the default stretch). Do not copy a value
+from one method to another.
 
 ### Comparing methods on your own image
 
@@ -101,16 +106,20 @@ the bands rises when two objects are merged) and a **shape** part (how much less
 | `band_weights` | equal | One weight per band. Raise the NIR weight to separate vegetation, for instance |
 | `init` | `"auto"` | Starting objects: `"pixels"` (textbook, slow), `"superpixels"` (SLIC first, fast), or your own label array. `auto` picks pixels up to 10,000 pixels and superpixels above |
 | `init_segments` | `None` | Number of starting superpixels (default about one per 16 pixels) |
+| `strategy` | `"best_first"` | Order of merging, see below |
 
-CLI: `--scale`, `--color-weight`, `--compactness-weight`; others through `--param init=pixels`.
+CLI: `--scale`, `--color-weight`, `--compactness-weight`; others through `--param init=pixels`, `--param strategy=mutual_best`.
 
 Starting from superpixels (the default for anything larger than ~100 × 100) is a speed trade-off: no object can be smaller
 than a superpixel, so very small `scale` values do not give you single-pixel objects there. Use `init="pixels"` if you need
 that and the image is small.
 
-**Different from eCognition.** eCognition grows objects in passes using local mutual best fitting; here the globally cheapest
-merge is always done next. Scale values have the same *meaning* as in textbooks because the bands are stretched to 0–255, but
-the boundaries will differ.
+**Merge order (`strategy`).** `best_first` (default) always does the globally cheapest merge next. `mutual_best` is the
+*local mutual best fitting* of Baatz & Schäpe (2000): in every pass two neighbours merge only if each is the other's
+cheapest neighbour and the cost is below `scale²`, so objects grow evenly over the whole image instead of one region at a time.
+Both stop in a state where every pair of touching objects costs at least `scale²`, but they can end in different partitions, and
+`mutual_best` is typically 2–3 times slower in this implementation. Neither reproduces eCognition's boundaries exactly (it is a
+proprietary implementation); scale values have the same *meaning* as in textbooks because the bands are stretched to 0–255.
 
 ### Speed and size
 
@@ -118,6 +127,40 @@ The merging is pure Python. Run time grows with the number of pixels and with ho
 textured scene is slower than a flat one of the same size. Time a 250 × 250 crop first and scale up from there.
 
 For scenes of tens of megapixels, cut tiles first, or use `slic`/`felzenszwalb`, which are several times faster.
+
+## The new methods in detail
+
+**`quadtree`.** Rows are split at `h // 2` and columns at `w // 2`, so any image size works. A block is homogeneous
+only if *every* band has a population standard deviation of at most `scale` (give a band weight 0 in `band_weights` to leave it
+out). `min_size` is the smallest block side, `max_size` forces splits of blocks larger than it. Neighbouring blocks are separate
+objects even when they have the same colour; follow with `spectral_difference` to join them.
+
+**`multi_threshold`.** `layer` is a band index (`0`), a band name (`"nir"`), `"brightness"` (mean of the bands), or `"ndvi"` /
+`"ndwi"` (from bands named red/nir or green/nir, computed on the original values). Band and brightness layers are on the
+stretched 0–255 scale unless you pass `rescale=False`. Give `thresholds=[t1, t2, ...]` (a pixel equal to a threshold goes to the
+class above) or let multi-Otsu find `n_classes - 1` of them; the thresholds actually used are in `seg.params["thresholds"]`. CLI:
+`--param thresholds=0.2,0.5`.
+
+**`contrast_split`.** For each object, `steps` candidate thresholds are spread evenly between its lowest and highest value.
+The edge contrast of a threshold is the mean absolute difference between neighbouring pixels (inside the object) that lie on
+opposite sides of it; the threshold with the largest contrast is used, if each side keeps at least `min_size` pixels and the
+contrast reaches `min_contrast`. Dark and bright parts become connected objects and the next level repeats. `levels` is the
+maximum number of cuts along any chain; flat objects, or objects where no threshold qualifies, are left alone. This follows the
+idea of eCognition's contrast split (separate dark from bright by the best edge) but is an independent, simplified
+implementation.
+
+**`spectral_difference`.** Starts from pixels (small images) or superpixels (`init`, as for `multires`) and merges the pair with
+the smallest difference of mean spectra while it is `<= max_difference`. `metric="max"` uses the largest absolute difference over
+the bands with weight above 0; `metric="mean"` the weighted mean. Means are recomputed from all pixels of a merged object. The
+threshold is inclusive, unlike `multires`, where a cost equal to `scale²` does not merge.
+
+## How these algorithms are checked
+
+`tests/test_obia_segmentation_reference.py` compares each algorithm with something independent of the code under test: the
+Baatz–Schäpe cost and merge order with a naive implementation that recomputes everything from pixel masks (several seeds,
+weights and scales), `quadtree` with a recursive reference, the multi-Otsu thresholds with an exhaustive search over all threshold
+pairs, `contrast_split` with a loop over pixel pairs, the wrappers of `felzenszwalb`, `slic` and `quickshift` with scikit-image
+itself, and small cases (a 1×2 block, three stripes, a line of numbers) with values worked out by hand in the comments.
 
 ## Several scales at once: `segment_levels`
 

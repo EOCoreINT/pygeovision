@@ -13,6 +13,12 @@ method          idea                                        main parameter(s)
 ``quickshift``  mode seeking in colour+space                ``max_dist``
 ``watershed``   flooding of the gradient image from seeds   ``spacing``
 ``chessboard``  regular square tiles (a baseline)           ``size``
+``quadtree``    recursive 4-way split until homogeneous     ``scale`` (max std)
+``multi_threshold`` classes of one layer, connected patches ``n_classes`` /
+                (multi-Otsu or given thresholds)            ``thresholds``
+``contrast_split`` repeated dark / bright split at the      ``levels``,
+                max-edge-contrast threshold                 ``min_contrast``
+``spectral_difference`` merge neighbours with similar means ``max_difference``
 =============== =========================================== ==================
 
 Note that ``scale`` means something different for ``multires`` and for
@@ -27,9 +33,21 @@ from typing import Any
 import numpy as np
 
 from .io import RasterData, as_raster_data, rescale_bands, to_uint8, valid_mask
-from .merging import RegionMerger
+from .merging import RegionMerger, SpectralDifferenceMerger
+from .splitting import contrast_split, multi_threshold, quadtree
 
-METHODS = ("multires", "slic", "felzenszwalb", "quickshift", "watershed", "chessboard")
+METHODS = (
+    "multires",
+    "slic",
+    "felzenszwalb",
+    "quickshift",
+    "watershed",
+    "chessboard",
+    "quadtree",
+    "multi_threshold",
+    "contrast_split",
+    "spectral_difference",
+)
 
 
 @dataclass
@@ -181,6 +199,49 @@ def _relabel(lab: np.ndarray, valid: np.ndarray | None = None) -> np.ndarray:
     return out
 
 
+def _initial_objects(img, init, init_segments):
+    """Starting objects for the merging methods: single pixels, SLIC superpixels or a given label array."""
+    H, W = img.shape[1:]
+    if isinstance(init, np.ndarray):
+        return init, "array"
+    if init == "auto":
+        init = "pixels" if H * W <= 10_000 else "superpixels"
+    if init == "pixels":
+        return np.arange(H * W).reshape(H, W), init
+    if init == "superpixels":
+        return _slic(img, init_segments or max(H * W // 16, 50), 0.1, 0.0), init
+    raise ValueError("init must be 'auto', 'pixels', 'superpixels' or an array")
+
+
+def _layer(rd: RasterData, img: np.ndarray, valid: np.ndarray, layer) -> np.ndarray:
+    """One 2-D layer for the threshold methods: a band (index or name), ``"brightness"``, ``"ndvi"`` or ``"ndwi"``."""
+    from scipy import ndimage as ndi
+
+    from .features import spectral_layers
+
+    if isinstance(layer, str) and layer.lower() in ("ndvi", "ndwi"):
+        derived = spectral_layers(rd.image, rd.band_names)
+        if layer.lower() not in derived:
+            raise ValueError(f"{layer!r} needs bands named red/nir (ndvi) or green/nir (ndwi); have {rd.band_names}")
+        arr = np.asarray(derived[layer.lower()], dtype=np.float64)
+        ok = valid & np.isfinite(arr)
+        if not ok.all():
+            idx = ndi.distance_transform_edt(~ok, return_distances=False, return_indices=True)
+            arr = arr[idx[0], idx[1]]
+        return arr
+    if isinstance(layer, str) and layer.lower() == "brightness":
+        return img.mean(axis=0)
+    if isinstance(layer, str):
+        names = [str(n).lower() for n in rd.band_names]
+        if layer.lower() not in names:
+            raise ValueError(f"unknown layer {layer!r}; bands are {rd.band_names}, or use 'brightness', 'ndvi', 'ndwi'")
+        return img[names.index(layer.lower())]
+    k = int(layer)
+    if not -img.shape[0] <= k < img.shape[0]:
+        raise ValueError(f"band index {k} out of range for {img.shape[0]} bands")
+    return img[k]
+
+
 def _prepare(rd: RasterData, rescale: bool):
     """Image for the algorithms, plus the mask of pixels that hold data.
 
@@ -237,28 +298,48 @@ def segment(
             "init": "auto",
             "init_segments": None,
             "band_weights": None,
+            "strategy": "best_first",
         }
         p.update(params)
-        init = p["init"]
-        if isinstance(init, np.ndarray):
-            init_labels = init
-        else:
-            if init == "auto":
-                init = "pixels" if H * W <= 10_000 else "superpixels"
-            if init == "pixels":
-                init_labels = np.arange(H * W).reshape(H, W)
-            elif init == "superpixels":
-                nseg = p["init_segments"] or max(H * W // 16, 50)
-                init_labels = _slic(img, nseg, 0.1, 0.0)
-            else:
-                raise ValueError("init must be 'auto', 'pixels', 'superpixels' or an array")
+        init_labels, init = _initial_objects(img, p["init"], p["init_segments"])
         m = RegionMerger(
             img, init_labels, p["color_weight"], p["compactness_weight"], p["band_weights"]
-        ).run(p["scale"])
+        ).run(p["scale"], p["strategy"])
         lab = m.labels()
-        used = {k: v for k, v in p.items() if k != "init"}
-        used["init"] = init if not isinstance(init, np.ndarray) else "array"
-        params = used
+        params = {**{k: v for k, v in p.items() if k != "init"}, "init": init}
+    elif method == "spectral_difference":
+        p = {
+            "max_difference": 10.0,
+            "metric": "max",
+            "init": "auto",
+            "init_segments": None,
+            "band_weights": None,
+            "strategy": "best_first",
+        }
+        p.update(params)
+        init_labels, init = _initial_objects(img, p["init"], p["init_segments"])
+        m = SpectralDifferenceMerger(img, init_labels, p["band_weights"], p["metric"]).run(
+            p["max_difference"], p["strategy"]
+        )
+        lab = m.labels()
+        params = {**{k: v for k, v in p.items() if k != "init"}, "init": init}
+    elif method == "quadtree":
+        p = {"scale": 10.0, "min_size": 1, "max_size": None, "band_weights": None}
+        p.update(params)
+        lab = quadtree(img, p["scale"], int(p["min_size"]), p["max_size"], p["band_weights"])
+        params = p
+    elif method == "multi_threshold":
+        p = {"layer": "brightness", "thresholds": None, "n_classes": 3}
+        p.update(params)
+        lay = _layer(rd, img, valid, p["layer"])
+        lab, found = multi_threshold(lay, p["thresholds"], int(p["n_classes"]), valid)
+        params = {**p, "thresholds": list(found)}
+    elif method == "contrast_split":
+        p = {"layer": "brightness", "levels": 2, "steps": 32, "min_contrast": 0.0, "min_size": 1}
+        p.update(params)
+        lay = _layer(rd, img, valid, p["layer"])
+        lab = contrast_split(lay, int(p["levels"]), int(p["steps"]), p["min_contrast"], int(p["min_size"]))
+        params = p
     elif method == "slic":
         p = {"n_segments": 500, "compactness": 0.1, "sigma": 1.0}
         p.update(params)

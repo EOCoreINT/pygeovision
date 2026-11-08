@@ -1,4 +1,4 @@
-# Object-based analysis
+# Object-based image analysis (OBIA)
 
 **Package:** `pygeovision.obia` · **CLI:** `pygeovision obia` (7 commands)
 
@@ -32,7 +32,7 @@ The object-based workflow, from a real scene to an assessed map.
 
 | Step | What it does | Page | CLI |
 |---|---|---|---|
-| Segment | Six algorithms; the default merges pixels until objects are as large as `scale` allows | [Segmentation](segmentation.md) | `obia segment` |
+| Segment | Ten algorithms; the default merges pixels until objects are as large as `scale` allows | [Segmentation](segmentation.md) | `obia segment` |
 | Choose the scale | Compare scales with or without reference objects | [Choosing a scale](scale.md) | `obia scale` |
 | Describe | 50+ numbers per object: spectral, shape, texture, context | [Object features](features.md) | `obia features` |
 | Classify | Rules, fuzzy sets, random forest/kNN/SVM/tree | [Classification](classification.md) | `obia classify` |
@@ -116,18 +116,3 @@ gets `b1, b2, b3, b4`, and then `spectral_layers` finds no `red`, `nir` or `gree
 - Rule strings are evaluated with `pandas.DataFrame.eval`. Treat a rules file as **code**, not as untrusted input.
 - Accuracy is only as honest as your reference data. Read [Accuracy assessment](accuracy.md), especially the section on
   why scoring a classifier on its own training samples says nothing.
-
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-tutorial
-real-data
-segmentation
-scale
-features
-classification
-hierarchy-context
-accuracy
-data-io
-```

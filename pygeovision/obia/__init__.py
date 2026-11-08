@@ -45,10 +45,11 @@ from .features import (
     super_object_features,
 )
 from .io import RasterData, load_raster, save_raster, valid_mask
-from .merging import RegionMerger
+from .merging import RegionMerger, SpectralDifferenceMerger
 from .scale import scale_diagnostics, scale_vs_reference
 from .scene import fetch_osm_polygons, fetch_scene, fetch_worldcover
 from .segmentation import METHODS, SegmentationResult, from_labels, segment, segment_levels
+from .splitting import contrast_split, multi_threshold, quadtree
 from .vector import labels_to_gdf, rasterize_geometries
 
 __all__ = [n for n in dir() if not n.startswith("_")]

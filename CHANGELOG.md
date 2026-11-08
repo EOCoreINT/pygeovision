@@ -5,6 +5,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — four more OBIA segmentation algorithms, and reference checks for all of them
+
+- `obia.segment` has four new methods: `quadtree` (split until every band's standard deviation is `<= scale`),
+  `multi_threshold` (multi-Otsu or given thresholds on a band, brightness, NDVI or NDWI; connected patches of a class are
+  objects), `contrast_split` (repeated dark / bright split at the largest edge contrast) and `spectral_difference`
+  (merge neighbours with similar mean spectra). The building blocks are public: `obia.quadtree`, `obia.multi_threshold`,
+  `obia.contrast_split`, `obia.SpectralDifferenceMerger`. `pygeovision obia segment --method` accepts them; `--param
+  thresholds=0.2,0.5` now parses a list.
+- `multires` (and `spectral_difference`) take `strategy="mutual_best"`: local mutual best fitting as in Baatz & Schäpe (2000),
+  next to the default `best_first`.
+- `tests/test_obia_segmentation_reference.py`: the Baatz–Schäpe cost and merge order are compared with a naive implementation
+  built from the published formulas; `quadtree`, multi-Otsu and `contrast_split` with independent references; the
+  scikit-image wrappers with scikit-image; small cases with hand-derived values.
+
 ### Changed — one place chooses between streaming and downloading, with a fallback
 
 pygeofetch is unchanged. PyGeoVision wraps its `stream` and `download` in one function, `pygeovision.data._stream.fetch_scenes`,
@@ -16,6 +30,7 @@ which every way of acquiring imagery for an area now uses.
   `pygeovision channel <pipeline> --stream/--no-stream`, `stream: true|false` on the YAML `download` step, and on
   the acquirer, the bridge, `EOPipeline.download` and `GeoDataLoader.prepare(stream_bbox=...)`. `PYGEOVISION_STREAM=0`
   changes only the automatic default; an explicit `stream=True` still streams.
+- **An older pygeofetch without `stream()` is detected.** PyGeoVision says once, with the installed version and the upgrade command (`pip install -U pygeofetch`; 2.6.9.8.4 and newer stream), that it is downloading whole scenes instead, and the download banner no longer claims to be streaming.
 - **A stream never fails the run.** A scene that cannot be streamed - archive-only provider (Copernicus `.zip`, USGS `.tar`),
   no COG in the stack, a band that cannot be read, a streamed file that cannot be reprojected, an error in the stream
   layer, or an installed pygeofetch without `stream` - is downloaded in full with the normal `download` and your download
@@ -60,7 +75,7 @@ which every way of acquiring imagery for an area now uses.
 
 ---
 
-## [2.2.1] — 2026-07-03
+## [2.2.0] — 2026-07-03
 
 ### Added — GeoAgent: Autonomous Geospatial AI Agent
 
@@ -115,7 +130,7 @@ which every way of acquiring imagery for an area now uses.
 
 ---
 
-## [2.2.1] — 2026-06-27
+## [2.2.0] — 2026-06-27
 
 ### ⚠️ Breaking Changes
 - **PyGeoVision is now fully standalone.** GeoAI is no longer a required dependency — it is an optional plugin (`pip install "pygeovision[geoai]"`). All v1.x `client.geoai.*` calls continue to work but require explicit installation of `geoai-py`.
@@ -325,5 +340,5 @@ which every way of acquiring imagery for an area now uses.
 
 ---
 
-[2.2.1]: https://github.com/pygeovision/pygeovision/compare/v1.0.0...v2.2.1
+[2.2.0]: https://github.com/pygeovision/pygeovision/compare/v1.0.0...v2.2.0
 [1.0.0]: https://github.com/pygeovision/pygeovision/releases/tag/v1.0.0

@@ -260,11 +260,11 @@ minimal = ["pygeovision[geo,train,report]"]
 pygeovision = "pygeovision.cli.main:main"
 
 [project.urls]
-Homepage      = "https://pygeovision.org"
-Documentation = "https://docs.pygeovision.org"
-Repository    = "https://github.com/pygeovision/pygeovision"
-Issues        = "https://github.com/pygeovision/pygeovision/issues"
-Changelog     = "https://github.com/pygeovision/pygeovision/blob/main/CHANGELOG.md"
+Homepage      = "https://eocoreint.org"
+Documentation = "https://pygeovision.readthedocs.io/en/latest/"
+Repository    = "https://github.com/EOCoreINT/pygeovision"
+Issues        = "https://github.com/EOCoreINT/pygeovision/issues"
+Changelog     = "https://github.com/EOCoreINT/pygeovision/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where   = ["."]

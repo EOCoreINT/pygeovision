@@ -27,8 +27,10 @@ This is an independent implementation of the published criterion, not a
 re-implementation of eCognition's proprietary algorithm.  Two differences
 matter for teaching:
 
-* eCognition grows objects in passes using *local mutual best fitting*; here
-  the globally cheapest merge is always performed next ("best-first").
+* eCognition grows objects in passes using *local mutual best fitting*. Here
+  the default is "best-first" (the globally cheapest merge is performed next);
+  ``run(scale, strategy="mutual_best")`` gives the pass-based rule of the
+  original paper, but still not eCognition's exact results.
 * By default the process starts from a fine SLIC over-segmentation instead of
   single pixels (single pixels are slow in pure Python).  ``init="pixels"``
   gives the textbook behaviour for small images.
@@ -42,6 +44,8 @@ from __future__ import annotations
 
 import heapq
 import math
+
+STRATEGIES = ("best_first", "mutual_best")
 
 import numpy as np
 from scipy import ndimage
@@ -194,23 +198,72 @@ class RegionMerger:
         for nb, sh in self.adj[a].items():
             self._push(a, nb, sh)
 
-    def run(self, scale: float) -> RegionMerger:
-        """Merge until the cheapest remaining merge costs >= ``scale**2``."""
+    def run(self, scale: float, strategy: str = "best_first") -> RegionMerger:
+        """Merge until no allowed merge costs less than ``scale**2``.
+
+        ``strategy="best_first"`` always performs the globally cheapest merge next. ``"mutual_best"`` is the
+        *local mutual best fitting* rule of Baatz & Schäpe (2000): in every pass, two neighbours are joined only when
+        each is the other's cheapest neighbour (and the cost is below the threshold), so objects grow evenly over the
+        whole image instead of one region at a time. Both stop in a state where every pair of touching objects costs
+        at least ``scale**2``; they can end in different (equally valid) partitions.
+        """
         if scale < 0:
             raise ValueError("scale must be >= 0")
-        thr = float(scale) ** 2
+        if strategy not in STRATEGIES:
+            raise ValueError(f"strategy must be one of {STRATEGIES}, not {strategy!r}")
+        thr = self._limit(float(scale))
+        if strategy == "best_first":
+            self._run_best_first(thr)
+        else:
+            self._run_mutual_best(thr)
+        self.scale_reached = max(self.scale_reached, float(scale))
+        return self
+
+    # the threshold that ``run(x)`` compares costs with, and whether a cost equal to it may still merge
+    _inclusive = False
+
+    def _limit(self, x: float) -> float:
+        return x * x
+
+    def _below(self, cost: float, thr: float) -> bool:
+        return cost <= thr if self._inclusive else cost < thr
+
+    def _run_best_first(self, thr: float) -> None:
         heap = self._heap
         while heap:
             cost, a, b, va, vb = heap[0]
             if not (self.alive[a] and self.alive[b] and self.ver[a] == va and self.ver[b] == vb):
                 heapq.heappop(heap)
                 continue
-            if cost >= thr:
+            if not self._below(cost, thr):
                 break
             heapq.heappop(heap)
             self._merge(a, b)
-        self.scale_reached = max(self.scale_reached, float(scale))
-        return self
+
+    def _run_mutual_best(self, thr: float) -> None:
+        best: dict[int, tuple[float, int]] = {}
+        dirty = set(np.flatnonzero(self.alive).tolist())
+        while dirty:
+            # a node's cheapest neighbour only changes when it or one of its neighbours merged
+            for a in dirty:
+                top = None
+                if self.alive[a]:
+                    for b, shared in self.adj[a].items():
+                        c = self._cost(min(a, b), max(a, b), shared)
+                        if top is None or c < top[0] or (c == top[0] and b < top[1]):
+                            top = (c, b)
+                if top is not None and self._below(top[0], thr):
+                    best[a] = top
+                else:
+                    best.pop(a, None)
+            pairs = sorted((a, t[1]) for a, t in best.items() if a < t[1] and best.get(t[1], (0, -1))[1] == a)
+            dirty = set()
+            for a, b in pairs:  # mutual pairs are disjoint, so they can all be merged in this pass
+                self._merge(a, b)
+                best.pop(a, None)
+                best.pop(b, None)
+                dirty.add(a)
+                dirty.update(self.adj[a])
 
     # --------------------------------------------------------------- results
     @property
@@ -230,3 +283,44 @@ class RegionMerger:
         remap = np.zeros(self.N, dtype=np.int64)
         remap[alive_ids] = np.arange(1, len(alive_ids) + 1)
         return remap[root][self._init].astype(np.int32)
+
+
+class SpectralDifferenceMerger(RegionMerger):
+    """Merge touching objects whose mean spectral values are close (spectral difference segmentation).
+
+    Two neighbours are joined while the difference of their layer means is at most ``max_difference``, cheapest
+    first; the mean of a merged object is the mean over all its pixels, so differences are re-evaluated after every
+    merge. The difference of two objects is ``max_b |mean_a,b - mean_b,b|`` (``metric="max"``, every band must agree)
+    or the weighted average of the absolute band differences (``metric="mean"``).
+
+    Parameters
+    ----------
+    image : (bands, rows, cols) array.
+    init_labels : (rows, cols) int array of the starting objects (pixels, tiles, any over-segmentation).
+    band_weights : per-band weights (default equal). With ``metric="max"`` a zero weight removes a band.
+    metric : ``"max"`` or ``"mean"``.
+    """
+
+    _inclusive = True
+
+    def __init__(self, image, init_labels, band_weights=None, metric="max"):
+        if metric not in ("max", "mean"):
+            raise ValueError("metric must be 'max' or 'mean'")
+        self.metric = metric
+        super().__init__(image, init_labels, 1.0, 0.5, band_weights)
+
+    def _limit(self, x: float) -> float:
+        return x
+
+    def _cost(self, a: int, b: int, shared: int) -> float:
+        d = np.abs(self.s[a] / self.n[a] - self.s[b] / self.n[b])
+        if self.metric == "mean":
+            return float(np.dot(self.bw, d))
+        return float(d[self.bw > 0].max())
+
+    def run(self, max_difference: float, strategy: str = "best_first") -> SpectralDifferenceMerger:  # type: ignore[override]
+        """Merge until every pair of touching objects differs by more than ``max_difference``."""
+        if max_difference < 0:
+            raise ValueError("max_difference must be >= 0")
+        super().run(max_difference, strategy)
+        return self

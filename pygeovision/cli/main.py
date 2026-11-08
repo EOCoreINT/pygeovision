@@ -3565,7 +3565,10 @@ def _obia_parse_params(pairs):
             try:
                 out[k.strip()] = float(v)
             except ValueError:
-                out[k.strip()] = v
+                try:  # "0.2,0.5" -> [0.2, 0.5] (thresholds=...)
+                    out[k.strip()] = [float(x) for x in v.split(",")] if "," in v else v
+                except ValueError:
+                    out[k.strip()] = v
     return out
 
 
@@ -3667,10 +3670,26 @@ def obia_fetch(bbox, date_str, output, bands, cloud_max, providers, worldcover, 
     default="multires",
     show_default=True,
     type=click.Choice(
-        ["multires", "slic", "felzenszwalb", "quickshift", "watershed", "chessboard"]
+        [
+            "multires",
+            "slic",
+            "felzenszwalb",
+            "quickshift",
+            "watershed",
+            "chessboard",
+            "quadtree",
+            "multi_threshold",
+            "contrast_split",
+            "spectral_difference",
+        ]
     ),
 )
-@click.option("--scale", default=None, type=float, help="Scale parameter (multires; felzenszwalb).")
+@click.option(
+    "--scale",
+    default=None,
+    type=float,
+    help="Scale parameter (multires; felzenszwalb; quadtree = largest standard deviation per block).",
+)
 @click.option(
     "--color-weight",
     default=0.9,
@@ -3698,7 +3717,17 @@ def obia_segment(
     output_labels,
     output_vector,
 ):
-    """Segment a raster into image objects."""
+    """Segment a raster into image objects.
+
+    \b
+    Methods and their main parameters (set the others with --param key=value):
+        multires             --scale, --color-weight, --compactness-weight; strategy=mutual_best
+        spectral_difference  max_difference=10, metric=max|mean
+        quadtree             --scale (largest per-band std in a block), min_size, max_size
+        multi_threshold      layer=brightness|ndvi|ndwi|<band>, n_classes=3 or thresholds=0.2,0.5
+        contrast_split       layer=..., levels=2, min_contrast=0, steps=32
+        slic, felzenszwalb, quickshift, watershed, chessboard
+    """
     from pygeovision.obia import segment
 
     kw = _obia_parse_params(params)

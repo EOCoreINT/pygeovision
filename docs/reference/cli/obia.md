@@ -304,8 +304,8 @@ Segment a raster into image objects.
 
 | Option | Type | Default | Required | Meaning |
 |---|---|---|---|---|
-| `--method` | one of `multires` | `slic` | `felzenszwalb` | `quickshift` | `watershed` | `chessboard` | `multires` |  |  |
-| `--scale` | number |  |  | Scale parameter (multires; felzenszwalb). |
+| `--method` | one of `multires` | `slic` | `felzenszwalb` | `quickshift` | `watershed` | `chessboard` | `quadtree` | `multi_threshold` | `contrast_split` | `spectral_difference` | `multires` |  |  |
+| `--scale` | number |  |  | Scale parameter (multires; felzenszwalb; quadtree = largest standard deviation per block). |
 | `--color-weight` | number | `0.9` |  | multires: weight of spectral vs shape criterion. |
 | `--compactness-weight` | number | `0.5` |  | multires: compactness vs smoothness. |
 | `--param` | text |  |  | Extra method parameter, key=value (repeatable). |
@@ -319,10 +319,19 @@ Usage: pygeovision obia segment [OPTIONS] INPUT_PATH
 
   Segment a raster into image objects.
 
+  Methods and their main parameters (set the others with --param key=value):
+      multires             --scale, --color-weight, --compactness-weight; strategy=mutual_best
+      spectral_difference  max_difference=10, metric=max|mean
+      quadtree             --scale (largest per-band std in a block), min_size, max_size
+      multi_threshold      layer=brightness|ndvi|ndwi|<band>, n_classes=3 or thresholds=0.2,0.5
+      contrast_split       layer=..., levels=2, min_contrast=0, steps=32
+      slic, felzenszwalb, quickshift, watershed, chessboard
+
 Options:
-  --method [multires|slic|felzenszwalb|quickshift|watershed|chessboard]
+  --method [multires|slic|felzenszwalb|quickshift|watershed|chessboard|quadtree|multi_threshold|contrast_split|spectral_difference]
                                   [default: multires]
-  --scale FLOAT                   Scale parameter (multires; felzenszwalb).
+  --scale FLOAT                   Scale parameter (multires; felzenszwalb; quadtree = largest
+                                  standard deviation per block).
   --color-weight FLOAT            multires: weight of spectral vs shape criterion.  [default:
                                   0.9]
   --compactness-weight FLOAT      multires: compactness vs smoothness.  [default: 0.5]

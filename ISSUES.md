@@ -10,7 +10,7 @@ have `satellite_data=None`, so `download()` treats them as "pystac-fallback" ite
 `_download_stac_item_direct`. The pygeofetch engine (retries, `parallel`, its progress and auth handling) is never used. The
 `pyproject.toml` comment says the pystac fallback is "not a normal operating path", yet a second identical search takes it.
 
-**Evidence** (benchmark of 2 Nov 2026, pygeovision 2.2.1, three Sentinel-2 L2A scenes from Planetary Computer)
+**Evidence** (benchmark of 2 Nov 2026, pygeovision 2.2.2, three Sentinel-2 L2A scenes from Planetary Computer)
 - Run 1, empty cache: the log shows `Searching 1 provider(s) [planetary_computer]` and `Downloading 3 scene(s) via PyGeoFetch`.
 - Runs 2 and 3 within the hour: no search line, then `Downloading 3 pystac-fallback item(s) directly (bypassing PyGeoFetch engine).`
 
@@ -432,7 +432,7 @@ A user or a citation manager gets different answers depending on which file they
 - `pyproject.toml` `[project.urls]` point to `github.com/pygeovision/pygeovision` and `docs.pygeovision.org`; the repository is
   `EOCoreINT/pygeovision`. `CITATION.cff` uses `pygeovision.readthedocs.io`.
 - `CITATION.cff`: `doi: 10.5281/zenodo.XXXXXXX` (a placeholder), `date-released: 2026-07-10`.
-- The package version is 2.2.1; the README citation block names release 2.1.9 with its own DOI; `docs/project/roadmap.md` says
+- The package version is 2.2.2; the README citation block names release 2.1.9 with its own DOI; `docs/project/roadmap.md` says
   "this release, 2.1.8".
 - Architecture counts: the README badge and text say 77 registered architectures, the registry has 79 entries, the README says
   five of 79 are placeholders, and the roadmap says "79 buildable architectures" (see the registry tracking issue).
@@ -503,7 +503,7 @@ while reproducing, include the output of `pygeovision doctor`.
 **What happens**
 `.gitignore` line 108 contains `weights/`, which also matches the source package `pygeovision/models/weights/`
 (`__init__.py`, `downloader.py`, `manager.py`). `git ls-files pygeovision/models/weights` lists nothing, and
-`git check-ignore -v pygeovision/models/weights/downloader.py` reports the rule. The PyPI wheel for 2.2.1 does contain the folder.
+`git check-ignore -v pygeovision/models/weights/downloader.py` reports the rule. The PyPI wheel for 2.2.2 does contain the folder.
 
 `pygeovision models download <name>` imports `pygeovision.models.weights.downloader` (`cli/main.py` ~L1392), so a checkout from
 GitHub (`git clone`, `pip install git+https://...`) fails with `ModuleNotFoundError` on that command, while a PyPI install works.

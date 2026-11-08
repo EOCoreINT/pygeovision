@@ -1,4 +1,4 @@
-# Real imagery
+# Real imagery: cloud holes, weak labels, CRS
 
 **Functions:** `obia.fetch_scene`, `obia.fetch_worldcover`, `obia.fetch_osm_polygons`, `obia.valid_mask`,
 `obia.samples_from_raster`, `obia.samples_from_geometries(..., crs=)` · **Client:** `client.obia.scene / worldcover / osm_polygons` ·
@@ -26,7 +26,7 @@ seg.valid                                  # the same mask, or None if there was
 ```
 
 `valid_mask` calls a pixel invalid when **any** band is NaN or infinite, or when **every** band equals the raster's
-declared `nodata`. All six segmentation methods, `segment_levels` and the scale tools follow this rule. Object ids run
+declared `nodata`. All ten segmentation methods, `segment_levels` and the scale tools follow this rule. Object ids run
 `1…n` and each id is one connected piece, as before. An image with no valid pixel raises
 `ValueError: the image has no valid pixels`.
 
